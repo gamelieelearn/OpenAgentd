@@ -256,15 +256,10 @@ mod tests {
     #[cfg(unix)]
     fn fake_archive(names: &[&str], body: &str) -> Vec<u8> {
         let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()));
-        for (name, mode, data) in names.iter().map(|n| (*n, 0o755, format!("#!/bin/sh\necho {body}\n"))).chain([("LICENSE", 0o644, "license".to_string())]) {
-            let mut h = tar::Header::new_gnu();
-            h.set_size(data.len() as u64);
-            h.set_mode(mode);
-            h.set_cksum();
-            builder.append_data(&mut h, name, data.as_bytes()).unwrap();
-        }
-        // An AppleDouble entry, as macOS tar writes for files with xattrs.
-        for (name, mode, data) in [("._openagentd", 0o755, "appledouble".to_string())] {
+        let executables = names.iter().map(|n| (*n, 0o755, format!("#!/bin/sh\necho {body}\n")));
+        // Plus an AppleDouble entry, as macOS tar writes for files with xattrs.
+        let extras = [("LICENSE", 0o644, "license".to_string()), ("._openagentd", 0o755, "appledouble".to_string())];
+        for (name, mode, data) in executables.chain(extras) {
             let mut h = tar::Header::new_gnu();
             h.set_size(data.len() as u64);
             h.set_mode(mode);
