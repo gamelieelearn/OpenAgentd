@@ -72,16 +72,38 @@ pub fn fnmatch(name: &str, pat: &str) -> bool {
     Regex::new(&fnmatch_translate(pat)).map(|r| r.is_match(name)).unwrap_or(false)
 }
 
+/// Compile a denied-path glob. Case-insensitive on Windows, where `.ENV`
+/// names the same file as `.env`.
+fn pattern_regex(pat: &str) -> Option<Regex> {
+    if cfg!(windows) {
+        Regex::new(&format!("(?i){}", fnmatch_translate(&pat.replace('\\', "/")))).ok()
+    } else {
+        Regex::new(&fnmatch_translate(pat)).ok()
+    }
+}
+
+/// The string denied patterns are matched against. v2 matches `str(path)`,
+/// so on Windows `**/.env` never matched `C:\ws\.env`; v3 matches the
+/// `/`-separated form there so the default patterns work on every OS.
+fn pattern_subject(resolved: &Path) -> String {
+    let s = resolved.to_string_lossy();
+    if cfg!(windows) {
+        s.replace('\\', "/")
+    } else {
+        s.into_owned()
+    }
+}
+
 /// Lexical + symlink-resolving `Path.resolve()` (non-strict: missing tails ok).
 pub fn resolve(p: &Path) -> PathBuf {
-    if let Ok(c) = std::fs::canonicalize(p) {
+    if let Ok(c) = dunce::canonicalize(p) {
         return c;
     }
     // Resolve the longest existing ancestor, then append the rest lexically.
     let mut existing = p.to_path_buf();
     let mut tail: Vec<std::ffi::OsString> = vec![];
     loop {
-        if let Ok(c) = std::fs::canonicalize(&existing) {
+        if let Ok(c) = dunce::canonicalize(&existing) {
             let mut out = c;
             for t in tail.iter().rev() {
                 match Path::new(t).components().next() {
@@ -179,7 +201,7 @@ impl DeniedPaths {
         let s = appv3_core::settings();
         let denied_roots: Vec<PathBuf> = roots.unwrap_or_else(|| vec![s.data_dir.clone(), s.state_dir.clone(), s.cache_dir.clone()]).iter().map(|p| resolve(p)).collect();
         let pats = patterns.unwrap_or_else(load_denied_patterns);
-        let denied_patterns = pats.into_iter().filter_map(|p| Regex::new(&fnmatch_translate(&p)).ok().map(|r| (p, r))).collect();
+        let denied_patterns = pats.into_iter().filter_map(|p| pattern_regex(&p).map(|r| (p, r))).collect();
         let shell_denied_roots = vec![resolve(&s.config_dir).join("memory")];
         let state_root = resolve(&s.state_dir);
         let mut allowed = vec![workspace_root.clone(), state_root.join("logs"), state_root.join("otel"), state_root.join("telemetry")];
@@ -199,7 +221,7 @@ impl DeniedPaths {
                 return Some(denied.display().to_string());
             }
         }
-        let s = resolved.to_string_lossy();
+        let s = pattern_subject(resolved);
         self.denied_patterns.iter().find(|(_, rx)| rx.is_match(&s)).map(|(p, _)| p.clone())
     }
 
@@ -249,7 +271,7 @@ impl DeniedPaths {
 
     /// v2 `check_command`: shell-tokenise and look for denied path tokens.
     pub fn check_command(&self, command_line: &str) -> Option<String> {
-        let tokens = shlex::split(command_line)?;
+        let tokens = split_command(command_line)?;
         for raw in tokens {
             let token = raw.trim_matches(|c| c == '"' || c == '\'');
             if !looks_path_like(token) {
@@ -266,6 +288,46 @@ impl DeniedPaths {
         }
         None
     }
+}
+
+/// Split a command line into words. POSIX shells: `shlex` rules, as v2.
+/// Windows: `\` is a path separator, not an escape (v2's `shlex.split` turns
+/// `C:\data\x` into `C:datax`, so absolute denied paths slipped through);
+/// quotes group, and unbalanced quotes fail like shlex does.
+fn split_command(line: &str) -> Option<Vec<String>> {
+    if cfg!(windows) {
+        split_windows(line)
+    } else {
+        shlex::split(line)
+    }
+}
+
+fn split_windows(line: &str) -> Option<Vec<String>> {
+    let (mut out, mut cur, mut quote, mut in_word) = (vec![], String::new(), None::<char>, false);
+    for c in line.chars() {
+        match quote {
+            Some(q) if c == q => quote = None,
+            Some(_) => cur.push(c),
+            None if c == '"' || c == '\'' => (quote, in_word) = (Some(c), true),
+            None if c.is_whitespace() => {
+                if in_word {
+                    out.push(std::mem::take(&mut cur));
+                    in_word = false;
+                }
+            }
+            None => {
+                cur.push(c);
+                in_word = true;
+            }
+        }
+    }
+    if quote.is_some() {
+        return None;
+    }
+    if in_word {
+        out.push(cur);
+    }
+    Some(out)
 }
 
 fn looks_path_like(token: &str) -> bool {
@@ -303,8 +365,17 @@ mod tests {
         assert!(d.validate_path("src/a.py").is_ok());
         assert!(d.validate_path(denied.join("x.db").to_str().unwrap()).is_err());
         assert!(d.validate_path(".env").is_err());
+        if cfg!(windows) {
+            assert!(d.validate_path(".ENV").is_err(), "Windows paths are case-insensitive");
+        }
         assert!(d.validate_path("~/x").is_err());
         assert_eq!(d.display_path(&d.workspace_root.join("a/b.txt")), "a/b.txt");
         assert!(d.check_command(&format!("cat {}", denied.join("x").display())).is_some());
+    }
+
+    #[test]
+    fn windows_command_split_keeps_backslashes() {
+        assert_eq!(split_windows(r#"type C:\data\x.db "C:\Program Files\a b" ''"#).unwrap(), vec!["type", r"C:\data\x.db", r"C:\Program Files\a b", ""]);
+        assert_eq!(split_windows(r#"echo "unterminated"#), None);
     }
 }
