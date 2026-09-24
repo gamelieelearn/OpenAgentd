@@ -141,6 +141,11 @@ async fn http_api_end_to_end() {
     assert!(h.get("access-control-allow-origin").is_none(), "no CORS headers without Origin");
     let (st, _) = c.json("GET", "/api/health/ready", None).await;
     assert_eq!(st, StatusCode::OK);
+    let live: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(live["capabilities"].as_array().unwrap().iter().any(|c| c == "api.plugins"), "{live}");
+    let (st, plugins) = c.json("GET", "/api/plugins", None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(plugins["plugins"].is_array() && plugins["unported"].is_array(), "{plugins}");
 
     // ── first-run workspace: builtin agents ──────────────────────────────
     let (st, v) = c.json("GET", "/api/agents", None).await;

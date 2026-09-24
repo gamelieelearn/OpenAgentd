@@ -71,7 +71,9 @@ pub async fn startup(pool: &DbPool) -> anyhow::Result<()> {
     }
     appv3_tools::lsp::set_event_publisher(appv3_agent::broadcaster::publish);
     appv3_tools::lsp::lsp_manager().start();
+    appv3_mcp::set_event_publisher(appv3_agent::broadcaster::publish);
     appv3_tools::shell::prewarm_snapshot();
+    crate::config_watch::start();
     appv3_core::otel::setup("openagentd", None);
     appv3_core::otel::start_retention();
     let mcp = appv3_mcp::mcp_manager();

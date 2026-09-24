@@ -17,6 +17,24 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tool::{McpTool, SessionProvider};
 
+/// `mcp_status_changed` global event: lets the UI follow a server settling
+/// into `ready`/`error`/`stopped` instead of polling while it starts.
+pub const STATUS_EVENT: &str = "mcp_status_changed";
+
+type Publisher = Box<dyn Fn(&str, Value) + Send + Sync>;
+static PUBLISHER: OnceLock<Publisher> = OnceLock::new();
+
+/// Install the global event sink (the API's broadcaster); no-op when unset.
+pub fn set_event_publisher(f: impl Fn(&str, Value) + Send + Sync + 'static) {
+    let _ = PUBLISHER.set(Box::new(f));
+}
+
+fn publish_status(name: &str, state: &str) {
+    if let Some(p) = PUBLISHER.get() {
+        p(STATUS_EVENT, json!({"name": name, "state": state}));
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ServerStatus {
     pub name: String,
@@ -73,8 +91,10 @@ impl Runner {
         st.state = state.into();
         st.error = error;
         st.tool_names.clear();
+        let name = st.name.clone();
         drop(st);
         let _ = self.ready.send(true);
+        publish_status(&name, state);
     }
     async fn wait_ready(&self, timeout: Duration) -> bool {
         tokio::time::timeout(timeout, wait_true(self.ready.subscribe())).await.is_ok()
@@ -265,6 +285,7 @@ async fn run_server(name: String, cfg: ServerConfig, runner: Arc<Runner>) {
             st.error = None;
         }
         let _ = runner.ready.send(true);
+        publish_status(&name, "ready");
         tracing::info!("mcp_server_ready name={} transport={} tools={}", name, cfg.transport(), names.len());
         wait_true(shutdown).await;
         *runner.client.lock().unwrap() = None;

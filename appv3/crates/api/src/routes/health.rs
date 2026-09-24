@@ -14,8 +14,12 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/live", get(live)).route("/ready", get(ready))
 }
 
+/// Optional features the web UI can rely on (v2 reports none): push events
+/// that replace polling, and the plugin status API.
+pub const CAPABILITIES: &[&str] = &["events.workspace_files_changed", "events.config_changed", "events.mcp_status_changed", "api.plugins"];
+
 async fn live() -> Response {
-    json(j!({"status": "ok", "version": VERSION}))
+    json(j!({"status": "ok", "version": VERSION, "capabilities": CAPABILITIES}))
 }
 
 async fn ready(State(st): State<AppState>) -> Result<Response, ApiError> {
@@ -35,6 +39,7 @@ async fn ready(State(st): State<AppState>) -> Result<Response, ApiError> {
         "status": if db_ok { "ok" } else { "degraded" },
         "version": VERSION,
         "checks": {"db": if db_ok { "ok" } else { "fail" }, "agent": agent},
+        "capabilities": CAPABILITIES,
     });
     if !db_ok {
         return Err(ApiError::with_detail(503, body));
