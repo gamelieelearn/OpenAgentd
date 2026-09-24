@@ -30,10 +30,12 @@ pub fn skills_router() -> Router<AppState> {
 
 /// `commands._parse_frontmatter` — YAML errors escape (v2 has no `except`).
 pub fn parse_frontmatter(text: &str) -> Result<(Map<String, Value>, String), appv3_core::pyyaml::LoadError> {
-    let re = regex::Regex::new(r"(?s)\A---\s*\n(.*?)\n---\s*\n(.*)\z").unwrap();
+    // v2's pattern without the always-matching `(.*)$` body group (see `skills::split_frontmatter`).
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r"(?s)\A---\s*\n(.*?)\n---\s*\n").unwrap());
     let Some(c) = re.captures(text) else { return Ok((Map::new(), py_strip(text))) };
     let meta = appv3_core::pyyaml::safe_load(&c[1])?.as_object().cloned().unwrap_or_default();
-    Ok((meta, py_strip(&c[2])))
+    Ok((meta, py_strip(&text[c.get(0).map_or(text.len(), |m| m.end())..])))
 }
 
 /// Python `str.strip()` (whitespace set close enough to `char::is_whitespace`).
@@ -376,7 +378,8 @@ fn parse_skill(name: &str, content: &str) -> (String, Option<String>) {
 const NAME_RE: &str = r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$";
 
 fn validate_name(n: &str) -> Result<(), String> {
-    if n.is_empty() || !regex::Regex::new(NAME_RE).unwrap().is_match(n) {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    if n.is_empty() || !RE.get_or_init(|| regex::Regex::new(NAME_RE).unwrap()).is_match(n) {
         return Err(format!("Invalid name '{n}'. Use letters, digits, '.', '_', '-' only (1-64 chars, must start with letter/digit)."));
     }
     Ok(())

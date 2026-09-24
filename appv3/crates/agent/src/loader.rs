@@ -58,14 +58,16 @@ pub struct AgentConfig {
 
 fn fm_regex() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r"(?s)\A\s*---\r?\n(.*?)\r?\n---\r?\n?(.*)").unwrap())
+    // v2 `_FRONTMATTER_RE` without its always-matching `(.*)` body group; the
+    // body is the rest of the text (see `skills::split_frontmatter`).
+    RE.get_or_init(|| regex::Regex::new(r"(?s)\A\s*---\r?\n(.*?)\r?\n---\r?\n?").unwrap())
 }
 
 /// Split `(frontmatter, body)` with v2 `_FRONTMATTER_RE`.
 pub fn split_frontmatter(text: &str) -> Option<(String, String, std::ops::Range<usize>)> {
     let c = fm_regex().captures(text)?;
     let m1 = c.get(1).unwrap();
-    Some((m1.as_str().to_string(), c[2].to_string(), m1.range()))
+    Some((m1.as_str().to_string(), text[c.get(0).unwrap().end()..].to_string(), m1.range()))
 }
 
 type Errs = Vec<(String, String)>;
@@ -605,6 +607,16 @@ pub fn rebuild_agent_from_disk(source: &Path, factory: &ProviderFactory) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn split_frontmatter_matches_v2_regex() {
+        let oracle = regex::Regex::new(r"(?s)\A\s*---\r?\n(.*?)\r?\n---\r?\n?(.*)").unwrap();
+        let big = format!("---\nname: a\n---\n{}", "body\n".repeat(50_000));
+        for text in crate::skills::tests::FRONTMATTER_CASES.iter().copied().chain([big.as_str()]) {
+            let want = oracle.captures(text).map(|c| (c[1].to_string(), c[2].to_string(), c.get(1).unwrap().range()));
+            assert_eq!(split_frontmatter(text), want, "{text:?}");
+        }
+    }
 
     #[test]
     fn parse_and_validate() {

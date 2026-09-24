@@ -89,7 +89,8 @@ pub fn iter_skill_paths(directory: &Path) -> Vec<(PathBuf, String)> {
 
 /// `_lenient_frontmatter`.
 fn lenient_frontmatter(block: &str) -> Map<String, Value> {
-    let key_re = regex::Regex::new(r"^[A-Za-z0-9_-]+$").unwrap();
+    static KEY_RE: OnceLock<regex::Regex> = OnceLock::new();
+    let key_re = KEY_RE.get_or_init(|| regex::Regex::new(r"^[A-Za-z0-9_-]+$").unwrap());
     let mut meta: Map<String, Value> = Map::new();
     let mut last: Option<String> = None;
     let fold = |meta: &mut Map<String, Value>, k: &str, line: &str| {
@@ -131,9 +132,14 @@ pub enum StrictFrontmatter {
 
 fn split_frontmatter(text: &str) -> Option<(String, String)> {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| regex::Regex::new(r"(?s)\A---\s*\n(.*?)\n---\s*\n(.*)\z").unwrap());
+    // v2's pattern minus its `(.*)$` body group: that group always matches,
+    // so dropping it changes neither group 1 nor the match end, but a capture
+    // search no longer runs the PikeVM over the whole body (it dominated
+    // `/api/skills` and per-turn skill listing).
+    let re = RE.get_or_init(|| regex::Regex::new(r"(?s)\A---\s*\n(.*?)\n---\s*\n").unwrap());
     // Python `\s*` after `---` may also swallow newlines; handle the common case.
-    re.captures(text).map(|c| (c[1].to_string(), c[2].trim().to_string()))
+    let c = re.captures(text)?;
+    Some((c[1].to_string(), text[c.get(0)?.end()..].trim().to_string()))
 }
 
 /// `_parse_frontmatter(text)` in lenient (discovery) mode. `Err` carries the
@@ -436,8 +442,37 @@ impl Tool for SkillTool {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// Edge cases for the `---` frontmatter splitters: backtracking inside
+    /// whitespace runs, CRLF, missing closers, trailing text, empty blocks.
+    pub(crate) const FRONTMATTER_CASES: &[&str] = &[
+        "---\nname: a\n---\nbody\n",
+        "---\nname: a\n---\n",
+        "---\n\n---\nbody",
+        "---\n---\nbody",
+        "---  \n \n name: a\n---  \n\n  body  \n",
+        "---\nname: a\n---\t\n\t\nbody\n---\nmore\n",
+        "---\r\nname: a\r\n---\r\nbody\r\n",
+        "--- \nx: 1\n--- trailing\n---\nbody",
+        "no frontmatter\n",
+        "  ---\nname: a\n---\nbody",
+        "---\nname: a\n",
+        "---\n",
+        "",
+        "---\na: |\n  ---\n  x\n---\n\n\nbody\n\n",
+    ];
+
+    #[test]
+    fn split_frontmatter_matches_v2_regex() {
+        let oracle = regex::Regex::new(r"(?s)\A---\s*\n(.*?)\n---\s*\n(.*)\z").unwrap();
+        let big = format!("---\nname: a\ndescription: d\n---\n{}", "line of body text\n".repeat(20_000));
+        for text in FRONTMATTER_CASES.iter().copied().chain([big.as_str()]) {
+            let want = oracle.captures(text).map(|c| (c[1].to_string(), c[2].trim().to_string()));
+            assert_eq!(split_frontmatter(text), want, "{text:?}");
+        }
+    }
 
     #[test]
     fn lenient_and_strict_frontmatter() {
