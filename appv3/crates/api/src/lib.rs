@@ -12,6 +12,7 @@ pub mod sse;
 pub mod startup;
 pub mod usage;
 pub mod util;
+pub mod watch;
 
 use appv3_db::DbPool;
 use axum::extract::DefaultBodyLimit;

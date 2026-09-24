@@ -167,6 +167,27 @@ export async function handleGlobalEvent(
     return true
   }
 
+  if (type === 'workspace_files_changed') {
+    // Something outside the agent (editor, terminal, git) changed a watched
+    // workspace. The server reports the resolved path plus every spelling the
+    // UI used to ask for it, since those are the query keys.
+    const names = [event.workspace, ...(Array.isArray(event.aliases) ? event.aliases : [])]
+    const workspaces = new Set(names.filter((w): w is string => typeof w === 'string' && w.length > 0))
+    for (const workspace of workspaces) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.coding.files(workspace) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.coding.diff(workspace) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.coding.status(workspace) })
+      if (event.git === true) {
+        queryClient.invalidateQueries({ queryKey: ['coding-workspace-history', workspace] })
+      }
+    }
+    const sessionIds = Array.isArray(event.session_ids) ? event.session_ids : []
+    for (const sessionId of sessionIds) {
+      if (typeof sessionId === 'string') queryClient.invalidateQueries({ queryKey: queryKeys.session.files(sessionId) })
+    }
+    return workspaces.size > 0 || sessionIds.length > 0
+  }
+
   if (type === 'lsp_install_required') {
     const component = event.component
     const workspace = event.workspace

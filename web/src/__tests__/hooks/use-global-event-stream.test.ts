@@ -454,6 +454,35 @@ describe('handleGlobalEvent', () => {
     expect(client.getQueryState(queryKeys.session.subagents('lead-parent'))?.isInvalidated).toBe(true)
   })
 
+  it('invalidates coding and session file queries on workspace_files_changed', async () => {
+    const client = new QueryClient()
+    const keys = [
+      queryKeys.coding.files('/abs/proj'),
+      queryKeys.coding.status('~/proj'),
+      queryKeys.coding.diff('~/proj'),
+      queryKeys.coding.history('~/proj', 50, false),
+      queryKeys.session.files('sess-1'),
+      queryKeys.coding.files('/other'),
+    ]
+    for (const key of keys) client.setQueryData(key, {})
+
+    expect(await handleGlobalEvent(client, 'workspace_files_changed', {
+      workspace: '/abs/proj', aliases: ['~/proj'], session_ids: ['sess-1'],
+      paths: ['src/a.ts'], truncated: false, git: true, rescan: false,
+    }, 1, () => 1)).toBe(true)
+
+    const invalidated = (key: readonly unknown[]) => client.getQueryState(key)?.isInvalidated
+    expect(keys.slice(0, 5).map(invalidated)).toEqual([true, true, true, true, true])
+    expect(invalidated(queryKeys.coding.files('/other'))).toBe(false)
+  })
+
+  it('leaves git history alone for plain file changes', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.coding.history('/abs/proj', 50, false), {})
+    await handleGlobalEvent(client, 'workspace_files_changed', { workspace: '/abs/proj', paths: ['a'], git: false }, 1, () => 1)
+    expect(client.getQueryState(queryKeys.coding.history('/abs/proj', 50, false))?.isInvalidated).toBe(false)
+  })
+
   it('prompts for TypeScript tooling only when backend downloads are enabled', async () => {
     const client = new QueryClient()
     const payload = {

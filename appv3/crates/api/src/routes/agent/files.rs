@@ -111,7 +111,7 @@ async fn get_media(State(st): State<AppState>, AxPath((sid, file_path)): AxPath<
 // ── listings ────────────────────────────────────────────────────────────────
 
 fn git_stdout(cwd: &Path, args: &[&str]) -> Option<String> {
-    let out = std::process::Command::new("git").arg("-C").arg(cwd).args(args).stdin(std::process::Stdio::null()).output().ok()?;
+    let out = appv3_core::proctree::hide_window_std(&mut std::process::Command::new("git")).arg("-C").arg(cwd).args(args).stdin(std::process::Stdio::null()).output().ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).to_string())
 }
 
@@ -234,6 +234,7 @@ async fn list_session_files(State(st): State<AppState>, AxPath(sid): AxPath<Stri
         return Err(ApiError::bad_request("Invalid session id."));
     }
     let root = session_workspace(&st, &sid).await?;
+    crate::watch::touch_session(&root, &sid);
     let (files, truncated) = blocking(move || list_files(&root)).await;
     Ok(json(json!({"session_id": sid, "files": files, "truncated": truncated})))
 }
@@ -267,6 +268,7 @@ async fn read_workspace_file(q: Qs, headers: HeaderMap) -> ApiResult<Response> {
 async fn list_workspace_files(q: Qs) -> ApiResult<Response> {
     let workspace = q.req("workspace")?;
     let resolved = validated(&workspace)?;
+    crate::watch::touch_workspace(Path::new(&resolved), &workspace);
     let r2 = resolved.clone();
     let (files, truncated) = blocking(move || list_files(Path::new(&r2))).await;
     Ok(json(json!({"workspace": resolved, "files": files, "truncated": truncated})))
@@ -320,7 +322,7 @@ fn normpath(p: &str) -> String {
 
 async fn bounded_git_diff(cwd: &str, args: &[&str], max_bytes: usize) -> ApiResult<(String, String, i32, bool)> {
     use tokio::io::AsyncReadExt;
-    let mut child = tokio::process::Command::new("git")
+    let mut child = appv3_core::proctree::hide_window(&mut tokio::process::Command::new("git"))
         .arg("-C")
         .arg(cwd)
         .args(args)
@@ -424,6 +426,7 @@ fn untracked_diff(root: &Path, paths: &[String]) -> String {
 async fn git_diff(q: Qs) -> ApiResult<Response> {
     let workspace = q.req("workspace")?;
     let resolved = validated(&workspace)?;
+    crate::watch::touch_workspace(Path::new(&resolved), &workspace);
     let root = PathBuf::from(&resolved);
     if !root.join(".git").exists() {
         return Ok(json(json!({"workspace": resolved, "is_git_repo": false, "diff": "", "untracked": [], "truncated": false})));
@@ -526,6 +529,7 @@ fn parse_counts(s: &str) -> Option<(i64, i64)> {
 async fn workspace_status(q: Qs) -> ApiResult<Response> {
     let workspace = q.req("workspace")?;
     let resolved = validated(&workspace)?;
+    crate::watch::touch_workspace(Path::new(&resolved), &workspace);
     let root = PathBuf::from(&resolved);
     let name = root.file_name().map(|n| n.to_string_lossy().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| resolved.clone());
     let not_git = || {
