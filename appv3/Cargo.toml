@@ -66,3 +66,12 @@ appv3-api = { path = "crates/api" }
 lto = "thin"
 codegen-units = 16
 strip = false
+
+# Shipped binaries (`cargo build --profile dist`): whole-program optimisation
+# for the desktop sidecar, at the cost of a much slower build. `strip` stays
+# off (Xcode's strip corrupts some Rust dylibs); unwinding stays on so a
+# panicking task fails alone instead of aborting the server.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1

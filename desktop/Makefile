@@ -58,12 +58,15 @@ sidecar-v2:
 		--python-version "$(PYVER)" \
 		$(if $(EXTRAS),--extras "$(EXTRAS)",)
 
-# Release profile keeps symbols (strip = false), so strip the bundled copy.
+# `dist` = fat LTO (smaller, a few % faster, ~3x slower build); use
+# V3_PROFILE=release for quicker local bundles. Profiles keep symbols
+# (strip = false), so strip the bundled copy.
+V3_PROFILE ?= dist
 sidecar-v3:
-	cargo build --release --manifest-path ../appv3/Cargo.toml -p appv3-cli
+	cargo build --profile $(V3_PROFILE) --manifest-path ../appv3/Cargo.toml -p appv3-cli
 	@rm -rf "$(BUNDLE)"
 	@mkdir -p "$(BUNDLE)/bin"
-	@cp -f "../appv3/target/release/openagentd$(EXE)" "$(BUNDLE)/bin/openagentd$(EXE)"
+	@cp -f "../appv3/target/$(V3_PROFILE)/openagentd$(EXE)" "$(BUNDLE)/bin/openagentd$(EXE)"
 	@if command -v strip >/dev/null 2>&1; then strip "$(BUNDLE)/bin/openagentd$(EXE)"; fi
 	@"$(BUNDLE)/bin/openagentd$(EXE)" --version
 	@du -sh "$(BUNDLE)"
