@@ -50,7 +50,7 @@ full suite was not re-run; the other rows cover code this change did not touch.
 | `diff_auth.py` | access key / desktop token, 401s, exempt paths, WS 403, CORS, `--generate-token` handshake, non-loopback refusal | 0 diffs |
 | `diff_terminal.py` | PTY ticket → WS → resize/input/output/exit | identical |
 | route sweep (task 57) | all 118 v2 routes with dummy params | same status on every route |
-| `cargo test --workspace --no-fail-fast` | unit + integration tests (incl. `jsplugin` host tests, chat-schema JSON round-trips, document/HTML conversion) | 146 passed, 1 failed. The failure is `terminal::echo_roundtrip`, which drives the developer's real login shell; an oh-my-zsh update prompt swallowed its input. It is environmental, not a code regression. |
+| `make verify-v3` (`cargo fmt --check` with `appv3/rustfmt.toml`, `cargo clippy --all-targets -D warnings`, `cargo test --all-targets`) | unit + integration tests (incl. `jsplugin` host tests, chat-schema JSON round-trips, document/HTML conversion, a PTY round trip through `/bin/sh`) | fmt clean, 0 clippy warnings, 147 passed, 0 failed |
 | document / HTML conversion vs v2 (one-off, corpus in `/tmp/oad-eval`) | `read`/`web_fetch` documents (3 real PDFs + 17 anydoc fixtures); `web_fetch` on 34 real pages (docs, articles, blogs, listings, forums, error pages) | documents 20/20 byte-identical; `format="text"` 34/34 byte-identical; `format="markdown"` median word-F1 0.993 vs v2, 29/34 pages ≥ 0.9, code-block and heading counts match on 28 and 30 pages |
 
 I also checked the desktop sidecar contract by hand earlier.

@@ -257,6 +257,10 @@ mod tests {
 
     #[tokio::test]
     async fn echo_roundtrip() {
+        // Pin a plain shell: the developer's login shell rc files (e.g. an
+        // oh-my-zsh update prompt) can swallow the scripted input. This is
+        // the only test in the binary, so the process-wide env is safe.
+        std::env::set_var("SHELL", "/bin/sh");
         let d = std::env::temp_dir();
         let s = create_session(&d.display().to_string(), 24, 80).unwrap();
         s.write(b"echo oad_term_$((40+2))\nexit\n".to_vec()).await.unwrap();
