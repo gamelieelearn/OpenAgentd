@@ -64,6 +64,12 @@ run from the terminal.
   when an editor, terminal or `git` changes the workspace (FSEvents / inotify /
   ReadDirectoryChangesW; `OPENAGENTD_FS_WATCH=poll|off`). On Windows the terminal
   works through ConPTY, and background commands no longer open console windows.
+- **Faster v3 plugins and shell** `[v3.0.0]` — plugins get a native `regex`
+  module in Python syntax. A secret scrubber built on it runs about 20x faster
+  than with JS `RegExp`. The `shell` tool reads your rc files (aliases,
+  functions, options, PATH) once and reuses them, instead of sourcing
+  `.zshrc`/`.bashrc` on every call (about 130 ms saved per call; rebuilt when
+  an rc file changes; `OPENAGENTD_SHELL_SNAPSHOT=false` restores v2 behaviour).
 - **Settings draft protection and mobile navigation** `[v2.11.0]` — unsaved
   drafts survive remote refreshes and edits made during a save. Shared settings
   pages and source editors ask before discarding changes on internal navigation
