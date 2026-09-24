@@ -30,7 +30,7 @@ const MAX_FILE_SIZE: u64 = 2 * 1024 * 1024;
 const CORE_FLAGS: &[&str] =
     &["--no-optional-locks", "-c", "core.longpaths=true", "-c", "core.symlinks=true", "-c", "core.autocrlf=false", "-c", "core.fsmonitor=false", "-c", "core.quotepath=false"];
 const MAINTENANCE_INTERVAL: u64 = 16;
-const SNAPSHOT_REF_PREFIX: &str = "refs/openagentd/snapshots";
+pub(crate) const SNAPSHOT_REF_PREFIX: &str = "refs/openagentd/snapshots";
 const SIZE_CAP_ROUNDS: usize = 12;
 
 type Lock = Arc<tokio::sync::Mutex<()>>;
@@ -52,7 +52,7 @@ fn lock(session_id: &str) -> Lock {
 }
 
 fn resolve(p: &Path) -> PathBuf {
-    std::fs::canonicalize(p).unwrap_or_else(|_| if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().map(|c| c.join(p)).unwrap_or_else(|_| p.to_path_buf()) })
+    dunce::canonicalize(p).unwrap_or_else(|_| if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().map(|c| c.join(p)).unwrap_or_else(|_| p.to_path_buf()) })
 }
 
 /// On-disk `GIT_DIR` for the session's snapshot repo.
@@ -62,18 +62,29 @@ pub fn snapshot_dir(session_id: &str) -> PathBuf {
 
 /// `shutil.which("git") is not None`.
 pub fn is_available() -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|d| {
-        let c = d.join("git");
-        std::fs::metadata(&c)
-            .map(|m| {
-                use std::os::unix::fs::PermissionsExt;
-                m.is_file() && m.permissions().mode() & 0o111 != 0
-            })
-            .unwrap_or(false)
-    })
+    appv3_core::which::which("git").is_some()
+}
+
+/// Which implementation runs `track`/`restore`.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Engine {
+    /// In-process `gix` (default): no `git` executable needed, no process
+    /// launches per turn. Falls back to the CLI on error when git exists.
+    Gix,
+    /// The git CLI, exactly like v2 (`SNAPSHOT_ENGINE=git`).
+    Git,
+}
+
+fn engine() -> Engine {
+    match std::env::var("SNAPSHOT_ENGINE").map(|v| v.trim().to_lowercase()) {
+        Ok(v) if v == "git" => Engine::Git,
+        _ => Engine::Gix,
+    }
+}
+
+/// Snapshots can run: gix needs nothing, the CLI engine needs `git`.
+fn usable() -> bool {
+    engine() == Engine::Gix || is_available()
 }
 
 struct Out {
@@ -94,7 +105,7 @@ impl Out {
 /// Never fails: spawn errors surface as exit code 1.
 async fn git(args: &[&str], cwd: Option<&Path>, env: &[(&str, &str)], stdin: Option<Vec<u8>>) -> Out {
     let mut cmd = tokio::process::Command::new("git");
-    cmd.args(args).envs(env.iter().copied());
+    appv3_core::proctree::hide_window(&mut cmd).args(args).envs(env.iter().copied());
     if let Some(c) = cwd {
         cmd.current_dir(c);
     }
@@ -354,14 +365,11 @@ async fn seed_objects(gitdir: &Path, worktree: &Path, copy_index: bool) -> bool 
     if !seed_objects_enabled() {
         return false;
     }
-    let o = git(&["rev-parse", "--path-format=absolute", "--git-common-dir"], Some(worktree), &[], None).await;
-    if o.code != 0 {
+    let wt = worktree.to_path_buf();
+    let Ok(Some(common)) = tokio::task::spawn_blocking(move || crate::snapshot_gix::common_git_dir(&wt)).await else {
         return false;
-    }
-    let common = o.text().trim().to_string();
-    if common.is_empty() {
-        return false;
-    }
+    };
+    let common = p(&common);
     let alts = alternate_object_dirs(&Path::new(&common).join("objects"));
     if alts.is_empty() {
         return false;
@@ -395,6 +403,27 @@ async fn init_repo(gitdir: &Path, worktree: &Path) -> bool {
         ensure_seed(gitdir, worktree, false).await;
         return true;
     }
+    let gd = p(gitdir);
+    if engine() == Engine::Gix {
+        let (g2, w2) = (gitdir.to_path_buf(), worktree.to_path_buf());
+        match tokio::task::spawn_blocking(move || crate::snapshot_gix::init(&g2, &w2)).await {
+            Ok(Ok(())) => {
+                ensure_seed(gitdir, worktree, true).await;
+                tracing::info!("snapshot_initialised session_gitdir={} engine=gix", gd);
+                return true;
+            }
+            Ok(Err(e)) => tracing::warn!("snapshot_gix_init_failed gitdir={} error={}", gd, e),
+            Err(e) => tracing::warn!("snapshot_gix_init_failed gitdir={} error={}", gd, e),
+        }
+        if !is_available() {
+            return false;
+        }
+    }
+    init_repo_cli(gitdir, worktree).await
+}
+
+/// `git init` + config keys + seeding, via the git CLI (v2's sequence).
+async fn init_repo_cli(gitdir: &Path, worktree: &Path) -> bool {
     let (gd, wt) = (p(gitdir), p(worktree));
     let o = git(&["init"], None, &[("GIT_DIR", &gd), ("GIT_WORK_TREE", &wt)], None).await;
     if o.code != 0 {
@@ -470,7 +499,7 @@ async fn stage(gitdir: &Path, worktree: &Path, paths: &[String]) -> bool {
 /// Snapshot the workspace and return its tree hash (`None` on any failure,
 /// for chat workspaces, or when git is missing).
 pub async fn track(session_id: &str, workspace: &Path) -> Option<String> {
-    if !is_available() || !workspace.is_dir() {
+    if !usable() || !workspace.is_dir() {
         return None;
     }
     if settings().is_chat_workspace(Some(workspace)) {
@@ -483,10 +512,51 @@ pub async fn track(session_id: &str, workspace: &Path) -> Option<String> {
     if !init_repo(&gitdir, workspace).await {
         return None;
     }
+    let hash = match engine() {
+        Engine::Gix => match track_gix(session_id, &gitdir, workspace, &key).await {
+            Some(h) => Some(h),
+            None if is_available() => track_cli(session_id, &gitdir, workspace, &key).await,
+            None => None,
+        },
+        Engine::Git => track_cli(session_id, &gitdir, workspace, &key).await,
+    }?;
+    LAST_HASHES.lock().unwrap().insert(key, hash.clone());
+    let n = {
+        let mut c = TRACK_COUNTS.lock().unwrap();
+        let e = c.entry(session_id.to_string()).or_insert(0);
+        *e += 1;
+        *e
+    };
+    if n % MAINTENANCE_INTERVAL == 0 && is_available() {
+        maintain_repo(&gitdir).await;
+    }
+    tracing::debug!("snapshot_tracked session_id={} hash={}", session_id, hash);
+    Some(hash)
+}
+
+async fn track_gix(session_id: &str, gitdir: &Path, workspace: &Path, key: &(String, PathBuf)) -> Option<String> {
+    let last = LAST_HASHES.lock().unwrap().get(key).cloned();
+    let (g2, w2) = (gitdir.to_path_buf(), workspace.to_path_buf());
+    match tokio::task::spawn_blocking(move || crate::snapshot_gix::track(&g2, &w2, last.as_deref(), MAX_FILE_SIZE)).await {
+        Ok(Ok(h)) => Some(h),
+        Ok(Err(e)) => {
+            tracing::warn!("snapshot_gix_track_failed session_id={} error={}", session_id, e);
+            None
+        }
+        Err(e) => {
+            tracing::warn!("snapshot_gix_track_failed session_id={} error={}", session_id, e);
+            None
+        }
+    }
+}
+
+/// The git CLI engine (v2's exact command sequence).
+async fn track_cli(session_id: &str, gitdir: &Path, workspace: &Path, key: &(String, PathBuf)) -> Option<String> {
+    let gitdir = gitdir.to_path_buf();
     let paths = list_candidate_paths(&gitdir, workspace).await;
     if !paths.is_empty() {
         stage(&gitdir, workspace, &paths).await;
-    } else if let Some(h) = LAST_HASHES.lock().unwrap().get(&key).cloned() {
+    } else if let Some(h) = LAST_HASHES.lock().unwrap().get(key).cloned() {
         return Some(h);
     }
     let (gd, wt) = (p(&gitdir), p(workspace));
@@ -500,23 +570,12 @@ pub async fn track(session_id: &str, workspace: &Path) -> Option<String> {
         return None;
     }
     ensure_ref(&gitdir, &hash).await;
-    LAST_HASHES.lock().unwrap().insert(key, hash.clone());
-    let n = {
-        let mut c = TRACK_COUNTS.lock().unwrap();
-        let e = c.entry(session_id.to_string()).or_insert(0);
-        *e += 1;
-        *e
-    };
-    if n % MAINTENANCE_INTERVAL == 0 {
-        maintain_repo(&gitdir).await;
-    }
-    tracing::debug!("snapshot_tracked session_id={} hash={}", session_id, hash);
     Some(hash)
 }
 
 /// Restore the workspace to the given snapshot tree.
 pub async fn restore(session_id: &str, workspace: &Path, snapshot: &str, skip_stage: bool) -> RestoreResult {
-    if !is_available() || snapshot.is_empty() {
+    if !usable() || snapshot.is_empty() {
         return RestoreResult::fail();
     }
     let gitdir = snapshot_dir(session_id);
@@ -527,6 +586,27 @@ pub async fn restore(session_id: &str, workspace: &Path, snapshot: &str, skip_st
     let _ = std::fs::create_dir_all(workspace);
     let l = lock(session_id);
     let _g = l.lock().await;
+    if engine() == Engine::Gix {
+        let (g2, w2, s2) = (gitdir.clone(), workspace.to_path_buf(), snapshot.to_string());
+        match tokio::task::spawn_blocking(move || crate::snapshot_gix::restore(&g2, &w2, &s2, skip_stage, MAX_FILE_SIZE)).await {
+            Ok(Ok(r)) => {
+                delete_extras(workspace, &r.removed);
+                tracing::debug!(
+                    "snapshot_restored session_id={} hash={} checkout={} extras={} engine=gix",
+                    session_id,
+                    snapshot,
+                    r.added.len() + r.modified.len(),
+                    r.removed.len()
+                );
+                return RestoreResult { ok: true, added: r.added, modified: r.modified, removed: r.removed };
+            }
+            Ok(Err(e)) => tracing::warn!("snapshot_gix_restore_failed session_id={} hash={} error={}", session_id, snapshot, e),
+            Err(e) => tracing::warn!("snapshot_gix_restore_failed session_id={} hash={} error={}", session_id, snapshot, e),
+        }
+        if !is_available() {
+            return RestoreResult::fail();
+        }
+    }
     if !skip_stage {
         let live = list_candidate_paths(&gitdir, workspace).await;
         if !live.is_empty() {
@@ -784,5 +864,135 @@ mod tests {
         assert!(s.contains("M|a.txt") && s.contains("A|sub/b.txt") && s.contains("D|c.txt"), "{s}");
         delete_extras(&ws, &["c.txt".into()]);
         assert!(!ws.join("c.txt").exists());
+    }
+
+    // ── gix engine vs git CLI engine ────────────────────────────────────────
+
+    fn sh(dir: &Path, args: &[&str]) {
+        let st = std::process::Command::new("git").args(args).current_dir(dir).env("GIT_CONFIG_NOSYSTEM", "1").output().unwrap();
+        assert!(st.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&st.stderr));
+    }
+
+    fn write(ws: &Path, rel: &str, data: &[u8]) {
+        let p = ws.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, data).unwrap();
+    }
+
+    /// One mutation step applied identically to both workspaces.
+    fn mutate(ws: &Path, step: usize) {
+        match step {
+            0 => {
+                write(ws, "a.txt", b"alpha\n");
+                write(ws, "dir/b.txt", b"bee\n");
+                write(ws, "dir/sub/c.md", b"# c\n");
+                write(ws, "space name.txt", b"s\n");
+                write(ws, "\u{fc}n\u{ef}.txt", b"unicode\n");
+                write(ws, "empty.txt", b"");
+                write(ws, ".gitignore", b"ignored/\n*.log\n");
+                write(ws, "ignored/x.txt", b"no\n");
+                write(ws, "debug.log", b"no\n");
+                write(ws, ".gitattributes", b"*.crlf text eol=lf\n");
+                write(ws, "file.crlf", b"one\r\ntwo\r\n");
+                write(ws, "big.bin", &vec![b'x'; (MAX_FILE_SIZE + 1) as usize]);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    write(ws, "run.sh", b"#!/bin/sh\n");
+                    std::fs::set_permissions(ws.join("run.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+                    std::os::unix::fs::symlink("a.txt", ws.join("link")).unwrap();
+                }
+            }
+            1 => {
+                write(ws, "a.txt", b"alpha two\n");
+                std::fs::remove_file(ws.join("dir/b.txt")).unwrap();
+                write(ws, "dir/new.txt", b"new\n");
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(ws.join("run.sh"), std::fs::Permissions::from_mode(0o644)).unwrap();
+                }
+            }
+            2 => {
+                // file → directory and directory → file
+                std::fs::remove_file(ws.join("a.txt")).unwrap();
+                write(ws, "a.txt/inner", b"inner\n");
+                std::fs::remove_dir_all(ws.join("dir/sub")).unwrap();
+                write(ws, "dir/sub", b"now a file\n");
+            }
+            3 => {
+                // stat-only change: same bytes rewritten
+                write(ws, "space name.txt", b"s\n");
+            }
+            4 => {
+                // embedded repository → gitlink
+                write(ws, "nested/readme", b"n\n");
+                let n = ws.join("nested");
+                sh(&n, &["init", "-q"]);
+                sh(&n, &["-c", "user.name=t", "-c", "user.email=t@t", "add", "."]);
+                sh(&n, &["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "n"]);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[tokio::test]
+    async fn gix_engine_matches_git_cli() {
+        if !is_available() {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let (ws_g, ws_c) = (tmp.path().join("ws_gix"), tmp.path().join("ws_cli"));
+        let (gd_g, gd_c) = (tmp.path().join("snap_gix"), tmp.path().join("snap_cli"));
+        std::fs::create_dir_all(&ws_g).unwrap();
+        std::fs::create_dir_all(&ws_c).unwrap();
+        // Same canonical paths the real callers pass.
+        let (ws_g, ws_c) = (resolve(&ws_g), resolve(&ws_c));
+        crate::snapshot_gix::init(&gd_g, &ws_g).unwrap();
+        assert!(init_repo_cli(&gd_c, &ws_c).await);
+        let key_c = ("cli".to_string(), ws_c.clone());
+        let mut last_g: Option<String> = None;
+        let mut first = None;
+        for step in 0..5 {
+            mutate(&ws_g, step);
+            mutate(&ws_c, step);
+            let tg = crate::snapshot_gix::track(&gd_g, &ws_g, last_g.as_deref(), MAX_FILE_SIZE).unwrap();
+            let tc = track_cli("cli", &gd_c, &ws_c, &key_c).await.unwrap();
+            LAST_HASHES.lock().unwrap().insert(key_c.clone(), tc.clone());
+            assert_eq!(tg, tc, "tree mismatch after step {step}");
+            // Every step changes the snapshot except the stat-only one.
+            assert_eq!(last_g.as_deref() == Some(tg.as_str()), step == 3, "step {step} tree {tg} vs previous {last_g:?}");
+            last_g = Some(tg.clone());
+            first.get_or_insert(tg);
+            // The index gix wrote must give git (v2) the same tree.
+            let (gd, wt) = (p(&gd_g), p(&ws_g));
+            let cli_tree = git(&wt_args(&gd, &wt, &["write-tree"]), Some(&ws_g), &[], None).await.text().trim().to_string();
+            assert_eq!(cli_tree, last_g.clone().unwrap(), "git write-tree disagrees with gix index after step {step}");
+        }
+        // The big untracked file and ignored paths are not in the snapshot.
+        let (gd, wt) = (p(&gd_g), p(&ws_g));
+        let ls = git(&wt_args(&gd, &wt, &["ls-files", "-s"]), Some(&ws_g), &[], None).await.text();
+        assert!(!ls.contains("big.bin") && !ls.contains("debug.log") && !ls.contains("ignored/"), "{ls}");
+        assert!(ls.contains("160000") && ls.contains("\tnested"), "gitlink missing: {ls}");
+
+        // Restore the first snapshot with gix; re-tracking must reproduce it.
+        let first = first.unwrap();
+        let r = crate::snapshot_gix::restore(&gd_g, &ws_g, &first, false, MAX_FILE_SIZE).unwrap();
+        delete_extras(&ws_g, &r.removed);
+        assert!(r.added.contains(&"dir/b.txt".to_string()), "{:?}", r.added);
+        assert!(r.removed.contains(&"dir/new.txt".to_string()), "{:?}", r.removed);
+        assert_eq!(std::fs::read(ws_g.join("a.txt")).unwrap(), b"alpha\n");
+        assert_eq!(std::fs::read(ws_g.join("dir/sub/c.md")).unwrap(), b"# c\n");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert!(std::fs::metadata(ws_g.join("run.sh")).unwrap().permissions().mode() & 0o111 != 0);
+            assert_eq!(std::fs::read_link(ws_g.join("link")).unwrap(), Path::new("a.txt"));
+        }
+        let again = crate::snapshot_gix::track(&gd_g, &ws_g, None, MAX_FILE_SIZE).unwrap();
+        // `nested/` (an untracked repo dir after restore) re-adds as a gitlink.
+        let (gd, wt) = (p(&gd_g), p(&ws_g));
+        let d = git(&wt_args(&gd, &wt, &["diff-tree", "-r", "--name-only", &first, &again]), Some(&ws_g), &[], None).await.text();
+        assert!(d.trim().is_empty() || d.trim() == "nested", "restore not faithful: {d}");
     }
 }

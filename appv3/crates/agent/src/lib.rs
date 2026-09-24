@@ -23,6 +23,7 @@ pub mod service;
 pub mod session;
 pub mod skills;
 pub mod snapshot;
+mod snapshot_gix;
 pub mod stream_store;
 pub mod streaming;
 pub mod subagents;
