@@ -89,10 +89,13 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/*.whl dist/*.tar.gz --clobber
           else
+            # 2.27.0 is the final v2 release, published after v3. It must not
+            # become "latest", which the installers and the brew tap follow.
             gh release create "$TAG" \
               dist/*.whl dist/*.tar.gz \
               --title "$TAG" \
               --generate-notes \
+              --latest=false \
               --verify-tag
           fi
 

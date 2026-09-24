@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-23
+updated: 2026-09-24
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.26.0 · September 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.26.0)
+**Latest release:** v2.27.0 · September 24, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.27.0)
 
 ---
 
@@ -1294,6 +1294,10 @@ Desktop is primary. CLI / server is the developer path.
 - **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-coding-workspace).
 - **CLI install** `[since v1.0]` — `uv tool install openagentd`, `pipx`, `pip`,
   `brew install lthoangg/tap/openagentd`.
+- **v2 end-of-life notice** `[v2.27.0]` — the last Python release. Interactive
+  CLI commands and `openagentd upgrade` say that v2 gets no further updates and
+  print the v3 install command plus the step that removes the uv/pipx/pip copy.
+  `OPENAGENTD_HIDE_V2_NOTICE=1` hides it; the desktop sidecar never shows it.
 - **CLI server control** `[v1.41.0, v2.4.0]` — `openagentd server restart`,
   `openagentd server status`, `openagentd server health`, and `openagentd server
   start --host 0.0.0.0 --key` make the CLI the control plane for desktop/mobile backends.

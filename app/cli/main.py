@@ -372,6 +372,9 @@ def main() -> None:
 
     parser = build_parser()
     args = parser.parse_args()
+    from app.cli.sunset import print_notice
+
+    print_notice()
     args.func(args)
 
 

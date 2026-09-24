@@ -152,5 +152,8 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
 
     if upgrade_code != 0:
         raise SystemExit(upgrade_code)
+    from app.cli.sunset import print_notice
+
+    print_notice(sys.stdout, manager=manager, force=True)
     if restart_code != 0:
         raise SystemExit(restart_code)
