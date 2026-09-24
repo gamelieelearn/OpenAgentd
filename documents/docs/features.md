@@ -70,6 +70,14 @@ run from the terminal.
   functions, options, PATH) once and reuses them, instead of sourcing
   `.zshrc`/`.bashrc` on every call (about 130 ms saved per call; rebuilt when
   an rc file changes; `OPENAGENTD_SHELL_SNAPSHOT=false` restores v2 behaviour).
+- **Plugins page and live settings refresh (v3)** `[v3.0.0]` — Settings →
+  Plugins lists each plugin with its provider, tool hooks and load errors,
+  and flags v2 Python plugins that have no TypeScript port (v3 does not run
+  them). A one-time notice appears when a plugin isn't running. Agents,
+  skills, commands, snippets, plugins and `mcp.json` edited outside the app
+  refresh in open windows immediately. MCP servers report their status as it
+  changes instead of being polled. With v2 the UI keeps its previous
+  behaviour.
 - **Settings draft protection and mobile navigation** `[v2.11.0]` — unsaved
   drafts survive remote refreshes and edits made during a save. Shared settings
   pages and source editors ask before discarding changes on internal navigation

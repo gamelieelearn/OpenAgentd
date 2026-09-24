@@ -175,14 +175,19 @@ No v2 feature is left unported. Each item below is a deliberate, documented
 deviation. The harnesses in §1 either did not reach it or normalised it
 explicitly.
 
-- **Desktop sidecar:** the uncommitted `desktop/src-tauri/src/sidecar.rs`
-  branch launches `bin/openagentd server serve …`, the same subcommand as
-  v2. `make -C desktop sidecar SIDECAR=v3` (or `dev-bundled-v3`,
-  `build-v3`) builds a v3-only bundle; the default is still v2. v3 also
-  keeps a hidden `serve` alias of `server serve`, which v2 rejects. The
-  spawn command and handshake have been checked by running them by hand,
-  but no desktop app has been built or launched with v3. Nothing has been
-  committed.
+- **Desktop sidecar:** `desktop/src-tauri/src/sidecar.rs` launches
+  `bin/openagentd server serve …`, the same subcommand as v2.
+  `make -C desktop sidecar SIDECAR=v3` (or `dev-bundled-v3`, `build-v3`)
+  builds a v3-only bundle (`dist` profile); the default and the release
+  workflow are still v2. v3 also keeps a hidden `serve` alias of
+  `server serve`, which v2 rejects. A v3 dev app bundle (macOS) is 67 MB
+  against 241 MB for the v2 build. Checked against the bundled binary
+  with the desktop's exact argv: handshake line in ~24 ms, generated and
+  desktop-provided tokens (401 without), exit ~0.5 s after the parent
+  dies (`--parent-pid`), clean SIGTERM with the WAL checkpointed, and the
+  Windows handshake-file fallback. Still to do before v3 can be the
+  default: per-target v3 builds, signing and notarization in
+  `release-desktop.yml`.
 - **Version:** v3 reports its own version, `3.0.0` (from the workspace
   `Cargo.toml`), not v2's `app/version.txt`. This shows in
   `openagentd --version`, the sidecar handshake, `/api/health/live` and
