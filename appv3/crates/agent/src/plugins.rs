@@ -25,6 +25,10 @@ pub struct PluginCtx<'a> {
 #[async_trait]
 pub trait ToolPlugin: Send + Sync {
     fn id(&self) -> &str;
+    /// Plugin file this hook set came from (plugin status API).
+    fn source(&self) -> Option<&std::path::Path> {
+        None
+    }
     fn has_before(&self) -> bool {
         false
     }
@@ -118,6 +122,9 @@ impl ToolPlugin for JsToolPlugin {
     fn id(&self) -> &str {
         &self.id
     }
+    fn source(&self) -> Option<&std::path::Path> {
+        Some(&self.js.path)
+    }
     fn has_before(&self) -> bool {
         self.before
     }
@@ -171,7 +178,10 @@ fn load() -> Vec<ToolPluginRef> {
                 out.push(Arc::new(p));
             }
             Ok(None) => {}
-            Err(e) => tracing::warn!("plugin_load_failed file={} error={}", js.path.display(), e),
+            Err(e) => {
+                tracing::warn!("plugin_load_failed file={} error={}", js.path.display(), e);
+                appv3_jsplugin::report_problem(&js.path, e);
+            }
         }
     }
     out

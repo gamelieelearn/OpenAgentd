@@ -63,6 +63,10 @@ pub enum PluginUsageError {
 #[async_trait]
 pub trait ProviderPlugin: Send + Sync {
     fn info(&self) -> &PluginInfo;
+    /// Plugin file this provider came from (plugin status API).
+    fn source(&self) -> Option<&std::path::Path> {
+        None
+    }
     fn build(&self, ctx: BuildContext) -> ProviderResult<Arc<dyn LlmProvider>>;
     fn has_login(&self) -> bool {
         false
@@ -104,6 +108,7 @@ fn load() -> Vec<PluginRef> {
         let id = plugin.info().id.clone();
         if loaded.iter().any(|p| p.info().id == id) {
             tracing::warn!("provider_plugin_duplicate id={} file={}", id, js.path.display());
+            appv3_jsplugin::report_problem(&js.path, format!("duplicate provider id {id:?}; another plugin file already provides it"));
             continue;
         }
         loaded.push(Arc::new(plugin));

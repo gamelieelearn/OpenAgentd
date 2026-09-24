@@ -17,7 +17,7 @@ pub use runtime::{CallResult, JsError, JsPlugin, Mode, Target};
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// The `openagentd` module's type declarations (for plugin authors' editors).
 pub const TYPES: &str = include_str!("../openagentd.d.ts");
@@ -56,10 +56,34 @@ pub fn load_all(dirs: &[PathBuf]) -> Vec<Arc<JsPlugin>> {
     for (f, h) in handles {
         match h.join().unwrap_or_else(|_| Err("plugin loader panicked".into())) {
             Ok(p) => out.push(p),
-            Err(e) => tracing::warn!("plugin_load_failed file={} error={}", f.display(), e),
+            Err(e) => {
+                tracing::warn!("plugin_load_failed file={} error={}", f.display(), e);
+                report_problem(&f, e);
+            }
         }
     }
     out
+}
+
+fn problem_list() -> &'static Mutex<Vec<(PathBuf, String)>> {
+    static P: OnceLock<Mutex<Vec<(PathBuf, String)>>> = OnceLock::new();
+    P.get_or_init(Default::default)
+}
+
+/// Record why a plugin file failed to load or was rejected by a consumer
+/// (provider registry, tool hooks), so the plugin status API can show it;
+/// otherwise a broken plugin only leaves a log line.
+pub fn report_problem(path: &Path, message: impl Into<String>) {
+    let message = message.into();
+    let mut list = problem_list().lock().unwrap();
+    if !list.iter().any(|(p, m)| p == path && *m == message) {
+        list.push((path.to_path_buf(), message));
+    }
+}
+
+/// Problems recorded for plugin files (in report order).
+pub fn problems() -> Vec<(PathBuf, String)> {
+    problem_list().lock().unwrap().clone()
 }
 
 /// All plugins from `settings.plugins_dirs`, loaded once per process.

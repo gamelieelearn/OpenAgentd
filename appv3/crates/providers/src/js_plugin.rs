@@ -144,6 +144,7 @@ impl JsProviderPlugin {
         let d = &js.describe;
         let fail = |e: String| {
             tracing::warn!("provider_plugin_load_failed file={} error={}", js.path.display(), e);
+            appv3_jsplugin::report_problem(&js.path, e);
             None
         };
         if let Some(t) = d.get("providerInvalid").and_then(|t| t.as_str()) {
@@ -189,6 +190,9 @@ impl JsProviderPlugin {
 impl ProviderPlugin for JsProviderPlugin {
     fn info(&self) -> &PluginInfo {
         &self.info
+    }
+    fn source(&self) -> Option<&std::path::Path> {
+        Some(&self.js.path)
     }
 
     fn build(&self, ctx: BuildContext) -> ProviderResult<Arc<dyn LlmProvider>> {
