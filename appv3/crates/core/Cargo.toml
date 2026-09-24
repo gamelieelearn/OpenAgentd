@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+dunce.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -19,6 +20,12 @@ regex.workspace = true
 base64 = "0.22"
 unicode-normalization = "0.1"
 indexmap = { version = "2", features = ["serde"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["signal", "process"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_LibraryLoader", "Win32_System_Threading"] }
 
 [dev-dependencies]
 tempfile = "3"

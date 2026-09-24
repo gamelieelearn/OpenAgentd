@@ -75,7 +75,14 @@ export async function netfail() {
 fn setup() -> (tempfile::TempDir, Arc<JsPlugin>) {
     let d = tempfile::tempdir().unwrap();
     write(d.path(), "_util.ts", "export const shout = (s: string): string => s.toUpperCase() + '!';\n");
-    let p = write(d.path(), "demo.ts", DEMO);
+    // Windows has no `sh`/`sleep`; same behaviour through cmd.exe.
+    let demo = if cfg!(windows) {
+        DEMO.replace(r#"subprocess.run("sh", ["-c", "echo hi; echo err 1>&2; exit 3"])"#, r#"subprocess.run("cmd", ["/d", "/c", "echo hi& >&2 echo err& exit 3"])"#)
+            .replace(r#"subprocess.run("sleep", ["5"]"#, r#"subprocess.run("ping", ["-n", "6", "127.0.0.1"]"#)
+    } else {
+        DEMO.to_string()
+    };
+    let p = write(d.path(), "demo.ts", &demo);
     let plugin = JsPlugin::load(&p).unwrap();
     (d, plugin)
 }
@@ -193,7 +200,8 @@ fn args_mode_returns_mutated_arguments() {
 fn subprocess_and_local_http() {
     let (_d, p) = setup();
     let v = p.call_blocking(&Target::export(""), "shell", &[], Mode::Value).unwrap().value;
-    assert_eq!(v["r"], json!({"code": 3, "stdout": "hi\n", "stderr": "err\n", "timedOut": false}));
+    let r: Value = serde_json::from_str(&v["r"].to_string().replace("\\r\\n", "\\n")).unwrap();
+    assert_eq!(r, json!({"code": 3, "stdout": "hi\n", "stderr": "err\n", "timedOut": false}));
     assert_eq!(v["timedOut"], true);
     let v = p.call_blocking(&Target::export(""), "roundtrip", &[], Mode::Value).unwrap().value;
     assert_eq!(v, json!({"path": "/cb", "query": "code=1&state=s", "status": 200, "body": "done", "ct": "text/plain"}));

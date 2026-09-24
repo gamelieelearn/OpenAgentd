@@ -14,6 +14,7 @@ use tokio::io::AsyncReadExt;
 
 pub const DEFAULT_TIMEOUT_SECONDS: u64 = 120;
 const POST_KILL_WAIT: Duration = Duration::from_secs(5);
+#[cfg(unix)]
 const TERM_GRACE: Duration = Duration::from_secs(2);
 const OUTPUT_MAX_LINES: usize = 300;
 const OUTPUT_MAX_BYTES: usize = 131_072;
@@ -32,8 +33,7 @@ pub fn shell_name_of(path: &str) -> String {
 }
 
 fn which(name: &str) -> Option<String> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file()).map(|p| p.display().to_string())
+    appv3_core::which::which(name).map(|p| p.display().to_string())
 }
 
 /// v2 `shell_runtime.acceptable()`.
@@ -41,7 +41,9 @@ pub fn acceptable() -> String {
     static S: OnceLock<String> = OnceLock::new();
     S.get_or_init(|| {
         if cfg!(windows) {
-            return ["pwsh", "powershell", "cmd"].iter().find_map(|n| which(n)).unwrap_or_else(|| "cmd.exe".into());
+            // Wine ships a do-nothing powershell.exe; its cmd.exe is real.
+            let candidates: &[&str] = if appv3_core::platform::under_wine() { &["cmd"] } else { &["pwsh", "powershell", "cmd"] };
+            return candidates.iter().find_map(|n| which(n)).unwrap_or_else(|| "cmd.exe".into());
         }
         if let Ok(env_shell) = std::env::var("SHELL") {
             if !env_shell.is_empty() && !BLACKLIST.contains(&shell_name_of(&env_shell).as_str()) {
@@ -320,7 +322,7 @@ async fn kill_group(pid: u32, sig: nix::sys::signal::Signal) {
 
 #[cfg(not(unix))]
 async fn kill_group(pid: u32, _sig: ()) {
-    let _ = tokio::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"]).status().await;
+    let _ = appv3_core::proctree::hide_window(&mut tokio::process::Command::new("taskkill")).args(["/PID", &pid.to_string(), "/T", "/F"]).status().await;
 }
 
 fn format_exit_code(code: Option<i32>, signal: Option<i32>) -> String {
@@ -366,7 +368,7 @@ impl Drop for GroupGuard {
         }
         #[cfg(not(unix))]
         {
-            let _ = std::process::Command::new("taskkill").args(["/PID", &self.pid.to_string(), "/T", "/F"]).status();
+            let _ = appv3_core::proctree::hide_window_std(&mut std::process::Command::new("taskkill")).args(["/PID", &self.pid.to_string(), "/T", "/F"]).status();
         }
     }
 }
@@ -392,7 +394,8 @@ impl Tool for ShellTool {
         let cwd = match &workdir {
             None => ctx.denied.workspace_root.clone(),
             Some(w) => {
-                let expanded = if let Some(rest) = w.strip_prefix("~") { format!("{}{}", std::env::var("HOME").unwrap_or_default(), rest) } else { w.clone() };
+                let home = appv3_core::home::home_dir_opt().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
+                let expanded = if let Some(rest) = w.strip_prefix("~") { format!("{home}{rest}") } else { w.clone() };
                 ctx.denied.validate_path(&expanded)?
             }
         };
@@ -412,7 +415,7 @@ impl Tool for ShellTool {
         }
         let argv = build_argv(&shell_bin, &command);
         let mut cmd = tokio::process::Command::new(&shell_bin);
-        cmd.args(&argv).current_dir(&cwd).stdin(std::process::Stdio::null());
+        appv3_core::proctree::hide_window(&mut cmd).args(&argv).current_dir(&cwd).stdin(std::process::Stdio::null());
         scrubbed_env(&mut cmd);
         #[cfg(unix)]
         cmd.process_group(0);
@@ -606,11 +609,21 @@ mod tests {
     async fn runs_commands_like_v2() {
         let d = tempfile::tempdir().unwrap();
         let c = ctx(d.path());
-        let out = ShellTool.run(&c, serde_json::json!({"command": "echo hi; echo err 1>&2"})).await.unwrap();
+        // Same behaviour, spelled for whichever shell `acceptable()` picked.
+        let (both, sleep) = match shell_name_of(&acceptable()).as_str() {
+            "pwsh" | "powershell" => ("Write-Output hi; [Console]::Error.WriteLine('err')", "Start-Sleep -Seconds 5"),
+            "cmd" => ("echo hi& >&2 echo err", "ping -n 6 127.0.0.1 >nul"),
+            _ => ("echo hi; echo err 1>&2", "sleep 5"),
+        };
+        let out = ShellTool.run(&c, serde_json::json!({"command": both})).await.unwrap();
+        let out = match out {
+            ToolOutput::Text(t) => ToolOutput::Text(t.replace("\r\n", "\n")),
+            o => o,
+        };
         assert_eq!(out, ToolOutput::text("[Succeeded]\n\nhi\nerr\n"));
         let out = ShellTool.run(&c, serde_json::json!({"command": "exit 3"})).await.unwrap();
         assert_eq!(out, ToolOutput::text("[Failed — exit code 3]"));
-        let out = ShellTool.run(&c, serde_json::json!({"command": "sleep 5", "timeout_seconds": 1})).await.unwrap();
+        let out = ShellTool.run(&c, serde_json::json!({"command": sleep, "timeout_seconds": 1})).await.unwrap();
         let ToolOutput::Text(t) = out else { panic!() };
         assert!(t.starts_with("[Timed out after 1s]\n\n(No output before timeout)\n\n<shell_metadata>"), "{t}");
     }

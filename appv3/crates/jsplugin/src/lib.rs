@@ -38,7 +38,7 @@ pub fn plugin_files(dirs: &[PathBuf]) -> Vec<PathBuf> {
         let mut files: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.is_file() && is_plugin_file(p)).collect();
         files.sort();
         for f in files {
-            if seen.insert(std::fs::canonicalize(&f).unwrap_or_else(|_| f.clone())) {
+            if seen.insert(dunce::canonicalize(&f).unwrap_or_else(|_| f.clone())) {
                 out.push(f);
             }
         }

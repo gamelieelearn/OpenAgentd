@@ -322,6 +322,7 @@ mod tests {
         std::fs::write(&old, "x").unwrap();
         let f = std::fs::File::options().write(true).open(&old).unwrap();
         f.set_modified(SystemTime::now() - std::time::Duration::from_secs(8 * 86_400)).unwrap();
+        drop(f); // Windows cannot delete a file that is still open.
         std::fs::write(dir.join("app-error.log"), "keep").unwrap();
         let sink = FileSink::new(dir.join("app.log"), 10, 7);
         let big = "y".repeat(6_000_000);

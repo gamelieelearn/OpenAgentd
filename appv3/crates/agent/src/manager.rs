@@ -51,13 +51,7 @@ pub fn provider_factory() -> ProviderFactory {
 const BLOCKED: &[&str] = &["/etc", "/proc", "/sys", "/dev", "/run", "/boot", "/sbin", "/bin", "/usr/bin", "/usr/sbin", "/private/etc"];
 
 fn expanduser(p: &str) -> PathBuf {
-    if p == "~" {
-        return std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-    }
-    if let Some(rest) = p.strip_prefix("~/") {
-        return std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default().join(rest);
-    }
-    PathBuf::from(p)
+    appv3_core::home::expanduser(p)
 }
 
 /// `validate_workspace`.

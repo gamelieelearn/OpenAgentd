@@ -90,7 +90,7 @@ pub async fn get_user_path(force_refresh: bool) -> String {
     let probe = async {
         let shell_bin = crate::shell::acceptable();
         let argv = crate::shell::build_argv(&shell_bin, &format!("printf \"{PATH_OUTPUT_PREFIX}%s\\n\" \"$PATH\""));
-        let child = tokio::process::Command::new(&shell_bin)
+        let child = appv3_core::proctree::hide_window(&mut tokio::process::Command::new(&shell_bin))
             .args(&argv)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())

@@ -662,7 +662,7 @@ pub fn open_browser(url: &str) {
     } else {
         "xdg-open"
     };
-    let _ = std::process::Command::new(cmd).arg(url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+    let _ = appv3_core::proctree::hide_window_std(&mut std::process::Command::new(cmd)).arg(url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
 }
 
 enum Callback {

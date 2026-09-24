@@ -18,7 +18,7 @@ impl PathLockManager {
 
     /// Acquire a lock on a single path.
     pub async fn lock(&self, path: impl AsRef<Path>) -> PathGuard {
-        let canonical = path.as_ref().canonicalize().unwrap_or_else(|_| path.as_ref().to_path_buf());
+        let canonical = dunce::canonicalize(path.as_ref()).unwrap_or_else(|_| path.as_ref().to_path_buf());
 
         let lock_arc = {
             let mut map = self.inner.lock().await;

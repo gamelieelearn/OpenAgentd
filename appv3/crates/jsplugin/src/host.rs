@@ -347,6 +347,7 @@ async fn fetch(st: &HostState, arg: &Value) -> NResult {
 
 async fn run(arg: &Value) -> NResult {
     let mut cmd = tokio::process::Command::new(s(arg, "cmd"));
+    appv3_core::proctree::hide_window(&mut cmd);
     for a in arg.get("args").and_then(|x| x.as_array()).into_iter().flatten() {
         cmd.arg(a.as_str().unwrap_or(""));
     }
@@ -425,29 +426,7 @@ async fn accept(st: &HostState, arg: &Value) -> NResult {
     }
 }
 
-pub fn which(name: &str) -> Option<std::path::PathBuf> {
-    if name.is_empty() {
-        return None;
-    }
-    let path = std::env::var_os("PATH")?;
-    for d in std::env::split_paths(&path) {
-        let p = d.join(name);
-        if let Ok(md) = std::fs::metadata(&p) {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                if md.is_file() && md.permissions().mode() & 0o111 != 0 {
-                    return Some(p);
-                }
-            }
-            #[cfg(not(unix))]
-            if md.is_file() {
-                return Some(p);
-            }
-        }
-    }
-    None
-}
+pub use appv3_core::which::which;
 
 fn unquote_plus(s: &str) -> String {
     let s = s.replace('+', " ");

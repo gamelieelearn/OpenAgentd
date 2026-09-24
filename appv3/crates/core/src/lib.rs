@@ -3,9 +3,12 @@
 pub mod auth;
 pub mod env;
 pub mod error;
+pub mod home;
 pub mod mimetypes;
 pub mod otel;
 pub mod path_locks;
+pub mod platform;
+pub mod proctree;
 pub mod pyjson;
 pub mod pymath;
 pub mod pyyaml;
@@ -14,6 +17,7 @@ pub mod secret_files;
 pub mod security;
 pub mod settings;
 pub mod slug;
+pub mod which;
 
 pub use error::{AppError, AppResult};
 pub use path_locks::{acquire_all_locks, path_lock, PathLockManager};

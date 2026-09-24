@@ -41,7 +41,7 @@ fn env_bool(key: &str, default: bool) -> bool {
 }
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).or_else(|| directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf())).unwrap_or_else(|| PathBuf::from("."))
+    crate::home::home_dir()
 }
 
 /// `_default_dirs(app_env)`: (data, workspace, config, state, cache).
@@ -160,7 +160,7 @@ impl Settings {
         } else {
             PathBuf::from(raw)
         };
-        std::fs::canonicalize(&p).unwrap_or(p)
+        dunce::canonicalize(&p).unwrap_or(p)
     }
     /// v2 `is_chat_workspace`: never errors, `None`/empty → false.
     pub fn is_chat_workspace(&self, workspace: Option<&Path>) -> bool {
@@ -176,7 +176,7 @@ impl Settings {
         } else {
             PathBuf::from(raw)
         };
-        let resolved = std::fs::canonicalize(&p).unwrap_or(p);
+        let resolved = dunce::canonicalize(&p).unwrap_or(p);
         resolved == self.chat_workspace_root()
     }
     /// v2 `workspace_mode`: `"chat"` or `"coding"`.
@@ -222,7 +222,7 @@ pub fn install(s: Settings) -> &'static Settings {
 
 /// Whether `path` is inside `root` (both canonicalised when possible).
 pub fn path_within(path: &Path, root: &Path) -> bool {
-    let p = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    let r = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let p = dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let r = dunce::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     p.starts_with(r)
 }

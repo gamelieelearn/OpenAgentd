@@ -13,3 +13,6 @@ portable-pty.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["signal", "process"] }
+
+[dev-dependencies]
+appv3-core.workspace = true

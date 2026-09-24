@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 pub fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
+    appv3_core::home::home_dir_opt().unwrap_or_else(|| PathBuf::from("/"))
 }
 
 fn xdg(env: &str, rel: &[&str]) -> PathBuf {
@@ -71,9 +71,25 @@ pub fn pid_alive(pid: i32) -> bool {
     }
 }
 
-#[cfg(not(unix))]
-pub fn pid_alive(_pid: i32) -> bool {
-    false
+/// Windows: the process exists and has not exited (`STILL_ACTIVE`).
+#[cfg(windows)]
+pub fn pid_alive(pid: i32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+    use windows_sys::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    if pid <= 0 {
+        return false;
+    }
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid as u32);
+        if h.is_null() {
+            // Access denied still means the process exists (like EPERM on Unix).
+            return std::io::Error::last_os_error().raw_os_error() == Some(5);
+        }
+        let mut code = 0u32;
+        let ok = GetExitCodeProcess(h, &mut code) != 0;
+        CloseHandle(h);
+        ok && code == STILL_ACTIVE as u32
+    }
 }
 
 pub fn find_pids() -> Vec<i32> {

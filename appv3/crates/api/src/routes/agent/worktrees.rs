@@ -32,7 +32,7 @@ pub async fn run_git(ws: &Path, args: &[&str]) -> ApiResult<GitOut> {
 
 pub async fn run_git_timeout(ws: &Path, args: &[&str], timeout: Duration) -> ApiResult<GitOut> {
     let mut cmd = tokio::process::Command::new("git");
-    cmd.arg("-C").arg(ws).args(args).stdin(std::process::Stdio::null()).kill_on_drop(true);
+    appv3_core::proctree::hide_window(&mut cmd).arg("-C").arg(ws).args(args).stdin(std::process::Stdio::null()).kill_on_drop(true);
     match tokio::time::timeout(timeout, cmd.output()).await {
         Ok(Ok(o)) => {
             Ok(GitOut { code: o.status.code().unwrap_or(-1), stdout: String::from_utf8_lossy(&o.stdout).to_string(), stderr: String::from_utf8_lossy(&o.stderr).to_string() })

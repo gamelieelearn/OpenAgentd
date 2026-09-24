@@ -248,7 +248,7 @@ pub fn pstr(p: &std::path::Path) -> String {
 
 /// `Path.home()`.
 pub fn home() -> std::path::PathBuf {
-    std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from("/"))
+    appv3_core::home::home_dir_opt().unwrap_or_else(|| std::path::PathBuf::from("/"))
 }
 
 /// `Path(p).expanduser()`.

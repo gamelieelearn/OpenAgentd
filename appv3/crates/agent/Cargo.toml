@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+gix.workspace = true
+dunce.workspace = true
 appv3-core.workspace = true
 appv3-db.workspace = true
 appv3-tools.workspace = true

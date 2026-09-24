@@ -148,10 +148,21 @@ async fn user_path(force: bool) -> String {
             return p;
         }
     }
+    // Windows has no login-shell PATH; probing via PowerShell only costs a launch.
+    if cfg!(windows) {
+        let p = std::env::var("PATH").unwrap_or_default();
+        *cache.lock().unwrap() = Some(p.clone());
+        return p;
+    }
     const PREFIX: &str = "__OPENAGENTD_PATH__";
     let shell = appv3_tools::shell::acceptable();
     let argv = appv3_tools::shell::build_argv(&shell, &format!("printf \"{PREFIX}%s\\n\" \"$PATH\""));
-    let probe = tokio::process::Command::new(&shell).args(argv).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).kill_on_drop(true).output();
+    let probe = appv3_core::proctree::hide_window(&mut tokio::process::Command::new(&shell))
+        .args(argv)
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .output();
     let mut found = None;
     if let Ok(Ok(out)) = tokio::time::timeout(Duration::from_secs(3), probe).await {
         if out.status.success() {
@@ -165,12 +176,7 @@ async fn user_path(force: bool) -> String {
 }
 
 fn which_in(cmd: &str, path: &str) -> Option<String> {
-    use std::os::unix::fs::PermissionsExt;
-    let is_exec = |p: &std::path::Path| std::fs::metadata(p).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false);
-    if cmd.contains('/') {
-        return is_exec(std::path::Path::new(cmd)).then(|| cmd.to_string());
-    }
-    std::env::split_paths(path).map(|d| d.join(cmd)).find(|p| is_exec(p)).map(|p| p.display().to_string())
+    appv3_core::which::which_in(cmd, path).map(|p| p.display().to_string())
 }
 
 async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> {

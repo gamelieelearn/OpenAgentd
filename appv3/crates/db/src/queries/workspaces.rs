@@ -10,14 +10,14 @@ use std::path::Path;
 /// otherwise normalises lexically (Python's non-strict resolve).
 pub fn resolve_path(p: &str) -> String {
     let expanded = if let Some(rest) = p.strip_prefix("~") {
-        let home = std::env::var("HOME").unwrap_or_default();
+        let home = appv3_core::home::home_dir_opt().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
         format!("{home}{rest}")
     } else {
         p.to_string()
     };
     let path = Path::new(&expanded);
     let abs = if path.is_absolute() { path.to_path_buf() } else { std::env::current_dir().unwrap_or_default().join(path) };
-    if let Ok(c) = std::fs::canonicalize(&abs) {
+    if let Ok(c) = dunce::canonicalize(&abs) {
         return c.to_string_lossy().to_string();
     }
     let mut out = std::path::PathBuf::new();

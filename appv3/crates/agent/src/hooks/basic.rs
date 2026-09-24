@@ -34,8 +34,8 @@ pub fn global_instructions_path() -> PathBuf {
     if p.is_file() {
         return p;
     }
-    if let Some(home) = std::env::var_os("HOME") {
-        let u = PathBuf::from(home).join(".agents").join("AGENTS.md");
+    if let Some(home) = appv3_core::home::home_dir_opt() {
+        let u = home.join(".agents").join("AGENTS.md");
         if u.is_file() {
             return u;
         }

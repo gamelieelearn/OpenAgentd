@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default()
+    appv3_core::home::home_dir_opt().unwrap_or_default()
 }
 
 fn env(name: &str) -> Option<String> {

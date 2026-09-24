@@ -35,7 +35,7 @@ pub fn builtin_skills_dir() -> PathBuf {
 }
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
+    appv3_core::home::home_dir()
 }
 
 fn resolve(p: &Path) -> PathBuf {

@@ -51,8 +51,8 @@ pub fn load_env_file(path: &Path) {
 /// `load_env_file` never overwrites an existing variable, so the
 /// higher-priority file is loaded first.
 pub fn init_env() {
-    if let Ok(home) = std::env::var("HOME") {
-        load_env_file(&Path::new(&home).join(".config").join("openagentd").join(".env"));
+    if let Some(home) = crate::home::home_dir_opt() {
+        load_env_file(&home.join(".config").join("openagentd").join(".env"));
     }
     load_env_file(Path::new(".env"));
 }

@@ -81,25 +81,9 @@ pub(crate) fn py_os_error(e: &std::io::Error, filename: &str) -> String {
     }
 }
 
-/// `shutil.which(name, path=path)` (POSIX).
+/// `shutil.which(name, path=path)`.
 pub(crate) fn which_in(name: &str, path: &str) -> Option<std::path::PathBuf> {
-    use std::path::Path;
-    let ok = |p: &Path| p.exists() && is_executable(p) && !p.is_dir();
-    if name.contains('/') {
-        let p = Path::new(name);
-        return ok(p).then(|| p.to_path_buf());
-    }
-    let mut seen = std::collections::HashSet::new();
-    for dir in path.split(':') {
-        if !seen.insert(dir) {
-            continue;
-        }
-        let cand = Path::new(dir).join(name);
-        if ok(&cand) {
-            return Some(cand);
-        }
-    }
-    None
+    appv3_core::which::which_in(name, path)
 }
 
 /// `os.access(path, os.X_OK)`.

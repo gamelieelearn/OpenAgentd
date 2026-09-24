@@ -8,13 +8,7 @@ use crate::ui::{bold, cyan, dim};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-fn which(name: &str) -> Option<std::path::PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join(name)).find(|p| {
-        use std::os::unix::fs::PermissionsExt;
-        p.is_file() && p.metadata().is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
-    })
-}
+use appv3_core::which::which;
 
 /// `subprocess.run(cmd, capture_output=True, timeout=5)` → `(code, stdout)`.
 fn capture(cmd: &[&str]) -> Option<(i32, String)> {
@@ -35,7 +29,7 @@ fn capture(cmd: &[&str]) -> Option<(i32, String)> {
 
 fn is_brew_managed() -> bool {
     let Some(brew) = which("brew") else { return false };
-    let exe = std::env::current_exe().ok().and_then(|p| p.canonicalize().ok()).unwrap_or_default();
+    let exe = std::env::current_exe().ok().and_then(|p| dunce::canonicalize(p).ok()).unwrap_or_default();
     let parts: Vec<String> = exe.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
     if parts.iter().any(|p| p == "Cellar") || (parts.iter().any(|p| p == "Homebrew") && parts.iter().any(|p| p == "opt")) {
         return true;
@@ -84,8 +78,15 @@ fn restart_command(ns: &Ns) -> Vec<String> {
 fn run(cmd: &[String]) -> i32 {
     match Command::new(&cmd[0]).args(&cmd[1..]).status() {
         Ok(s) => {
-            use std::os::unix::process::ExitStatusExt;
-            s.code().unwrap_or_else(|| -s.signal().unwrap_or(1))
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::ExitStatusExt;
+                s.code().unwrap_or_else(|| -s.signal().unwrap_or(1))
+            }
+            #[cfg(not(unix))]
+            {
+                s.code().unwrap_or(1)
+            }
         }
         Err(e) => crate::pystr::uncaught("FileNotFoundError", &format!("[Errno 2] No such file or directory: {} ({e})", crate::argparse::py_repr(&cmd[0]))),
     }

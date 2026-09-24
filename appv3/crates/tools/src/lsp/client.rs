@@ -153,6 +153,7 @@ impl LspClient {
     pub async fn start(&self) -> LspResult<()> {
         tracing::info!("Starting LSP server: {} in {}", py_list_repr(&self.command), self.workspace_root.display());
         let mut cmd = tokio::process::Command::new(&self.command[0]);
+        appv3_core::proctree::hide_window(&mut cmd);
         cmd.args(&self.command[1..]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).current_dir(&self.workspace_root).kill_on_drop(true);
         if let Some(env) = &self.env {
             cmd.env_clear();

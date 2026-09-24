@@ -127,7 +127,7 @@ fn is_exec_file(p: &Path) -> bool {
 /// uv-tool / sidecar layouts: binaries beside the running executable.
 fn packaged_bin_dirs() -> Vec<PathBuf> {
     let mut out = vec![];
-    if let Some(dir) = std::env::current_exe().ok().and_then(|p| std::fs::canonicalize(p).ok()).and_then(|p| p.parent().map(Path::to_path_buf)) {
+    if let Some(dir) = std::env::current_exe().ok().and_then(|p| dunce::canonicalize(p).ok()).and_then(|p| p.parent().map(Path::to_path_buf)) {
         out.push(dir.clone());
         if let Some(parent) = dir.parent() {
             out.push(parent.join("bin"));
@@ -577,6 +577,7 @@ impl ManagedLspTools {
         }
         let bun = self.bun_path();
         let mut cmd = tokio::process::Command::new(&bun);
+        appv3_core::proctree::hide_window(&mut cmd);
         cmd.arg("install")
             .arg(format!("--cwd={}", pk.display()))
             .arg("--frozen-lockfile")

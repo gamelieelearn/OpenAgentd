@@ -663,7 +663,8 @@ fn open_browser(url: &str) -> Result<(), String> {
             vec![cmd.to_string(), url.to_string()]
         }
     };
-    let mut child = std::process::Command::new(&argv[0]).args(&argv[1..]).stdin(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())?;
+    let mut child =
+        appv3_core::proctree::hide_window_std(&mut std::process::Command::new(&argv[0])).args(&argv[1..]).stdin(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())?;
     std::thread::spawn(move || {
         let _ = child.wait();
     });

@@ -41,6 +41,8 @@ httpdate = "1"
 md-5 = "0.10"
 sha2.workspace = true
 ignore.workspace = true
+notify = "8"
+dunce.workspace = true
 shlex.workspace = true
 
 [dev-dependencies]

@@ -202,15 +202,32 @@ fn candidate_files(window_start: DateTime<Utc>) -> Vec<PathBuf> {
 }
 
 fn cache_context(days: i64) -> (DateTime<Utc>, i64, String, Signatures) {
-    use std::os::unix::fs::MetadataExt;
     let now = Utc::now();
     let mut sigs = vec![];
     for p in candidate_files(now - Duration::days(days)) {
         if let Ok(m) = std::fs::metadata(&p) {
-            sigs.push((p.to_string_lossy().into_owned(), m.size(), m.mtime() as i128 * 1_000_000_000 + m.mtime_nsec() as i128, m.ino()));
+            sigs.push((p.to_string_lossy().into_owned(), m.len(), mtime_ns(&m), inode(&m)));
         }
     }
     (now, now.timestamp().div_euclid(CACHE_BUCKET_SECONDS), spans_dir().to_string_lossy().into_owned(), sigs)
+}
+
+/// `st_mtime_ns`.
+fn mtime_ns(m: &std::fs::Metadata) -> i128 {
+    m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as i128).unwrap_or(0)
+}
+
+/// `st_ino`; 0 where the platform has no stable inode in std (Windows).
+fn inode(_m: &std::fs::Metadata) -> u64 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        _m.ino()
+    }
+    #[cfg(not(unix))]
+    {
+        0
+    }
 }
 
 fn load_spans_in_window(files: &[PathBuf], window_start: DateTime<Utc>, window_end: DateTime<Utc>) -> Vec<Map<String, Value>> {

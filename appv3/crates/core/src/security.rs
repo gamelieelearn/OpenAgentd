@@ -26,7 +26,7 @@ pub fn validate_workspace_path(path_str: &str) -> AppResult<PathBuf> {
         return Err(AppError::Validation("Workspace path cannot be empty".into()));
     }
     let path = PathBuf::from(path_str);
-    let canonical = match path.canonicalize() {
+    let canonical = match dunce::canonicalize(path) {
         Ok(p) => p,
         Err(e) => return Err(AppError::Validation(format!("Invalid workspace path '{}': {}", path_str, e))),
     };

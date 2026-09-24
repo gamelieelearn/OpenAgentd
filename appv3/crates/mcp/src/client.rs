@@ -87,12 +87,20 @@ fn rpc_result(msg: &Value) -> Result<Value, McpError> {
 struct Stdio {
     stdin: Arc<tokio::sync::Mutex<Option<tokio::process::ChildStdin>>>,
     child: tokio::sync::Mutex<tokio::process::Child>,
+    tree: appv3_core::proctree::ProcessTree,
     pending: Pending,
 }
 
-/// `mcp.client.stdio.get_default_environment()` (POSIX).
+/// `mcp.client.stdio.DEFAULT_INHERITED_ENV_VARS`.
+#[cfg(windows)]
+const INHERITED_ENV: &[&str] =
+    &["APPDATA", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", "PATH", "PATHEXT", "PROCESSOR_ARCHITECTURE", "SYSTEMDRIVE", "SYSTEMROOT", "TEMP", "USERNAME", "USERPROFILE"];
+#[cfg(not(windows))]
+const INHERITED_ENV: &[&str] = &["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER"];
+
+/// `mcp.client.stdio.get_default_environment()`.
 fn default_environment() -> HashMap<String, String> {
-    ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER"].iter().filter_map(|k| std::env::var(k).ok().filter(|v| !v.starts_with("()")).map(|v| (k.to_string(), v))).collect()
+    INHERITED_ENV.iter().filter_map(|k| std::env::var(k).ok().filter(|v| !v.starts_with("()")).map(|v| (k.to_string(), v))).collect()
 }
 
 impl Stdio {
@@ -101,12 +109,14 @@ impl Stdio {
         cmd.args(args).env_clear().envs(default_environment()).envs(env.iter().cloned());
         cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::inherit());
         cmd.kill_on_drop(true);
+        appv3_core::proctree::configure(&mut cmd);
         let mut child = cmd.spawn().map_err(|e| match e.kind() {
             // v2 (anyio.open_process) surfaces the errno text without the filename.
             std::io::ErrorKind::NotFound => McpError::Transport("FileNotFoundError", "[Errno 2] No such file or directory".into()),
             std::io::ErrorKind::PermissionDenied => McpError::Transport("PermissionError", "[Errno 13] Permission denied".into()),
             _ => McpError::Transport("OSError", e.to_string()),
         })?;
+        let tree = appv3_core::proctree::ProcessTree::attach(&child);
         let stdin = Arc::new(tokio::sync::Mutex::new(child.stdin.take()));
         let stdout = child.stdout.take().expect("piped stdout");
         let pending: Pending = Arc::default();
@@ -149,7 +159,7 @@ impl Stdio {
                 let _ = tx.send(Err(McpError::Rpc("Connection closed".into())));
             }
         });
-        Ok(Stdio { stdin, child: tokio::sync::Mutex::new(child), pending })
+        Ok(Stdio { stdin, child: tokio::sync::Mutex::new(child), tree, pending })
     }
 
     async fn write(&self, msg: &Value) -> Result<(), McpError> {
@@ -164,9 +174,9 @@ impl Stdio {
     async fn close(&self) {
         self.stdin.lock().await.take();
         let mut child = self.child.lock().await;
+        // MCP shutdown: close stdin, wait, then kill the whole process tree.
         if tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await.is_err() {
-            let _ = child.start_kill();
-            let _ = child.wait().await;
+            self.tree.terminate(&mut child, std::time::Duration::from_secs(2)).await;
         }
     }
 }
@@ -591,7 +601,7 @@ impl Http {
 // ── session ─────────────────────────────────────────────────────────────────
 
 enum Transport {
-    Stdio(Stdio),
+    Stdio(Box<Stdio>),
     Http(Arc<Http>),
 }
 
@@ -602,7 +612,7 @@ pub struct McpClient {
 
 impl McpClient {
     pub fn stdio(command: &str, args: &[String], env: &[(String, String)]) -> Result<Self, McpError> {
-        Ok(McpClient { transport: Transport::Stdio(Stdio::spawn(command, args, env)?), next_id: AtomicI64::new(1) })
+        Ok(McpClient { transport: Transport::Stdio(Box::new(Stdio::spawn(command, args, env)?)), next_id: AtomicI64::new(1) })
     }
 
     pub fn http(url: &str, headers: &[(String, String)], auth: Option<crate::oauth::OAuthProvider>) -> Result<Self, McpError> {

@@ -76,6 +76,7 @@ fn format_url(host: &str, port: i64) -> String {
     format!("http://{}:{port}", display_host(host))
 }
 
+#[cfg(unix)]
 fn hostname() -> Option<String> {
     let mut buf = [0u8; 256];
     let rc = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
@@ -84,6 +85,18 @@ fn hostname() -> Option<String> {
     }
     let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
     Some(String::from_utf8_lossy(&buf[..end]).into_owned())
+}
+
+/// Windows `socket.gethostname()`: the DNS host name.
+#[cfg(windows)]
+fn hostname() -> Option<String> {
+    use windows_sys::Win32::System::SystemInformation::{ComputerNameDnsHostname, GetComputerNameExW};
+    let mut buf = [0u16; 256];
+    let mut len = buf.len() as u32;
+    if unsafe { GetComputerNameExW(ComputerNameDnsHostname, buf.as_mut_ptr(), &mut len) } == 0 {
+        return std::env::var("COMPUTERNAME").ok();
+    }
+    Some(String::from_utf16_lossy(&buf[..len as usize]))
 }
 
 pub fn lan_ips() -> Vec<String> {

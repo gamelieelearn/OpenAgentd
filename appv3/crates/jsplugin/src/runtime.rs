@@ -325,7 +325,9 @@ impl Resolver for PluginResolver {
         if name == "openagentd" {
             return Ok(name.into());
         }
-        if !(name.starts_with("./") || name.starts_with("../") || name.starts_with('/')) {
+        // Relative or absolute file paths only (on Windows also `.\x`, `C:\x`, `\\server\x`).
+        let relative = name.starts_with("./") || name.starts_with("../") || (cfg!(windows) && (name.starts_with(".\\") || name.starts_with("..\\")));
+        if !(relative || name.starts_with('/') || Path::new(name).is_absolute()) {
             return Err(rquickjs::Error::new_resolving_message(base, name, "only relative imports and \"openagentd\" are supported"));
         }
         let dir = Path::new(base).parent().unwrap_or(Path::new("/"));

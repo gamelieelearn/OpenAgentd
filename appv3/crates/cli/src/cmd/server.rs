@@ -63,6 +63,28 @@ fn getpass(prompt: &str) -> String {
             }
         }
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::System::Console::{GetConsoleMode, SetConsoleMode, ENABLE_ECHO_INPUT};
+        if let Ok(con) = std::fs::OpenOptions::new().read(true).write(true).open("CONIN$") {
+            let h = con.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE;
+            let mut old = 0u32;
+            if unsafe { GetConsoleMode(h, &mut old) } != 0 {
+                unsafe { SetConsoleMode(h, old & !ENABLE_ECHO_INPUT) };
+                eprint!("{prompt}");
+                let _ = std::io::stderr().flush();
+                let mut line = String::new();
+                let n = std::io::BufReader::new(&con).read_line(&mut line);
+                unsafe { SetConsoleMode(h, old) };
+                eprintln!();
+                if matches!(n, Ok(0)) {
+                    uncaught("EOFError", "");
+                }
+                return line.trim_end_matches(['\r', '\n']).to_string();
+            }
+        }
+    }
     eprintln!("Warning: Password input may be echoed.");
     eprint!("{prompt}");
     let mut line = String::new();
@@ -142,6 +164,15 @@ pub fn cmd_start(ns: &Ns) {
             Ok(())
         });
     }
+    // Windows: detach from the caller's console group, and give the server a
+    // hidden console so the shells it spawns don't open windows.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
+    }
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => uncaught("OSError", &e.to_string()),
@@ -217,6 +248,23 @@ pub fn cmd_stop(_ns: &Ns) {
                 }
                 break;
             }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    // Windows has no SIGTERM; v2's `os.kill` there is TerminateProcess too.
+    // `/T` also ends the server's children (shells, MCP and LSP servers).
+    #[cfg(windows)]
+    {
+        for &pid in &alive {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while alive.iter().any(|&p| pid_alive(p)) && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
@@ -411,7 +459,74 @@ pub fn cmd_logs(ns: &Ns) {
             let err = std::process::Command::new("tail").arg0("tail").arg(format!("-n{lines}")).arg("-f").arg(&log).exec();
             uncaught("FileNotFoundError", &format!("[Errno 2] No such file or directory: 'tail' ({err})"));
         }
+        #[cfg(not(unix))]
+        {
+            let lines = ns_int(ns, "lines").unwrap_or(50).max(0) as usize;
+            follow_log(&log, lines);
+        }
     }
     eprintln!("  No log file found. Start the server with {} first.", bold("openagentd"));
     std::process::exit(1)
+}
+
+/// `tail -n <lines> -f <path>` for platforms without `tail`. Runs until killed.
+#[cfg(not(unix))]
+fn follow_log(path: &std::path::Path, lines: usize) -> ! {
+    use std::io::{Read, Seek, SeekFrom, Write};
+    let mut out = std::io::stdout();
+    let data = std::fs::read(path).unwrap_or_default();
+    let start = tail_start(&data, lines);
+    let _ = out.write_all(&data[start..]);
+    let _ = out.flush();
+    let mut pos = data.len() as u64;
+    loop {
+        std::thread::sleep(Duration::from_millis(250));
+        let Ok(mut f) = std::fs::File::open(path) else { continue };
+        let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+        if len < pos {
+            pos = 0; // truncated or rotated
+        }
+        if len > pos && f.seek(SeekFrom::Start(pos)).is_ok() {
+            let mut buf = Vec::new();
+            if f.read_to_end(&mut buf).is_ok() {
+                pos += buf.len() as u64;
+                let _ = out.write_all(&buf);
+                let _ = out.flush();
+            }
+        }
+    }
+}
+
+/// Byte offset where the last `lines` lines of `data` begin (`tail -n`).
+#[cfg_attr(unix, allow(dead_code))]
+fn tail_start(data: &[u8], lines: usize) -> usize {
+    if lines == 0 {
+        return data.len();
+    }
+    let body = data.strip_suffix(b"\n").unwrap_or(data);
+    let mut seen = 0;
+    for (i, &b) in body.iter().enumerate().rev() {
+        if b == b'\n' {
+            seen += 1;
+            if seen == lines {
+                return i + 1;
+            }
+        }
+    }
+    0
+}
+
+#[cfg(test)]
+mod tail_tests {
+    use super::tail_start;
+
+    #[test]
+    fn tail_start_matches_tail_n() {
+        let d = b"a\nb\nc\n";
+        assert_eq!(&d[tail_start(d, 2)..], b"b\nc\n");
+        assert_eq!(&d[tail_start(d, 5)..], b"a\nb\nc\n");
+        assert_eq!(&d[tail_start(d, 0)..], b"");
+        let e = b"a\nb";
+        assert_eq!(&e[tail_start(e, 1)..], b"b");
+    }
 }

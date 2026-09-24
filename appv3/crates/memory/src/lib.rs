@@ -54,7 +54,7 @@ pub fn compute_etag(raw: &[u8]) -> String {
 }
 
 fn canon(p: &Path) -> PathBuf {
-    std::fs::canonicalize(p).unwrap_or_else(|_| {
+    dunce::canonicalize(p).unwrap_or_else(|_| {
         // Python Path.resolve(strict=False): resolve the existing prefix.
         let mut existing = p.to_path_buf();
         let mut tail = Vec::new();
@@ -67,7 +67,7 @@ fn canon(p: &Path) -> PathBuf {
                 _ => return p.to_path_buf(),
             }
         }
-        let mut out = std::fs::canonicalize(&existing).unwrap_or(existing);
+        let mut out = dunce::canonicalize(&existing).unwrap_or(existing);
         for n in tail.into_iter().rev() {
             out.push(n);
         }
@@ -583,7 +583,11 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let root = d.path();
         let s = compose_memory_context(&compile_global_snapshot(root), root);
-        assert_eq!(s, format!("<openagentd_memory>\n  <memory_roots>\n    <global_root>{}</global_root>\n  </memory_roots>\n</openagentd_memory>", root.display()));
+        // v2 renders `global_root.as_posix()`.
+        assert_eq!(
+            s,
+            format!("<openagentd_memory>\n  <memory_roots>\n    <global_root>{}</global_root>\n  </memory_roots>\n</openagentd_memory>", root.to_string_lossy().replace('\\', "/"))
+        );
         std::fs::write(root.join("preferences.md"), "Use tabs <always>").unwrap();
         std::fs::write(root.join("db.md"), "---\ntitle: Database\n---\nPostgres notes").unwrap();
         let snap = compile_global_snapshot(root);
