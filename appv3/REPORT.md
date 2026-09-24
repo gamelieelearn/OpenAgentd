@@ -188,12 +188,12 @@ explicitly.
   Windows handshake-file fallback. Still to do before v3 can be the
   default: per-target v3 builds, signing and notarization in
   `release-desktop.yml`.
-- **Version:** v3 reports its own version, `3.0.0` (from the workspace
-  `Cargo.toml`), not v2's `app/version.txt`. This shows in
+- **Version:** the workspace `Cargo.toml` version follows `app/version.txt`
+  (from 3.0.0 on; `scripts/bump_version.sh` sets it and
+  `scripts/check_version_consistency.sh` enforces it). It shows in
   `openagentd --version`, the sidecar handshake, `/api/health/live` and
   `/api/health/ready`, the provider client headers (codex, copilot, grok),
-  OTEL `telemetry.sdk.version`, and the JS plugin host's `version`. No
-  consumer compares backend versions.
+  OTEL `telemetry.sdk.version`, and the JS plugin host's `version`.
 - **Diagnostics fields:** `runtime.python="n/a"` and
   `implementation="Rust"`.
 - **`.env` handling:** v3 loads `config_dir/.env` into its own process

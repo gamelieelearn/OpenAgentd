@@ -63,5 +63,7 @@ assert_equal "mobile/src-tauri/Cargo.toml" "$(extract_toml_version mobile/src-ta
 assert_equal "mobile/src-tauri/tauri.conf.json" "$(json_get mobile/src-tauri/tauri.conf.json version)" "$ROOT_VERSION"
 assert_equal "desktop/src-tauri/Cargo.lock" "$(sed -n '/name = "openagentd-desktop"/{n;s/^version = "\([^"]*\)"/\1/p;q;}' desktop/src-tauri/Cargo.lock)" "$ROOT_VERSION"
 assert_equal "mobile/src-tauri/Cargo.lock" "$(sed -n '/name = "openagentd-mobile"/{n;s/^version = "\([^"]*\)"/\1/p;q;}' mobile/src-tauri/Cargo.lock)" "$ROOT_VERSION"
+assert_equal "appv3/Cargo.toml" "$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\([^"]*\)".*/\1/p;}' appv3/Cargo.toml)" "$ROOT_VERSION"
+assert_equal "appv3/Cargo.lock" "$(sed -n '/name = "appv3-cli"/{n;s/^version = "\([^"]*\)"/\1/p;q;}' appv3/Cargo.lock)" "$ROOT_VERSION"
 
 echo "Versions match."
