@@ -255,10 +255,8 @@ impl StreamStore {
                     }
                 }
             }
-            "summarization_start" => {
-                if !agent.is_empty() {
-                    *entry(&mut state.summarization, agent) = Summ::default();
-                }
+            "summarization_start" if !agent.is_empty() => {
+                *entry(&mut state.summarization, agent) = Summ::default();
             }
             "summarization_content" => {
                 let text = get_str("text").unwrap_or("");
@@ -266,17 +264,15 @@ impl StreamStore {
                     entry(&mut state.summarization, agent).text.push_str(text);
                 }
             }
-            "summarization_end" => {
-                if !agent.is_empty() {
-                    let e = entry(&mut state.summarization, agent);
-                    if let Some(s) = get_str("summary").filter(|s| !s.is_empty()) {
-                        e.text = s.to_string();
-                    }
-                    e.done = true;
-                    let err = data.get("metadata").and_then(|m| m.get("error"));
-                    if err.map(truthy).unwrap_or(false) {
-                        e.error = true;
-                    }
+            "summarization_end" if !agent.is_empty() => {
+                let e = entry(&mut state.summarization, agent);
+                if let Some(s) = get_str("summary").filter(|s| !s.is_empty()) {
+                    e.text = s.to_string();
+                }
+                e.done = true;
+                let err = data.get("metadata").and_then(|m| m.get("error"));
+                if err.map(truthy).unwrap_or(false) {
+                    e.error = true;
                 }
             }
             _ => {}

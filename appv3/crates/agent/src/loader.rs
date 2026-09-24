@@ -17,7 +17,7 @@ pub const DEFAULT_NEW_USER_MODEL: &str = UNCONFIGURED_TOKEN;
 pub type ProviderFactory = Arc<dyn Fn(Option<&str>, Kwargs) -> Result<Arc<dyn LlmProvider>, ProviderError> + Send + Sync>;
 
 pub fn default_provider_factory() -> ProviderFactory {
-    Arc::new(|m, kw| build_provider(m, kw))
+    Arc::new(build_provider)
 }
 
 // ── MCP bridge ───────────────────────────────────────────────────────────────
@@ -504,7 +504,7 @@ pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, fa
             cfg.description = Some(prompts::coding_description().to_string());
         }
         let mut t = prompts::coding_tools();
-        t.extend(cfg.tools.drain(..));
+        t.append(&mut cfg.tools);
         cfg.tools = t;
         if cfg.system_prompt.trim().is_empty() {
             system_prompt = prompts::coding_prompt().to_string();

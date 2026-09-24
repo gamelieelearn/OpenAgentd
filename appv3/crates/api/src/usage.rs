@@ -121,7 +121,7 @@ async fn openrouter_usage(given: Option<&str>) -> Result<Value, UsageError> {
                 let reached = key_usage >= l || remaining.map(|r| r <= 0.0).unwrap_or(false);
                 spend = json!({"reached": reached, "source": null, "limit": l, "used": key_usage, "remaining": rem, "used_percent": key_usage / l * 100.0, "resets_at": null});
             }
-            Some(l) if l == 0.0 => {
+            Some(0.0) => {
                 spend = json!({"reached": true, "source": null, "limit": 0.0, "used": key_usage, "remaining": 0.0, "used_percent": 100.0, "resets_at": null});
             }
             _ => {}

@@ -453,8 +453,7 @@ mod tests {
 
     #[test]
     fn loaded_skills_scan() {
-        let mut a = appv3_providers::AssistantMessage::default();
-        a.tool_calls = Some(vec![appv3_providers::ToolCall::new("c1", "skill", r#"{"skill_name":"foo"}"#)]);
+        let a = appv3_providers::AssistantMessage { tool_calls: Some(vec![appv3_providers::ToolCall::new("c1", "skill", r#"{"skill_name":"foo"}"#)]), ..Default::default() };
         let msgs = vec![ChatMessage::Assistant(a), ChatMessage::tool("c1", Some("skill".into()), "BODY")];
         assert_eq!(loaded_from_messages(&msgs).get("foo").map(String::as_str), Some("BODY"));
     }

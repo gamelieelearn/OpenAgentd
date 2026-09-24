@@ -141,8 +141,8 @@ pub fn coerce_bool(v: &Value) -> Option<bool> {
     match v {
         Value::Bool(b) => Some(*b),
         Value::Number(n) => match n.as_f64() {
-            Some(f) if f == 0.0 => Some(false),
-            Some(f) if f == 1.0 => Some(true),
+            Some(0.0) => Some(false),
+            Some(1.0) => Some(true),
             _ => None,
         },
         Value::String(s) => match s.trim().to_lowercase().as_str() {

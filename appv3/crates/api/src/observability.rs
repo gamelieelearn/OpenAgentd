@@ -192,7 +192,7 @@ fn candidate_files(window_start: DateTime<Utc>) -> Vec<PathBuf> {
                 .map(|e| e.path())
                 .filter(|p| {
                     let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    name.ends_with(".jsonl") && name.len() > ".jsonl".len() && name[..name.len() - 6].to_string() >= cutoff
+                    name.ends_with(".jsonl") && name.len() > ".jsonl".len() && name[..name.len() - 6] >= *cutoff
                 })
                 .collect()
         })
@@ -470,7 +470,7 @@ fn run_queries(spans: &[Map<String, Value>], start: DateTime<Utc>, end: DateTime
         .collect();
 
     let mut tv: Vec<_> = tools.into_iter().collect();
-    tv.sort_by(|a, b| b.1.calls.cmp(&a.1.calls));
+    tv.sort_by_key(|t| std::cmp::Reverse(t.1.calls));
     let by_tool = tv.into_iter().map(|(tool, d)| json!({"tool": tool, "calls": d.calls, "errors": d.errors, "p95_ms": py_round(quantile(&d.durations, 0.95), 1)})).collect();
 
     t.cost = py_round(t.cost, 8);

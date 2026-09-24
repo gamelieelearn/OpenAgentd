@@ -225,7 +225,7 @@ fn validate_magic(data: &[u8], mime: &str) -> bool {
     let Some((_, sigs)) = MAGIC_BYTES.iter().find(|(m, _)| *m == mime) else {
         return true;
     };
-    sigs.iter().any(|s| data.len() > 0 && data.starts_with(s))
+    sigs.iter().any(|s| !data.is_empty() && data.starts_with(s))
 }
 
 fn ext_mime_consistent(filename: &str, mime: &str) -> bool {

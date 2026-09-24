@@ -313,11 +313,7 @@ impl SseParser {
             match field.as_str() {
                 "event" => self.event = Some(value),
                 "data" => self.data.push(value),
-                "id" => {
-                    if !value.contains('\0') {
-                        self.id = Some(value)
-                    }
-                }
+                "id" if !value.contains('\0') => self.id = Some(value),
                 "retry" => self.retry = value.parse().ok(),
                 _ => {}
             }

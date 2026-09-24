@@ -18,7 +18,7 @@ fn format_diagnostics(path: &Path, src: &str, diags: &[oxc_diagnostics::OxcDiagn
         .iter()
         .filter(|d| d.severity == oxc_diagnostics::Severity::Error)
         .map(|d| {
-            let at = d.labels.first().map(|l| line_col(src, l.offset() as u32));
+            let at = d.labels.first().map(|l| line_col(src, l.offset()));
             match at {
                 Some((line, col)) => format!("{}:{line}:{col}: {}", path.display(), d.message),
                 None => format!("{}: {}", path.display(), d.message),

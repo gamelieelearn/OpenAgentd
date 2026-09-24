@@ -766,7 +766,7 @@ impl Counter {
             // `randrange(0, seen) < 1` — the first offer always lands.
             let p = &mut pts[idx];
             p.seen += 1;
-            if (uuid::Uuid::new_v4().as_u128() % p.seen as u128) == 0 {
+            if uuid::Uuid::new_v4().as_u128().is_multiple_of(p.seen as u128) {
                 p.exemplar = ex;
             }
         }

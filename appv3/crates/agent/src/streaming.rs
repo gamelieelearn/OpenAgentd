@@ -324,8 +324,7 @@ pub fn merge_consecutive_user_messages(messages: Vec<ChatMessage>) -> Vec<ChatMe
             };
             let mc = m.content().unwrap_or("").to_string();
             let content = format!("{}\n\n{}", pc.unwrap_or_default(), mc).trim().to_string();
-            let mut meta = appv3_providers::MessageMeta::default();
-            meta.extra = pmeta.extra;
+            let meta = appv3_providers::MessageMeta { extra: pmeta.extra, ..Default::default() };
             merged.push(ChatMessage::User { content: Some(content), parts: None, meta });
         } else {
             merged.push(m);
@@ -534,8 +533,7 @@ pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage,
     if !items.is_empty() {
         extra.get_or_insert_with(Map::new).insert("reasoning_items".into(), Value::Array(items.iter().map(|i| serde_json::to_value(i).unwrap_or(Value::Null)).collect()));
     }
-    let mut meta = appv3_providers::MessageMeta::default();
-    meta.extra = extra;
+    let meta = appv3_providers::MessageMeta { extra, ..Default::default() };
     let msg = AssistantMessage {
         content: if full.is_empty() { None } else { Some(full) },
         reasoning_content: if reasoning.is_empty() { None } else { Some(reasoning) },

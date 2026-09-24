@@ -145,8 +145,11 @@ pub struct CopilotModelInfo {
 
 pub type Catalog = HashMap<String, CopilotModelInfo>;
 
-fn catalog_cache() -> &'static Mutex<HashMap<(String, String), (Instant, Arc<Catalog>)>> {
-    static C: std::sync::OnceLock<Mutex<HashMap<(String, String), (Instant, Arc<Catalog>)>>> = std::sync::OnceLock::new();
+/// (base URL, token) → (fetched at, catalogue).
+type CatalogCache = Mutex<HashMap<(String, String), (Instant, Arc<Catalog>)>>;
+
+fn catalog_cache() -> &'static CatalogCache {
+    static C: std::sync::OnceLock<CatalogCache> = std::sync::OnceLock::new();
     C.get_or_init(Default::default)
 }
 
@@ -292,7 +295,7 @@ pub fn model_allowed_for_plan(restricted_to: &[String], plan_type: Option<&str>)
     if allowed.is_empty() {
         return Some(true);
     }
-    let Some(plan) = plan_type.and_then(|p| normalize_plan(Some(&json!(p)))) else { return None };
+    let plan = plan_type.and_then(|p| normalize_plan(Some(&json!(p))))?;
     let mut values: HashSet<String> = HashSet::from([plan.clone()]);
     if let Some((_, al)) = PLAN_ALIASES.iter().find(|(k, _)| *k == plan) {
         values.extend(al.iter().map(|s| s.to_string()));

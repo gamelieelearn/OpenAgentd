@@ -285,7 +285,7 @@ pub fn compose_memory_context(snap: &GlobalSnapshot, global_root: &Path) -> Stri
     let mut curr = 0i64;
     for line in snap.knowledge_catalog.lines().filter(|l| !l.is_empty()) {
         let l = chars_len(line) as i64;
-        if curr + l + 1 <= g_budget {
+        if curr + l < g_budget {
             packed.push(format!("    {line}"));
             curr += l + 5;
         } else {

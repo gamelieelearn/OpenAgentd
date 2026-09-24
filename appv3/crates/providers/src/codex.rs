@@ -592,8 +592,8 @@ pub async fn consume_reset(credit_id: Option<&str>) -> Result<Value, UsageError>
     .await;
     if let Err(e) = res {
         if let UsageError::Unavailable(m) = &e {
-            if m.starts_with("Failed to redeem reset: ") {
-                tracing::info!("codex_reset_consume_failed error={}", &m["Failed to redeem reset: ".len()..]);
+            if let Some(rest) = m.strip_prefix("Failed to redeem reset: ") {
+                tracing::info!("codex_reset_consume_failed error={}", rest);
             }
         }
         return Err(e);

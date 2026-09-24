@@ -255,7 +255,7 @@ fn fmt_thousands(n: usize) -> String {
     let s = n.to_string();
     let mut out = String::new();
     for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
@@ -372,17 +372,14 @@ pub fn build_mention_context_blocks(message: &str, session_id: &str, workspace: 
         match read_mention(&label, &abs, s, e) {
             None => {
                 let mime = appv3_core::mimetypes::guess_type(&abs.to_string_lossy());
-                match categorize(&file_rel, mime.as_deref()) {
-                    Some(c @ ("image" | "document")) => {
-                        let kind = if c == "image" { "image" } else { "document" };
-                        let block = format!("[Mentioned {kind}: {label} — use the read tool to view this file]");
-                        total += block.len();
-                        if total > GLOBAL_SIZE_LIMIT {
-                            break;
-                        }
-                        out.push(block);
+                if let Some(c @ ("image" | "document")) = categorize(&file_rel, mime.as_deref()) {
+                    let kind = if c == "image" { "image" } else { "document" };
+                    let block = format!("[Mentioned {kind}: {label} — use the read tool to view this file]");
+                    total += block.len();
+                    if total > GLOBAL_SIZE_LIMIT {
+                        break;
                     }
-                    _ => {}
+                    out.push(block);
                 }
             }
             Some(data) => {

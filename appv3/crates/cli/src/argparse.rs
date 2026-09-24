@@ -636,6 +636,8 @@ fn normalize_ws(text: &str) -> String {
 // ── parser ──────────────────────────────────────────────────────────────────
 
 type OptTuple = (Option<usize>, String, Option<String>, Option<String>);
+/// Callback that applies the action at an index to its consumed arguments.
+type TakeFn<'a> = dyn FnMut(usize, &[String]) -> Result<(), ArgErr> + 'a;
 
 fn out_flush() {
     let _ = std::io::stdout().flush();
@@ -694,7 +696,7 @@ impl Parser {
     pub fn error(&self, msg: &str) -> ! {
         out_flush();
         eprint!("{}", self.format_usage());
-        eprint!("{}: error: {msg}\n", self.prog);
+        eprintln!("{}: error: {msg}", self.prog);
         std::process::exit(2)
     }
 
@@ -1049,14 +1051,7 @@ impl Parser {
         Ok(extras)
     }
 
-    fn consume_positionals(
-        &self,
-        mut start: usize,
-        args: &[String],
-        pattern: &str,
-        positionals: &mut Vec<usize>,
-        take: &mut dyn FnMut(usize, &[String]) -> Result<(), ArgErr>,
-    ) -> Result<usize, ArgErr> {
+    fn consume_positionals(&self, mut start: usize, args: &[String], pattern: &str, positionals: &mut Vec<usize>, take: &mut TakeFn<'_>) -> Result<usize, ArgErr> {
         let counts = self.match_partial(positionals, &pattern[start..]);
         for (k, &count) in counts.iter().enumerate() {
             let i = positionals[k];

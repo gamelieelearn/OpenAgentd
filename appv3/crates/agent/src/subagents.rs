@@ -182,6 +182,7 @@ fn publish_both(lead: &str, event: &str, payload: Value) {
 }
 
 /// `spawn_subagent(..., wait=False)`.
+#[allow(clippy::too_many_arguments)] // mirrors v2's spawn_subagent signature
 pub async fn spawn_subagent(
     lead: &str,
     profile: &str,

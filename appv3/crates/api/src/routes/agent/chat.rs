@@ -826,7 +826,7 @@ async fn agent_history(State(st): State<AppState>, AxPath(raw): AxPath<String>, 
         };
         const LIMIT: i64 = 100;
         let (lead_rows, mut truncated) = db::history_since(pool, &sid, &since_id, LIMIT).await?;
-        let subs = db::list_child_sessions(pool, &[sid.clone()]).await?;
+        let subs = db::list_child_sessions(pool, std::slice::from_ref(&sid)).await?;
         ensure_agent_ready(&root).await?;
         let lead = lead_json(pool, &root, &lead_rows).await?;
         let mut members = vec![];
@@ -864,7 +864,7 @@ async fn agent_history(State(st): State<AppState>, AxPath(raw): AxPath<String>, 
     }
     let Some(root) = db::get_session(pool, &sid).await? else { return Err(ApiError::not_found("Lead session not found.")) };
     let (lead_rows, has_more, boundary) = db::history_page(pool, &sid, cursor.clone()).await?;
-    let subs = db::list_child_sessions(pool, &[sid.clone()]).await?;
+    let subs = db::list_child_sessions(pool, std::slice::from_ref(&sid)).await?;
     ensure_agent_ready(&root).await?;
     let lead = lead_json(pool, &root, &lead_rows).await?;
     let mut members = vec![];

@@ -582,10 +582,8 @@ impl Emitter {
                 return s.to_string();
             }
         }
-        if style.is_none() || style == Some('\'') {
-            if a.allow_single_quoted && !(self.simple_key_context && a.multiline) {
-                return "'".into();
-            }
+        if (style.is_none() || style == Some('\'')) && a.allow_single_quoted && !(self.simple_key_context && a.multiline) {
+            return "'".into();
         }
         "\"".into()
     }

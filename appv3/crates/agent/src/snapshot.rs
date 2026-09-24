@@ -653,7 +653,7 @@ pub async fn release_queued(pool: &appv3_db::DbPool, session_id: &str) -> anyhow
             snap = track(session_id, &ws).await;
         }
     }
-    Ok(appv3_db::release_queued_user_messages(pool, session_id, snap.as_deref()).await?)
+    appv3_db::release_queued_user_messages(pool, session_id, snap.as_deref()).await
 }
 
 // ── Retention sweep (port of `snapshot_maintenance.py`) ─────────────────────

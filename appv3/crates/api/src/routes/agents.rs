@@ -269,7 +269,7 @@ fn effective_config(cfg: &AgentConfig) -> AgentConfig {
     let mut d = cfg.clone();
     if d.role == "lead" {
         let mut tools: Vec<String> = ["skill", "todo_manage", "schedule_task", "note"].map(String::from).to_vec();
-        tools.extend(d.tools.drain(..));
+        tools.append(&mut d.tools);
         d.tools = tools;
         if d.name == "code" {
             d.description = or_empty(&d.description, prompts::coding_description());
@@ -277,7 +277,7 @@ fn effective_config(cfg: &AgentConfig) -> AgentConfig {
                 d.system_prompt = prompts::coding_prompt().to_string();
             }
             let mut t = prompts::coding_tools();
-            t.extend(d.tools.drain(..));
+            t.append(&mut d.tools);
             d.tools = dedup(t);
             d.mcp = dedup(std::mem::take(&mut d.mcp));
         }

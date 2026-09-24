@@ -763,19 +763,19 @@ impl AgentSession {
             self.apply_pending_interaction_mode().await;
         }
         let sid = self.session_id();
-        if state != "error" && qs.is_some() {
+        let errored = state == "error";
+        if let Some(q) = qs.as_ref().filter(|_| !errored) {
             self.set_state("waiting_input");
             let mut e = Map::new();
-            e.insert("question_id".into(), json!(crate::pystr::py_str(&qs.unwrap()["question_id"])));
+            e.insert("question_id".into(), json!(crate::pystr::py_str(&q["question_id"])));
             self.emit("agent_status", Some("waiting_input"), Some(e));
-        } else if state != "error" && ls.is_some() {
+        } else if let Some(data) = ls.filter(|_| !errored) {
             self.set_state("waiting_lead");
-            let data = ls.unwrap();
             self.emit("agent_status", Some("waiting_lead"), data.as_object().cloned());
             if let Some(lead) = &self.parent_session_id {
                 crate::subagents::on_subagent_question_asked(lead, &sid, &data, &self.pool).await;
             }
-        } else if state != "error" {
+        } else if !errored {
             if !sid.is_empty() && !self.cancel.is_set() {
                 activated = self.activate_queued_user_messages(&sid).await;
             }

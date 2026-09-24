@@ -381,7 +381,7 @@ impl CompletionsHandler {
         let level = kw_str(merged, "thinking_level");
         if let Flavor::Copilot(meta) = &self.flavor {
             // Truthy, not none/off, and the model accepts reasoning_effort.
-            let raw = merged.get("thinking_level").filter(|v| !v.is_null() && py_str_or_empty(Some(v)) != "");
+            let raw = merged.get("thinking_level").filter(|v| !v.is_null() && !py_str_or_empty(Some(v)).is_empty());
             if let Some(v) = raw {
                 if !matches!(v.as_str(), Some("none" | "off")) && meta.supports_reasoning_effort {
                     body.insert("reasoning_effort".into(), v.clone());
@@ -755,7 +755,7 @@ impl ResponsesHandler {
                 return;
             }
             let effort = match level {
-                Some(v) if py_str_or_empty(Some(v)) != "" => v.clone(),
+                Some(v) if !py_str_or_empty(Some(v)).is_empty() => v.clone(),
                 _ => json!("medium"),
             };
             let mut r = Map::new();

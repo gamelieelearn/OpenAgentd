@@ -542,7 +542,7 @@ impl LspManager {
         };
         if let Some(root) = project_root {
             let project_cmds =
-                || -> Vec<Vec<String>> { detect_project_lsp_commands(lang_id, root).iter().filter_map(|c| resolve_cmd(c)).filter(|r| !semantic_only || semantic_ok(r)).collect() };
+                || -> Vec<Vec<String>> { detect_project_lsp_commands(lang_id, root).iter().filter_map(&resolve_cmd).filter(|r| !semantic_only || semantic_ok(r)).collect() };
             let first = project_cmds();
             if !first.is_empty() {
                 tracing::info!("Using project-configured LSP for {}: {}", lang_id, cmds_repr(&first));
@@ -574,7 +574,7 @@ impl LspManager {
             Err(e) => tracing::warn!("Failed to load runtime settings for LSP command: {}", e),
         }
         if lang_id == "python" {
-            return python_multi_servers().iter().filter_map(|c| resolve_cmd(c)).filter(|r| !semantic_only || semantic_ok(r)).collect();
+            return python_multi_servers().iter().filter_map(&resolve_cmd).filter(|r| !semantic_only || semantic_ok(r)).collect();
         }
         for cmd in lsp_commands(lang_id) {
             if resolve_cmd(&cmd).is_some() {
@@ -910,7 +910,8 @@ pub fn format_diagnostics(diagnostics: &[Value], file_path: &Path, workspace_roo
     }
     let total = relevant.len();
     let capped = &relevant[..total.min(MAX_DIAGNOSTICS_PER_FILE)];
-    let mut grouped: Vec<((bool, String, String), Vec<(String, String)>)> = vec![];
+    type Group = ((bool, String, String), Vec<(String, String)>);
+    let mut grouped: Vec<Group> = vec![];
     for d in capped {
         let is_error = num_f(&severity(d)) == 1.0;
         let msg = match d.get("message") {

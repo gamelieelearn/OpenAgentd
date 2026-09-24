@@ -551,10 +551,7 @@ impl TaskScheduler {
     }
 
     async fn timer_loop(self: Arc<Self>, mut task: ScheduledTask) {
-        loop {
-            let Some(nxt) = next_fire(&task.schedule_type, task.cron_expression.as_deref(), task.every_seconds, dt(&task.at_datetime), &task.timezone, None, task.run_count) else {
-                break;
-            };
+        while let Some(nxt) = next_fire(&task.schedule_type, task.cron_expression.as_deref(), task.every_seconds, dt(&task.at_datetime), &task.timezone, None, task.run_count) {
             let delay = (nxt - Utc::now()).num_milliseconds();
             if delay > 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(delay as u64)).await;

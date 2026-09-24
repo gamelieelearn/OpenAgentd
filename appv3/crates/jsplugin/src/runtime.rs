@@ -146,6 +146,7 @@ impl JsPlugin {
     }
 
     /// Call `target[method](...args)`, awaiting a returned promise.
+    #[allow(clippy::result_large_err)] // JsError carries name, message, stack and props
     pub async fn call(&self, target: &Target, method: &str, args: &[Value], mode: Mode) -> Result<CallResult, JsError> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.send(
@@ -161,6 +162,7 @@ impl JsPlugin {
     }
 
     /// Blocking variant of [`call`] for synchronous callers.
+    #[allow(clippy::result_large_err)] // see `call`
     pub fn call_blocking(&self, target: &Target, method: &str, args: &[Value], mode: Mode) -> Result<CallResult, JsError> {
         let (tx, rx) = std::sync::mpsc::channel();
         self.send(

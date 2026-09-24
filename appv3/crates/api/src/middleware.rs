@@ -299,7 +299,7 @@ pub async fn cors(axum::extract::State(c): axum::extract::State<Cors>, req: Requ
 
 // ── GZip ────────────────────────────────────────────────────────────────────
 
-pub fn gzip_layer() -> tower_http::compression::CompressionLayer<impl tower_http::compression::Predicate + Clone> {
+pub fn gzip_layer() -> tower_http::compression::CompressionLayer<impl tower_http::compression::Predicate> {
     use tower_http::compression::predicate::{NotForContentType, Predicate, SizeAbove};
     tower_http::compression::CompressionLayer::new().no_br().no_deflate().no_zstd().compress_when(SizeAbove::new(1000).and(NotForContentType::SSE).and(NotForContentType::GRPC))
 }

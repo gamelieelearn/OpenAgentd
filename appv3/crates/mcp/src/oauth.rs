@@ -12,6 +12,11 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
+/// URL-encoded form body as ordered (name, value) pairs.
+type FormPairs = Vec<(String, String)>;
+/// Extra request headers for a token call.
+type AuthHeaders = Vec<(&'static str, String)>;
+
 const LATEST_PROTOCOL_VERSION: &str = "2026-07-28";
 const KNOWN_PROTOCOL_VERSIONS: [&str; 5] = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"];
 const AUTH_REDIRECT_LIMIT: usize = 5;
@@ -264,8 +269,8 @@ fn lax_bool(v: &Value) -> Option<bool> {
     match v {
         Value::Bool(b) => Some(*b),
         Value::Number(n) => match n.as_f64() {
-            Some(f) if f == 0.0 => Some(false),
-            Some(f) if f == 1.0 => Some(true),
+            Some(0.0) => Some(false),
+            Some(1.0) => Some(true),
             _ => None,
         },
         Value::String(s) => match s.to_lowercase().as_str() {
@@ -792,7 +797,7 @@ impl Ctx {
         }
     }
     /// `prepare_token_auth`.
-    fn prepare_token_auth(&self, mut data: Vec<(String, String)>) -> Result<(Vec<(String, String)>, Vec<(&'static str, String)>), McpError> {
+    fn prepare_token_auth(&self, mut data: FormPairs) -> Result<(FormPairs, AuthHeaders), McpError> {
         let mut headers = vec![];
         let Some(ci) = &self.client_info else { return Ok((data, headers)) };
         let method = ci_str(ci, "token_endpoint_auth_method");

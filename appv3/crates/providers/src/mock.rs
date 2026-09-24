@@ -5,6 +5,9 @@ use async_trait::async_trait;
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
+/// Arguments recorded for one `stream` call: messages, tools, kwargs.
+pub type MockCall = (Vec<ChatMessage>, Option<Vec<ToolSpec>>, Kwargs);
+
 /// One scripted turn: a list of chunks, or an error raised before streaming.
 pub enum MockTurn {
     Chunks(Vec<ChatCompletionChunk>),
@@ -13,7 +16,7 @@ pub enum MockTurn {
 
 pub struct MockProvider {
     pub turns: Mutex<VecDeque<MockTurn>>,
-    pub calls: Mutex<Vec<(Vec<ChatMessage>, Option<Vec<ToolSpec>>, Kwargs)>>,
+    pub calls: Mutex<Vec<MockCall>>,
     kw: Kwargs,
     pub model: String,
 }

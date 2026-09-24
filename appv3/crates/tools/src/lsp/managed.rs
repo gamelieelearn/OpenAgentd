@@ -702,7 +702,7 @@ impl ManagedLspTools {
 
     fn prune_python_tool_versions(&self, name: &str) {
         let mut dirs = self.python_dirs(name);
-        dirs.sort_by(|a, b| b.1.cmp(&a.1));
+        dirs.sort_by_key(|d| std::cmp::Reverse(d.1));
         for (stale, _) in dirs.iter().skip(MAX_MANAGED_PYTHON_VERSIONS) {
             let _ = std::fs::remove_dir_all(stale);
         }

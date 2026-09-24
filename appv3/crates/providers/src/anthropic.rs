@@ -664,6 +664,6 @@ mod tests {
     #[test]
     fn thinking_budget_matches_v2() {
         assert_eq!(thinking_budget("low", 32000), 8000);
-        assert_eq!(thinking_budget("high", 1000), 1024.max(599));
+        assert_eq!(thinking_budget("high", 1000), 1024);
     }
 }

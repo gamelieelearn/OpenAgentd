@@ -295,7 +295,7 @@ fn normalize_usage(v: &Value) -> Result<Value, String> {
 }
 
 enum Base {
-    Anthropic { inner: AnthropicProvider, use_api_key_header: bool },
+    Anthropic { inner: Box<AnthropicProvider>, use_api_key_header: bool },
     Http,
 }
 
@@ -358,7 +358,7 @@ impl JsProvider {
                     timeout,
                 )?;
                 inner.provider_name = None;
-                Base::Anthropic { inner, use_api_key_header }
+                Base::Anthropic { inner: Box::new(inner), use_api_key_header }
             }
             Some("http") => {
                 for m in ["request", "streamParser", "parseResponse"] {

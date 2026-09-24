@@ -113,7 +113,7 @@ fn splitlines(text: &str) -> Vec<String> {
             let l = l.strip_suffix("\r\n").unwrap_or(l);
             let mut chars = l.chars();
             match chars.next_back() {
-                Some(c) if matches!(c, '\n' | '\r' | '\x0b' | '\x0c' | '\x1c' | '\x1d' | '\x1e' | '\u{85}' | '\u{2028}' | '\u{2029}') => chars.as_str().to_string(),
+                Some('\n' | '\r' | '\x0b' | '\x0c' | '\x1c' | '\x1d' | '\x1e' | '\u{85}' | '\u{2028}' | '\u{2029}') => chars.as_str().to_string(),
                 _ => l.to_string(),
             }
         })

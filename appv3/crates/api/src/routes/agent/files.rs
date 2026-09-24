@@ -612,7 +612,7 @@ async fn git_history(q: Qs) -> ApiResult<Response> {
     let offset = off.unwrap_or(0);
     let sha_re = regex::Regex::new(r"^[a-fA-F0-9]{4,64}$").unwrap();
     if let Some(c) = cursor.as_deref().filter(|c| !c.is_empty()) {
-        if !(all && off.is_some()) && !sha_re.is_match(c) {
+        if !(sha_re.is_match(c) || all && off.is_some()) {
             return Err(ApiError::unprocessable("Invalid cursor SHA format."));
         }
     }

@@ -409,7 +409,7 @@ mod tests {
         let q = parse_qs("code=a%20b&state=x+y&empty=");
         assert_eq!(qs_first(&q, "code"), "a b");
         assert_eq!(qs_first(&q, "state"), "x y");
-        assert!(q.get("empty").is_none());
+        assert!(!q.contains_key("empty"));
         assert_eq!(url_query("https://x/cb?code=1&state=2#frag"), "code=1&state=2");
         assert_eq!(url_query("abc#def"), "");
     }
