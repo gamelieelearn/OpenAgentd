@@ -12,6 +12,7 @@ import {
   type ServerStatus,
 } from '@/api/client'
 import { queryKeys } from './keys'
+import { CAPABILITY, useServerCapability } from './useHealthQuery'
 
 /** How often to re-poll while a server is mid-handshake. */
 export const MCP_STARTING_POLL_MS = 2_000
@@ -29,12 +30,15 @@ export function mcpPollInterval(servers: ServerStatus[] | undefined): number | f
 }
 
 export function useMcpServersQuery(options?: { pollWhileStarting?: boolean }) {
+  // Servers that push `mcp_status_changed` need no polling: the global event
+  // stream invalidates this query when a server settles.
+  const pushed = useServerCapability(CAPABILITY.mcpEvents)
   return useQuery({
     queryKey: queryKeys.mcp.list(),
     queryFn: listMcpServers,
     staleTime: 10_000,
     // Opt-in: only surfaces that show live state want the extra traffic.
-    refetchInterval: options?.pollWhileStarting
+    refetchInterval: options?.pollWhileStarting && !pushed
       ? (query) => mcpPollInterval(query.state.data?.servers)
       : undefined,
   })

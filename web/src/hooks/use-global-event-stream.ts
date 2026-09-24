@@ -31,6 +31,23 @@ function rememberNotification(id: string): boolean {
 export function invalidateGlobalEventQueries(queryClient: QueryClient): void {
   queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
   queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
+  // MCP status is pushed instead of polled on v3; resync what a gap missed.
+  queryClient.invalidateQueries({ queryKey: queryKeys.mcp.all() })
+}
+
+/**
+ * Query prefixes behind each `config_changed` resource (v3 watches the config
+ * dirs). Prefix keys on purpose: e.g. `['agents']` also covers the registry,
+ * and `['settings']` covers providers and every settings page.
+ */
+const CONFIG_RESOURCE_KEYS: Record<string, readonly (readonly unknown[])[]> = {
+  agents: [queryKeys.agents(), queryKeys.agentFiles.all()],
+  skills: [queryKeys.skillFiles.all()],
+  commands: [['commands']],
+  snippets: [['snippets']],
+  mcp: [queryKeys.mcp.all()],
+  plugins: [queryKeys.plugins(), queryKeys.settings.providers()],
+  settings: [['settings']],
 }
 
 /**
@@ -186,6 +203,26 @@ export async function handleGlobalEvent(
       if (typeof sessionId === 'string') queryClient.invalidateQueries({ queryKey: queryKeys.session.files(sessionId) })
     }
     return workspaces.size > 0 || sessionIds.length > 0
+  }
+
+  if (type === 'config_changed') {
+    // Agents, skills, MCP config, plugins… edited outside this window.
+    const resources = Array.isArray(event.resources) ? event.resources : []
+    let known = false
+    for (const resource of resources) {
+      const keys = typeof resource === 'string' ? CONFIG_RESOURCE_KEYS[resource] : undefined
+      if (!keys) continue
+      known = true
+      for (const queryKey of keys) queryClient.invalidateQueries({ queryKey })
+    }
+    return known
+  }
+
+  if (type === 'mcp_status_changed') {
+    // A server settled (ready / error / stopped); replaces polling while it starts.
+    if (typeof event.name !== 'string') return false
+    queryClient.invalidateQueries({ queryKey: queryKeys.mcp.all() })
+    return true
   }
 
   if (type === 'lsp_install_required') {

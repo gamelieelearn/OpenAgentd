@@ -483,6 +483,39 @@ describe('handleGlobalEvent', () => {
     expect(client.getQueryState(queryKeys.coding.history('/abs/proj', 50, false))?.isInvalidated).toBe(false)
   })
 
+  it('invalidates only the resources named by config_changed', async () => {
+    const client = new QueryClient()
+    const keys = {
+      skills: queryKeys.skillFiles.list(),
+      mcp: queryKeys.mcp.list(),
+      registry: queryKeys.agentRegistry('/ws'),
+      agentFiles: queryKeys.agentFiles.list(),
+      plugins: queryKeys.plugins(),
+      providers: queryKeys.settings.providers(),
+      commands: queryKeys.commands.list('/ws'),
+    }
+    for (const key of Object.values(keys)) client.setQueryData(key, {})
+    const invalidated = (key: readonly unknown[]) => client.getQueryState(key)?.isInvalidated ?? false
+
+    expect(await handleGlobalEvent(client, 'config_changed', { resources: ['skills', 'mcp'] }, 1, () => 1)).toBe(true)
+    expect([invalidated(keys.skills), invalidated(keys.mcp)]).toEqual([true, true])
+    expect([keys.registry, keys.agentFiles, keys.plugins, keys.providers, keys.commands].map(invalidated)).toEqual([false, false, false, false, false])
+
+    await handleGlobalEvent(client, 'config_changed', { resources: ['agents', 'plugins'] }, 1, () => 1)
+    expect([keys.registry, keys.agentFiles, keys.plugins, keys.providers].map(invalidated)).toEqual([true, true, true, true])
+    expect(invalidated(keys.commands)).toBe(false)
+
+    expect(await handleGlobalEvent(client, 'config_changed', { resources: ['unknown'] }, 1, () => 1)).toBe(false)
+  })
+
+  it('refreshes MCP servers when one settles', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.mcp.list(), { servers: [] })
+    expect(await handleGlobalEvent(client, 'mcp_status_changed', { name: 'slack', state: 'ready' }, 1, () => 1)).toBe(true)
+    expect(client.getQueryState(queryKeys.mcp.list())?.isInvalidated).toBe(true)
+    expect(await handleGlobalEvent(client, 'mcp_status_changed', { state: 'ready' }, 1, () => 1)).toBe(false)
+  })
+
   it('prompts for TypeScript tooling only when backend downloads are enabled', async () => {
     const client = new QueryClient()
     const payload = {

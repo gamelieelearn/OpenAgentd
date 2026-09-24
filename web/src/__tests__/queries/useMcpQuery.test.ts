@@ -13,6 +13,7 @@ import {
   MCP_STARTING_POLL_MS,
 } from '@/queries/useMcpQuery'
 import type { ServerStatus } from '@/api/client'
+import { queryKeys } from '@/queries/keys'
 
 // ── Query client wrapper ─────────────────────────────────────────────────────
 
@@ -47,6 +48,19 @@ describe('useMcpServersQuery', () => {
   it('is configured with staleTime', () => {
     const { result } = renderHook(() => useMcpServersQuery(), { wrapper: createWrapper() })
     expect(result.current).toBeTruthy()
+  })
+
+  it('polls a starting server only when the backend does not push MCP status', () => {
+    const intervalFor = (capabilities?: string[]) => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } } })
+      client.setQueryData(queryKeys.health(), { status: 'ok', version: 'x', capabilities })
+      const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(QueryClientProvider, { client }, children)
+      renderHook(() => useMcpServersQuery({ pollWhileStarting: true }), { wrapper })
+      const observer = client.getQueryCache().find({ queryKey: queryKeys.mcp.list() })?.observers[0]
+      return observer?.options.refetchInterval
+    }
+    expect(typeof intervalFor(undefined)).toBe('function') // v2: poll while starting
+    expect(intervalFor(['events.mcp_status_changed'])).toBeUndefined() // v3: pushed
   })
 })
 
