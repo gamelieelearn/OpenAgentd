@@ -434,12 +434,7 @@ impl Loader {
             }
         }
         let snippet: String = if start < end { self.buf[start..end].iter().collect() } else { String::new() };
-        format!(
-            "  in \"{NAME}\", line {}, column {}:\n    {head}{snippet}{tail}\n{}^",
-            m.line + 1,
-            m.column + 1,
-            " ".repeat(4 + m.index - start + head.chars().count())
-        )
+        format!("  in \"{NAME}\", line {}, column {}:\n    {head}{snippet}{tail}\n{}^", m.line + 1, m.column + 1, " ".repeat(4 + m.index - start + head.chars().count()))
     }
 
     fn marked(&self, kind: &'static str, context: Option<&str>, cmark: Option<Mark>, problem: Option<String>, pmark: Option<Mark>) -> LoadError {
@@ -777,8 +772,7 @@ impl Loader {
 
     fn check_plain(&self) -> bool {
         let ch = self.ch();
-        !is_in(ch, "\0 \t\r\n\u{85}\u{2028}\u{2029}-?:,[]{}#&*!|>'\"%@`")
-            || (!is_in(self.peek(1), Z_BLANK) && (ch == '-' || (self.flow_level == 0 && is_in(ch, "?:"))))
+        !is_in(ch, "\0 \t\r\n\u{85}\u{2028}\u{2029}-?:,[]{}#&*!|>'\"%@`") || (!is_in(self.peek(1), Z_BLANK) && (ch == '-' || (self.flow_level == 0 && is_in(ch, "?:"))))
     }
 
     // ── scanners ──
@@ -845,13 +839,21 @@ impl Loader {
         let length = self.word_len(0);
         if length == 0 {
             let ch = self.peek(length);
-            return Err(self.scan_err(Some("while scanning a directive"), Some(start), format!("expected alphabetic or numeric character, but found {}", py_repr(&ch.to_string()))));
+            return Err(self.scan_err(
+                Some("while scanning a directive"),
+                Some(start),
+                format!("expected alphabetic or numeric character, but found {}", py_repr(&ch.to_string())),
+            ));
         }
         let value = self.prefix(length);
         self.forward(length);
         let ch = self.ch();
         if !is_in(ch, Z_SPACE) {
-            return Err(self.scan_err(Some("while scanning a directive"), Some(start), format!("expected alphabetic or numeric character, but found {}", py_repr(&ch.to_string()))));
+            return Err(self.scan_err(
+                Some("while scanning a directive"),
+                Some(start),
+                format!("expected alphabetic or numeric character, but found {}", py_repr(&ch.to_string())),
+            ));
         }
         Ok(value)
     }
@@ -1073,7 +1075,11 @@ impl Loader {
         }
         let ch = self.ch();
         if !is_in(ch, Z_SPACE) {
-            return Err(self.scan_err(Some("while scanning a block scalar"), Some(start), format!("expected chomping or indentation indicators, but found {}", py_repr(&ch.to_string()))));
+            return Err(self.scan_err(
+                Some("while scanning a block scalar"),
+                Some(start),
+                format!("expected chomping or indentation indicators, but found {}", py_repr(&ch.to_string())),
+            ));
         }
         Ok((chomping, increment))
     }
@@ -2345,7 +2351,13 @@ impl<'a> Constructor<'a> {
                     let run = chars[i..].iter().take_while(|c| !c.is_ascii()).count();
                     let what = if run == 1 {
                         let u = chars[i] as u32;
-                        let esc = if u < 0x100 { format!("\\x{u:02x}") } else if u < 0x10000 { format!("\\u{u:04x}") } else { format!("\\U{u:08x}") };
+                        let esc = if u < 0x100 {
+                            format!("\\x{u:02x}")
+                        } else if u < 0x10000 {
+                            format!("\\u{u:04x}")
+                        } else {
+                            format!("\\U{u:08x}")
+                        };
                         format!("character '{esc}' in position {i}")
                     } else {
                         format!("characters in position {i}-{}", i + run - 1)
@@ -2563,7 +2575,13 @@ impl<'a> Constructor<'a> {
                     }
                     NodeValue::Scalar(_) => {
                         let (ns, vm, vid) = (self.l.nodes[node].start, self.l.nodes[value_node].start, self.l.nodes[value_node].id());
-                        return Err(cerr(self.l, Some("while constructing a mapping"), Some(ns), format!("expected a mapping or list of mappings for merging, but found {vid}"), vm));
+                        return Err(cerr(
+                            self.l,
+                            Some("while constructing a mapping"),
+                            Some(ns),
+                            format!("expected a mapping or list of mappings for merging, but found {vid}"),
+                            vm,
+                        ));
                     }
                 }
             } else if self.l.nodes[key_node].tag == value_tag {

@@ -276,11 +276,8 @@ pub fn compose_memory_context(snap: &GlobalSnapshot, global_root: &Path) -> Stri
     let prefix = format!("<openagentd_memory>\n{roots_xml}\n");
     let suffix = "</openagentd_memory>";
     let overhead = chars_len(&prefix) + chars_len(suffix);
-    let pref_xml = if snap.preferences_content.is_empty() {
-        String::new()
-    } else {
-        format!("  <global_preferences>\n{}\n  </global_preferences>\n", xml_escape(&snap.preferences_content))
-    };
+    let pref_xml =
+        if snap.preferences_content.is_empty() { String::new() } else { format!("  <global_preferences>\n{}\n  </global_preferences>\n", xml_escape(&snap.preferences_content)) };
     let avail = MAX_TOTAL_CATALOG_CHARS as i64 - overhead as i64 - chars_len(&pref_xml) as i64;
     let avail = avail.max(0);
     let g_budget = avail - chars_len("  <global_knowledge>\n\n  </global_knowledge>\n") as i64;
@@ -351,10 +348,7 @@ fn assert_no_symlinks(path: &Path) -> Result<(), MemoryError> {
 /// `assert_authorized_memory_path` (used by file-mutating tools).
 pub fn assert_authorized_memory_path(path: &Path) -> Result<(), MemoryError> {
     if path.extension().map(|e| e.to_string_lossy().to_lowercase() != "md").unwrap_or(true) {
-        return Err(MemoryError::Containment(format!(
-            "Memory files must have a .md extension: {}",
-            path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
-        )));
+        return Err(MemoryError::Containment(format!("Memory files must have a .md extension: {}", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())));
     }
     assert_no_symlinks(path)?;
     let root = global_memory_root();

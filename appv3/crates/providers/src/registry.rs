@@ -449,9 +449,7 @@ pub fn get_model_cost(model_id: Option<&str>) -> ModelCost {
     if let Some((p, m)) = model_id.and_then(|s| s.split_once(':')) {
         if p.eq_ignore_ascii_case("deepseek") {
             match m.to_lowercase().as_str() {
-                "deepseek-v4-flash" | "deepseek-v4-flash-vision-exp" => {
-                    return ModelCost { input: Some(0.44), output: Some(1.32), cache_read: Some(0.014), cache_write: None }
-                }
+                "deepseek-v4-flash" | "deepseek-v4-flash-vision-exp" => return ModelCost { input: Some(0.44), output: Some(1.32), cache_read: Some(0.014), cache_write: None },
                 "deepseek-v4-pro" => return ModelCost { input: Some(1.32), output: Some(3.96), cache_read: Some(0.044), cache_write: None },
                 _ => {}
             }

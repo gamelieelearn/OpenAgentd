@@ -350,7 +350,13 @@ pub async fn discover_models(overrides: &HashMap<String, String>) -> Result<Vec<
         None => generate_bearer_token(&region, resolve("AWS_BEDROCK_PROFILE").as_deref())?,
     };
     let url = format!("https://bedrock-mantle.{region}.api.aws/v1/models");
-    let r = crate::openai::shared_client().get(&url).header("Authorization", format!("Bearer {token}")).timeout(std::time::Duration::from_secs(3)).send().await.map_err(|e| e.to_string())?;
+    let r = crate::openai::shared_client()
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .timeout(std::time::Duration::from_secs(3))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     let st = r.status().as_u16();
     if st >= 400 {
         return Err(crate::plugin::http_status_message(st, &url));

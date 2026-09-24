@@ -96,13 +96,7 @@ pub struct HostState {
 
 impl HostState {
     pub fn new(plugin: &str) -> Rc<Self> {
-        Rc::new(Self {
-            plugin: plugin.to_string(),
-            client: OnceCell::new(),
-            next_id: Cell::new(1),
-            servers: RefCell::default(),
-            conns: RefCell::default(),
-        })
+        Rc::new(Self { plugin: plugin.to_string(), client: OnceCell::new(), next_id: Cell::new(1), servers: RefCell::default(), conns: RefCell::default() })
     }
     fn id(&self) -> u64 {
         let id = self.next_id.get();

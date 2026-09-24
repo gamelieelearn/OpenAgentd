@@ -19,13 +19,55 @@ pub struct CompatSpec {
 }
 
 pub const COMPAT_SPECS: &[CompatSpec] = &[
-    CompatSpec { provider_id: "opencode", label: "OpenCode Zen", env_var: "OPENCODE_ZEN_API_KEY", base_url: "https://opencode.ai/zen/v1", base_url_env_var: None, default_api_key: "" },
-    CompatSpec { provider_id: "opencode-go", label: "OpenCode Go", env_var: "OPENCODE_GO_API_KEY", base_url: "https://opencode.ai/zen/go/v1", base_url_env_var: None, default_api_key: "" },
-    CompatSpec { provider_id: "openrouter", label: "OpenRouter", env_var: "OPENROUTER_API_KEY", base_url: "https://openrouter.ai/api/v1", base_url_env_var: None, default_api_key: "" },
+    CompatSpec {
+        provider_id: "opencode",
+        label: "OpenCode Zen",
+        env_var: "OPENCODE_ZEN_API_KEY",
+        base_url: "https://opencode.ai/zen/v1",
+        base_url_env_var: None,
+        default_api_key: "",
+    },
+    CompatSpec {
+        provider_id: "opencode-go",
+        label: "OpenCode Go",
+        env_var: "OPENCODE_GO_API_KEY",
+        base_url: "https://opencode.ai/zen/go/v1",
+        base_url_env_var: None,
+        default_api_key: "",
+    },
+    CompatSpec {
+        provider_id: "openrouter",
+        label: "OpenRouter",
+        env_var: "OPENROUTER_API_KEY",
+        base_url: "https://openrouter.ai/api/v1",
+        base_url_env_var: None,
+        default_api_key: "",
+    },
     CompatSpec { provider_id: "nvidia", label: "NVIDIA", env_var: "NVIDIA_API_KEY", base_url: "https://integrate.api.nvidia.com/v1", base_url_env_var: None, default_api_key: "" },
-    CompatSpec { provider_id: "router9", label: "9Router", env_var: "ROUTER9_API_KEY", base_url: "http://localhost:20128/v1", base_url_env_var: Some("ROUTER9_BASE_URL"), default_api_key: "" },
-    CompatSpec { provider_id: "cliproxy", label: "CLIProxyAPI", env_var: "CLIPROXY_API_KEY", base_url: "http://localhost:8317/v1", base_url_env_var: Some("CLIPROXY_BASE_URL"), default_api_key: "" },
-    CompatSpec { provider_id: "ollama", label: "Ollama", env_var: "OLLAMA_API_KEY", base_url: "http://localhost:11434/v1", base_url_env_var: Some("OLLAMA_BASE_URL"), default_api_key: "ollama" },
+    CompatSpec {
+        provider_id: "router9",
+        label: "9Router",
+        env_var: "ROUTER9_API_KEY",
+        base_url: "http://localhost:20128/v1",
+        base_url_env_var: Some("ROUTER9_BASE_URL"),
+        default_api_key: "",
+    },
+    CompatSpec {
+        provider_id: "cliproxy",
+        label: "CLIProxyAPI",
+        env_var: "CLIPROXY_API_KEY",
+        base_url: "http://localhost:8317/v1",
+        base_url_env_var: Some("CLIPROXY_BASE_URL"),
+        default_api_key: "",
+    },
+    CompatSpec {
+        provider_id: "ollama",
+        label: "Ollama",
+        env_var: "OLLAMA_API_KEY",
+        base_url: "http://localhost:11434/v1",
+        base_url_env_var: Some("OLLAMA_BASE_URL"),
+        default_api_key: "ollama",
+    },
     CompatSpec { provider_id: "xai", label: "xAI", env_var: "XAI_API_KEY", base_url: "https://api.x.ai/v1", base_url_env_var: None, default_api_key: "" },
     CompatSpec { provider_id: "deepseek", label: "DeepSeek", env_var: "DEEPSEEK_API_KEY", base_url: "https://api.deepseek.com/v1", base_url_env_var: None, default_api_key: "" },
 ];
@@ -50,10 +92,7 @@ pub fn require_api_key(env_var: &str, label: &str) -> ProviderResult<String> {
 pub const UNCONFIGURED_TOKEN: &str = "__PROVIDER_MODEL__";
 
 pub fn unconfigured_message(agent_name: Option<&str>) -> String {
-    format!(
-        "Agent '{}' has no model configured. Open Settings → Providers in the UI to add a provider and select a model.",
-        agent_name.unwrap_or("?")
-    )
+    format!("Agent '{}' has no model configured. Open Settings → Providers in the UI to add a provider and select a model.", agent_name.unwrap_or("?"))
 }
 
 fn named<P: LlmProvider + 'static>(p: P) -> Arc<dyn LlmProvider> {
@@ -72,9 +111,7 @@ pub fn build_provider(model_str: Option<&str>, model_kwargs: Kwargs) -> Provider
         return Err(ProviderError::Unconfigured(unconfigured_message(None)));
     }
     let Some((name, model)) = model_str.split_once(':') else {
-        return Err(ProviderError::Invalid(format!(
-            "Invalid model format '{model_str}'. Expected 'provider:model' (e.g. 'zai:glm-5-turbo', 'googlegenai:gemini-3.1-flash')."
-        )));
+        return Err(ProviderError::Invalid(format!("Invalid model format '{model_str}'. Expected 'provider:model' (e.g. 'zai:glm-5-turbo', 'googlegenai:gemini-3.1-flash').")));
     };
     let kw = model_kwargs;
     let pname = Some(name.to_string());
@@ -173,9 +210,7 @@ fn build_opencode(pid: &str, model: &str, key: &str, base_url: &str, kw: Kwargs)
     }
     let model_id = format!("{pid}:{model}");
     if pid == "opencode" && get_model_cost(Some(&model_id)).input == Some(0.0) {
-        return Err(ProviderError::Invalid(format!(
-            "OpenCode Zen model '{model}' is not supported; free OpenCode models only open using OpenCode's own harness."
-        )));
+        return Err(ProviderError::Invalid(format!("OpenCode Zen model '{model}' is not supported; free OpenCode models only open using OpenCode's own harness.")));
     }
     let base = base_url.trim_end_matches('/');
     let pname = Some(pid.to_string());

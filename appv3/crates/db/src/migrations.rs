@@ -58,7 +58,6 @@ pub fn statements(sql: &str) -> Vec<&str> {
     sql.split("\n-- ;;\n").map(str::trim).filter(|s| !s.is_empty()).collect()
 }
 
-
 /// Schema state detected on open.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SchemaState {

@@ -509,11 +509,8 @@ impl Fmt {
         if a.option_strings.is_empty() {
             return format!("{}{}{}", t.action, self.metavar(a, a.dest.as_deref().unwrap_or("")), t.reset);
         }
-        let opts: Vec<String> = a
-            .option_strings
-            .iter()
-            .map(|s| if s.chars().count() > 2 { format!("{}{s}{}", t.long_option, t.reset) } else { format!("{}{s}{}", t.short_option, t.reset) })
-            .collect();
+        let opts: Vec<String> =
+            a.option_strings.iter().map(|s| if s.chars().count() > 2 { format!("{}{s}{}", t.long_option, t.reset) } else { format!("{}{s}{}", t.short_option, t.reset) }).collect();
         if a.nargs == Nargs::Zero {
             opts.join(", ")
         } else {
@@ -1045,8 +1042,7 @@ impl Parser {
         })?;
         extras.extend(args[stop..].iter().cloned());
 
-        let required: Vec<String> =
-            self.actions.iter().enumerate().filter(|(i, a)| !seen.contains(i) && a.required).filter_map(|(_, a)| action_name(a)).collect();
+        let required: Vec<String> = self.actions.iter().enumerate().filter(|(i, a)| !seen.contains(i) && a.required).filter_map(|(_, a)| action_name(a)).collect();
         if !required.is_empty() {
             return Err(ArgErr { name: None, msg: format!("the following arguments are required: {}", required.join(", ")) });
         }

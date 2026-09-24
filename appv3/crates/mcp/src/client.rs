@@ -1,8 +1,8 @@
 //! Minimal MCP client (JSON-RPC 2.0) over stdio and Streamable HTTP — the
 //! subset of the Python `mcp` SDK `ClientSession` that v2 uses.
 
-use futures::StreamExt;
 use appv3_core::otel::{self, Span, SpanKind};
+use futures::StreamExt;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -92,10 +92,7 @@ struct Stdio {
 
 /// `mcp.client.stdio.get_default_environment()` (POSIX).
 fn default_environment() -> HashMap<String, String> {
-    ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER"]
-        .iter()
-        .filter_map(|k| std::env::var(k).ok().filter(|v| !v.starts_with("()")).map(|v| (k.to_string(), v)))
-        .collect()
+    ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER"].iter().filter_map(|k| std::env::var(k).ok().filter(|v| !v.starts_with("()")).map(|v| (k.to_string(), v))).collect()
 }
 
 impl Stdio {
@@ -298,7 +295,12 @@ impl SseParser {
                 if self.event.is_none() && self.data.is_empty() && self.id.is_none() && self.retry.is_none() {
                     continue;
                 }
-                out.push(SseEvent { event: self.event.take().unwrap_or_else(|| "message".into()), data: std::mem::take(&mut self.data).join("\n"), id: self.id.take(), retry: self.retry.take() });
+                out.push(SseEvent {
+                    event: self.event.take().unwrap_or_else(|| "message".into()),
+                    data: std::mem::take(&mut self.data).join("\n"),
+                    id: self.id.take(),
+                    retry: self.retry.take(),
+                });
                 continue;
             }
             if line.starts_with(':') {
@@ -681,12 +683,7 @@ impl McpClient {
     }
 
     pub async fn initialize(&self) -> Result<Value, McpError> {
-        let res = self
-            .request(
-                "initialize",
-                Some(json!({"protocolVersion": PROTOCOL_VERSION, "capabilities": {}, "clientInfo": {"name": "mcp", "version": "0.1.0"}})),
-            )
-            .await?;
+        let res = self.request("initialize", Some(json!({"protocolVersion": PROTOCOL_VERSION, "capabilities": {}, "clientInfo": {"name": "mcp", "version": "0.1.0"}}))).await?;
         let negotiated = res.get("protocolVersion").and_then(|v| v.as_str()).unwrap_or("");
         if !HANDSHAKE_PROTOCOL_VERSIONS.contains(&negotiated) {
             return Err(McpError::Session("RuntimeError", format!("Unsupported protocol version from the server: {negotiated}")));

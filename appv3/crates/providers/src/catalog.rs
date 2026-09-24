@@ -38,6 +38,22 @@ pub fn provider_key_var(provider_id: &str) -> Option<&'static str> {
 
 /// v2 `SUPPORTED_PROVIDERS` (sorted, for identical error text).
 pub const SUPPORTED_PROVIDERS: &[&str] = &[
-    "anthropic", "bedrock", "cliproxy", "codex", "copilot", "deepseek", "googlegenai", "grok", "nvidia", "ollama", "openai", "opencode",
-    "opencode-go", "openrouter", "router9", "vertexai", "xai", "zai",
+    "anthropic",
+    "bedrock",
+    "cliproxy",
+    "codex",
+    "copilot",
+    "deepseek",
+    "googlegenai",
+    "grok",
+    "nvidia",
+    "ollama",
+    "openai",
+    "opencode",
+    "opencode-go",
+    "openrouter",
+    "router9",
+    "vertexai",
+    "xai",
+    "zai",
 ];

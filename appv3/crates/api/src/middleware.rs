@@ -275,11 +275,7 @@ pub async fn cors(axum::extract::State(c): axum::extract::State<Cors>, req: Requ
         if private {
             failures.push("private-network");
         }
-        let (status, text) = if failures.is_empty() {
-            (StatusCode::OK, "OK".to_string())
-        } else {
-            (StatusCode::BAD_REQUEST, format!("Disallowed CORS {}", failures.join(", ")))
-        };
+        let (status, text) = if failures.is_empty() { (StatusCode::OK, "OK".to_string()) } else { (StatusCode::BAD_REQUEST, format!("Disallowed CORS {}", failures.join(", "))) };
         let mut resp = Response::new(Body::from(text.clone()));
         *resp.status_mut() = status;
         let h = resp.headers_mut();
@@ -305,9 +301,5 @@ pub async fn cors(axum::extract::State(c): axum::extract::State<Cors>, req: Requ
 
 pub fn gzip_layer() -> tower_http::compression::CompressionLayer<impl tower_http::compression::Predicate + Clone> {
     use tower_http::compression::predicate::{NotForContentType, Predicate, SizeAbove};
-    tower_http::compression::CompressionLayer::new()
-        .no_br()
-        .no_deflate()
-        .no_zstd()
-        .compress_when(SizeAbove::new(1000).and(NotForContentType::SSE).and(NotForContentType::GRPC))
+    tower_http::compression::CompressionLayer::new().no_br().no_deflate().no_zstd().compress_when(SizeAbove::new(1000).and(NotForContentType::SSE).and(NotForContentType::GRPC))
 }

@@ -47,7 +47,15 @@ impl SessionProvider for Runner {
 impl Runner {
     fn new(name: &str, cfg: &ServerConfig, state: &str) -> Arc<Self> {
         Arc::new(Runner {
-            status: Mutex::new(ServerStatus { name: name.into(), transport: cfg.transport().into(), enabled: cfg.enabled(), state: state.into(), error: None, tool_names: vec![], started_at: None }),
+            status: Mutex::new(ServerStatus {
+                name: name.into(),
+                transport: cfg.transport().into(),
+                enabled: cfg.enabled(),
+                state: state.into(),
+                error: None,
+                tool_names: vec![],
+                started_at: None,
+            }),
             tools: Mutex::new(vec![]),
             client: Mutex::new(None),
             ready: watch::channel(state == "stopped").0,

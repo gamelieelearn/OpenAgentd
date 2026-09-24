@@ -132,11 +132,7 @@ impl JsPlugin {
         let (init_tx, init_rx) = std::sync::mpsc::channel::<Result<Value, String>>();
         let p = path.clone();
         let label = stem.clone();
-        std::thread::Builder::new()
-            .name(format!("plugin-{stem}"))
-            .stack_size(THREAD_STACK)
-            .spawn(move || thread_main(p, label, rx, init_tx))
-            .map_err(|e| e.to_string())?;
+        std::thread::Builder::new().name(format!("plugin-{stem}")).stack_size(THREAD_STACK).spawn(move || thread_main(p, label, rx, init_tx)).map_err(|e| e.to_string())?;
         let describe = init_rx.recv().map_err(|_| "plugin runtime thread exited during load".to_string())??;
         Ok(Arc::new(JsPlugin { path, file_name, stem, describe, tx }))
     }
@@ -247,16 +243,17 @@ fn js_error(ctx: &Ctx<'_>, e: rquickjs::Error) -> JsError {
 }
 
 async fn invoke(ctx: &AsyncContext, target: String, method: String, args: String, mode: Mode) -> Result<CallResult, JsError> {
-    let out: Result<String, JsError> = ctx.async_with(async |ctx| {
-        let r: rquickjs::Result<String> = async {
-            let f: Function = ctx.globals().get("__oad_invoke")?;
-            let p: Promise = f.call((target, method, args, mode.as_str()))?;
-            p.into_future::<String>().await
-        }
+    let out: Result<String, JsError> = ctx
+        .async_with(async |ctx| {
+            let r: rquickjs::Result<String> = async {
+                let f: Function = ctx.globals().get("__oad_invoke")?;
+                let p: Promise = f.call((target, method, args, mode.as_str()))?;
+                p.into_future::<String>().await
+            }
+            .await;
+            r.map_err(|e| js_error(&ctx, e))
+        })
         .await;
-        r.map_err(|e| js_error(&ctx, e))
-    })
-    .await;
     let v: Value = serde_json::from_str(&out?).map_err(|e| JsError::new(format!("plugin returned a value that is not JSON-serialisable: {e}")))?;
     Ok(CallResult {
         handle: v.get("handle").and_then(|x| x.as_u64()),
@@ -282,24 +279,25 @@ async fn init(path: &Path, label: &str) -> Result<(AsyncRuntime, AsyncContext, V
     let ctx = AsyncContext::full(&rt).await.map_err(|e| e.to_string())?;
     let state = HostState::new(label);
     let spec = path.to_string_lossy().into_owned();
-    let describe: Result<String, String> = ctx.async_with(async |ctx| {
-        let r: rquickjs::Result<String> = async {
-            host::install(&ctx, state)?;
-            ctx.eval::<(), _>(PRELUDE)?;
-            let ns: Object = Module::import(&ctx, spec)?.into_future::<Object>().await?;
-            ctx.globals().set("__oad_ns", ns)?;
-            ctx.eval::<String, _>("__oad_describe()")
-        }
-        .await;
-        r.map_err(|e| {
-            let je = js_error(&ctx, e);
-            match je.name.as_str() {
-                "Error" | "" => je.message,
-                n => format!("{n}: {}", je.message),
+    let describe: Result<String, String> = ctx
+        .async_with(async |ctx| {
+            let r: rquickjs::Result<String> = async {
+                host::install(&ctx, state)?;
+                ctx.eval::<(), _>(PRELUDE)?;
+                let ns: Object = Module::import(&ctx, spec)?.into_future::<Object>().await?;
+                ctx.globals().set("__oad_ns", ns)?;
+                ctx.eval::<String, _>("__oad_describe()")
             }
+            .await;
+            r.map_err(|e| {
+                let je = js_error(&ctx, e);
+                match je.name.as_str() {
+                    "Error" | "" => je.message,
+                    n => format!("{n}: {}", je.message),
+                }
+            })
         })
-    })
-    .await;
+        .await;
     let describe = serde_json::from_str(&describe?).map_err(|e| e.to_string())?;
     Ok((rt, ctx, describe))
 }

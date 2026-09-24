@@ -68,7 +68,8 @@ pub fn register_natives() {
         register_native(
             "creds.get",
             Arc::new(|a: Value| {
-                let overrides = a.get("overrides").and_then(|o| o.as_object()).map(|o| o.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect()).unwrap_or_default();
+                let overrides =
+                    a.get("overrides").and_then(|o| o.as_object()).map(|o| o.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect()).unwrap_or_default();
                 let store = CredentialStore::for_provider(a.get("provider").and_then(|p| p.as_str()).unwrap_or(""), overrides);
                 Ok(json!(store.get(a.get("name").and_then(|n| n.as_str()).unwrap_or(""))))
             }),
@@ -245,7 +246,13 @@ impl ProviderPlugin for JsProviderPlugin {
     }
 
     async fn get_usage(&self, store: &CredentialStore) -> Result<Value, PluginUsageError> {
-        let v = self.call("getUsage", &[credentials_arg(store)]).await.map_err(|e| if e.prop_str("kind") == Some("invalid") { PluginUsageError::Value(e.message) } else { PluginUsageError::Other(e.message) })?;
+        let v = self.call("getUsage", &[credentials_arg(store)]).await.map_err(|e| {
+            if e.prop_str("kind") == Some("invalid") {
+                PluginUsageError::Value(e.message)
+            } else {
+                PluginUsageError::Other(e.message)
+            }
+        })?;
         normalize_usage(&v).map_err(PluginUsageError::Other)
     }
 }
@@ -257,7 +264,11 @@ fn normalize_usage(v: &Value) -> Result<Value, String> {
     let int = |x: Option<&Value>| x.and_then(|n| n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)));
     let window = |w: Option<&Value>| -> Option<UsageWindow> {
         let w = w?.as_object()?;
-        Some(UsageWindow { used_percent: w.get("used_percent").and_then(|p| p.as_f64()).unwrap_or(0.0), window_minutes: int(w.get("window_minutes")), resets_at: int(w.get("resets_at")) })
+        Some(UsageWindow {
+            used_percent: w.get("used_percent").and_then(|p| p.as_f64()).unwrap_or(0.0),
+            window_minutes: int(w.get("window_minutes")),
+            resets_at: int(w.get("resets_at")),
+        })
     };
     let s = |l: &Map<String, Value>, k: &str| l.get(k).and_then(|x| x.as_str()).map(String::from);
     let limits: Vec<UsageLimit> = o
@@ -423,7 +434,8 @@ impl JsProvider {
     }
 
     async fn http_send(&self, req: &Value, stream: bool) -> ProviderResult<reqwest::Response> {
-        let method = reqwest::Method::from_bytes(req.get("method").and_then(|m| m.as_str()).unwrap_or("POST").to_uppercase().as_bytes()).map_err(|e| ProviderError::Other(e.to_string()))?;
+        let method =
+            reqwest::Method::from_bytes(req.get("method").and_then(|m| m.as_str()).unwrap_or("POST").to_uppercase().as_bytes()).map_err(|e| ProviderError::Other(e.to_string()))?;
         let mut b = shared_client().request(method, req["url"].as_str().unwrap_or(""));
         for (k, v) in header_pairs(req.get("headers")) {
             b = b.header(k, v);

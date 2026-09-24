@@ -56,7 +56,11 @@ pub fn provider_is_configured(entry: &Value) -> bool {
         "cloud_creds" => {
             if id == "bedrock" {
                 let st = CredentialStore::new(HashMap::new());
-                return env("AWS_BEARER_TOKEN_BEDROCK") || !st.get("AWS_BEARER_TOKEN_BEDROCK").is_empty() || env("AWS_BEDROCK_PROFILE") || !st.get("AWS_BEDROCK_PROFILE").is_empty() || env("AWS_PROFILE");
+                return env("AWS_BEARER_TOKEN_BEDROCK")
+                    || !st.get("AWS_BEARER_TOKEN_BEDROCK").is_empty()
+                    || env("AWS_BEDROCK_PROFILE")
+                    || !st.get("AWS_BEDROCK_PROFILE").is_empty()
+                    || env("AWS_PROFILE");
             }
             entry.get("env_vars").and_then(|v| v.as_array()).map(|a| a.iter().all(|n| env(n.as_str().unwrap_or("")))).unwrap_or(true)
         }
@@ -84,10 +88,13 @@ pub fn saved_overrides(entry: &Value) -> HashMap<String, String> {
         }
     }
     names.extend(["OLLAMA_BASE_URL", "ROUTER9_BASE_URL", "CLIPROXY_BASE_URL"].map(String::from));
-    names.into_iter().filter_map(|n| {
-        let v = st.get(&n);
-        (!v.is_empty()).then_some((n, v))
-    }).collect()
+    names
+        .into_iter()
+        .filter_map(|n| {
+            let v = st.get(&n);
+            (!v.is_empty()).then_some((n, v))
+        })
+        .collect()
 }
 
 /// `_provider_saved_display_credentials(entry)`.
@@ -106,9 +113,8 @@ pub fn saved_display_credentials(entry: &Value) -> serde_json::Map<String, Value
     keys.into_iter().map(|k| (k.clone(), Value::String(saved[k].clone()))).collect()
 }
 
-const NON_AGENT_MARKERS: [&str; 16] = [
-    "embedding", "embed", "rerank", "moderation", "whisper", "tts", "dall-e", "davinci", "gpt-audio", "gpt-image", "imagen", "image", "lyria", "nano-banana", "sora", "veo",
-];
+const NON_AGENT_MARKERS: [&str; 16] =
+    ["embedding", "embed", "rerank", "moderation", "whisper", "tts", "dall-e", "davinci", "gpt-audio", "gpt-image", "imagen", "image", "lyria", "nano-banana", "sora", "veo"];
 
 pub fn is_agent_model_id(id: &str) -> bool {
     let l = id.to_lowercase();

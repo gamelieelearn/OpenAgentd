@@ -229,7 +229,12 @@ pub fn opt_int_field(v: &Value, k: &str) -> ApiResult<Option<i64>> {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Number(n)) => match n.as_i64().or_else(|| n.as_f64().filter(|f| f.fract() == 0.0).map(|f| f as i64)) {
             Some(i) => Ok(Some(i)),
-            None => Err(ApiError::validation(vec![verr("int_from_float", &loc(&["body", k]), "Input should be a valid integer, got a number with a fractional part", Value::Number(n.clone()))])),
+            None => Err(ApiError::validation(vec![verr(
+                "int_from_float",
+                &loc(&["body", k]),
+                "Input should be a valid integer, got a number with a fractional part",
+                Value::Number(n.clone()),
+            )])),
         },
         Some(Value::String(s)) => s.trim().parse::<i64>().map(Some).map_err(|_| ApiError::validation(vec![int_parsing(&["body", k], s)])),
         Some(other) => Err(ApiError::validation(vec![verr("int_type", &loc(&["body", k]), "Input should be a valid integer", other.clone())])),

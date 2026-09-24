@@ -69,8 +69,7 @@ pub fn split_chunks(text: &str) -> Vec<String> {
             if at(qi) == Some('-') {
                 let lb2 = at(qi - 2).is_some_and(is_letter) && at(qi - 1).is_some_and(is_letter);
                 let lb4 = at(qi - 3).is_some_and(is_letter) && at(qi - 2) == Some('-') && at(qi - 1).is_some_and(is_letter);
-                let la = at(qi + 1).is_some_and(is_letter)
-                    && (at(qi + 2).is_some_and(is_letter) || (at(qi + 2) == Some('-') && at(qi + 3).is_some_and(is_letter)));
+                let la = at(qi + 1).is_some_and(is_letter) && (at(qi + 2).is_some_and(is_letter) || (at(qi + 2) == Some('-') && at(qi + 3).is_some_and(is_letter)));
                 if (lb2 || lb4) && la {
                     break q + 1;
                 }

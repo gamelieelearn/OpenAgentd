@@ -186,9 +186,7 @@ fn oai_parts(parts: &[ContentBlock]) -> Vec<Value> {
 }
 
 fn oai_tool_calls(tcs: &[ToolCall]) -> Vec<Value> {
-    tcs.iter()
-        .map(|tc| json!({"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}))
-        .collect()
+    tcs.iter().map(|tc| json!({"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}})).collect()
 }
 
 /// Canonical `{"type":"function","function":{...}}` → OpenAI tools.
@@ -448,13 +446,7 @@ impl CompletionsHandler {
             .and_then(|v| v.as_array())
             .map(|a| {
                 a.iter()
-                    .map(|tc| {
-                        ToolCall::new(
-                            tc["id"].as_str().unwrap_or(""),
-                            tc["function"]["name"].as_str().unwrap_or(""),
-                            tc["function"]["arguments"].as_str().unwrap_or(""),
-                        )
-                    })
+                    .map(|tc| ToolCall::new(tc["id"].as_str().unwrap_or(""), tc["function"]["name"].as_str().unwrap_or(""), tc["function"]["arguments"].as_str().unwrap_or("")))
                     .collect()
             })
             .unwrap_or_default();
@@ -473,7 +465,14 @@ impl CompletionsHandler {
         a
     }
 
-    pub async fn chat(&self, client: &reqwest::Client, messages: &[ChatMessage], tools: Option<&[ToolSpec]>, merged: &Kwargs, cost_model: Option<&str>) -> ProviderResult<AssistantMessage> {
+    pub async fn chat(
+        &self,
+        client: &reqwest::Client,
+        messages: &[ChatMessage],
+        tools: Option<&[ToolSpec]>,
+        merged: &Kwargs,
+        cost_model: Option<&str>,
+    ) -> ProviderResult<AssistantMessage> {
         let body = self.build_request(messages, tools, false, merged);
         let resp = sse::send_checked(self.request(client, &body).timeout(DEFAULT_REQUEST_TIMEOUT), "openai_chat").await?;
         let data: Value = resp.json().await.map_err(ProviderError::from_reqwest)?;
@@ -890,7 +889,14 @@ impl ResponsesHandler {
         a
     }
 
-    pub async fn chat(&self, client: &reqwest::Client, messages: &[ChatMessage], tools: Option<&[ToolSpec]>, merged: &Kwargs, cost_model: Option<&str>) -> ProviderResult<AssistantMessage> {
+    pub async fn chat(
+        &self,
+        client: &reqwest::Client,
+        messages: &[ChatMessage],
+        tools: Option<&[ToolSpec]>,
+        merged: &Kwargs,
+        cost_model: Option<&str>,
+    ) -> ProviderResult<AssistantMessage> {
         if self.codex().is_some() {
             return self.chat_via_stream(client, messages, tools, merged, cost_model).await;
         }
@@ -904,7 +910,14 @@ impl ResponsesHandler {
 
     /// `_CodexResponsesHandler.chat`: the endpoint only streams, so the final
     /// message is assembled from the stream.
-    async fn chat_via_stream(&self, client: &reqwest::Client, messages: &[ChatMessage], tools: Option<&[ToolSpec]>, merged: &Kwargs, cost_model: Option<&str>) -> ProviderResult<AssistantMessage> {
+    async fn chat_via_stream(
+        &self,
+        client: &reqwest::Client,
+        messages: &[ChatMessage],
+        tools: Option<&[ToolSpec]>,
+        merged: &Kwargs,
+        cost_model: Option<&str>,
+    ) -> ProviderResult<AssistantMessage> {
         let mut s = self.stream(client, messages, tools, merged).await?;
         let (mut content, mut reasoning) = (String::new(), String::new());
         let mut items: Vec<EncryptedReasoningItem> = vec![];
@@ -1369,7 +1382,8 @@ mod tests {
     fn responses_stream_tool_call() {
         let mut p = ResponsesStreamParser::new("m".into());
         p.feed(&json!({"type": "response.created", "response": {"id": "r1"}}), "").unwrap();
-        p.feed(&json!({"type": "response.output_item.added", "output_index": 0, "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "read"}}), "").unwrap();
+        p.feed(&json!({"type": "response.output_item.added", "output_index": 0, "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "read"}}), "")
+            .unwrap();
         let c = p.feed(&json!({"type": "response.function_call_arguments.delta", "item_id": "fc_1", "output_index": 0, "delta": "{\"a\""}), "").unwrap();
         let d = &c[0].choices[0].delta.tool_calls.as_ref().unwrap()[0];
         assert_eq!(d.id.as_deref(), Some("call_1"));

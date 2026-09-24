@@ -37,9 +37,7 @@ pub fn db_id(raw: &str) -> String {
 
 /// Render a stored UUID in the API (Pydantic) form — hyphenated.
 pub fn api_uuid(db: &str) -> String {
-    parse_uuid(db)
-        .map(|u| u.hyphenated().to_string())
-        .unwrap_or_else(|| db.to_string())
+    parse_uuid(db).map(|u| u.hyphenated().to_string()).unwrap_or_else(|| db.to_string())
 }
 
 /// Generate a fresh UUIDv7 in its on-disk form.
@@ -78,14 +76,7 @@ pub fn parse_dt(raw: &str) -> Option<DateTime<Utc>> {
             return Some(dt.with_timezone(&Utc));
         }
     }
-    for fmt in [
-        "%Y-%m-%d %H:%M:%S%.f",
-        "%Y-%m-%dT%H:%M:%S%.f",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d %H:%M",
-        "%Y-%m-%dT%H:%M",
-    ] {
+    for fmt in ["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M"] {
         if let Ok(naive) = NaiveDateTime::parse_from_str(s, fmt) {
             return Some(Utc.from_utc_datetime(&naive));
         }
@@ -111,20 +102,14 @@ pub fn api_dt_from(dt: &DateTime<Utc>) -> String {
 
 /// Render a stored datetime in API form; unparseable input passes through.
 pub fn api_dt(db: &str) -> String {
-    parse_dt(db)
-        .map(|dt| api_dt_from(&dt))
-        .unwrap_or_else(|| db.to_string())
+    parse_dt(db).map(|dt| api_dt_from(&dt)).unwrap_or_else(|| db.to_string())
 }
 
 /// Python `datetime.isoformat()` of an aware UTC value (`+00:00` suffix).
 ///
 /// v2 embeds this form inside JSON blobs (e.g. `chat_sessions.revert`).
 pub fn py_isoformat(dt: &DateTime<Utc>) -> String {
-    let base = if dt.timestamp_subsec_micros() == 0 {
-        dt.naive_utc().format("%Y-%m-%dT%H:%M:%S").to_string()
-    } else {
-        dt.naive_utc().format("%Y-%m-%dT%H:%M:%S%.6f").to_string()
-    };
+    let base = if dt.timestamp_subsec_micros() == 0 { dt.naive_utc().format("%Y-%m-%dT%H:%M:%S").to_string() } else { dt.naive_utc().format("%Y-%m-%dT%H:%M:%S%.6f").to_string() };
     format!("{base}+00:00")
 }
 
@@ -178,20 +163,14 @@ mod tests {
         assert_eq!(api_dt(stored), "2026-09-23T06:56:28.225815Z");
         assert_eq!(api_dt("2026-09-23 06:56:28.000000"), "2026-09-23T06:56:28Z");
         assert_eq!(py_isoformat(&dt), "2026-09-23T06:56:28.225815+00:00");
-        assert_eq!(
-            db_dt("2026-09-23T13:56:28.225815+07:00").unwrap(),
-            "2026-09-23 06:56:28.225815"
-        );
+        assert_eq!(db_dt("2026-09-23T13:56:28.225815+07:00").unwrap(), "2026-09-23 06:56:28.225815");
         assert_eq!(db_dt("2026-09-23T06:56:28Z").unwrap(), "2026-09-23 06:56:28.000000");
     }
 
     #[test]
     fn json_matches_python_dumps() {
         let v = json!({"model": "codex:gpt-5.5", "n": [1, 2], "vi": "Tiếng Việt 😀"});
-        assert_eq!(
-            py_json_dumps(&v),
-            r#"{"model": "codex:gpt-5.5", "n": [1, 2], "vi": "Ti\u1ebfng Vi\u1ec7t \ud83d\ude00"}"#
-        );
+        assert_eq!(py_json_dumps(&v), r#"{"model": "codex:gpt-5.5", "n": [1, 2], "vi": "Ti\u1ebfng Vi\u1ec7t \ud83d\ude00"}"#);
         assert_eq!(json_db(None), "null");
         assert_eq!(json_col(Some("null")), None);
         assert_eq!(json_col(None), None);

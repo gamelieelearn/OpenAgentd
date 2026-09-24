@@ -131,7 +131,8 @@ async fn cleanup_generated_artifacts(db: &SqlitePool, db_path: &Path, older_than
     let coding: &HashSet<String> = &live;
     let mut candidates = vec![];
 
-    for (rel, reason) in [(Path::new("logs").join("sessions"), "old session logs"), (PathBuf::from("telemetry"), "old telemetry files"), (PathBuf::from("otel"), "old otel files")] {
+    for (rel, reason) in [(Path::new("logs").join("sessions"), "old session logs"), (PathBuf::from("telemetry"), "old telemetry files"), (PathBuf::from("otel"), "old otel files")]
+    {
         for child in child_dirs(&s.state_dir.join(rel)) {
             if old_enough(&child, cutoff) {
                 let bytes = dir_size(&child);
@@ -208,15 +209,7 @@ async fn cleanup_generated_artifacts(db: &SqlitePool, db_path: &Path, older_than
             }
         }
     }
-    Ok(CleanupResult {
-        dry_run,
-        candidates,
-        deleted,
-        expired_sessions: expired.len(),
-        expired_messages,
-        vacuum_reclaimed_bytes: reclaimed,
-        vacuum_error: verr,
-    })
+    Ok(CleanupResult { dry_run, candidates, deleted, expired_sessions: expired.len(), expired_messages, vacuum_reclaimed_bytes: reclaimed, vacuum_error: verr })
 }
 
 /// `app/core/db.py::vacuum_sqlite` → `(size_before, size_after)`; the error

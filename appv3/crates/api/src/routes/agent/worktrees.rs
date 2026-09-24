@@ -34,10 +34,17 @@ pub async fn run_git_timeout(ws: &Path, args: &[&str], timeout: Duration) -> Api
     let mut cmd = tokio::process::Command::new("git");
     cmd.arg("-C").arg(ws).args(args).stdin(std::process::Stdio::null()).kill_on_drop(true);
     match tokio::time::timeout(timeout, cmd.output()).await {
-        Ok(Ok(o)) => Ok(GitOut { code: o.status.code().unwrap_or(-1), stdout: String::from_utf8_lossy(&o.stdout).to_string(), stderr: String::from_utf8_lossy(&o.stderr).to_string() }),
+        Ok(Ok(o)) => {
+            Ok(GitOut { code: o.status.code().unwrap_or(-1), stdout: String::from_utf8_lossy(&o.stdout).to_string(), stderr: String::from_utf8_lossy(&o.stderr).to_string() })
+        }
         Ok(Err(e)) => Err(ApiError::new(500, format!("git failed: {e}"))),
         Err(_) => {
-            let cmdline = std::iter::once("git".to_string()).chain(["-C".to_string(), ws.display().to_string()]).chain(args.iter().map(|a| a.to_string())).map(|a| format!("'{a}'")).collect::<Vec<_>>().join(", ");
+            let cmdline = std::iter::once("git".to_string())
+                .chain(["-C".to_string(), ws.display().to_string()])
+                .chain(args.iter().map(|a| a.to_string()))
+                .map(|a| format!("'{a}'"))
+                .collect::<Vec<_>>()
+                .join(", ");
             Err(ApiError::new(500, format!("git failed: Command '[{cmdline}]' timed out after {} seconds", timeout.as_secs())))
         }
     }
@@ -394,11 +401,23 @@ async fn create_worktree_route(State(st): State<AppState>, raw: Bytes) -> ApiRes
     }
     let name = opt_str_field(&b, "name")?;
     if name.as_ref().map(|n| n.chars().count() > 80).unwrap_or(false) {
-        return Err(ApiError::validation(vec![verr_ctx("string_too_long", &loc(&["body", "name"]), "String should have at most 80 characters", json!(name), json!({"max_length": 80}))]));
+        return Err(ApiError::validation(vec![verr_ctx(
+            "string_too_long",
+            &loc(&["body", "name"]),
+            "String should have at most 80 characters",
+            json!(name),
+            json!({"max_length": 80}),
+        )]));
     }
     let branch = opt_str_field(&b, "branch")?;
     if branch.as_ref().map(|n| n.chars().count() > 255).unwrap_or(false) {
-        return Err(ApiError::validation(vec![verr_ctx("string_too_long", &loc(&["body", "branch"]), "String should have at most 255 characters", json!(branch), json!({"max_length": 255}))]));
+        return Err(ApiError::validation(vec![verr_ctx(
+            "string_too_long",
+            &loc(&["body", "branch"]),
+            "String should have at most 255 characters",
+            json!(branch),
+            json!({"max_length": 255}),
+        )]));
     }
     let detached = opt_bool_field(&b, "detached")?.unwrap_or(false);
     let info = create_worktree(&st.pool, &src, name.as_deref(), branch.as_deref(), detached).await?;

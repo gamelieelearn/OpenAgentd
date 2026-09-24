@@ -104,7 +104,8 @@ async fn get_media(State(st): State<AppState>, AxPath((sid, file_path)): AxPath<
     let resolved = safe_resolve(&session_workspace(&st, &sid).await?, &file_path)?;
     let mime = guess_mime(&resolved);
     let name = name_of(&resolved);
-    Ok(file_response(&resolved, &headers, FileOpts { media_type: &mime, filename: Some(&name), disposition: if download { "attachment" } else { "inline" }, extra_headers: &[] }).await)
+    Ok(file_response(&resolved, &headers, FileOpts { media_type: &mime, filename: Some(&name), disposition: if download { "attachment" } else { "inline" }, extra_headers: &[] })
+        .await)
 }
 
 // ── listings ────────────────────────────────────────────────────────────────
@@ -255,7 +256,12 @@ async fn read_workspace_file(q: Qs, headers: HeaderMap) -> ApiResult<Response> {
     }
     let mime = guess_mime(&target);
     let name = name_of(&target);
-    Ok(file_response(&target, &headers, FileOpts { media_type: &mime, filename: download.then_some(name.as_str()), disposition: "attachment", extra_headers: &[("cache-control", "no-store")] }).await)
+    Ok(file_response(
+        &target,
+        &headers,
+        FileOpts { media_type: &mime, filename: download.then_some(name.as_str()), disposition: "attachment", extra_headers: &[("cache-control", "no-store")] },
+    )
+    .await)
 }
 
 async fn list_workspace_files(q: Qs) -> ApiResult<Response> {
@@ -295,9 +301,21 @@ fn normpath(p: &str) -> String {
         }
     }
     let joined = parts.join("/");
-    let lead = if abs { if p.starts_with("//") && !p.starts_with("///") { "//" } else { "/" } } else { "" };
+    let lead = if abs {
+        if p.starts_with("//") && !p.starts_with("///") {
+            "//"
+        } else {
+            "/"
+        }
+    } else {
+        ""
+    };
     let out = format!("{lead}{joined}");
-    if out.is_empty() { ".".into() } else { out }
+    if out.is_empty() {
+        ".".into()
+    } else {
+        out
+    }
 }
 
 async fn bounded_git_diff(cwd: &str, args: &[&str], max_bytes: usize) -> ApiResult<(String, String, i32, bool)> {
@@ -510,7 +528,11 @@ async fn workspace_status(q: Qs) -> ApiResult<Response> {
     let resolved = validated(&workspace)?;
     let root = PathBuf::from(&resolved);
     let name = root.file_name().map(|n| n.to_string_lossy().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| resolved.clone());
-    let not_git = || json(json!({"workspace": resolved, "name": name, "is_git_repo": false, "branch": null, "dirty": null, "head": null, "commits_ahead": null, "commits_behind": null, "upstream": null}));
+    let not_git = || {
+        json(
+            json!({"workspace": resolved, "name": name, "is_git_repo": false, "branch": null, "dirty": null, "head": null, "commits_ahead": null, "commits_behind": null, "upstream": null}),
+        )
+    };
     if !root.join(".git").exists() {
         return Ok(not_git());
     }
@@ -559,7 +581,8 @@ async fn workspace_status(q: Qs) -> ApiResult<Response> {
         }
         if let (Some(r), Some(_), Some(_)) = (&upstream_ref, p.ahead, p.behind) {
             if r == "@{u}" {
-                p.upstream = Some(git(&resolved, &["rev-parse", "--abbrev-ref", "@{u}"]).await.map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).unwrap_or_else(|| "@{u}".into()));
+                p.upstream =
+                    Some(git(&resolved, &["rev-parse", "--abbrev-ref", "@{u}"]).await.map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).unwrap_or_else(|| "@{u}".into()));
             } else {
                 p.upstream = Some(r.clone());
             }

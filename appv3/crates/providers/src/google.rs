@@ -242,7 +242,15 @@ impl GoogleGenAiProvider {
         if api_key.is_empty() {
             return Err(ProviderError::Invalid("Google API key is required. Provide it or set GOOGLE_API_KEY.".into()));
         }
-        Ok(Self { model: model.into(), provider_name: None, base_url: base_url.trim_end_matches('/').into(), base_kwargs: model_kwargs, model_path: None, api_key: api_key.into(), client: shared_client() })
+        Ok(Self {
+            model: model.into(),
+            provider_name: None,
+            base_url: base_url.trim_end_matches('/').into(),
+            base_kwargs: model_kwargs,
+            model_path: None,
+            api_key: api_key.into(),
+            client: shared_client(),
+        })
     }
 
     /// v2 `VertexAIProvider` (express mode without project, normal mode with).
@@ -383,11 +391,7 @@ impl LlmProvider for GoogleGenAiProvider {
     async fn stream(&self, messages: &[ChatMessage], tools: Option<&[ToolSpec]>, kwargs: &Kwargs) -> ProviderResult<ChunkStream> {
         let merged = self.merged_kwargs(kwargs);
         let body = self.build_request(messages, tools, &merged);
-        let req = self
-            .client
-            .post(format!("{}?alt=sse", self.url("streamGenerateContent")))
-            .header("x-goog-api-key", &self.api_key)
-            .json(&body);
+        let req = self.client.post(format!("{}?alt=sse", self.url("streamGenerateContent"))).header("x-goog-api-key", &self.api_key).json(&body);
         let resp = sse::send_stream(req, Some(Duration::from_secs(120)), "gemini_api").await?;
         let model = self.model.clone();
         let events = sse::data_json(resp, None, false);

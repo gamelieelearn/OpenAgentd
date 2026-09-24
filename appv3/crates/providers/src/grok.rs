@@ -404,7 +404,11 @@ enum VerifyErr {
 }
 
 async fn verify_access(token: &str) -> Result<(), VerifyErr> {
-    let r = with_headers(shared_client().get(format!("{API_BASE}/models")), &session_headers(token, None)).timeout(Duration::from_secs(15)).send().await.map_err(|_| VerifyErr::Warn)?;
+    let r = with_headers(shared_client().get(format!("{API_BASE}/models")), &session_headers(token, None))
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|_| VerifyErr::Warn)?;
     match r.status().as_u16() {
         401 | 403 => Err(VerifyErr::Rejected),
         s if s >= 400 => Err(VerifyErr::Warn),

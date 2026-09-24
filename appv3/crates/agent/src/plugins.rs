@@ -78,7 +78,8 @@ impl JsToolPlugin {
         };
         let r = js.call_blocking(&Target::export(""), factory, &[], Mode::Keep).map_err(|e| e.message)?;
         let handle = r.handle.ok_or_else(|| format!("plugin() in {} must return an object", js.file_name))?;
-        let mut unknown: Vec<String> = r.value.as_object().map(|o| o.keys().filter(|k| ![EVENT_BEFORE, EVENT_AFTER, "applies_to"].contains(&k.as_str())).cloned().collect()).unwrap_or_default();
+        let mut unknown: Vec<String> =
+            r.value.as_object().map(|o| o.keys().filter(|k| ![EVENT_BEFORE, EVENT_AFTER, "applies_to"].contains(&k.as_str())).cloned().collect()).unwrap_or_default();
         unknown.extend(r.methods.iter().filter(|k| ![EVENT_BEFORE, EVENT_AFTER, "applies_to"].contains(&k.as_str())).cloned());
         unknown.sort();
         unknown.dedup();

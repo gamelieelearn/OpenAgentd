@@ -87,7 +87,8 @@ pub fn cmd_serve(ns: &Ns) -> anyhow::Result<()> {
     };
     // v2 builds `settings` (reading `.env`) when importing server_settings.
     appv3_core::env::init_env();
-    let has_auth = token.is_some() || std::env::var("OPENAGENTD_ACCESS_KEY").is_ok_and(|v| !v.is_empty()) || crate::net::server_settings().access_key.is_some_and(|k| !k.is_empty());
+    let has_auth =
+        token.is_some() || std::env::var("OPENAGENTD_ACCESS_KEY").is_ok_and(|v| !v.is_empty()) || crate::net::server_settings().access_key.is_some_and(|k| !k.is_empty());
     crate::net::require_loopback_or_auth(&host, has_auth);
     // Hard-enforce production mode in this entry point (before settings load).
     if std::env::var_os("APP_ENV").is_none() {

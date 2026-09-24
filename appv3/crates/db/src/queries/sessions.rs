@@ -41,30 +41,18 @@ pub async fn create_session(pool: &DbPool, new: NewSession) -> Result<ChatSessio
     .bind(new.interaction_mode.unwrap_or_else(|| "code".into()))
     .execute(pool)
     .await?;
-    get_session(pool, &id)
-        .await?
-        .ok_or_else(|| anyhow!("session vanished after insert"))
+    get_session(pool, &id).await?.ok_or_else(|| anyhow!("session vanished after insert"))
 }
 
 pub async fn get_session(pool: &DbPool, id: &str) -> Result<Option<ChatSession>> {
-    Ok(
-        sqlx::query_as::<_, ChatSession>("SELECT * FROM chat_sessions WHERE id = ?")
-            .bind(db_id(id))
-            .fetch_optional(pool)
-            .await?,
-    )
+    Ok(sqlx::query_as::<_, ChatSession>("SELECT * FROM chat_sessions WHERE id = ?").bind(db_id(id)).fetch_optional(pool).await?)
 }
 
 /// Cursor page of top-level sessions, newest first (v2 `list_sessions_page`).
 ///
 /// `before` is `"<iso created_at>|<uuid>"` or a legacy bare ISO timestamp.
 /// Returns `(rows, next_cursor, has_more)`; errors on a malformed cursor.
-pub async fn list_sessions_page(
-    pool: &DbPool,
-    before: Option<&str>,
-    limit: i64,
-    workspace: Option<&str>,
-) -> Result<(Vec<ChatSession>, Option<String>, bool)> {
+pub async fn list_sessions_page(pool: &DbPool, before: Option<&str>, limit: i64, workspace: Option<&str>) -> Result<(Vec<ChatSession>, Option<String>, bool)> {
     let mut sql = String::from("SELECT * FROM chat_sessions WHERE parent_session_id IS NULL");
     let mut binds: Vec<String> = Vec::new();
     if let Some(ws) = workspace {
@@ -98,15 +86,8 @@ pub async fn list_sessions_page(
     let mut rows = q.bind(limit + 1).fetch_all(pool).await?;
     let has_more = rows.len() as i64 > limit;
     rows.truncate(limit.max(0) as usize);
-    let next_cursor = if has_more {
-        rows.last().and_then(|last| {
-            parse_dt(&last.created_at).map(|dt| {
-                format!("{}|{}", api_dt_from(&dt), crate::codec::api_uuid(&last.id))
-            })
-        })
-    } else {
-        None
-    };
+    let next_cursor =
+        if has_more { rows.last().and_then(|last| parse_dt(&last.created_at).map(|dt| format!("{}|{}", api_dt_from(&dt), crate::codec::api_uuid(&last.id)))) } else { None };
     Ok((rows, next_cursor, has_more))
 }
 
@@ -116,9 +97,7 @@ pub async fn list_child_sessions(pool: &DbPool, parent_ids: &[String]) -> Result
         return Ok(Vec::new());
     }
     let placeholders = vec!["?"; parent_ids.len()].join(",");
-    let sql = format!(
-        "SELECT * FROM chat_sessions WHERE parent_session_id IN ({placeholders}) ORDER BY created_at ASC"
-    );
+    let sql = format!("SELECT * FROM chat_sessions WHERE parent_session_id IN ({placeholders}) ORDER BY created_at ASC");
     let mut q = sqlx::query_as::<_, ChatSession>(&sql);
     for id in parent_ids {
         q = q.bind(db_id(id));

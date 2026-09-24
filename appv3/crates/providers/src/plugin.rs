@@ -123,12 +123,7 @@ pub fn find_provider_plugin(id: &str) -> Option<PluginRef> {
 
 /// `credential_map(fields)`.
 pub fn credential_map(fields: &[CredentialField]) -> Value {
-    Value::Array(
-        fields
-            .iter()
-            .map(|f| json!({"name": f.name, "label": f.label, "secret": f.secret, "required": f.required, "placeholder": f.placeholder}))
-            .collect(),
-    )
+    Value::Array(fields.iter().map(|f| json!({"name": f.name, "label": f.label, "secret": f.secret, "required": f.required, "placeholder": f.placeholder})).collect())
 }
 
 /// Catalog entry for a plugin (v2 `catalog.all_providers`).
@@ -343,9 +338,7 @@ where
     F: std::future::Future<Output = T> + Send + 'static,
     T: Send + 'static,
 {
-    std::thread::spawn(move || tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime").block_on(fut))
-        .join()
-        .expect("block_on_thread panicked")
+    std::thread::spawn(move || tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime").block_on(fut)).join().expect("block_on_thread panicked")
 }
 
 /// Python truthiness of a JSON value.

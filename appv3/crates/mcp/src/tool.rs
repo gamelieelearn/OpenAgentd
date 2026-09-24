@@ -245,11 +245,7 @@ fn extract_app_resource(res: &Value, uri: &str) -> Option<Map<String, Value>> {
         }
         let html = match c.get("text").and_then(|t| t.as_str()) {
             Some(t) => Some(t.to_string()),
-            None => c
-                .get("blob")
-                .and_then(|b| b.as_str())
-                .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
-                .and_then(|b| String::from_utf8(b).ok()),
+            None => c.get("blob").and_then(|b| b.as_str()).and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok()).and_then(|b| String::from_utf8(b).ok()),
         };
         let Some(html) = html.filter(|h| !h.is_empty()) else { continue };
         let mut m = Map::new();
@@ -325,10 +321,7 @@ impl Tool for McpTool {
         };
         let args = if args.is_object() { args } else { json!({}) };
         tracing::debug!("mcp_tool_call server={} tool={} args={:?}", self.server_name, self.remote_name, args.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()));
-        let result = client
-            .call_tool(&self.remote_name, args.clone())
-            .await
-            .map_err(|e| ToolError::Execution(format!("MCP tool '{}' failed: {}", self.name, e.formatted())))?;
+        let result = client.call_tool(&self.remote_name, args.clone()).await.map_err(|e| ToolError::Execution(format!("MCP tool '{}' failed: {}", self.name, e.formatted())))?;
         let content = result.get("content");
         if result.get("isError").and_then(|b| b.as_bool()).unwrap_or(false) {
             let text = extract_text(content);
@@ -344,7 +337,11 @@ impl Tool for McpTool {
                     if let Some(mut app) = extract_app_resource(&res, uri) {
                         if app.get("resourceMeta").map(|m| m.is_null()).unwrap_or(true) {
                             let listing = client.list_resources().await.ok().and_then(|l| {
-                                l.get("resources")?.as_array()?.iter().find(|r| r.get("uri").and_then(|u| u.as_str()) == Some(uri)).map(|r| r.get("_meta").filter(|m| m.is_object()).cloned().unwrap_or(Value::Null))
+                                l.get("resources")?
+                                    .as_array()?
+                                    .iter()
+                                    .find(|r| r.get("uri").and_then(|u| u.as_str()) == Some(uri))
+                                    .map(|r| r.get("_meta").filter(|m| m.is_object()).cloned().unwrap_or(Value::Null))
                             });
                             app.insert("resourceMeta".into(), listing.unwrap_or(Value::Null));
                         }

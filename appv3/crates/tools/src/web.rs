@@ -374,8 +374,40 @@ fn fenced(text: &str) -> HandlerResult {
 
 /// `trafilatura.baseline._BLOCK_ELEMS`.
 const BLOCK_ELEMS: &[&str] = &[
-    "address", "article", "aside", "blockquote", "br", "dd", "div", "dl", "dt", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr",
-    "li", "main", "nav", "ol", "p", "pre", "section", "summary", "table", "td", "th", "tr", "ul",
+    "address",
+    "article",
+    "aside",
+    "blockquote",
+    "br",
+    "dd",
+    "div",
+    "dl",
+    "dt",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "header",
+    "hr",
+    "li",
+    "main",
+    "nav",
+    "ol",
+    "p",
+    "pre",
+    "section",
+    "summary",
+    "table",
+    "td",
+    "th",
+    "tr",
+    "ul",
 ];
 
 /// `trafilatura.settings._COOKIE_CONSENT_RE`.
@@ -435,10 +467,7 @@ pub fn html2txt(html: &str) -> String {
 /// markup (html5ever's default treats it as raw text).
 fn parse_html(html: &str) -> scraper::Html {
     use html5ever::tendril::TendrilSink;
-    let opts = html5ever::ParseOpts {
-        tree_builder: html5ever::tree_builder::TreeBuilderOpts { scripting_enabled: false, ..Default::default() },
-        ..Default::default()
-    };
+    let opts = html5ever::ParseOpts { tree_builder: html5ever::tree_builder::TreeBuilderOpts { scripting_enabled: false, ..Default::default() }, ..Default::default() };
     html5ever::driver::parse_document(scraper::HtmlTreeSink::new(scraper::Html::new_document()), opts).one(html)
 }
 
@@ -842,7 +871,9 @@ verify the installation by printing its version number as shown.</p>
         assert!(process(&minimal_pdf("Hello Anydoc World", false), Some("application/pdf"), "markdown").unwrap().contains("Hello Anydoc World"));
         // Generic content type: sniffed as PDF from the bytes.
         assert!(process(&minimal_pdf("Sniffed PDF", false), Some("application/octet-stream"), "text").unwrap().contains("Sniffed PDF"));
-        assert!(process(&minimal_docx("Hello from DOCX"), Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"), "markdown").unwrap().contains("Hello from DOCX"));
+        assert!(process(&minimal_docx("Hello from DOCX"), Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"), "markdown")
+            .unwrap()
+            .contains("Hello from DOCX"));
         let err = process(b"\x89PNG\r\n\x1a\n\x00\x00", Some("image/png"), "markdown").unwrap_err();
         assert_eq!(err.message, "Content conversion failed.");
     }

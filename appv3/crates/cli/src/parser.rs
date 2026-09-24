@@ -65,11 +65,7 @@ pub fn build_parser() -> Parser {
             );
             p.raw = true;
             p.add(Action::store(&["--output"]).metavar("PATH").help("Archive path (default: openagentd-export-<TIMESTAMP>.tar.gz in CWD)"));
-            p.add(
-                Action::store_true(&["--include-secrets"])
-                    .dest("include_secrets")
-                    .help("Embed API keys verbatim instead of redacting them (use over trusted channels only)"),
-            );
+            p.add(Action::store_true(&["--include-secrets"]).dest("include_secrets").help("Embed API keys verbatim instead of redacting them (use over trusted channels only)"));
             p.add(Action::store(&["--config-dir"]).metavar("DIR").dest("config_dir").help("Config directory to export (default: XDG config)"));
             func(p, "export");
         });
@@ -114,11 +110,7 @@ pub fn build_parser() -> Parser {
                 Action::store_true(&["--generate-token"])
                     .help("Generate a random desktop session token and require it for API access. The token is included in the handshake line."),
             );
-            p.add(
-                Action::store(&["--parent-pid"])
-                    .int()
-                    .help("Exit if the given PID is no longer alive. Used by the desktop shell to clean up the backend when it crashes."),
-            );
+            p.add(Action::store(&["--parent-pid"]).int().help("Exit if the given PID is no longer alive. Used by the desktop shell to clean up the backend when it crashes."));
             func(p, "serve");
         });
         s.add_parser("stop", Some("Stop the background server"), |p| func(p, "stop"));
@@ -165,10 +157,7 @@ pub fn build_parser() -> Parser {
         p.add(Action::store(&["--older-than-days"]).int().default(Val::Int(14)).help("Only delete artifacts older than this many days (default: 14)"));
         p.add(Action::store_false(&["--apply"]).dest("dry_run").help("Delete the listed artifacts instead of only printing them"));
         p.add(Action::store(&["--limit"]).int().default(Val::Int(50)).help("Maximum candidate paths to print (default: 50)"));
-        p.add(
-            Action::store_true(&["--vacuum"])
-                .help("Rebuild the SQLite file so pages freed by deleted rows return to the OS (requires --apply; skipped on dry runs)"),
-        );
+        p.add(Action::store_true(&["--vacuum"]).help("Rebuild the SQLite file so pages freed by deleted rows return to the OS (requires --apply; skipped on dry runs)"));
         func(p, "cleanup");
         p.set_default("dry_run", Val::Bool(true));
     });

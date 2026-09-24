@@ -65,7 +65,9 @@ async fn put_file(q: Qs, headers: HeaderMap, body: Bytes) -> ApiResult<Response>
     let content = match b.get("content") {
         Some(Value::String(s)) => s.clone(),
         None => return Err(crate::error::missing(&["body", "content"], b.clone())),
-        Some(o) => return Err(ApiError::validation(vec![crate::error::verr("string_type", &crate::error::loc(&["body", "content"]), "Input should be a valid string", o.clone())])),
+        Some(o) => {
+            return Err(ApiError::validation(vec![crate::error::verr("string_type", &crate::error::loc(&["body", "content"]), "Input should be a valid string", o.clone())]))
+        }
     };
     let (page, _) = mem::write_page(&root(), &path, &content, if_match(&headers).as_deref()).await.map_err(mem_err)?;
     Ok(page_json(&page))
@@ -80,13 +82,20 @@ async fn delete_file(q: Qs, headers: HeaderMap) -> ApiResult<Response> {
 async fn search(q: Qs) -> ApiResult<Response> {
     let query = q.req("query")?;
     if query.is_empty() {
-        return Err(ApiError::validation(vec![crate::error::verr_ctx("string_too_short", &crate::error::loc(&["query", "query"]), "String should have at least 1 character", json!(query), json!({"min_length": 1}))]));
+        return Err(ApiError::validation(vec![crate::error::verr_ctx(
+            "string_too_short",
+            &crate::error::loc(&["query", "query"]),
+            "String should have at least 1 character",
+            json!(query),
+            json!({"min_length": 1}),
+        )]));
     }
     let results = blocking(move || mem::search_memory(&root(), &query)).await;
     Ok(json(json!({"results": results})))
 }
 
 async fn lint() -> Response {
-    let findings: Vec<Value> = blocking(|| mem::lint(&root())).await.into_iter().map(|f| json!({"code": f.get("code"), "path": f.get("path"), "message": f.get("message")})).collect();
+    let findings: Vec<Value> =
+        blocking(|| mem::lint(&root())).await.into_iter().map(|f| json!({"code": f.get("code"), "path": f.get("path"), "message": f.get("message")})).collect();
     json(json!({"findings": findings}))
 }

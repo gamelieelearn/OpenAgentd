@@ -5,7 +5,7 @@
 
 use crate::client::{transport_err, McpError};
 use crate::config::{resolve_secret_refs, OAuthConfig};
-use appv3_providers::plugin::{b64url, pkce_challenge, qs_first, parse_qs, random_bytes, urlencode};
+use appv3_providers::plugin::{b64url, parse_qs, pkce_challenge, qs_first, random_bytes, urlencode};
 use serde_json::{json, Map, Value};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -635,13 +635,8 @@ async fn serve_callback(listener: tokio::net::TcpListener) -> Result<CodeResult,
             return Err(McpError::Transport("RuntimeError", format!("OAuth failed: {error}")));
         }
         let (code, state, iss) = (qs_first(&qs, "code"), qs_first(&qs, "state"), qs_first(&qs, "iss"));
-        write_response(
-            &mut sock,
-            200,
-            "OK",
-            Some("<h1>Authorization successful</h1><p>You can close this window.</p><script>setTimeout(()=>window.close(),2000)</script>".into()),
-        )
-        .await;
+        write_response(&mut sock, 200, "OK", Some("<h1>Authorization successful</h1><p>You can close this window.</p><script>setTimeout(()=>window.close(),2000)</script>".into()))
+            .await;
         return Ok(CodeResult { code, state: Some(state).filter(|s| !s.is_empty()), iss: Some(iss).filter(|s| !s.is_empty()) });
     }
 }
@@ -663,11 +658,7 @@ fn open_browser(url: &str) -> Result<(), String> {
             vec![cmd.to_string(), url.to_string()]
         }
     };
-    let mut child = std::process::Command::new(&argv[0])
-        .args(&argv[1..])
-        .stdin(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    let mut child = std::process::Command::new(&argv[0]).args(&argv[1..]).stdin(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())?;
     std::thread::spawn(move || {
         let _ = child.wait();
     });
@@ -836,9 +827,8 @@ fn set_pair(data: &mut Vec<(String, String)>, k: &str, v: &str) {
 
 /// `get_client_metadata_scopes`.
 fn select_scopes(www_scope: Option<String>, prm: Option<&Prm>, asm: Option<&AsMeta>, grant_types: &[&str]) -> Option<String> {
-    let mut selected = www_scope
-        .or_else(|| prm.and_then(|p| p.scopes_supported.as_ref()).map(|s| s.join(" ")))
-        .or_else(|| asm.and_then(|a| a.scopes_supported.as_ref()).map(|s| s.join(" ")))?;
+    let mut selected =
+        www_scope.or_else(|| prm.and_then(|p| p.scopes_supported.as_ref()).map(|s| s.join(" "))).or_else(|| asm.and_then(|a| a.scopes_supported.as_ref()).map(|s| s.join(" ")))?;
     if asm.and_then(|a| a.scopes_supported.as_ref()).map(|s| s.iter().any(|x| x == "offline_access")).unwrap_or(false)
         && grant_types.contains(&"refresh_token")
         && !selected.split_whitespace().any(|s| s == "offline_access")

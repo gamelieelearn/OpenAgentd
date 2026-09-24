@@ -162,15 +162,7 @@ struct Emitter {
 fn analyze_scalar(scalar: &str) -> Analysis {
     let chars: Vec<char> = scalar.chars().collect();
     if chars.is_empty() {
-        return Analysis {
-            scalar: String::new(),
-            empty: true,
-            multiline: false,
-            allow_flow_plain: false,
-            allow_block_plain: true,
-            allow_single_quoted: true,
-            allow_block: false,
-        };
+        return Analysis { scalar: String::new(), empty: true, multiline: false, allow_flow_plain: false, allow_block_plain: true, allow_single_quoted: true, allow_block: false };
     }
     let (mut block_indicators, mut flow_indicators, mut line_breaks, mut special_characters) = (false, false, false, false);
     let (mut leading_space, mut leading_break, mut trailing_space, mut trailing_break, mut break_space, mut space_break) = (false, false, false, false, false, false);

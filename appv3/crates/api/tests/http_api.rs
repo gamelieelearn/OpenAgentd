@@ -231,9 +231,7 @@ async fn http_api_end_to_end() {
     assert_eq!(st, StatusCode::NOT_FOUND);
 
     // ── desktop token middleware ─────────────────────────────────────────
-    let authed = Client {
-        app: create_app(AppState { pool: pool.clone() }, Policy { token: Arc::new("tok".into()), ..Policy::from_env() }),
-    };
+    let authed = Client { app: create_app(AppState { pool: pool.clone() }, Policy { token: Arc::new("tok".into()), ..Policy::from_env() }) };
     let (st, v) = authed.json("GET", "/api/agents", None).await;
     assert_eq!(st, StatusCode::UNAUTHORIZED);
     assert_eq!(v, json!({"detail": "Unauthorized — OpenAgentd access key required."}));

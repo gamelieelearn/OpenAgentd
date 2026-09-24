@@ -46,7 +46,13 @@ fn int_field(b: &mut Body, k: &str, default: i64, ge: i64, le: i64) -> i64 {
     if b.obj.contains_key(k) && b.errs.is_empty() {
         let input = b.obj[k].clone();
         if v < ge {
-            b.errs.push(crate::error::verr_ctx("greater_than_equal", &[json!("body"), json!(k)], &format!("Input should be greater than or equal to {ge}"), input, json!({"ge": ge})));
+            b.errs.push(crate::error::verr_ctx(
+                "greater_than_equal",
+                &[json!("body"), json!(k)],
+                &format!("Input should be greater than or equal to {ge}"),
+                input,
+                json!({"ge": ge}),
+            ));
         } else if v > le {
             b.errs.push(crate::error::verr_ctx("less_than_equal", &[json!("body"), json!(k)], &format!("Input should be less than or equal to {le}"), input, json!({"le": le})));
         }

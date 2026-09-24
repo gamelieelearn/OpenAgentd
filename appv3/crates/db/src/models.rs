@@ -45,18 +45,11 @@ impl ChatSession {
     }
     /// `revert.message_id` as a UUID, if a boundary is staged.
     pub fn revert_message_id(&self) -> Option<Uuid> {
-        self.revert_json()?
-            .get("message_id")?
-            .as_str()
-            .and_then(parse_uuid)
+        self.revert_json()?.get("message_id")?.as_str().and_then(parse_uuid)
     }
     /// `revert.snapshot` — the redo anchor.
     pub fn redo_anchor(&self) -> Option<String> {
-        self.revert_json()?
-            .get("snapshot")?
-            .as_str()
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
+        self.revert_json()?.get("snapshot")?.as_str().filter(|s| !s.is_empty()).map(str::to_string)
     }
 }
 
@@ -89,11 +82,7 @@ impl SessionMessage {
     }
     /// `extra.snapshot` — the workspace snapshot taken before this user turn.
     pub fn snapshot(&self) -> Option<String> {
-        self.extra_json()?
-            .get("snapshot")?
-            .as_str()
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
+        self.extra_json()?.get("snapshot")?.as_str().filter(|s| !s.is_empty()).map(str::to_string)
     }
     /// `extra.from_agent` is absent or `"user"` — authored by the human.
     pub fn is_from_user(&self) -> bool {
@@ -133,10 +122,7 @@ pub struct PendingQuestion {
 
 impl PendingQuestion {
     pub fn questions(&self) -> Vec<Value> {
-        json_col(Some(&self.payload))
-            .and_then(|p| p.get("questions").cloned())
-            .and_then(|q| q.as_array().cloned())
-            .unwrap_or_default()
+        json_col(Some(&self.payload)).and_then(|p| p.get("questions").cloned()).and_then(|q| q.as_array().cloned()).unwrap_or_default()
     }
     pub fn answers_json(&self) -> Option<Value> {
         json_col(self.answers.as_deref())

@@ -80,10 +80,7 @@ pub fn py_repr_str(s: &str) -> String {
 pub fn validate_server_name(name: &str) -> Result<(), String> {
     let core = name.strip_suffix('\n').unwrap_or(name);
     if !name_re().is_match(core) {
-        return Err(format!(
-            "Invalid MCP server name {}: must match ^[a-zA-Z][a-zA-Z0-9_-]*$ (letters, digits, underscore, hyphen; starting with a letter).",
-            py_repr_str(name)
-        ));
+        return Err(format!("Invalid MCP server name {}: must match ^[a-zA-Z][a-zA-Z0-9_-]*$ (letters, digits, underscore, hyphen; starting with a letter).", py_repr_str(name)));
     }
     Ok(())
 }

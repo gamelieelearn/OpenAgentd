@@ -75,11 +75,7 @@ fn function_type() -> String {
 
 impl ToolCall {
     pub fn new(id: impl Into<String>, name: impl Into<String>, arguments: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            kind: "function".into(),
-            function: FunctionCall { name: name.into(), arguments: arguments.into(), thought: None, thought_signature: None },
-        }
+        Self { id: id.into(), kind: "function".into(), function: FunctionCall { name: name.into(), arguments: arguments.into(), thought: None, thought_signature: None } }
     }
 }
 
@@ -153,20 +149,13 @@ impl AssistantMessage {
         if let Some(items) = &self.reasoning_items {
             if !items.is_empty() {
                 let extra = self.meta.extra.get_or_insert_with(Map::new);
-                extra.insert(
-                    "reasoning_items".into(),
-                    Value::Array(items.iter().map(|i| serde_json::to_value(i).unwrap()).collect()),
-                );
+                extra.insert("reasoning_items".into(), Value::Array(items.iter().map(|i| serde_json::to_value(i).unwrap()).collect()));
                 return;
             }
         }
         let Some(extra) = &self.meta.extra else { return };
         if let Some(Value::Array(raw)) = extra.get("reasoning_items") {
-            let items: Vec<EncryptedReasoningItem> = raw
-                .iter()
-                .filter(|v| v.get("encrypted_content").is_some())
-                .filter_map(|v| serde_json::from_value(v.clone()).ok())
-                .collect();
+            let items: Vec<EncryptedReasoningItem> = raw.iter().filter(|v| v.get("encrypted_content").is_some()).filter_map(|v| serde_json::from_value(v.clone()).ok()).collect();
             if !items.is_empty() {
                 self.reasoning_items = Some(items);
             }
@@ -300,14 +289,7 @@ pub struct ChatCompletionChunk {
 
 impl ChatCompletionChunk {
     pub fn delta(id: &str, model: &str, delta: ChatCompletionDelta, finish_reason: Option<String>, usage: Option<Usage>) -> Self {
-        Self {
-            id: id.to_string(),
-            created: now_ts(),
-            model: model.to_string(),
-            choices: vec![ChunkChoice { index: 0, delta, finish_reason }],
-            usage,
-            agent_name: None,
-        }
+        Self { id: id.to_string(), created: now_ts(), model: model.to_string(), choices: vec![ChunkChoice { index: 0, delta, finish_reason }], usage, agent_name: None }
     }
     pub fn usage_only(id: &str, model: &str, usage: Usage) -> Self {
         Self { id: id.to_string(), created: now_ts(), model: model.to_string(), choices: vec![], usage: Some(usage), agent_name: None }
@@ -374,10 +356,14 @@ impl ProviderError {
     /// Build an HTTP error matching httpx's message format.
     pub fn http(status: u16, url: &str, body: String, headers: Vec<(String, String)>) -> Self {
         let reason = reqwest::StatusCode::from_u16(status).ok().and_then(|s| s.canonical_reason()).unwrap_or("");
-        let kind = if status >= 500 { "Server error" } else if status >= 400 { "Client error" } else { "Error" };
-        let message = format!(
-            "{kind} '{status} {reason}' for url '{url}'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{status}"
-        );
+        let kind = if status >= 500 {
+            "Server error"
+        } else if status >= 400 {
+            "Client error"
+        } else {
+            "Error"
+        };
+        let message = format!("{kind} '{status} {reason}' for url '{url}'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{status}");
         ProviderError::Http { status, body, headers, message }
     }
 }

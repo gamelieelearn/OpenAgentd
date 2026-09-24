@@ -17,24 +17,16 @@ async fn fresh() -> (tempfile::TempDir, appv3_db::DbPool) {
 #[tokio::test]
 async fn fresh_db_is_stamped_at_alembic_head() {
     let (_d, pool) = fresh().await;
-    let v: String = sqlx::query_scalar("SELECT version_num FROM alembic_version")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let v: String = sqlx::query_scalar("SELECT version_num FROM alembic_version").fetch_one(&pool).await.unwrap();
     assert_eq!(v, ALEMBIC_HEAD);
     // Re-opening detects it as current rather than recreating.
-    assert_eq!(
-        appv3_db::migrations::run_migrations(&pool).await.unwrap(),
-        SchemaState::Current
-    );
+    assert_eq!(appv3_db::migrations::run_migrations(&pool).await.unwrap(), SchemaState::Current);
 }
 
 #[tokio::test]
 async fn fresh_db_writes_v2_encoding() {
     let (_d, pool) = fresh().await;
-    let s = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), agent_name: Some("code".into()), ..Default::default() })
-        .await
-        .unwrap();
+    let s = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), agent_name: Some("code".into()), ..Default::default() }).await.unwrap();
     assert_eq!(s.id.len(), 32, "uuid must be stored as 32-char hex");
     assert!(!s.id.contains('-'));
     assert_eq!(s.created_at.len(), 26, "datetime must be 'YYYY-MM-DD HH:MM:SS.ffffff'");
@@ -62,8 +54,7 @@ async fn undo_boundary_then_cleanup_matches_v2_semantics() {
 
     let target = find_undo_target(&pool, &s).await.unwrap().unwrap();
     assert_eq!(target.id, u2.id);
-    let s = update_session(&pool, &s.id, SessionUpdate { revert: Some(Some(revert_state(&target, None))), ..Default::default() })
-        .await.unwrap().unwrap();
+    let s = update_session(&pool, &s.id, SessionUpdate { revert: Some(Some(revert_state(&target, None))), ..Default::default() }).await.unwrap().unwrap();
     // Boundary hides u2+a2 from the LLM window without mutating rows.
     let win = llm_window_rows(&pool, &s.id, true).await.unwrap();
     assert_eq!(win.len(), 2);
@@ -106,10 +97,7 @@ async fn pending_question_round_trip() {
     // Second resolution loses the race.
     assert!(resolve_pending_question(&pool, &q.id, "answered", Some(&answers)).await.unwrap().is_none());
     let win = llm_window_rows(&pool, &s.id, true).await.unwrap();
-    assert_eq!(
-        win.last().unwrap().content.as_deref(),
-        Some("User has answered your questions: \"Proceed?\"=\"Yes\". Continue with the user's answers in mind.")
-    );
+    assert_eq!(win.last().unwrap().content.as_deref(), Some("User has answered your questions: \"Proceed?\"=\"Yes\". Continue with the user's answers in mind."));
 }
 
 #[tokio::test]

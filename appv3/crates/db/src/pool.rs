@@ -29,11 +29,7 @@ pub async fn create_pool(db_path: impl AsRef<Path>) -> Result<DbPool> {
         }
     }
 
-    let connection_string = if in_memory {
-        "sqlite::memory:".to_string()
-    } else {
-        format!("sqlite://{}", path_str)
-    };
+    let connection_string = if in_memory { "sqlite::memory:".to_string() } else { format!("sqlite://{}", path_str) };
 
     let mut opts = SqliteConnectOptions::from_str(&connection_string)?
         .create_if_missing(true)
@@ -48,12 +44,7 @@ pub async fn create_pool(db_path: impl AsRef<Path>) -> Result<DbPool> {
     }
 
     let (max, min) = if in_memory { (1, 1) } else { (16, 1) };
-    let pool = SqlitePoolOptions::new()
-        .max_connections(max)
-        .min_connections(min)
-        .acquire_timeout(std::time::Duration::from_secs(10))
-        .connect_with(opts)
-        .await?;
+    let pool = SqlitePoolOptions::new().max_connections(max).min_connections(min).acquire_timeout(std::time::Duration::from_secs(10)).connect_with(opts).await?;
 
     crate::migrations::run_migrations(&pool).await?;
 

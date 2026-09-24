@@ -55,20 +55,11 @@ pub fn lines_idle(resp: reqwest::Response, idle: Option<Duration>) -> impl Strea
 }
 
 /// v2 `iter_sse_data`: parsed JSON for each `data: ` line; stops at sentinel.
-pub fn data_json(
-    resp: reqwest::Response,
-    sentinel: Option<&'static str>,
-    require_sentinel: bool,
-) -> impl Stream<Item = ProviderResult<Value>> + Send {
+pub fn data_json(resp: reqwest::Response, sentinel: Option<&'static str>, require_sentinel: bool) -> impl Stream<Item = ProviderResult<Value>> + Send {
     data_json_idle(resp, sentinel, require_sentinel, Some(DEFAULT_TIMEOUT))
 }
 
-pub fn data_json_idle(
-    resp: reqwest::Response,
-    sentinel: Option<&'static str>,
-    require_sentinel: bool,
-    idle: Option<Duration>,
-) -> impl Stream<Item = ProviderResult<Value>> + Send {
+pub fn data_json_idle(resp: reqwest::Response, sentinel: Option<&'static str>, require_sentinel: bool, idle: Option<Duration>) -> impl Stream<Item = ProviderResult<Value>> + Send {
     let inner = lines_idle(resp, idle);
     async_stream::stream! {
         futures::pin_mut!(inner);
@@ -118,11 +109,7 @@ pub async fn check_status(resp: reqwest::Response, label: &str) -> ProviderResul
     let status = resp.status().as_u16();
     if status >= 400 {
         let url = resp.url().to_string();
-        let headers: Vec<(String, String)> = resp
-            .headers()
-            .iter()
-            .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
-            .collect();
+        let headers: Vec<(String, String)> = resp.headers().iter().map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string())).collect();
         let body = resp.text().await.unwrap_or_default();
         tracing::warn!("{label}_error status={} body={}", status, &body.chars().take(500).collect::<String>());
         return Err(ProviderError::http(status, &url, body, headers));

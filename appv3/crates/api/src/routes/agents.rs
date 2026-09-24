@@ -25,14 +25,8 @@ pub fn router() -> Router<AppState> {
         .route("/", get(list_agents).post(create_agent))
         // Static segments shadow `/{name}` in axum; FastAPI falls through to
         // `/{name}` for the other methods, so forward them explicitly.
-        .route(
-            "/registry",
-            get(get_registry).put(|b: Bytes| update_by_name("registry".into(), b)).delete(|| delete_by_name("registry".into())),
-        )
-        .route(
-            "/members",
-            get(list_members).post(create_member).put(|b: Bytes| update_by_name("members".into(), b)).delete(|| delete_by_name("members".into())),
-        )
+        .route("/registry", get(get_registry).put(|b: Bytes| update_by_name("registry".into(), b)).delete(|| delete_by_name("registry".into())))
+        .route("/members", get(list_members).post(create_member).put(|b: Bytes| update_by_name("members".into(), b)).delete(|| delete_by_name("members".into())))
         .route("/code", get(get_code).put(update_code).delete(|| delete_by_name("code".into())))
         .route("/members/{name}", get(get_member).put(update_member).delete(delete_member))
         .route("/{name}", get(get_by_name).put(|AxPath(n): AxPath<String>, b: Bytes| update_by_name(n, b)).delete(|AxPath(n): AxPath<String>| delete_by_name(n)))

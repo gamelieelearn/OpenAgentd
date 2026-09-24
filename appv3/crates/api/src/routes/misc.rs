@@ -116,9 +116,21 @@ async fn oauth_callback(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Res
         let stripped = crate::routes::library::py_strip(&code);
         let n = stripped.chars().count();
         if n < 1 {
-            errs.push(crate::error::verr_ctx("string_too_short", &[json!("body"), json!("code")], "String should have at least 1 character", json!(code), json!({"min_length": 1})));
+            errs.push(crate::error::verr_ctx(
+                "string_too_short",
+                &[json!("body"), json!("code")],
+                "String should have at least 1 character",
+                json!(code),
+                json!({"min_length": 1}),
+            ));
         } else if n > 8192 {
-            errs.push(crate::error::verr_ctx("string_too_long", &[json!("body"), json!("code")], "String should have at most 8192 characters", json!(code), json!({"max_length": 8192})));
+            errs.push(crate::error::verr_ctx(
+                "string_too_long",
+                &[json!("body"), json!("code")],
+                "String should have at most 8192 characters",
+                json!(code),
+                json!({"max_length": 8192}),
+            ));
         }
     }
     if !errs.is_empty() {
@@ -159,8 +171,22 @@ async fn oauth_callback(AxPath(id): AxPath<String>, raw: Bytes) -> ApiResult<Res
 // ── diagnostics ─────────────────────────────────────────────────────────────
 
 const SECRET_FIELDS: [&str; 16] = [
-    "ZAI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENCODE_ZEN_API_KEY", "OPENCODE_GO_API_KEY", "OPENROUTER_API_KEY", "NVIDIA_API_KEY",
-    "XAI_API_KEY", "DEEPSEEK_API_KEY", "AWS_BEARER_TOKEN_BEDROCK", "ROUTER9_API_KEY", "CLIPROXY_API_KEY", "OLLAMA_API_KEY", "VERTEXAI_API_KEY", "DATABASE_URL",
+    "ZAI_API_KEY",
+    "GOOGLE_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENCODE_ZEN_API_KEY",
+    "OPENCODE_GO_API_KEY",
+    "OPENROUTER_API_KEY",
+    "NVIDIA_API_KEY",
+    "XAI_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "ROUTER9_API_KEY",
+    "CLIPROXY_API_KEY",
+    "OLLAMA_API_KEY",
+    "VERTEXAI_API_KEY",
+    "DATABASE_URL",
 ];
 const MAX_DIR_ENTRIES: usize = 1000;
 
@@ -300,7 +326,8 @@ async fn obs_traces(q: Qs) -> ApiResult<Response> {
     let days = q.int("days", 7, Some(1), Some(90))?;
     let limit = q.int("limit", 50, Some(1), Some(200))?;
     let offset = q.int("offset", 0, Some(0), None)?;
-    let (items, total) = tokio::task::spawn_blocking(move || crate::observability::list_traces_with_count(days, limit, offset)).await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let (items, total) =
+        tokio::task::spawn_blocking(move || crate::observability::list_traces_with_count(days, limit, offset)).await.map_err(|e| ApiError::internal(e.to_string()))?;
     Ok(json(json!({"traces": items, "limit": limit, "offset": offset, "total": total, "has_next": offset + limit < total})))
 }
 

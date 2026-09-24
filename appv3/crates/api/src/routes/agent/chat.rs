@@ -284,7 +284,8 @@ async fn agent_command(State(st): State<AppState>, raw: Bytes) -> ApiResult<Resp
         return Err(ApiError::validation(errs));
     }
     let agent = resolve_agent_for_existing_session(&st.pool, &session_id).await?;
-    let resp = |cmd: &str, sid: &str, message: Value, cp: Value| json_code(202, json!({"status": "accepted", "session_id": sid, "command": cmd, "message": message, "changed_paths": cp}));
+    let resp =
+        |cmd: &str, sid: &str, message: Value, cp: Value| json_code(202, json!({"status": "accepted", "session_id": sid, "command": cmd, "message": message, "changed_paths": cp}));
     match command.as_str() {
         "compact" => {
             let sid = agent.handle_compact(&session_id, None).await.map_err(session_err)?;
@@ -302,7 +303,8 @@ async fn agent_command(State(st): State<AppState>, raw: Bytes) -> ApiResult<Resp
             Ok(resp("redo", &session_id, msg, changed_paths(&shift)))
         }
         _ => {
-            let shift = agent.handle_boundary_command(&session_id, "redo", "No undone message to redo.", appv3_agent::revert::redo_all_session_messages).await.map_err(session_err)?;
+            let shift =
+                agent.handle_boundary_command(&session_id, "redo", "No undone message to redo.", appv3_agent::revert::redo_all_session_messages).await.map_err(session_err)?;
             Ok(resp("redo-all", &session_id, Value::Null, changed_paths(&shift)))
         }
     }
@@ -525,7 +527,8 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     let before = q.opt("before");
     let limit = q.int("limit", 20, Some(1), Some(100))?;
     let workspace = q.opt("workspace");
-    let (sessions, next_cursor, has_more) = db::list_sessions_page(&st.pool, before.as_deref(), limit, workspace.as_deref()).await.map_err(|_| ApiError::unprocessable("Invalid 'before' cursor."))?;
+    let (sessions, next_cursor, has_more) =
+        db::list_sessions_page(&st.pool, before.as_deref(), limit, workspace.as_deref()).await.map_err(|_| ApiError::unprocessable("Invalid 'before' cursor."))?;
     let running = running_set();
     let awaiting = db::sessions_awaiting_input(&st.pool).await?;
     let ids: Vec<String> = sessions.iter().map(|s| s.id.clone()).collect();
@@ -538,7 +541,8 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     let data: Vec<Value> = sessions
         .iter()
         .map(|s| {
-            let subs: Vec<Value> = children.iter().filter(|c| c.parent_session_id.as_deref() == Some(s.id.as_str())).map(|c| Value::Object(session_response(c, &overlay(c)))).collect();
+            let subs: Vec<Value> =
+                children.iter().filter(|c| c.parent_session_id.as_deref() == Some(s.id.as_str())).map(|c| Value::Object(session_response(c, &overlay(c)))).collect();
             let mut o = overlay(s);
             o.subagents = subs;
             Value::Object(session_response(s, &o))
@@ -555,7 +559,13 @@ async fn resolve_session(State(st): State<AppState>, raw: Bytes) -> ApiResult<Re
     let workspace = match b.get("workspace") {
         None => return Err(ApiError::validation(vec![verr("missing", &loc(&["body", "workspace"]), "Field required", b.clone())])),
         Some(Value::String(s)) if s.is_empty() => {
-            return Err(ApiError::validation(vec![verr_ctx("string_too_short", &loc(&["body", "workspace"]), "String should have at least 1 character", json!(s), json!({"min_length": 1}))]))
+            return Err(ApiError::validation(vec![verr_ctx(
+                "string_too_short",
+                &loc(&["body", "workspace"]),
+                "String should have at least 1 character",
+                json!(s),
+                json!({"min_length": 1}),
+            )]))
         }
         Some(_) => opt_str_field(&b, "workspace")?.unwrap_or_default(),
     };
@@ -586,7 +596,8 @@ async fn resolve_session(State(st): State<AppState>, raw: Bytes) -> ApiResult<Re
     let session = match session {
         Some(s) => s,
         None => {
-            db::create_session(&st.pool, db::NewSession { workspace: workspace.clone(), model, thinking_level: thinking, agent_name: Some("code".into()), ..Default::default() }).await?
+            db::create_session(&st.pool, db::NewSession { workspace: workspace.clone(), model, thinking_level: thinking, agent_name: Some("code".into()), ..Default::default() })
+                .await?
         }
     };
     if !workspace.is_empty() && !settings().is_chat_workspace(Some(Path::new(&workspace))) {
@@ -781,7 +792,16 @@ async fn lead_json(pool: &DbPool, root: &db::ChatSession, msgs: &[db::SessionMes
     let effective = root.agent_name.clone().unwrap_or_else(|| if root.parent_session_id.is_none() { "code".into() } else { "member".into() });
     let (cost, completion) = db::session_usage_totals(pool, &root.id).await?;
     let rid = db::codec::api_uuid(&root.id);
-    let mut m = session_response(root, &SessionOverlay { agent_name: Some(effective), running: store().is_running(&rid), estimated_cost_usd: Some(cost), completion_tokens: Some(completion), ..Default::default() });
+    let mut m = session_response(
+        root,
+        &SessionOverlay {
+            agent_name: Some(effective),
+            running: store().is_running(&rid),
+            estimated_cost_usd: Some(cost),
+            completion_tokens: Some(completion),
+            ..Default::default()
+        },
+    );
     m.insert("messages".into(), Value::Array(msgs.iter().map(message_response).collect()));
     Ok(Value::Object(m))
 }

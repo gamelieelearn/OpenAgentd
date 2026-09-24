@@ -29,7 +29,13 @@ fn errs_to_api(errs: Vec<(String, String)>, input: &Value) -> ApiError {
     ApiError::validation(
         errs.into_iter()
             .map(|(l, m)| {
-                let kind = if m.starts_with("Value error") { "value_error" } else if m.contains("greater than") { "greater_than" } else { "string_too_short" };
+                let kind = if m.starts_with("Value error") {
+                    "value_error"
+                } else if m.contains("greater than") {
+                    "greater_than"
+                } else {
+                    "string_too_short"
+                };
                 let lv = if l.is_empty() { loc(&["body"]) } else { loc(&["body", &l]) };
                 verr(kind, &lv, &m, input.get(&l).cloned().unwrap_or_else(|| input.clone()))
             })

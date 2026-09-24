@@ -142,7 +142,10 @@ async fn token_request(form: &[(&str, &str)]) -> Result<Map<String, Value>, Toke
 fn b64_lenient(s: &str) -> Option<Vec<u8>> {
     use base64::engine::{general_purpose::GeneralPurposeConfig, DecodePaddingMode, GeneralPurpose};
     use base64::Engine;
-    let eng = GeneralPurpose::new(&base64::alphabet::URL_SAFE, GeneralPurposeConfig::new().with_decode_allow_trailing_bits(true).with_decode_padding_mode(DecodePaddingMode::Indifferent));
+    let eng = GeneralPurpose::new(
+        &base64::alphabet::URL_SAFE,
+        GeneralPurposeConfig::new().with_decode_allow_trailing_bits(true).with_decode_padding_mode(DecodePaddingMode::Indifferent),
+    );
     eng.decode(s.trim_end_matches('=')).ok()
 }
 
@@ -320,13 +323,8 @@ pub async fn load_catalog(force: bool) -> Option<Value> {
 
 /// `model_ids(data)`.
 pub fn model_ids(data: Option<&Value>) -> Vec<String> {
-    let mut out: Vec<String> = data
-        .and_then(|d| d.get("models"))
-        .and_then(|m| m.as_array())
-        .into_iter()
-        .flatten()
-        .filter_map(|i| i.get("slug").and_then(|s| s.as_str()).map(String::from))
-        .collect();
+    let mut out: Vec<String> =
+        data.and_then(|d| d.get("models")).and_then(|m| m.as_array()).into_iter().flatten().filter_map(|i| i.get("slug").and_then(|s| s.as_str()).map(String::from)).collect();
     out.sort();
     out
 }
@@ -554,7 +552,11 @@ pub async fn consume_reset(credit_id: Option<&str>) -> Result<Value, UsageError>
         let h = usage_headers().await?;
         let un = |m: &str| UsageError::Unavailable(m.to_string());
         let list_url = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
-        let r = with_headers(shared_client().get(list_url), &h).timeout(Duration::from_secs(10)).send().await.map_err(|e| UsageError::Unavailable(format!("Failed to redeem reset: {e}")))?;
+        let r = with_headers(shared_client().get(list_url), &h)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+            .map_err(|e| UsageError::Unavailable(format!("Failed to redeem reset: {e}")))?;
         let st = r.status().as_u16();
         if st >= 400 {
             return Err(UsageError::Unavailable(format!("Failed to redeem reset: {}", http_status_message(st, list_url))));
@@ -653,7 +655,13 @@ fn authorize_url(redirect_uri: &str, verifier: &str, state: &str) -> String {
 
 /// Open a URL in the user's browser (`webbrowser.open`).
 pub fn open_browser(url: &str) {
-    let cmd = if cfg!(target_os = "macos") { "open" } else if cfg!(windows) { "explorer" } else { "xdg-open" };
+    let cmd = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(windows) {
+        "explorer"
+    } else {
+        "xdg-open"
+    };
     let _ = std::process::Command::new(cmd).arg(url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
 }
 
@@ -758,11 +766,9 @@ async fn pkce_login(path: &Path, sink: Option<&OAuthSink>) -> Result<(), String>
         }
         Ok(Callback::Code(c)) => c,
     };
-    let tokens = exchange_json(
-        "",
-        &[("grant_type", "authorization_code"), ("code", &code), ("redirect_uri", &redirect_uri), ("client_id", CLIENT_ID), ("code_verifier", &verifier)],
-    )
-    .await?;
+    let tokens =
+        exchange_json("", &[("grant_type", "authorization_code"), ("code", &code), ("redirect_uri", &redirect_uri), ("client_id", CLIENT_ID), ("code_verifier", &verifier)])
+            .await?;
     save_tokens(&tokens, path, sink)
 }
 
@@ -810,11 +816,9 @@ async fn device_login(path: &Path, sink: Option<&OAuthSink>) -> Result<(), Strin
             let f = |k: &str| d.get(k).and_then(|v| v.as_str()).map(String::from).ok_or(format!("'{k}'"));
             let (code, verifier) = (f("authorization_code")?, f("code_verifier")?);
             let redirect = format!("{ISSUER}/deviceauth/callback");
-            let tokens = exchange_json(
-                "",
-                &[("grant_type", "authorization_code"), ("code", &code), ("redirect_uri", &redirect), ("client_id", CLIENT_ID), ("code_verifier", &verifier)],
-            )
-            .await?;
+            let tokens =
+                exchange_json("", &[("grant_type", "authorization_code"), ("code", &code), ("redirect_uri", &redirect), ("client_id", CLIENT_ID), ("code_verifier", &verifier)])
+                    .await?;
             return save_tokens(&tokens, path, sink);
         }
         if st != 403 && st != 404 {
@@ -886,7 +890,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("codex-test-{}", std::process::id()));
         let p = dir.join("codex_oauth.json");
         CodexAuth { access_token: "a".into(), refresh_token: "r".into(), expires_at: 1767225600.5, account_id: None }.save(&p).unwrap();
-        assert_eq!(std::fs::read_to_string(&p).unwrap(), "{\n  \"access_token\": \"a\",\n  \"refresh_token\": \"r\",\n  \"expires_at\": 1767225600.5,\n  \"account_id\": null\n}\n");
+        assert_eq!(
+            std::fs::read_to_string(&p).unwrap(),
+            "{\n  \"access_token\": \"a\",\n  \"refresh_token\": \"r\",\n  \"expires_at\": 1767225600.5,\n  \"account_id\": null\n}\n"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }

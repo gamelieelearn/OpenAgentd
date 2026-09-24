@@ -658,7 +658,13 @@ fn register(name: &str, description: &str, unit: &str, hist: bool) {
     if g.iter().any(|i| i.name == name) {
         return;
     }
-    g.push(Instrument { name: name.into(), description: description.into(), unit: unit.into(), points: if hist { Points::Hist(vec![]) } else { Points::Sum(vec![]) }, first_seen: u64::MAX });
+    g.push(Instrument {
+        name: name.into(),
+        description: description.into(),
+        unit: unit.into(),
+        points: if hist { Points::Hist(vec![]) } else { Points::Sum(vec![]) },
+        first_seen: u64::MAX,
+    });
 }
 
 fn to_num(v: &Value) -> Num {

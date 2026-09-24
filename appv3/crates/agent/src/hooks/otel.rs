@@ -185,7 +185,11 @@ impl OtelHook {
                 span.set_attr("tool.result.length", result.chars().count());
                 span.set_ok();
                 span.end();
-                instruments().tool_duration.record_in(Some(span.ctx()), started.elapsed().as_secs_f64(), vec![("gen_ai.tool.name", json!(tool_name)), ("gen_ai.agent.name", json!(self.agent_name))]);
+                instruments().tool_duration.record_in(
+                    Some(span.ctx()),
+                    started.elapsed().as_secs_f64(),
+                    vec![("gen_ai.tool.name", json!(tool_name)), ("gen_ai.agent.name", json!(self.agent_name))],
+                );
             }
         }
     }

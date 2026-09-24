@@ -546,7 +546,12 @@ pub async fn login(sink: Option<OAuthSink>, enterprise_url: Option<&str>) -> Res
     }
     say(sink, "requesting_device_code", "Requesting device code...", json!({}));
     let (code_url, _) = device_urls(enterprise.as_deref());
-    let r = oauth_headers(shared_client().post(&code_url)).json(&json!({"client_id": CLIENT_ID, "scope": SCOPE})).timeout(Duration::from_secs(30)).send().await.map_err(|e| e.to_string())?;
+    let r = oauth_headers(shared_client().post(&code_url))
+        .json(&json!({"client_id": CLIENT_ID, "scope": SCOPE}))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     let st = r.status().as_u16();
     if st >= 400 {
         return Err(http_status_message(st, &code_url));

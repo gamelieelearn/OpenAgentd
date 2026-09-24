@@ -3,9 +3,7 @@
 //! rendering). Keep in sync with `app/api/schemas/*.py`.
 
 use crate::codec::{api_dt, api_uuid, parse_dt, py_isoformat};
-use crate::models::{
-    kind, ChatSession, CodingWorkspace, PendingQuestion, ScheduledTask, SessionMessage,
-};
+use crate::models::{kind, ChatSession, CodingWorkspace, PendingQuestion, ScheduledTask, SessionMessage};
 use serde_json::{Map, Value};
 
 /// Live, non-persisted session state merged into `SessionResponse`.
@@ -77,12 +75,9 @@ pub fn message_response(r: &SessionMessage) -> Map<String, Value> {
             let public: Vec<Value> = atts
                 .iter()
                 .map(|a| match a {
-                    Value::Object(obj) => Value::Object(
-                        obj.iter()
-                            .filter(|(k, _)| !INTERNAL_ATTACHMENT_FIELDS.contains(&k.as_str()))
-                            .map(|(k, v)| (k.clone(), v.clone()))
-                            .collect(),
-                    ),
+                    Value::Object(obj) => {
+                        Value::Object(obj.iter().filter(|(k, _)| !INTERNAL_ATTACHMENT_FIELDS.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect())
+                    }
                     other => other.clone(),
                 })
                 .collect();
@@ -130,9 +125,7 @@ fn truthy(v: &Value) -> bool {
 /// `PendingQuestionResponse.from_row` (note: `created_at` is Python
 /// `isoformat()`, i.e. `+00:00`, not `Z`).
 pub fn pending_question_response(q: &PendingQuestion) -> Value {
-    let created = parse_dt(&q.created_at)
-        .map(|d| py_isoformat(&d))
-        .unwrap_or_else(|| q.created_at.clone());
+    let created = parse_dt(&q.created_at).map(|d| py_isoformat(&d)).unwrap_or_else(|| q.created_at.clone());
     serde_json::json!({
         "id": api_uuid(&q.id),
         "session_id": api_uuid(&q.session_id),
@@ -174,10 +167,5 @@ pub fn scheduled_task_response(t: &ScheduledTask) -> Value {
 
 /// Display name for a coding workspace row (`row.name or Path(row.path).name`).
 pub fn workspace_display_name(w: &CodingWorkspace) -> String {
-    w.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| {
-        std::path::Path::new(&w.path)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default()
-    })
+    w.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| std::path::Path::new(&w.path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
 }

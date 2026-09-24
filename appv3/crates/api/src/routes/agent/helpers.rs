@@ -117,10 +117,7 @@ pub struct QueueArgs<'a> {
 pub async fn persist_queued_user_message(pool: &DbPool, a: QueueArgs<'_>) -> ApiResult<String> {
     let mut metas: Vec<Value> = vec![];
     if !a.attachments.is_empty() {
-        metas = appv3_agent::service::validate_and_persist_attachments(a.attachments, Some(a.session_id), a.workspace)
-            .await
-            .map_err(|e| ApiError::new(e.status, e.message))?
-            .1;
+        metas = appv3_agent::service::validate_and_persist_attachments(a.attachments, Some(a.session_id), a.workspace).await.map_err(|e| ApiError::new(e.status, e.message))?.1;
     }
     let agent_model = a.agent.model_id();
     let mut extra = Map::new();

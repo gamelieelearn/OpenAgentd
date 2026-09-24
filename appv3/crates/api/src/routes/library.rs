@@ -3,8 +3,8 @@
 use crate::error::{loc, verr, ApiError, ApiResult};
 use crate::util::*;
 use crate::AppState;
-use appv3_agent::skills::{self, StrictFrontmatter};
 use appv3_agent::manager;
+use appv3_agent::skills::{self, StrictFrontmatter};
 use appv3_core::settings;
 use axum::extract::Path as AxPath;
 use axum::response::Response;
@@ -173,7 +173,11 @@ fn render_memory(arguments: &str) -> String {
     match sub.as_str() {
         "" => {
             let c = appv3_memory::memory_context();
-            if c.is_empty() { "No memory pages found.".into() } else { c }
+            if c.is_empty() {
+                "No memory pages found.".into()
+            } else {
+                c
+            }
         }
         "show" => {
             if sub_arg.is_empty() {
@@ -480,7 +484,10 @@ async fn create_skill(raw: Bytes) -> ApiResult<Response> {
     }
     atomic_write(&file, &content).map_err(|e| ApiError::bad_request(e.to_string()))?;
     tracing::info!("skill_fs_write name={} bytes={}", name, content.len());
-    Ok(json_code(201, json!({"name": name, "path": file.display().to_string(), "content": content, "description": desc, "error": null, "built_in": false, "editable": true, "source": "global-openagentd"})))
+    Ok(json_code(
+        201,
+        json!({"name": name, "path": file.display().to_string(), "content": content, "description": desc, "error": null, "built_in": false, "editable": true, "source": "global-openagentd"}),
+    ))
 }
 
 async fn update_skill(AxPath(name): AxPath<String>, raw: Bytes) -> ApiResult<Response> {
@@ -501,7 +508,9 @@ async fn update_skill(AxPath(name): AxPath<String>, raw: Bytes) -> ApiResult<Res
     }
     atomic_write(&path, &content).map_err(|e| ApiError::bad_request(e.to_string()))?;
     let source = skill_source(&path);
-    Ok(json(json!({"name": name, "path": path.display().to_string(), "content": content, "description": desc, "error": null, "built_in": source == "builtin", "editable": true, "source": source})))
+    Ok(json(
+        json!({"name": name, "path": path.display().to_string(), "content": content, "description": desc, "error": null, "built_in": source == "builtin", "editable": true, "source": source}),
+    ))
 }
 
 async fn delete_skill(AxPath(name): AxPath<String>) -> ApiResult<Response> {

@@ -54,10 +54,7 @@ impl CredentialStore {
         if let Some(v) = self.overrides.get(name) {
             return v.clone();
         }
-        appv3_core::env::os_environ(name)
-            .filter(|v| !v.is_empty())
-            .or_else(|| self.saved.get(name).cloned().filter(|v| !v.is_empty()))
-            .unwrap_or_default()
+        appv3_core::env::os_environ(name).filter(|v| !v.is_empty()).or_else(|| self.saved.get(name).cloned().filter(|v| !v.is_empty())).unwrap_or_default()
     }
 
     /// `{CACHE_DIR}/provider-plugins/<id>` (created).

@@ -6,36 +6,23 @@ use crate::pool::DbPool;
 use anyhow::Result;
 
 pub async fn list_tasks(pool: &DbPool) -> Result<Vec<ScheduledTask>> {
-    Ok(sqlx::query_as::<_, ScheduledTask>("SELECT * FROM scheduled_task ORDER BY created_at ASC")
-        .fetch_all(pool)
-        .await?)
+    Ok(sqlx::query_as::<_, ScheduledTask>("SELECT * FROM scheduled_task ORDER BY created_at ASC").fetch_all(pool).await?)
 }
 
 pub async fn get_task_by_slug(pool: &DbPool, slug: &str) -> Result<Option<ScheduledTask>> {
-    Ok(sqlx::query_as::<_, ScheduledTask>("SELECT * FROM scheduled_task WHERE slug = ?")
-        .bind(slug)
-        .fetch_optional(pool)
-        .await?)
+    Ok(sqlx::query_as::<_, ScheduledTask>("SELECT * FROM scheduled_task WHERE slug = ?").bind(slug).fetch_optional(pool).await?)
 }
 
 pub async fn get_task_by_name(pool: &DbPool, name: &str) -> Result<Option<ScheduledTask>> {
-    Ok(sqlx::query_as::<_, ScheduledTask>("SELECT * FROM scheduled_task WHERE name = ?")
-        .bind(name)
-        .fetch_optional(pool)
-        .await?)
+    Ok(sqlx::query_as::<_, ScheduledTask>("SELECT * FROM scheduled_task WHERE name = ?").bind(name).fetch_optional(pool).await?)
 }
 
 pub async fn get_task(pool: &DbPool, id: &str) -> Result<Option<ScheduledTask>> {
-    Ok(sqlx::query_as::<_, ScheduledTask>("SELECT * FROM scheduled_task WHERE id = ?")
-        .bind(db_id(id))
-        .fetch_optional(pool)
-        .await?)
+    Ok(sqlx::query_as::<_, ScheduledTask>("SELECT * FROM scheduled_task WHERE id = ?").bind(db_id(id)).fetch_optional(pool).await?)
 }
 
 pub async fn has_enabled_tasks(pool: &DbPool) -> Result<bool> {
-    let found: Option<i64> = sqlx::query_scalar("SELECT 1 FROM scheduled_task WHERE enabled = 1 LIMIT 1")
-        .fetch_optional(pool)
-        .await?;
+    let found: Option<i64> = sqlx::query_scalar("SELECT 1 FROM scheduled_task WHERE enabled = 1 LIMIT 1").fetch_optional(pool).await?;
     Ok(found.is_some())
 }
 
@@ -108,10 +95,5 @@ pub async fn save_task(pool: &DbPool, t: &ScheduledTask) -> Result<ScheduledTask
 }
 
 pub async fn delete_task(pool: &DbPool, id: &str) -> Result<bool> {
-    Ok(sqlx::query("DELETE FROM scheduled_task WHERE id = ?")
-        .bind(db_id(id))
-        .execute(pool)
-        .await?
-        .rows_affected()
-        > 0)
+    Ok(sqlx::query("DELETE FROM scheduled_task WHERE id = ?").bind(db_id(id)).execute(pool).await?.rows_affected() > 0)
 }

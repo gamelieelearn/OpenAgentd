@@ -207,16 +207,27 @@ mod tests {
 
     #[test]
     fn messages_round_trip() {
-        let mut a = AssistantMessage { content: None, reasoning_content: Some("r".into()), tool_calls: Some(vec![ToolCall::new("c1", "read", "{\"p\": 1}")]), ..Default::default() };
+        let mut a =
+            AssistantMessage { content: None, reasoning_content: Some("r".into()), tool_calls: Some(vec![ToolCall::new("c1", "read", "{\"p\": 1}")]), ..Default::default() };
         a.tool_calls.as_mut().unwrap()[0].function.thought_signature = Some("sig".into());
         a.raw_content_blocks = Some(vec![json!({"type": "text", "text": "x"})]);
         a.meta.extra = Some(Map::from_iter([("usage".to_string(), json!({"a": 1}))]));
         a.meta.db_id = Some("abc".into());
         let msgs = vec![
             ChatMessage::system("sys"),
-            ChatMessage::User { content: Some("hi".into()), parts: Some(vec![ContentBlock::text("hi"), ContentBlock::ImageData { data: "d".into(), media_type: "image/png".into() }]), meta: MessageMeta { pinned: true, ..Default::default() } },
+            ChatMessage::User {
+                content: Some("hi".into()),
+                parts: Some(vec![ContentBlock::text("hi"), ContentBlock::ImageData { data: "d".into(), media_type: "image/png".into() }]),
+                meta: MessageMeta { pinned: true, ..Default::default() },
+            },
             ChatMessage::Assistant(a),
-            ChatMessage::Tool { content: Some("out".into()), tool_call_id: "c1".into(), name: Some("read".into()), parts: None, meta: MessageMeta { kind: "note".into(), exclude_from_context: true, ..Default::default() } },
+            ChatMessage::Tool {
+                content: Some("out".into()),
+                tool_call_id: "c1".into(),
+                name: Some("read".into()),
+                parts: None,
+                meta: MessageMeta { kind: "note".into(), exclude_from_context: true, ..Default::default() },
+            },
         ];
         let j = messages_to_json(&msgs);
         assert_eq!(messages_from_json(&j).unwrap(), msgs);

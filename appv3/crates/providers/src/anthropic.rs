@@ -194,9 +194,7 @@ pub fn split_messages(messages: &[ChatMessage]) -> (Option<Vec<Value>>, Vec<Valu
                 if text.starts_with("Error:") {
                     rb.insert("is_error".into(), json!(true));
                 }
-                let merge = out.last().map(|l| {
-                    l["role"] == "user" && l["content"].as_array().map(|c| !c.is_empty() && c[0]["type"] == "tool_result").unwrap_or(false)
-                });
+                let merge = out.last().map(|l| l["role"] == "user" && l["content"].as_array().map(|c| !c.is_empty() && c[0]["type"] == "tool_result").unwrap_or(false));
                 if merge == Some(true) {
                     out.last_mut().unwrap()["content"].as_array_mut().unwrap().push(Value::Object(rb));
                 } else {
@@ -467,16 +465,25 @@ impl AnthropicProvider {
         let text = join("text", "text");
         let reasoning = join("thinking", "thinking");
         let sig = join("thinking", "signature");
-        let redacted: Vec<Value> = blocks.iter().filter(|b| b["type"] == "redacted_thinking").map(|b| json!({"type": "redacted_thinking", "data": b.get("data").cloned().unwrap_or(json!(""))})).collect();
+        let redacted: Vec<Value> =
+            blocks.iter().filter(|b| b["type"] == "redacted_thinking").map(|b| json!({"type": "redacted_thinking", "data": b.get("data").cloned().unwrap_or(json!(""))})).collect();
         let tcs: Vec<ToolCall> = blocks
             .iter()
             .filter(|b| b["type"] == "tool_use")
-            .map(|b| ToolCall::new(b["id"].as_str().unwrap_or(""), b["name"].as_str().unwrap_or(""), appv3_core::pyjson::dumps(b.get("input").filter(|v| !v.is_null()).unwrap_or(&json!({})))))
+            .map(|b| {
+                ToolCall::new(
+                    b["id"].as_str().unwrap_or(""),
+                    b["name"].as_str().unwrap_or(""),
+                    appv3_core::pyjson::dumps(b.get("input").filter(|v| !v.is_null()).unwrap_or(&json!({}))),
+                )
+            })
             .collect();
         let raw: Vec<Value> = blocks
             .iter()
             .filter_map(|b| match b["type"].as_str() {
-                Some("thinking") => Some(json!({"type": "thinking", "thinking": b.get("thinking").cloned().unwrap_or(json!("")), "signature": b.get("signature").cloned().unwrap_or(json!(""))})),
+                Some("thinking") => {
+                    Some(json!({"type": "thinking", "thinking": b.get("thinking").cloned().unwrap_or(json!("")), "signature": b.get("signature").cloned().unwrap_or(json!(""))}))
+                }
                 Some("redacted_thinking") => Some(json!({"type": "redacted_thinking", "data": b.get("data").cloned().unwrap_or(json!(""))})),
                 Some("text") => Some(json!({"type": "text", "text": b.get("text").cloned().unwrap_or(json!(""))})),
                 Some("tool_use") => Some(json!({"type": "tool_use_ref", "id": b["id"].as_str().unwrap_or("")})),
@@ -640,10 +647,7 @@ mod tests {
         let msgs = vec![
             ChatMessage::system("sys"),
             ChatMessage::user("hi"),
-            ChatMessage::Assistant(AssistantMessage {
-                tool_calls: Some(vec![ToolCall::new("t1", "a", "{\"x\":1}"), ToolCall::new("t2", "b", "")]),
-                ..Default::default()
-            }),
+            ChatMessage::Assistant(AssistantMessage { tool_calls: Some(vec![ToolCall::new("t1", "a", "{\"x\":1}"), ToolCall::new("t2", "b", "")]), ..Default::default() }),
             ChatMessage::tool("t1", None, "ok"),
             ChatMessage::tool("t2", None, "Error: bad"),
         ];
