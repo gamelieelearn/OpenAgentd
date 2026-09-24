@@ -24,7 +24,8 @@ Native desktop shell for OpenAgentd. Embeds the React Web UI, can spawn the Pyth
                               └──────────────────────────┘
 ```
 
-The Python sidecar:
+The sidecar is either the v2 Python backend or the v3 native Rust backend
+(one per bundle, chosen at build time with `SIDECAR=v2|v3`). Either way it:
 
 1. Binds 127.0.0.1 on an OS-ephemeral port.
 2. Generates a random URL-safe token.
@@ -37,9 +38,9 @@ The Tauri shell:
 1. Opens the main WebView immediately with a loading/unreachable backend state.
 2. Checks the remembered external backend from `desktop-backend.json`; if it is healthy, updates the WebView to use that server.
 3. If the remembered external backend is unreachable, continues startup with the bundled sidecar so the app remains usable.
-4. Otherwise locates the bundled Python runtime under the packaged
-   `sidecar/python/` resource directory (`python.exe` on Windows,
-   `bin/python3` on macOS/Linux).
+4. Otherwise locates the bundled runtime: `sidecar/bin/openagentd` (v3,
+   `.exe` on Windows) if present, else the Python interpreter under
+   `sidecar/python/` (`python.exe` on Windows, `bin/python3` on macOS/Linux).
 5. Spawns the sidecar with `--handshake --generate-token --parent-pid <our pid>`.
 6. Reads stdout until the handshake line; extracts `{port, token}`.
 7. Polls `http://127.0.0.1:<port>/api/health/live` until it returns 200.
@@ -60,6 +61,9 @@ cd web && bun install && bun run build && cd ..
 
 # Build a slim Python sidecar bundle (uses uv + python-build-standalone)
 make -C desktop sidecar
+
+# …or the native Rust (v3) sidecar instead; each build replaces the bundle
+make -C desktop sidecar SIDECAR=v3      # also: dev-bundled-v3, build-v3
 
 # Run the desktop shell in dev mode (prefer ``make dev`` from this
 # directory so the dev override picks up — see ``Makefile``).

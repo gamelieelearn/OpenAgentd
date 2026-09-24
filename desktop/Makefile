@@ -1,8 +1,15 @@
-# Build the desktop app and its Python sidecar.
+# Build the desktop app and its backend sidecar.
+#
+# The sidecar runtime is chosen with ``SIDECAR`` (default ``v2``):
+#   SIDECAR=v2          Python backend (python-build-standalone + site-packages)
+#   SIDECAR=v3          Native Rust backend (single ``bin/openagentd`` binary)
+# Each build wipes ``sidecar-bundle/`` first, so a bundle holds exactly one.
 #
 # Targets:
-#   make sidecar        Build a slim Python sidecar bundle for the current OS/arch.
-#   make sidecar-full   Same, but with [audio,azure-doc-intel] extras.
+#   make sidecar        Build the sidecar bundle selected by SIDECAR.
+#   make sidecar-v2     Build a slim Python (v2) sidecar bundle for this OS/arch.
+#   make sidecar-v3     Build the native Rust (v3) sidecar bundle.
+#   make sidecar-full   v2 bundle with [audio,azure-doc-intel] extras.
 #   make icons          Regenerate .icns / .ico from icons/icon.png.
 #   make dev            Tauri shell + Vite dev server, using the bundled
 #                       sidecar connection model. Run Vite in another terminal
@@ -10,7 +17,10 @@
 #   make dev-bundled    Tauri shell with the *bundled* sidecar (requires
 #                       ``make sidecar`` first). Use this to test the
 #                       sidecar handshake / auth wiring end-to-end.
-#   make build          Build a release desktop app.
+#   make build          Build a release desktop app from the existing bundle.
+#   make build-v3       Build the v3 sidecar, then a release desktop app.
+#   *-v3                ``dev-bundled-v3`` / ``build-dev-app-v3`` are the same
+#                       as the plain targets with SIDECAR=v3.
 #   make open           Open the dev macOS app bundle.
 #   make open-prod      Open the production macOS app bundle.
 #   make clean          Remove build artefacts.
@@ -23,18 +33,40 @@
 # The Tauri shell no longer points at an implicit dev backend. To use a
 # standalone server, add it from the app's Server connection dialog.
 
-.PHONY: sidecar sidecar-full icons dev dev-bundled build-dev-app build clean open open-prod
+.PHONY: sidecar sidecar-v2 sidecar-v3 sidecar-full icons dev dev-bundled build-dev-app build clean open open-prod
+.PHONY: dev-bundled-v3 build-dev-app-v3 build-v3
 
 ROOT       := $(abspath ..)
 BUNDLE     := sidecar-bundle
 PYVER      := 3.14
 EXTRAS     ?=                       # set to e.g. "audio,azure-doc-intel,full"
-sidecar:
+# Sidecar runtime: v2 (Python) or v3 (native Rust).
+SIDECAR    ?= v2
+EXE        := $(if $(filter Windows_NT,$(OS)),.exe,)
+
+ifeq ($(filter v2 v3,$(SIDECAR)),)
+$(error SIDECAR must be v2 or v3, got '$(SIDECAR)')
+endif
+
+sidecar: sidecar-$(SIDECAR)
+
+# build_sidecar.py removes the whole bundle dir before building.
+sidecar-v2:
 	@python3 ../scripts/build_sidecar.py \
 		--root "$(ROOT)" \
 		--out  "$(BUNDLE)" \
 		--python-version "$(PYVER)" \
 		$(if $(EXTRAS),--extras "$(EXTRAS)",)
+
+# Release profile keeps symbols (strip = false), so strip the bundled copy.
+sidecar-v3:
+	cargo build --release --manifest-path ../appv3/Cargo.toml -p appv3-cli
+	@rm -rf "$(BUNDLE)"
+	@mkdir -p "$(BUNDLE)/bin"
+	@cp -f "../appv3/target/release/openagentd$(EXE)" "$(BUNDLE)/bin/openagentd$(EXE)"
+	@if command -v strip >/dev/null 2>&1; then strip "$(BUNDLE)/bin/openagentd$(EXE)"; fi
+	@"$(BUNDLE)/bin/openagentd$(EXE)" --version
+	@du -sh "$(BUNDLE)"
 
 open:
 	@open "src-tauri/target/release/bundle/macos/OpenAgentd (dev).app"
@@ -43,7 +75,7 @@ open-prod:
 	@open "src-tauri/target/release/bundle/macos/OpenAgentd.app"
 
 sidecar-full:
-	@$(MAKE) sidecar EXTRAS="audio,azure-doc-intel"
+	@$(MAKE) sidecar-v2 EXTRAS="audio,azure-doc-intel"
 
 icons:
 	python3 ../scripts/generate_icons.py
@@ -86,6 +118,16 @@ build-dev-app:
 
 build:
 	cd src-tauri && cargo tauri build
+
+dev-bundled-v3:
+	@$(MAKE) dev-bundled SIDECAR=v3
+
+build-dev-app-v3:
+	@$(MAKE) build-dev-app SIDECAR=v3
+
+build-v3:
+	@$(MAKE) sidecar-v3
+	@$(MAKE) build
 
 clean:
 	rm -rf "$(BUNDLE)" src-tauri/target

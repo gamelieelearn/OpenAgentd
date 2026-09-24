@@ -1,13 +1,16 @@
-//! Python sidecar supervisor.
+//! Backend sidecar supervisor (v2 Python or v3 native Rust).
 //!
-//! Spawns `python -m app.cli server serve --handshake --generate-token
-//! --parent-pid <us>`, parses the first JSON handshake line from stdout,
-//! and exposes the child for graceful shutdown.
+//! Spawns `<runtime> server serve --handshake --generate-token
+//! --parent-pid <us>`, where `<runtime>` is the bundled `openagentd` (v3)
+//! or `python <bootstrap> app/cli/__main__.py` (v2). It parses the first
+//! JSON handshake line from stdout and exposes the child for graceful
+//! shutdown.
 //!
 //! Layout expectations (paths relative to the bundled resources dir):
 //!
-//! - `sidecar/python/bin/python3`: the bundled CPython interpreter.
-//! - `sidecar/site-packages/`: pre-installed openagentd + dependencies.
+//! - v3: `sidecar/bin/openagentd`: the native backend binary. Preferred.
+//! - v2: `sidecar/python/bin/python3`: the bundled CPython interpreter.
+//! - v2: `sidecar/site-packages/`: pre-installed openagentd + dependencies.
 //! - `sidecar/_web_dist/`: the built React frontend (also embedded in
 //!   `site-packages/app/_web_dist/`; either works).
 //!
@@ -103,6 +106,10 @@ impl Sidecar {
         // extended-length path on Windows; strip it before spawning —
         // see ``strip_unc_prefix`` for why.
         let python_bin = strip_unc_prefix(&python_bin);
+        // A v3 bundle ships the native ``openagentd`` binary; a v2 bundle
+        // ships a Python interpreter. ``make sidecar SIDECAR=v2|v3`` builds
+        // exactly one of the two.
+        let is_rust_native = python_bin.file_stem().and_then(|s| s.to_str()) == Some("openagentd");
 
         let log_dir = app
             .path()
@@ -134,62 +141,64 @@ impl Sidecar {
             log_path.display()
         );
 
-        // Explicit script path (not ``-m app.cli``) so we know exactly
-        // which CLI module is invoked. ``-m`` would let Python search
-        // ``sys.path`` and could surface a vendored ``app.cli`` from a
-        // user-extended directory later.
-        let cli_entry = sidecar_root
-            .join("site-packages")
-            .join("app")
-            .join("cli")
-            .join("__main__.py");
-        if !cli_entry.is_file() {
-            return Err(anyhow!(
-                "sidecar bundle missing CLI entry at {}",
-                cli_entry.display()
-            ));
-        }
-
-        let site_packages = sidecar_root.join("site-packages");
-
-        // Bootstrap ``sys.path`` from inside the child instead of via the
-        // ``PYTHONPATH`` environment variable.
-        //
-        // Background:  ``PYTHONPATH`` is inherited by every grandchild
-        // process the agent spawns.  Another Python interpreter the user
-        // has installed (``uv tool install browser-use``, ``pipx`` tools,
-        // Homebrew Python scripts, …) then finds *our* pure-Python
-        // packages on ``sys.path`` before its own.  When that package
-        // tries to load a native extension built for our ABI
-        // (``pydantic_core`` cpython-3.14 vs. the tool's cpython-3.12),
-        // the import crashes with ``ModuleNotFoundError`` because
-        // Python's import system has already committed to our package
-        // directory.
-        //
-        // ``PYTHONHOME`` is still intentionally NOT set — python-build-
-        // standalone is relocatable and finds its own stdlib from the
-        // executable path; setting PYTHONHOME would leak into every
-        // subprocess and override the user's other Python interpreters'
-        // stdlib resolution.
-        //
-        // Paths arrive via ``sys.argv[1]`` (site-packages dir) and
-        // ``sys.argv[2]`` (CLI entry) so we never embed them into Python
-        // source — that would break on directories containing quotes.
-        // ``sys.argv`` is then rewritten to look like a normal
-        // ``python <entry> serve …`` invocation before ``runpy``.
-        let bootstrap = "import sys, runpy, site; \
-             _site = sys.argv.pop(1); \
-             _entry = sys.argv.pop(1); \
-             site.addsitedir(_site); \
-             sys.argv[0] = _entry; \
-             runpy.run_path(_entry, run_name='__main__')";
-
         let mut cmd = Command::new(&python_bin);
-        cmd.arg("-c")
-            .arg(bootstrap)
-            .arg(site_packages.as_os_str())
-            .arg(cli_entry.as_os_str())
-            .arg("server")
+        if !is_rust_native {
+            // Explicit script path (not ``-m app.cli``) so we know exactly
+            // which CLI module is invoked. ``-m`` would let Python search
+            // ``sys.path`` and could surface a vendored ``app.cli`` from a
+            // user-extended directory later.
+            let cli_entry = sidecar_root
+                .join("site-packages")
+                .join("app")
+                .join("cli")
+                .join("__main__.py");
+            if !cli_entry.is_file() {
+                return Err(anyhow!(
+                    "sidecar bundle missing CLI entry at {}",
+                    cli_entry.display()
+                ));
+            }
+
+            let site_packages = sidecar_root.join("site-packages");
+
+            // Bootstrap ``sys.path`` from inside the child instead of via the
+            // ``PYTHONPATH`` environment variable.
+            //
+            // Background:  ``PYTHONPATH`` is inherited by every grandchild
+            // process the agent spawns.  Another Python interpreter the user
+            // has installed (``uv tool install browser-use``, ``pipx`` tools,
+            // Homebrew Python scripts, …) then finds *our* pure-Python
+            // packages on ``sys.path`` before its own.  When that package
+            // tries to load a native extension built for our ABI
+            // (``pydantic_core`` cpython-3.14 vs. the tool's cpython-3.12),
+            // the import crashes with ``ModuleNotFoundError`` because
+            // Python's import system has already committed to our package
+            // directory.
+            //
+            // ``PYTHONHOME`` is still intentionally NOT set — python-build-
+            // standalone is relocatable and finds its own stdlib from the
+            // executable path; setting PYTHONHOME would leak into every
+            // subprocess and override the user's other Python interpreters'
+            // stdlib resolution.
+            //
+            // Paths arrive via ``sys.argv[1]`` (site-packages dir) and
+            // ``sys.argv[2]`` (CLI entry) so we never embed them into Python
+            // source — that would break on directories containing quotes.
+            // ``sys.argv`` is then rewritten to look like a normal
+            // ``python <entry> serve …`` invocation before ``runpy``.
+            let bootstrap = "import sys, runpy, site; \
+                 _site = sys.argv.pop(1); \
+                 _entry = sys.argv.pop(1); \
+                 site.addsitedir(_site); \
+                 sys.argv[0] = _entry; \
+                 runpy.run_path(_entry, run_name='__main__')";
+
+            cmd.arg("-c")
+                .arg(bootstrap)
+                .arg(site_packages.as_os_str())
+                .arg(cli_entry.as_os_str());
+        }
+        cmd.arg("server")
             .arg("serve")
             .arg("--host")
             .arg("127.0.0.1")
@@ -519,14 +528,20 @@ impl Sidecar {
     }
 }
 
+/// Locate the sidecar runtime: the native v3 ``openagentd`` binary if the
+/// bundle has one, else the bundled v2 Python interpreter.
 fn resolve_python_bin(sidecar_root: &Path) -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     let candidates = [
+        sidecar_root.join("bin").join("openagentd.exe"),
+        sidecar_root.join("openagentd.exe"),
         sidecar_root.join("python").join("python.exe"),
         sidecar_root.join("python").join("install").join("python.exe"),
     ];
     #[cfg(not(target_os = "windows"))]
     let candidates = [
+        sidecar_root.join("bin").join("openagentd"),
+        sidecar_root.join("openagentd"),
         sidecar_root.join("python").join("bin").join("python3"),
         sidecar_root.join("python").join("install").join("bin").join("python3"),
     ];
@@ -536,7 +551,7 @@ fn resolve_python_bin(sidecar_root: &Path) -> Result<PathBuf> {
         }
     }
     Err(anyhow!(
-        "no python binary found in sidecar bundle (looked in: {:?})",
+        "no sidecar runtime (openagentd or python) found in bundle (looked in: {:?})",
         candidates.iter().map(|p| p.display().to_string()).collect::<Vec<_>>()
     ))
 }
