@@ -349,6 +349,37 @@ fn scrubbed_env(cmd: &mut tokio::process::Command) {
     }
 }
 
+fn snapshot_cache() -> &'static crate::shell_snapshot::Cache {
+    static C: OnceLock<crate::shell_snapshot::Cache> = OnceLock::new();
+    C.get_or_init(Default::default)
+}
+
+/// argv that sources a cached rc snapshot instead of the rc files
+/// themselves (see `shell_snapshot`); `None` = use v2's [`build_argv`].
+async fn snapshot_argv(shell_bin: &str, command: &str) -> Option<Vec<String>> {
+    use crate::shell_snapshot as snap;
+    if !cfg!(unix) || !snap::enabled() {
+        return None;
+    }
+    let kind = snap::Kind::of(&shell_name_of(shell_bin))?;
+    // v2's rc-sourcing prelude, so the snapshot sees what v2's shell sees.
+    let prefix = build_argv(shell_bin, "").get(2)?.strip_suffix("eval \"$1\"")?.to_string();
+    let env: std::collections::HashMap<String, String> =
+        std::env::vars_os().filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?))).filter(|(k, _)| !LEAK_KEYS.contains(&k.as_str())).collect();
+    let dir = appv3_core::settings().cache_dir.join("shell-snapshots");
+    let path = snapshot_cache().get(kind, shell_bin, &prefix, &env, LEAK_KEYS, &dir).await?;
+    Some(snap::argv(kind, &path, command))
+}
+
+/// Build the rc snapshot in the background so the first `shell` call does not pay for it.
+pub fn prewarm_snapshot() {
+    if let Ok(rt) = tokio::runtime::Handle::try_current() {
+        rt.spawn(async {
+            let _ = snapshot_argv(&acceptable(), "true").await;
+        });
+    }
+}
+
 /// Kills the foreground process group if the tool future is cancelled
 /// (v2: `CancelledError` → SIGKILL the group before propagating).
 struct GroupGuard {
@@ -413,7 +444,10 @@ impl Tool for ShellTool {
         if command.trim().is_empty() {
             return Ok(ToolOutput::text("[Succeeded]\n\n"));
         }
-        let argv = build_argv(&shell_bin, &command);
+        let argv = match snapshot_argv(&shell_bin, &command).await {
+            Some(a) => a,
+            None => build_argv(&shell_bin, &command),
+        };
         let mut cmd = tokio::process::Command::new(&shell_bin);
         appv3_core::proctree::hide_window(&mut cmd).args(&argv).current_dir(&cwd).stdin(std::process::Stdio::null());
         scrubbed_env(&mut cmd);

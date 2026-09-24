@@ -14,6 +14,7 @@ pub mod outline;
 pub mod patch;
 pub mod read;
 pub mod shell;
+pub mod shell_snapshot;
 pub mod todo;
 pub mod web;
 
