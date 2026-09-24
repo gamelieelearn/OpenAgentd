@@ -17,7 +17,7 @@ import {
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
 import { SettingsSection } from '@/components/settings/SettingsSection'
-import { SETTINGS_SECTIONS } from '@/components/settings/sections'
+import { useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
 import { ICON_SIZE } from '@/components/settings/tokens'
 import { Button } from '@/components/ui/button'
 import { checkForUpdates, downloadUpdate, fetchReleaseNotes, installUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
@@ -175,6 +175,7 @@ export function SettingsHubPage() {
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
   const version = healthQ.data?.version
   const setSection = useSettingsStore((s) => s.setSection)
+  const sections = useVisibleSettingsSections()
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
@@ -204,7 +205,7 @@ export function SettingsHubPage() {
         <div className="md:hidden">
           <SettingsSection title="Preferences">
             <div className="divide-y divide-(--color-border)">
-              {SETTINGS_SECTIONS.filter((s) => !s.mobileTab).map((item) => {
+              {sections.filter((s) => !s.mobileTab).map((item) => {
                 const Icon = item.icon
                 return (
                   <button

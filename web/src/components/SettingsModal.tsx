@@ -31,10 +31,10 @@ import {
   isDrillDown,
   mobileBackSection,
   parentSection,
-  SETTINGS_SECTIONS,
   type SettingsSectionDef,
   type TopLevelSection,
 } from '@/components/settings/sections'
+import { useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
 import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
 
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
@@ -83,6 +83,11 @@ const DeniedPathsSettingsPage = lazy(() =>
 const AutomationSettingsPage = lazy(() =>
   import('@/components/settings/pages/settings.automation').then((m) => ({
     default: m.AutomationSettingsPage,
+  })),
+)
+const PluginsSettingsPage = lazy(() =>
+  import('@/components/settings/pages/settings.plugins').then((m) => ({
+    default: m.PluginsSettingsPage,
   })),
 )
 
@@ -159,6 +164,7 @@ function ModalSidebar({
   const skillsQ = useSkillFilesQuery()
   const mcpQ = useMcpServersQuery()
   const deniedPathsQ = useDeniedPathsSettingsQuery()
+  const sections = useVisibleSettingsSections()
   const active = parentSection(section)
 
   const counts: Partial<Record<TopLevelSection, number | null>> = {
@@ -174,7 +180,7 @@ function ModalSidebar({
       className="hidden h-full w-52 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) select-none md:flex"
     >
       {SETTINGS_GROUPS.map((group, idx) => {
-        const items = SETTINGS_SECTIONS.filter((s) => s.group === group.id)
+        const items = sections.filter((s) => s.group === group.id)
         if (items.length === 0) return null
         return (
           <div key={group.id}>
@@ -211,6 +217,7 @@ function MobileTabBar({
   section: SettingsSection
   onSelect: (s: TopLevelSection) => void
 }) {
+  const sections = useVisibleSettingsSections()
   return (
     <nav
       aria-label="Settings sections"
@@ -219,11 +226,11 @@ function MobileTabBar({
       <select aria-label="Settings section" value={parentSection(section)}
         className="min-h-9 w-full rounded-sm border border-(--color-border) bg-(--bg-input) px-3 text-base text-(--color-text)"
         onChange={(event) => {
-          const item = SETTINGS_SECTIONS.find((candidate) => candidate.id === event.target.value)
+          const item = sections.find((candidate) => candidate.id === event.target.value)
           if (item) onSelect(item.id)
         }}>
         {SETTINGS_GROUPS.map((group) => <optgroup key={group.id} label={group.label}>
-          {SETTINGS_SECTIONS.filter((item) => item.group === group.id).map((item) =>
+          {sections.filter((item) => item.group === group.id).map((item) =>
             <option key={item.id} value={item.id}>{item.label}</option>)}
         </optgroup>)}
       </select>
@@ -290,6 +297,7 @@ function SectionContent({
         <McpServerDetailPage name={selectedName} onBack={() => setSection('mcp')} />
       ) : null
     case 'memory':       return <MemorySettingsPage />
+    case 'plugins':      return <PluginsSettingsPage />
     case 'providers':    return <ProvidersSettingsPage />
     case 'denied_paths':
     case 'sandbox':      return <DeniedPathsSettingsPage />

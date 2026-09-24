@@ -18,6 +18,7 @@ import {
   Info,
   KeyRound,
   Plug,
+  Puzzle,
   Shield,
   Sparkles,
   Wrench,
@@ -36,6 +37,7 @@ export type TopLevelSection = Extract<
   | 'skills'
   | 'mcp'
   | 'memory'
+  | 'plugins'
   | 'providers'
   | 'denied_paths'
   | 'sandbox'
@@ -68,6 +70,8 @@ export interface SettingsSectionDef {
   group: SettingsGroupId
   /** Included in the five-slot mobile tab bar. */
   mobileTab?: boolean
+  /** Shown only when the backend advertises this capability (see `useServerCapability`). */
+  capability?: string
 }
 
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
@@ -97,6 +101,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
     label: 'Memory',
     icon: Brain,
     group: 'build',
+  },
+  {
+    id: 'plugins',
+    label: 'Plugins',
+    icon: Puzzle,
+    group: 'build',
+    capability: 'api.plugins',
   },
   {
     id: 'providers',

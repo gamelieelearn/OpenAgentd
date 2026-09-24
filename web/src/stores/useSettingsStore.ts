@@ -27,6 +27,7 @@ export type SettingsSection =
   | 'denied_paths'
   | 'sandbox'
   | 'memory'
+  | 'plugins'
   // Replaced the former 'multimodal' | 'summarization' | 'title-generation'
   // sections, which are now collapsible groups on one Automation page.
   | 'automation'

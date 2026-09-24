@@ -20,7 +20,7 @@ mock.module('@tanstack/react-router', () => ({
 import { SettingsHubPage } from '@/components/settings/pages/settings.index'
 import { SETTINGS_SECTIONS } from '@/components/settings/sections'
 
-function renderHub(health?: { status: string; version: string }) {
+function renderHub(health?: { status: string; version: string; capabilities?: string[] }) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
@@ -100,9 +100,18 @@ describe('SettingsHubPage — mobile preferences', () => {
   it('renders a preferences link for every section without a mobile tab', () => {
     renderHub({ status: 'ok', version: '1.2.3' })
 
-    for (const section of SETTINGS_SECTIONS.filter((s) => !s.mobileTab)) {
+    for (const section of SETTINGS_SECTIONS.filter((s) => !s.mobileTab && !s.capability)) {
       expect(screen.getByText(section.label)).toBeInTheDocument()
     }
+  })
+
+  it('shows capability-gated sections only when the backend advertises them', () => {
+    const v2 = renderHub({ status: 'ok', version: '2.26.0' })
+    expect(screen.queryByText('Plugins')).toBeNull()
+    v2.unmount()
+
+    renderHub({ status: 'ok', version: '3.0.0', capabilities: ['api.plugins'] })
+    expect(screen.getByText('Plugins')).toBeInTheDocument()
   })
 
   it('does not link to sections that already have a mobile tab', () => {

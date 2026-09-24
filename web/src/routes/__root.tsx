@@ -1,6 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { useHotkey } from '@tanstack/react-hotkeys'
-import { Suspense, useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
 import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
@@ -21,6 +21,20 @@ import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardSho
 import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
 import { LspInstallPrompt } from '@/components/LspInstallPrompt'
+import { CAPABILITY, useServerCapability } from '@/queries'
+
+// Lives in the (lazy) Plugins settings chunk: it only shows a toast after the
+// plugin status request resolves, and only v3 backends can answer it.
+const PluginNotice = lazy(() => import('@/components/settings/pages/settings.plugins').then((m) => ({ default: m.PluginNotice })))
+
+function PluginNoticeGate() {
+  if (!useServerCapability(CAPABILITY.plugins)) return null
+  return (
+    <Suspense fallback={null}>
+      <PluginNotice />
+    </Suspense>
+  )
+}
 
 export function Root() {
   useMobileViewportGuards()
@@ -101,6 +115,7 @@ export function Root() {
   return (
     <QueryClientProvider client={queryClient}>
       <GlobalEventStream />
+      <PluginNoticeGate />
       <SkipLink />
       <MacTitleBar />
       <Suspense fallback={<RouteLoadingFallback />}>
