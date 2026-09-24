@@ -1,9 +1,31 @@
 # Makefile for openagentd
 
 .PHONY: all run dev dev-lan kill-dev-ports test coverage verify verify-backend verify-web verify-docs verify-version verify-native verify-shell-core verify-desktop verify-mobile scenarios scenarios-chat scenarios-mentions scenarios-questions scenarios-lsp scenarios-performance health health-json prompt-budget prompt-budget-json migrate revision build-web icons build dist clean help
+.PHONY: run-v3 dev-v3 run3 dev3 build-v3 verify-v3
 
 # Default target
 all: test
+
+run-v3: ## Start OpenAgentd v3 native Rust backend (:8000)
+	cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- serve --port 8000
+
+run3: run-v3 ## Alias for run-v3
+
+dev-v3: kill-dev-ports ## Start v3 Rust backend (:8000) and frontend (Vite :5173) together
+	@trap 'kill 0' INT TERM EXIT; \
+	(cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- serve --port 8000 2>&1 | sed 's/^/[api-v3] /') & \
+	(while ! nc -z 127.0.0.1 8000 2>/dev/null; do sleep 0.1; done; cd web && bun dev 2>&1 | sed 's/^/[web] /') & \
+	wait
+
+dev3: dev-v3 ## Start v3 Rust backend (:8000) and frontend (Vite :5173) together (alias for dev-v3)
+
+build-v3: ## Build optimized OpenAgentd v3 release binary
+	cargo build --release --manifest-path appv3/Cargo.toml -p appv3-cli
+
+verify-v3: ## Check and test all appv3 Rust crates
+	cargo fmt --all --check --manifest-path appv3/Cargo.toml
+	cargo clippy --manifest-path appv3/Cargo.toml --all-targets -- -D warnings
+	cargo test --manifest-path appv3/Cargo.toml --all-targets
 
 run: ## Start the API server only (no reload, no frontend; :8000)
 	uv run uvicorn app.server:app
