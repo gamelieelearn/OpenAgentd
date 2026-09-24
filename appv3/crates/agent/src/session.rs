@@ -650,6 +650,14 @@ impl AgentSession {
         if let Some(p) = &self.parent_session_id {
             payload["parent_session_id"] = json!(p);
         }
+        // A turn can fail before any client has attached to its stream (e.g.
+        // a missing provider key fails in milliseconds) and the error is not
+        // persisted, so clients on the global stream get the text here.
+        if status == "error" {
+            if let Some(err) = self.last_error() {
+                payload["error"] = json!(err);
+            }
+        }
         broadcaster::publish("session_turn_completed", payload);
     }
 
