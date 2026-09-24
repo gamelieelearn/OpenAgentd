@@ -51,6 +51,13 @@ The product's primary coding surface. A native double-click app on macOS, Window
 and Linux that hosts the same FastAPI sidecar + React UI you would otherwise
 run from the terminal.
 
+- **Native Rust backend engine (OpenAgentd v3)** `[v3.0.0]` — compiles the entire
+  backend into one ~43 MB binary (`appv3/`). The desktop app can bundle it instead of
+  the 220 MB Python runtime (`make -C desktop sidecar SIDECAR=v3`; v2 stays the default).
+  It shares v2's DB, config and plugin dirs. Cold start takes 27–38 ms (26–35x faster)
+  and idle memory is ~20 MB (8x less). User plugins are TypeScript/JavaScript files run in
+  an embedded QuickJS runtime. v3 does not load `.py` plugins; `openagentd.d.ts` in the
+  plugin dir types the API. Measurements and remaining differences: `appv3/REPORT.md`.
 - **Settings draft protection and mobile navigation** `[v2.11.0]` — unsaved
   drafts survive remote refreshes and edits made during a save. Shared settings
   pages and source editors ask before discarding changes on internal navigation
