@@ -8,7 +8,8 @@ through an embedded QuickJS host for TypeScript/JavaScript plugin files
 logging, Alembic migrations and PyYAML-exact YAML. v3 contains no plugin code
 and reads no Python files. v2 (`app/`) remains the source of truth.
 v3 shares v2's DB and config files. What still behaves differently is
-listed in §3.
+listed in §3. macOS/Linux/Windows support, the in-process `gix` snapshot
+engine, the new grep and live workspace refresh are in §6.
 
 ## 1. How parity was verified
 
@@ -445,3 +446,146 @@ v3 contains no plugin code. It loads plugins at runtime from the same
   originals in both plugin dirs. v2 globs `*.py` only, so both versions
   run side by side from the same dir. The
   harnesses in §1 compared v2's `.py` against v3's `.ts` on the same inputs.
+
+## 6. Platforms and native engines
+
+v3 targets macOS, Linux and Windows from one code base. Per-OS behaviour is
+chosen at compile time (`cfg`) or at runtime. Snapshots and grep use the same
+engine on every OS; only tuning differs.
+
+### How each OS is tested
+
+| OS | Where | What runs |
+|---|---|---|
+| macOS (arm64) | local, CI `macos-26` | fmt, clippy `-D warnings`, all tests, release build, smoke test |
+| Linux | local docker `rust:1.95-bookworm` (aarch64), CI `ubuntu-22.04` (x86_64) | clippy `-D warnings`, all tests; CI adds release build + smoke test |
+| Windows | local: MinGW cross-compile + Wine 9 under Rosetta amd64 docker; CI `windows-2025` | clippy `-D warnings` (cross); tests as real `.exe`s under Wine; CI runs the full suite natively |
+
+CI: `.github/workflows/appv3.yml` (fmt on Linux only; clippy, test, release
+build and a smoke test of `--version`, the sidecar handshake and
+`/api/health/ready` on all three).
+
+Wine is a stand-in, not the real thing. Under Wine every test passes except
+for these known Wine limits:
+- Its `powershell.exe` is a stub. v3 detects Wine
+  (`core::platform::under_wine`, via `ntdll!wine_get_version`) and uses
+  `cmd.exe` there.
+- Its `ReadDirectoryChangesW` ignores subtree watching: only top-level
+  changes arrive. Under Wine the watcher uses per-directory watches.
+- Its ConPTY starts the shell but passes no shell I/O, so the terminal
+  round-trip test skips itself under Wine.
+- The `http_api` test, and occasionally other test binaries, crash the
+  emulator (`rosetta error: invalid gdt selector index`), not the code.
+
+Native Windows results come from the CI runner only.
+
+### Cross-platform plumbing (`crates/core`)
+
+- `which`: PATH lookup with `PATHEXT` and the platform PATH separator. It
+  replaces six hand-rolled copies (snapshot, shell, upgrade, MCP, LSP, JS
+  host).
+- `home`: `home_dir`/`expanduser` with Python semantics (`USERPROFILE` on
+  Windows).
+- `dunce::canonicalize` everywhere, so Windows paths never carry the `\\?\`
+  prefix into prompts, the DB or path comparisons.
+- `proctree`: kill a child together with its descendants. On Unix it uses a
+  process group (SIGTERM, then SIGKILL). On Windows it uses a Job Object with
+  `KILL_ON_JOB_CLOSE`. MCP stdio servers use it.
+- `proctree::hide_window`: `CREATE_NO_WINDOW` on every background spawn (git,
+  shell tool, LSP, MCP, JS `subprocess`, browser openers). The desktop sidecar
+  has no console, so without it each spawn would open a console window.
+- CLI on Windows: `pid_alive` (OpenProcess), `hostname`
+  (GetComputerNameExW), a no-echo password prompt (CONIN$ console mode),
+  detached `server start` (`CREATE_NEW_PROCESS_GROUP|CREATE_NO_WINDOW`),
+  `server stop` via `taskkill /T /F`, and a native `logs -f` tail.
+- MCP stdio on Windows inherits the MCP SDK's `DEFAULT_INHERITED_ENV_VARS`
+  list and skips the login-shell PATH probe.
+
+### Deliberate Windows deviations from v2
+
+- **Terminal:** v2 refuses to open terminals on Windows. v3 opens them through
+  ConPTY with `pwsh`/`powershell` (`-NoLogo`) or `cmd`.
+- **Denied paths:** v2 matches `**/.env` against `str(path)`, which contains
+  backslashes on Windows, so the default `.env` rules never matched there. v3
+  matches the `/`-separated path, case-insensitively, on Windows.
+- **Shell command screening:** v2 tokenises with POSIX `shlex`, which reads
+  the `\` in `C:\data\x` as an escape. On Windows v3 splits on whitespace and
+  quotes and keeps backslashes, so absolute denied paths are caught.
+- **JS plugins:** the module resolver accepts absolute Windows paths
+  (`C:\…`, `\\server\…`) and `.\`/`..\` imports.
+
+### Snapshots: in-process `gix`
+
+`crates/agent/src/snapshot_gix.rs` ports v2's `git add -A` / `write-tree` /
+`update-ref` / `checkout` sequence to `gix` 0.87, so no `git` binary is
+needed. The repo format is byte-compatible with v2:
+- same `{STATE_DIR}/snapshot/<sid>` layout and config keys;
+- the index is written without the TREE extension;
+- `init` probes `core.ignorecase`, sets `precomposeunicode` on macOS and
+  `filemode` from `cfg!(unix)`, and honours `init.defaultBranch`.
+
+Seeding writes the same `alternates` file that points at the workspace
+repo's objects. If gix fails and `git` is installed, v3 falls back to the git
+CLI. `SNAPSHOT_ENGINE=git` forces the CLI.
+
+`gix_engine_matches_git_cli` runs five mutation rounds covering CRLF
+attributes, gitignore, a large file, the exec bit, symlinks, file↔dir swaps,
+stat-only changes and a nested repo (gitlink). In every round the tree gix
+writes equals `git write-tree` on the same index, and restore is faithful.
+
+Benchmark on this repo (1,773 files):
+
+| | gix | git CLI |
+|---|---|---|
+| cold (first snapshot) | 67 ms | 140 ms |
+| nothing changed | 15 ms | 23 ms |
+| one file changed | 15 ms | 89 ms |
+
+### Grep: linear-time and parallel
+
+`crates/tools/src/grep.rs` compiles the pattern with the linear-time `regex`
+crate. It falls back to `fancy_regex`, which has a bounded backtracking step
+limit, only for lookaround and backreferences, so `(a+)+$` can no longer
+stall the tool. Newlines are normalised like Python's universal newlines, so
+`$` and CRLF behave as in v2. Files are walked in sorted order, then scanned
+in parallel (rayon) in ordered chunks with deadline checks, so the output and
+the `max_results` cut-off are deterministic on every OS. This is a small
+deviation: v2 follows `os.walk`'s unsorted order.
+
+Release build on this repo, old v3 grep vs new:
+
+| query | old | new |
+|---|---|---|
+| rare literal (full scan) | 60 ms | 41 ms |
+| common literal, max 100 | 45 ms | 27 ms |
+| regex, max 1000 | 101 ms | 46 ms |
+
+### Live workspace refresh (`notify`)
+
+v2 refreshes the file tree, git status and diff only after the agent's own
+file tools, or on window focus. v3 also watches the workspaces the UI is
+showing (`crates/api/src/watch.rs`). Watching starts on
+`/workspace/files/list`, `/workspace/status`, `/workspace/git-diff/view` and
+`/{sid}/files`. The watcher publishes a debounced
+`workspace_files_changed` global SSE event (300 ms, at most one per 2 s
+burst), and `use-global-event-stream.ts` invalidates the matching coding and
+session queries. The event carries the resolved path plus every spelling the
+UI used. It is an accelerator only: every endpoint still reads the disk.
+
+| OS | Backend |
+|---|---|
+| macOS | one recursive FSEvents stream; kernel drops (`Rescan`) trigger a full refresh |
+| Windows | one recursive `ReadDirectoryChangesW`. notify 8 drops buffer overflows silently, but an overflow only happens inside a burst whose other events already refresh the whole workspace |
+| Linux / other | one non-recursive inotify watch per *non-ignored* directory, new directories followed, capped at 20,000; stops with one warning at `fs.inotify.max_user_watches` |
+| NFS/SMB/9p/WSL drvfs/sshfs (Linux), or `OPENAGENTD_FS_WATCH=poll` | the same per-directory layout on notify's poll backend (3 s, ≤2,000 dirs) |
+
+Events are filtered by `NOISE_DIR_NAMES` and the root `.gitignore`. From
+`.git/` only `HEAD`, `packed-refs` and `refs/**` count. `.git/index` is
+ignored because the status endpoint's own `git status` rewrites it. Up to
+16 workspaces are watched. A watcher is dropped after 2 minutes idle with no
+SSE client, or after 30 minutes idle regardless; the next read restarts it.
+`OPENAGENTD_FS_WATCH=off` disables watching.
+
+Not done on purpose: provider plugins still load once per process (v2
+parity; hot reload would need a JS runtime lifecycle). Instruction, agent
+and skill files are already re-validated by mtime on every turn.

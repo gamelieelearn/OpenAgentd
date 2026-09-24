@@ -58,6 +58,12 @@ run from the terminal.
   and idle memory is ~20 MB (8x less). User plugins are TypeScript/JavaScript files run in
   an embedded QuickJS runtime. v3 does not load `.py` plugins; `openagentd.d.ts` in the
   plugin dir types the API. Measurements and remaining differences: `appv3/REPORT.md`.
+- **v3 on macOS, Linux and Windows** `[v3.0.0]` — CI builds and tests all three.
+  Snapshots use in-process `gix`, so no `git` binary is needed (up to 6x faster).
+  Grep is linear-time and parallel. The file tree, git status and diff refresh live
+  when an editor, terminal or `git` changes the workspace (FSEvents / inotify /
+  ReadDirectoryChangesW; `OPENAGENTD_FS_WATCH=poll|off`). On Windows the terminal
+  works through ConPTY, and background commands no longer open console windows.
 - **Settings draft protection and mobile navigation** `[v2.11.0]` — unsaved
   drafts survive remote refreshes and edits made during a save. Shared settings
   pages and source editors ask before discarding changes on internal navigation
