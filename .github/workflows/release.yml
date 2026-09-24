@@ -1,5 +1,23 @@
 name: Release
 
+# Builds the native `openagentd` CLI (appv3) for every supported target and
+# attaches the archives to the shared `v<X.Y.Z>` GitHub release. The
+# installers (`install.sh --cli`, `install.ps1 -Cli`), `openagentd upgrade`
+# and the Homebrew formula (publish-homebrew.yml, triggered by this
+# workflow) all download these archives, so their names are a contract:
+#
+#   openagentd-<version>-<rust target>.tar.gz   (macOS, Linux)
+#   openagentd-<version>-<rust target>.zip      (Windows)
+#   <archive>.sha256                            (`<hex>  <archive name>`)
+#
+# Each archive holds the executable(s) at its root plus LICENSE and NOTICE.
+# Consumers install every executable they find there, so a future second
+# binary (for example a separate TUI) ships without installer changes.
+#
+# v2 (Python) is no longer published from main. The final v2 release
+# (2.27.0, PyPI only) is dispatched from the commit that added the v2
+# end-of-life notice, whose release.yml still builds the wheel.
+
 on:
   workflow_dispatch:
     inputs:
@@ -7,97 +25,193 @@ on:
         description: "Type 'release' to confirm"
         required: true
 
+permissions:
+  contents: write
+
 env:
   # Opt JS actions into Node.js 24 ahead of the June 2026 forced switch.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_TERM_COLOR: always
 
 jobs:
-  release:
-    name: Release
+  prepare:
+    name: Prepare release metadata
     runs-on: ubuntu-latest
     if: github.event.inputs.confirm == 'release'
-    permissions:
-      contents: write
-      id-token: write  # for PyPI OIDC trusted publishing
-
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Check versions are in sync
+        run: scripts/check_version_consistency.sh
 
       - name: Read version
         id: version
         run: |
-          VERSION=$(cat app/version.txt | tr -d '[:space:]')
+          VERSION=$(tr -d '[:space:]' < app/version.txt)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 
-      # We share the ``v<X.Y.Z>`` tag with ``release-desktop.yml`` so
-      # PyPI artefacts and desktop installers live under one release.
-      # If the tag already exists it's because the desktop workflow
-      # ran first for this same version — that's fine; we'll upload
-      # into the existing release below. We only block when the
-      # release ALREADY contains a wheel (i.e. ``release.yml`` itself
-      # ran for this version), which would indicate the version
-      # wasn't bumped.
-      - name: Check release does not already contain wheel for this version
+      # The tag is shared with release-desktop.yml, which may have created
+      # the release first. Only an existing CLI archive means this version
+      # was already released and not bumped.
+      - name: Check release does not already contain CLI archives
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           if gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null \
-               | grep -q "\.whl$"; then
-            echo "Release $TAG already has a wheel attached. Bump the version before releasing."
+               | grep -q '^openagentd-.*\.\(tar\.gz\|zip\)$'; then
+            echo "Release $TAG already has CLI archives. Bump the version before releasing."
             exit 1
           fi
 
-      - uses: astral-sh/setup-uv@v10.1.0
+  build:
+    needs: prepare
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, runner: macos-26 }
+          # Cross-compiled on Apple Silicon; the arm64 runner runs the x86_64
+          # binary under Rosetta for the smoke test.
+          - { target: x86_64-apple-darwin, runner: macos-26 }
+          # ubuntu-22.04 keeps the glibc floor at 2.35, same as the desktop .deb.
+          - { target: x86_64-unknown-linux-gnu, runner: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-22.04-arm }
+          - { target: x86_64-pc-windows-msvc, runner: windows-2025 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-      - name: Install dependencies
-        run: uv sync --no-dev
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: appv3
+          key: release-${{ matrix.target }}
 
-      - name: Build package
-        run: uv build
+      - name: Build
+        working-directory: appv3
+        run: cargo build --locked --profile dist -p appv3-cli --target ${{ matrix.target }}
 
-      # If ``release-desktop.yml`` ran first, the tag already exists
-      # (it was created by ``gh release create`` in that workflow,
-      # which implicitly creates the tag). Only push the tag if we
-      # got here first.
+      - name: Package
+        id: package
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          exe=""
+          [ "$RUNNER_OS" = "Windows" ] && exe=".exe"
+          name="openagentd-${VERSION}-${TARGET}"
+          stage="$RUNNER_TEMP/$name"
+          mkdir -p "$stage" _release
+          cp "appv3/target/${TARGET}/dist/openagentd${exe}" "$stage/"
+          cp LICENSE NOTICE "$stage/"
+          # The dist profile keeps symbols; strip the shipped copy (not on
+          # Windows, where the PDB is separate and GNU strip corrupts PEs).
+          if [ -z "$exe" ]; then strip "$stage/openagentd"; fi
+
+          # The binary must report the release version before it ships.
+          reported=$("$stage/openagentd${exe}" --version | tr -d '\r')
+          echo "$reported"
+          [ "$reported" = "openagentd v${VERSION}" ] || { echo "version mismatch: $reported"; exit 1; }
+
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            archive="${name}.zip"
+            (cd "$stage" && 7z a -tzip "$GITHUB_WORKSPACE/_release/$archive" ./* >/dev/null)
+          else
+            archive="${name}.tar.gz"
+            tar -C "$stage" -czf "_release/$archive" .
+          fi
+          (cd _release && { sha256sum "$archive" 2>/dev/null || shasum -a 256 "$archive"; } > "$archive.sha256")
+          cat "_release/$archive.sha256"
+          ls -la _release
+
+      - name: Smoke test (handshake + health)
+        env:
+          OPENAGENTD_MODEL_REGISTRY_REFRESH: "false"
+        run: |
+          set -euo pipefail
+          bin="appv3/target/${{ matrix.target }}/dist/openagentd"
+          [ "$RUNNER_OS" = "Windows" ] && bin="$bin.exe"
+          sb="$RUNNER_TEMP/oad-smoke"
+          mkdir -p "$sb"
+          export APP_ENV=production OPENAGENTD_DATA_DIR="$sb/data" OPENAGENTD_CONFIG_DIR="$sb/config" \
+            OPENAGENTD_STATE_DIR="$sb/state" OPENAGENTD_CACHE_DIR="$sb/cache" OPENAGENTD_WORKSPACE_DIR="$sb/ws"
+          "$bin" server serve --host 127.0.0.1 --port 0 --handshake --generate-token > "$sb/out.txt" 2> "$sb/err.txt" &
+          pid=$!
+          for _ in $(seq 150); do grep -q '^OPENAGENTD_HANDSHAKE ' "$sb/out.txt" && break; sleep 0.2; done
+          line=$(grep '^OPENAGENTD_HANDSHAKE ' "$sb/out.txt") || { echo "no handshake"; cat "$sb/err.txt"; exit 1; }
+          port=$(echo "$line" | sed -E 's/.*"port": *([0-9]+).*/\1/')
+          curl -fsS "http://127.0.0.1:$port/api/health/ready"; echo
+          kill "$pid" || true
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: openagentd-cli-${{ matrix.target }}
+          path: _release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: [prepare, build]
+    name: Publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: _artifacts
+          pattern: openagentd-cli-*
+          merge-multiple: true
+
+      - name: Check every target is present
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          ls -la _artifacts
+          for t in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            test -f "_artifacts/openagentd-${VERSION}-${t}.tar.gz.sha256"
+          done
+          test -f "_artifacts/openagentd-${VERSION}-x86_64-pc-windows-msvc.zip.sha256"
+          (cd _artifacts && cat *.sha256 > SHA256SUMS && sha256sum -c SHA256SUMS)
+
+      # If release-desktop.yml ran first the tag exists already.
       - name: Create and push tag (if missing)
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          TAG="${{ steps.version.outputs.tag }}"
+          TAG="${{ needs.prepare.outputs.tag }}"
           if git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
-            echo "Tag $TAG already exists on remote (desktop workflow ran first). Skipping tag creation."
+            echo "Tag $TAG already exists on remote. Skipping tag creation."
           else
             git tag -a "$TAG" -m "Release $TAG"
             git push origin "$TAG"
           fi
 
-      # Create-or-upload: if ``release-desktop.yml`` already created
-      # the release, append wheel + sdist via ``upload --clobber``.
-      # Otherwise create it with generated notes (the canonical
-      # release notes come from this workflow's auto-generation; the
-      # operator replaces them after the desktop workflow also
-      # finishes — see ``.opencode/commands/release.md``).
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
+          TAG="${{ needs.prepare.outputs.tag }}"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/*.whl dist/*.tar.gz --clobber
+            gh release upload "$TAG" _artifacts/* --clobber
           else
-            # 2.27.0 is the final v2 release, published after v3. It must not
-            # become "latest", which the installers and the brew tap follow.
-            gh release create "$TAG" \
-              dist/*.whl dist/*.tar.gz \
+            gh release create "$TAG" _artifacts/* \
               --title "$TAG" \
               --generate-notes \
-              --latest=false \
               --verify-tag
           fi
-
-      - name: Publish to PyPI
-        run: uv publish

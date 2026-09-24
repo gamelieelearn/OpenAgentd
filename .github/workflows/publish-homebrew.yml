@@ -1,5 +1,14 @@
 name: Update Homebrew Tap
 
+# Publishes the CLI formula (`brew install lthoangg/tap/openagentd`) from the
+# prebuilt archives release.yml attaches to the latest `v<X.Y.Z>` release.
+# No Python or Rust toolchain is needed on the user's machine, and v2
+# formula installs move to v3 with a plain `brew upgrade`.
+#
+# The release is GitHub's "latest", which the final v2 release (2.27.0,
+# created with --latest=false) never becomes. Anything below 3.x is refused
+# so the formula cannot fall back to the Python package.
+
 on:
   workflow_run:
     workflows: ["Release"]
@@ -17,44 +26,35 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
 
     steps:
-      - name: Get release info
+      - name: Resolve latest release
         id: release
-        run: |
-          # Find the latest v* tag published by the Release workflow
-          RELEASE=$(gh release list --repo lthoangg/openagentd --limit 10 --json tagName,publishedAt \
-            --jq '[.[] | select(.tagName | startswith("v"))] | sort_by(.publishedAt) | last')
-          TAG=$(echo "$RELEASE" | jq -r '.tagName')
-          VERSION=$(echo "$TAG" | sed 's/^v//')
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download sdist from PyPI
         run: |
+          set -euo pipefail
+          TAG=$(gh api repos/lthoangg/openagentd/releases/latest --jq .tag_name)
+          VERSION="${TAG#v}"
+          case "$VERSION" in
+            [0-2].*) echo "::error::latest release $TAG is not v3+; refusing to publish"; exit 1 ;;
+          esac
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Download checksums
+        id: sums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
           VERSION="${{ steps.release.outputs.version }}"
-          PYPI_JSON="https://pypi.org/pypi/openagentd/${VERSION}/json"
-
-          for attempt in 1 2 3 4 5; do
-            echo "Fetching PyPI metadata for openagentd ${VERSION} (attempt ${attempt}/5)"
-            if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors "$PYPI_JSON" -o pypi.json; then
-              URL=$(python3 -c "import json; d=json.load(open('pypi.json')); print([u['url'] for u in d['urls'] if u['packagetype']=='sdist'][0])")
-              echo "$URL" > pypi-sdist-url.txt
-              if curl -fSL --retry 3 --retry-delay 5 --retry-all-errors "$URL" -o openagentd.tar.gz; then
-                exit 0
-              fi
-            fi
-            sleep $((attempt * 10))
+          gh release download "${{ steps.release.outputs.tag }}" --repo lthoangg/openagentd \
+            --pattern 'openagentd-*.tar.gz.sha256' --dir _sums
+          for t in aarch64-apple-darwin x86_64-apple-darwin aarch64-unknown-linux-gnu x86_64-unknown-linux-gnu; do
+            f="_sums/openagentd-${VERSION}-${t}.tar.gz.sha256"
+            test -f "$f" || { echo "::error::missing $f (release.yml not finished?)"; exit 1; }
+            key=$(echo "$t" | tr '-' '_')
+            echo "${key}=$(cut -d' ' -f1 "$f")" >> "$GITHUB_OUTPUT"
           done
-
-          echo "Unable to download openagentd ${VERSION} sdist from PyPI after retries" >&2
-          exit 1
-
-      - name: Compute SHA-256
-        id: hash
-        run: |
-          echo "sha256=$(sha256sum openagentd.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "url=$(cat pypi-sdist-url.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout homebrew-tap
         uses: actions/checkout@v7
@@ -66,40 +66,53 @@ jobs:
       - name: Update formula
         run: |
           VERSION="${{ steps.release.outputs.version }}"
-          SHA256="${{ steps.hash.outputs.sha256 }}"
-          URL="${{ steps.hash.outputs.url }}"
+          BASE="https://github.com/lthoangg/openagentd/releases/download/v${VERSION}/openagentd-${VERSION}"
 
           cat > homebrew-tap/Formula/openagentd.rb <<FORMULA
           class Openagentd < Formula
             desc "On-machine AI assistant with a web cockpit"
             homepage "https://github.com/lthoangg/openagentd"
-            url "${URL}"
-            sha256 "${SHA256}"
+            version "${VERSION}"
             license "Apache-2.0"
 
-            depends_on "python@3.14"
+            on_macos do
+              on_arm do
+                url "${BASE}-aarch64-apple-darwin.tar.gz"
+                sha256 "${{ steps.sums.outputs.aarch64_apple_darwin }}"
+              end
+              on_intel do
+                url "${BASE}-x86_64-apple-darwin.tar.gz"
+                sha256 "${{ steps.sums.outputs.x86_64_apple_darwin }}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "${BASE}-aarch64-unknown-linux-gnu.tar.gz"
+                sha256 "${{ steps.sums.outputs.aarch64_unknown_linux_gnu }}"
+              end
+              on_intel do
+                url "${BASE}-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "${{ steps.sums.outputs.x86_64_unknown_linux_gnu }}"
+              end
+            end
 
             def install
-              python3 = Formula["python@3.14"].opt_bin/"python3.14"
-              system python3, "-m", "venv", libexec
-              system libexec/"bin/pip", "install", "--no-cache-dir", "--upgrade", "pip"
-              # Install from prebuilt wheels (including cryptography) so no Rust
-              # toolchain is required on the user's machine. Homebrew may emit a
-              # cosmetic "Failed changing dylib ID" warning for cryptography,
-              # which is harmless and does not affect functionality.
-              system libexec/"bin/pip", "install", "--no-cache-dir", buildpath
-              bin.install_symlink libexec/"bin/openagentd"
+              # Every executable at the archive root (openagentd, plus any
+              # future companion binary).
+              Dir["*"].each { |f| bin.install f if File.file?(f) && File.executable?(f) }
             end
 
             def caveats
               <<~EOS
-                Run `openagentd --help` to get started, or see
-                https://github.com/lthoangg/OpenAgentd for documentation.
+                Run \`openagentd --help\` to get started, or see
+                https://github.com/lthoangg/openagentd for documentation.
+                Upgrade with \`brew upgrade openagentd\` (\`openagentd upgrade\` does this too).
               EOS
             end
 
             test do
-              assert_match version.to_s, shell_output("#{bin}/openagentd --version")
+              assert_match "openagentd v#{version}", shell_output("#{bin}/openagentd --version")
             end
           end
           FORMULA
