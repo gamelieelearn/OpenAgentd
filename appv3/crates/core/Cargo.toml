@@ -1,0 +1,24 @@
+[package]
+name = "appv3-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+directories.workspace = true
+sha2.workspace = true
+regex.workspace = true
+base64 = "0.22"
+unicode-normalization = "0.1"
+indexmap = { version = "2", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,310 @@
+//! Path denylist — port of `app/agent/denied_paths.py` (+ `denied_paths_config`).
+
+use crate::ToolError;
+use regex::Regex;
+use std::path::{Component, Path, PathBuf};
+
+pub const SESSIONS_DIR: &str = "sessions";
+pub const DEFAULT_DENIED_PATTERNS: &[&str] = &["**/.env", "**/.env.*"];
+
+pub fn sessions_root() -> PathBuf {
+    appv3_core::settings().data_dir.join(SESSIONS_DIR)
+}
+
+pub fn session_artifacts_dir(session_id: Option<&str>) -> PathBuf {
+    match session_id {
+        Some(s) if !s.is_empty() => sessions_root().join(s),
+        _ => sessions_root(),
+    }
+}
+
+/// Python `fnmatch.translate` → anchored regex.
+pub fn fnmatch_translate(pat: &str) -> String {
+    let chars: Vec<char> = pat.chars().collect();
+    let mut i = 0;
+    let mut res = String::from("(?s)^");
+    while i < chars.len() {
+        let c = chars[i];
+        i += 1;
+        match c {
+            '*' => {
+                while i < chars.len() && chars[i] == '*' {
+                    i += 1;
+                }
+                res.push_str(".*");
+            }
+            '?' => res.push('.'),
+            '[' => {
+                let mut j = i;
+                if j < chars.len() && chars[j] == '!' {
+                    j += 1;
+                }
+                if j < chars.len() && chars[j] == ']' {
+                    j += 1;
+                }
+                while j < chars.len() && chars[j] != ']' {
+                    j += 1;
+                }
+                if j >= chars.len() {
+                    res.push_str("\\[");
+                } else {
+                    let mut stuff: String = chars[i..j].iter().collect();
+                    stuff = stuff.replace('\\', "\\\\");
+                    i = j + 1;
+                    if let Some(rest) = stuff.strip_prefix('!') {
+                        stuff = format!("^{rest}");
+                    } else if stuff.starts_with('^') {
+                        stuff = format!("\\{stuff}");
+                    }
+                    res.push('[');
+                    res.push_str(&stuff);
+                    res.push(']');
+                }
+            }
+            c => res.push_str(&regex::escape(&c.to_string())),
+        }
+    }
+    res.push('$');
+    res
+}
+
+pub fn fnmatch(name: &str, pat: &str) -> bool {
+    Regex::new(&fnmatch_translate(pat)).map(|r| r.is_match(name)).unwrap_or(false)
+}
+
+/// Lexical + symlink-resolving `Path.resolve()` (non-strict: missing tails ok).
+pub fn resolve(p: &Path) -> PathBuf {
+    if let Ok(c) = std::fs::canonicalize(p) {
+        return c;
+    }
+    // Resolve the longest existing ancestor, then append the rest lexically.
+    let mut existing = p.to_path_buf();
+    let mut tail: Vec<std::ffi::OsString> = vec![];
+    loop {
+        if let Ok(c) = std::fs::canonicalize(&existing) {
+            let mut out = c;
+            for t in tail.iter().rev() {
+                match Path::new(t).components().next() {
+                    Some(Component::ParentDir) => {
+                        out.pop();
+                    }
+                    Some(Component::CurDir) => {}
+                    _ => out.push(t),
+                }
+            }
+            return out;
+        }
+        match (existing.file_name().map(|s| s.to_os_string()), existing.parent()) {
+            (Some(name), Some(parent)) => {
+                tail.push(name);
+                existing = parent.to_path_buf();
+            }
+            _ => return normalize(p),
+        }
+    }
+}
+
+fn normalize(p: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// Would v2's `DeniedPathsConfig(...)` constructor raise? It catches
+/// `(ValueError, OSError)` from `load_config()`; YAML-constructor exceptions
+/// such as `KeyError` (`!!bool maybe`) or `AttributeError` escape it.
+pub fn default_config_escapes() -> bool {
+    let cfg = appv3_core::settings().config_dir.clone();
+    let mut path = cfg.join("denied_paths.yaml");
+    if !path.exists() {
+        path = cfg.join("sandbox.yaml");
+    }
+    let Ok(text) = std::fs::read_to_string(&path) else { return false };
+    matches!(appv3_core::pyyaml::safe_load_py(&text), Err(e) if !e.is_yaml_error() && e.kind != "ValueError")
+}
+
+pub fn load_denied_patterns() -> Vec<String> {
+    let cfg = appv3_core::settings().config_dir.clone();
+    let mut path = cfg.join("denied_paths.yaml");
+    if !path.exists() {
+        let legacy = cfg.join("sandbox.yaml");
+        if legacy.exists() {
+            path = legacy;
+        } else {
+            return DEFAULT_DENIED_PATTERNS.iter().map(|s| s.to_string()).collect();
+        }
+    }
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(_) => return vec![],
+    };
+    let raw = match appv3_core::pyyaml::safe_load_py(&text) {
+        Ok(p) if !p.truthy() => serde_json::Value::Null,
+        Ok(p) => p.to_json(),
+        Err(_) => return vec![],
+    };
+    match raw.get("denied_patterns") {
+        Some(serde_json::Value::Array(seq)) => seq.iter().filter_map(|v| v.as_str()).filter(|s| !s.trim().is_empty()).map(String::from).collect(),
+        None if raw.is_object() || raw.is_null() => DEFAULT_DENIED_PATTERNS.iter().map(|s| s.to_string()).collect(),
+        _ => vec![],
+    }
+}
+
+#[derive(Debug)]
+pub struct DeniedPaths {
+    pub workspace_root: PathBuf,
+    pub session_id: Option<String>,
+    pub denied_roots: Vec<PathBuf>,
+    pub denied_patterns: Vec<(String, Regex)>,
+    pub shell_denied_roots: Vec<PathBuf>,
+    shielded: Vec<(PathBuf, Vec<PathBuf>)>,
+}
+
+impl DeniedPaths {
+    pub fn new(workspace: &Path, session_id: Option<String>) -> Self {
+        Self::with(workspace, session_id, None, None)
+    }
+
+    pub fn with(workspace: &Path, session_id: Option<String>, roots: Option<Vec<PathBuf>>, patterns: Option<Vec<String>>) -> Self {
+        let _ = std::fs::create_dir_all(workspace);
+        let workspace_root = resolve(workspace);
+        let s = appv3_core::settings();
+        let denied_roots: Vec<PathBuf> = roots.unwrap_or_else(|| vec![s.data_dir.clone(), s.state_dir.clone(), s.cache_dir.clone()]).iter().map(|p| resolve(p)).collect();
+        let pats = patterns.unwrap_or_else(load_denied_patterns);
+        let denied_patterns = pats.into_iter().filter_map(|p| Regex::new(&fnmatch_translate(&p)).ok().map(|r| (p, r))).collect();
+        let shell_denied_roots = vec![resolve(&s.config_dir).join("memory")];
+        let state_root = resolve(&s.state_dir);
+        let mut allowed = vec![workspace_root.clone(), state_root.join("logs"), state_root.join("otel"), state_root.join("telemetry")];
+        if let Some(sid) = session_id.as_deref().filter(|s| !s.is_empty()) {
+            allowed.push(resolve(&session_artifacts_dir(Some(sid))));
+        }
+        let shielded = denied_roots.iter().map(|d| (d.clone(), allowed.iter().filter(|a| a.starts_with(d)).cloned().collect())).collect();
+        Self { workspace_root, session_id, denied_roots, denied_patterns, shell_denied_roots, shielded }
+    }
+
+    fn is_denied(&self, resolved: &Path) -> Option<String> {
+        for (denied, shields) in &self.shielded {
+            if shields.iter().any(|s| resolved.starts_with(s)) {
+                continue;
+            }
+            if resolved.starts_with(denied) {
+                return Some(denied.display().to_string());
+            }
+        }
+        let s = resolved.to_string_lossy();
+        self.denied_patterns.iter().find(|(_, rx)| rx.is_match(&s)).map(|(p, _)| p.clone())
+    }
+
+    fn is_shell_denied(&self, resolved: &Path) -> Option<String> {
+        self.shell_denied_roots.iter().find(|d| resolved.starts_with(d)).map(|d| d.display().to_string())
+    }
+
+    /// v2 `validate_path` — raises PermissionError text on denial.
+    pub fn validate_path(&self, path: &str) -> Result<PathBuf, ToolError> {
+        if path.starts_with('~') {
+            return Err(ToolError::Execution(format!("Tilde paths are not allowed: {path}")));
+        }
+        let p = Path::new(path);
+        let candidate = if p.is_absolute() { p.to_path_buf() } else { self.workspace_root.join(p) };
+        let resolved = resolve(&candidate);
+        if let Some(d) = self.is_denied(&resolved) {
+            tracing::warn!("path_denied path={} denied_root={}", resolved.display(), d);
+            return Err(ToolError::Execution(format!("Path '{}' is inside a denied root: {}", resolved.display(), d)));
+        }
+        Ok(resolved)
+    }
+
+    pub fn is_denied_path(&self, path: &Path) -> bool {
+        if self.is_denied(path).is_some() {
+            return true;
+        }
+        match std::fs::symlink_metadata(path) {
+            Ok(m) if m.file_type().is_symlink() => self.is_denied(&resolve(path)).is_some(),
+            // `Path.is_symlink()` is False for missing/unreadable paths.
+            _ => false,
+        }
+    }
+
+    pub fn display_path(&self, resolved: &Path) -> String {
+        match resolved.strip_prefix(&self.workspace_root) {
+            Ok(r) => {
+                let s = r.display().to_string();
+                if s.is_empty() {
+                    ".".into()
+                } else {
+                    s
+                }
+            }
+            Err(_) => resolved.display().to_string(),
+        }
+    }
+
+    /// v2 `check_command`: shell-tokenise and look for denied path tokens.
+    pub fn check_command(&self, command_line: &str) -> Option<String> {
+        let tokens = shlex::split(command_line)?;
+        for raw in tokens {
+            let token = raw.trim_matches(|c| c == '"' || c == '\'');
+            if !looks_path_like(token) {
+                continue;
+            }
+            let p = Path::new(token);
+            let candidate = if p.is_absolute() { p.to_path_buf() } else { self.workspace_root.join(p) };
+            let resolved = resolve(&candidate);
+            let hit = self.is_denied(&resolved).or_else(|| self.is_shell_denied(&resolved));
+            if hit.is_some() {
+                tracing::warn!("path_command_denied token={} resolved={}", token, resolved.display());
+                return hit;
+            }
+        }
+        None
+    }
+}
+
+fn looks_path_like(token: &str) -> bool {
+    if token.is_empty() || token.starts_with('-') {
+        return false;
+    }
+    if token.starts_with('~') || token.starts_with('.') || token.contains('/') || token.contains('\\') {
+        return true;
+    }
+    Path::new(token).extension().map(|e| !e.is_empty()).unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fnmatch_matches_python() {
+        assert!(fnmatch("/a/b/.env", "**/.env"));
+        assert!(fnmatch("/a/.env.local", "**/.env.*"));
+        assert!(!fnmatch("/a/env", "**/.env"));
+        assert!(fnmatch("foo.py", "*.py"));
+        assert!(fnmatch("a/b.py", "*.py"), "fnmatch * crosses /");
+        assert!(fnmatch("x1", "x[0-9]"));
+        assert!(!fnmatch("xa", "x[!a]"));
+    }
+
+    #[test]
+    fn validate_denies_roots_and_patterns() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().join("ws");
+        let denied = tmp.path().join("data");
+        std::fs::create_dir_all(&denied).unwrap();
+        let d = DeniedPaths::with(&ws, None, Some(vec![denied.clone()]), Some(vec!["**/.env".into()]));
+        assert!(d.validate_path("src/a.py").is_ok());
+        assert!(d.validate_path(denied.join("x.db").to_str().unwrap()).is_err());
+        assert!(d.validate_path(".env").is_err());
+        assert!(d.validate_path("~/x").is_err());
+        assert_eq!(d.display_path(&d.workspace_root.join("a/b.txt")), "a/b.txt");
+        assert!(d.check_command(&format!("cat {}", denied.join("x").display())).is_some());
+    }
+}

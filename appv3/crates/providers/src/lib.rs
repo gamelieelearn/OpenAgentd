@@ -1,0 +1,25 @@
+//! LLM providers — port of `app/agent/providers` (v2 internal chunk protocol).
+
+pub mod anthropic;
+pub mod bedrock;
+pub mod catalog;
+pub mod codex;
+pub mod copilot;
+pub mod creds;
+pub mod discovery;
+pub mod factory;
+pub mod google;
+pub mod grok;
+pub mod js_plugin;
+pub mod mock;
+pub mod oauth;
+pub mod openai;
+pub mod plugin;
+pub mod plugin_json;
+pub mod registry;
+pub mod sse;
+pub mod types;
+pub mod usage;
+
+pub use factory::{build_provider, UnconfiguredProvider};
+pub use types::*;

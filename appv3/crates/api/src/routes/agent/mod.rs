@@ -1,0 +1,15 @@
+//! `/api/agent` router group (`app/api/routes/agent/__init__.py`).
+
+pub mod chat;
+pub mod files;
+pub mod helpers;
+pub mod memory;
+pub mod questions;
+pub mod worktrees;
+
+use crate::AppState;
+use axum::Router;
+
+pub fn router() -> Router<AppState> {
+    Router::new().merge(chat::router()).merge(files::router()).merge(memory::router()).merge(questions::router()).merge(worktrees::router())
+}

@@ -1,0 +1,579 @@
+//! In-memory SSE stream store — port of `app/services/memory_stream_store.py`.
+//!
+//! Per-session turn blob for reconnect replay plus live subscriber fan-out.
+//! Single-process only, like v2.
+
+use crate::events::{self, Envelope, WireEvent};
+use crate::queue::SubQueue;
+use serde_json::{json, Map, Value};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
+pub const STREAM_TTL: Duration = Duration::from_secs(3600);
+pub const FINISHED_TURN_TTL: Duration = Duration::from_secs(60);
+pub const MAX_TURN_LIFETIME: Duration = Duration::from_secs(4 * 3600);
+pub const SUBSCRIBER_QUEUE_SIZE: usize = 2048;
+
+type Sub = Arc<SubQueue<Arc<WireEvent>>>;
+
+#[derive(Default)]
+struct TurnState {
+    is_streaming: bool,
+    // IndexMap-like ordering: v2 dicts keep insertion order.
+    content: Vec<(String, Vec<String>)>,
+    thinking: Vec<(String, Vec<String>)>,
+    tool_calls: Vec<Map<String, Value>>,
+    agent_statuses: Vec<(String, String)>,
+    agent_errors: HashMap<String, Value>,
+    summarization: Vec<(String, Summ)>,
+    usage: Option<Map<String, Value>>,
+    error: Option<String>,
+    agent_not_configured: Option<Map<String, Value>>,
+    queued_turns: Vec<Map<String, Value>>,
+    subscribers: Vec<Sub>,
+    created_at: Option<Instant>,
+    deadline: Option<Instant>,
+}
+
+#[derive(Clone, Default)]
+struct Summ {
+    text: String,
+    done: bool,
+    error: bool,
+}
+
+fn entry<'a, T: Default>(v: &'a mut Vec<(String, T)>, key: &str) -> &'a mut T {
+    if let Some(i) = v.iter().position(|(k, _)| k == key) {
+        return &mut v[i].1;
+    }
+    v.push((key.to_string(), T::default()));
+    &mut v.last_mut().unwrap().1
+}
+
+fn remove<T>(v: &mut Vec<(String, T)>, key: &str) -> Option<T> {
+    v.iter().position(|(k, _)| k == key).map(|i| v.remove(i).1)
+}
+
+impl TurnState {
+    fn fresh(now: Instant) -> Self {
+        Self { is_streaming: true, created_at: Some(now), deadline: Some(now + STREAM_TTL), ..Default::default() }
+    }
+    fn reset_for_next_turn(&mut self) {
+        self.is_streaming = true;
+        self.content.clear();
+        self.thinking.clear();
+        self.tool_calls.clear();
+        self.agent_statuses.clear();
+        self.agent_errors.clear();
+        self.summarization.clear();
+        self.usage = None;
+        self.error = None;
+        self.agent_not_configured = None;
+        self.queued_turns.clear();
+    }
+    fn clear_replay_payload(&mut self) {
+        self.content.clear();
+        self.thinking.clear();
+        self.tool_calls.clear();
+        self.summarization.clear();
+        self.usage = None;
+        self.error = None;
+        self.agent_not_configured = None;
+        self.queued_turns.clear();
+    }
+}
+
+fn tc_str<'a>(tc: &'a Map<String, Value>, k: &str) -> Option<&'a str> {
+    tc.get(k).and_then(|v| v.as_str())
+}
+fn tc_bool(tc: &Map<String, Value>, k: &str) -> bool {
+    tc.get(k).and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
+/// `_tool_state.match_tool_start`.
+fn match_tool_start(tcs: &mut Vec<Map<String, Value>>, id: Option<&str>, name: &str, arguments: Value, agent: &str) {
+    for tc in tcs.iter_mut().rev() {
+        let hit = match id {
+            Some(i) if !i.is_empty() => tc_str(tc, "tool_call_id") == Some(i),
+            _ => tc_str(tc, "name") == Some(name) && !tc_bool(tc, "started"),
+        };
+        if hit {
+            tc.insert("arguments".into(), arguments);
+            tc.insert("started".into(), Value::Bool(true));
+            if !agent.is_empty() && tc_str(tc, "agent").map(|a| a.is_empty()).unwrap_or(true) {
+                tc.insert("agent".into(), Value::String(agent.into()));
+            }
+            return;
+        }
+    }
+    let mut m = Map::new();
+    m.insert("tool_call_id".into(), id.map(|s| Value::String(s.into())).unwrap_or(Value::Null));
+    m.insert("name".into(), Value::String(name.into()));
+    m.insert("arguments".into(), arguments);
+    m.insert("agent".into(), Value::String(agent.into()));
+    m.insert("started".into(), Value::Bool(true));
+    m.insert("done".into(), Value::Bool(false));
+    tcs.push(m);
+}
+
+/// `_tool_state.match_tool_end`.
+fn match_tool_end(tcs: &mut Vec<Map<String, Value>>, id: Option<&str>, name: &str, result: Value, agent: &str) {
+    let set = |tc: &mut Map<String, Value>| {
+        tc.insert("done".into(), Value::Bool(true));
+        tc.insert("result".into(), result.clone());
+        if !agent.is_empty() && tc_str(tc, "agent").map(|a| a.is_empty()).unwrap_or(true) {
+            tc.insert("agent".into(), Value::String(agent.into()));
+        }
+    };
+    if let Some(i) = id.filter(|s| !s.is_empty()) {
+        if let Some(tc) = tcs.iter_mut().rev().find(|tc| tc_str(tc, "tool_call_id") == Some(i)) {
+            set(tc);
+            return;
+        }
+    }
+    if let Some(tc) = tcs.iter_mut().rev().find(|tc| tc_str(tc, "name") == Some(name) && !tc_bool(tc, "done")) {
+        set(tc);
+        return;
+    }
+    let mut m = Map::new();
+    m.insert("tool_call_id".into(), id.map(|s| Value::String(s.into())).unwrap_or(Value::Null));
+    m.insert("name".into(), Value::String(name.into()));
+    m.insert("arguments".into(), Value::Null);
+    m.insert("result".into(), result);
+    m.insert("agent".into(), Value::String(agent.into()));
+    m.insert("started".into(), Value::Bool(true));
+    m.insert("done".into(), Value::Bool(true));
+    tcs.push(m);
+}
+
+const REPLAYABLE_STATUSES: [&str; 5] = ["idle", "working", "waiting_input", "offline", "error"];
+
+#[derive(Default)]
+pub struct StreamStore {
+    turns: Mutex<HashMap<String, TurnState>>,
+}
+
+pub fn store() -> &'static StreamStore {
+    static S: OnceLock<StreamStore> = OnceLock::new();
+    S.get_or_init(StreamStore::default)
+}
+
+impl StreamStore {
+    /// `init_turn`.
+    pub fn init_turn(&self, session_id: &str, keep_subscribers: bool) {
+        let now = Instant::now();
+        let mut turns = self.turns.lock().unwrap();
+        if let Some(old) = turns.get_mut(session_id) {
+            if keep_subscribers {
+                old.reset_for_next_turn();
+                old.created_at = Some(now);
+                old.deadline = Some(now + STREAM_TTL);
+                return;
+            }
+            for q in &old.subscribers {
+                q.terminate();
+            }
+        }
+        turns.insert(session_id.to_string(), TurnState::fresh(now));
+    }
+
+    /// `ensure_turn`.
+    pub fn ensure_turn(&self, session_id: &str) {
+        let exists = self.turns.lock().unwrap().contains_key(session_id);
+        if !exists {
+            self.init_turn(session_id, false);
+        }
+    }
+
+    pub fn has_turn(&self, session_id: &str) -> bool {
+        self.turns.lock().unwrap().contains_key(session_id)
+    }
+
+    /// `push_event`.
+    pub fn push_event(&self, session_id: &str, env: &Envelope, create_if_missing: bool) {
+        let now = Instant::now();
+        let mut turns = self.turns.lock().unwrap();
+        if !turns.contains_key(session_id) {
+            if !create_if_missing {
+                return;
+            }
+            turns.insert(session_id.to_string(), TurnState::fresh(now));
+        }
+        let state = turns.get_mut(session_id).unwrap();
+        let data = &env.data;
+        let agent = env.agent();
+        let get_str = |k: &str| data.get(k).and_then(|v| v.as_str());
+        match env.event.as_str() {
+            "message" => {
+                if let Some(t) = get_str("text").filter(|t| !t.is_empty()) {
+                    entry(&mut state.content, agent).push(t.to_string());
+                }
+            }
+            "thinking" => {
+                if let Some(t) = get_str("text").filter(|t| !t.is_empty()) {
+                    entry(&mut state.thinking, agent).push(t.to_string());
+                }
+            }
+            "tool_call" => {
+                let mut m = Map::new();
+                m.insert("tool_call_id".into(), data.get("tool_call_id").cloned().unwrap_or(Value::Null));
+                m.insert("name".into(), Value::String(get_str("name").unwrap_or("").into()));
+                m.insert("arguments".into(), Value::Null);
+                m.insert("agent".into(), Value::String(agent.into()));
+                m.insert("started".into(), Value::Bool(false));
+                m.insert("done".into(), Value::Bool(false));
+                state.tool_calls.push(m);
+            }
+            "tool_start" => {
+                match_tool_start(&mut state.tool_calls, get_str("tool_call_id"), get_str("name").unwrap_or(""), data.get("arguments").cloned().unwrap_or(Value::Null), agent)
+            }
+            "tool_end" => match_tool_end(&mut state.tool_calls, get_str("tool_call_id"), get_str("name").unwrap_or(""), data.get("result").cloned().unwrap_or(Value::Null), agent),
+            "usage" => state.usage = Some(data.clone()),
+            "error" => state.error = Some(get_str("message").unwrap_or("error").to_string()),
+            "done" => state.is_streaming = false,
+            "agent_not_configured" => state.agent_not_configured = Some(data.clone()),
+            "queued_turn_start" => state.queued_turns.push(data.clone()),
+            "agent_status" => {
+                let status = get_str("status").unwrap_or("");
+                if !agent.is_empty() && !status.is_empty() {
+                    *entry(&mut state.agent_statuses, agent) = status.to_string();
+                    if status == "error" {
+                        let meta = data.get("metadata").filter(|m| m.as_object().map(|o| !o.is_empty()).unwrap_or(false));
+                        let err = match meta {
+                            Some(m) => m.clone(),
+                            None => json!({
+                                "message": data.get("message"),
+                                "title": data.get("title"),
+                                "code": data.get("code"),
+                                "category": data.get("category"),
+                            }),
+                        };
+                        state.agent_errors.insert(agent.to_string(), err);
+                    } else {
+                        state.agent_errors.remove(agent);
+                    }
+                }
+            }
+            "summarization_start" => {
+                if !agent.is_empty() {
+                    *entry(&mut state.summarization, agent) = Summ::default();
+                }
+            }
+            "summarization_content" => {
+                let text = get_str("text").unwrap_or("");
+                if !agent.is_empty() && !text.is_empty() {
+                    entry(&mut state.summarization, agent).text.push_str(text);
+                }
+            }
+            "summarization_end" => {
+                if !agent.is_empty() {
+                    let e = entry(&mut state.summarization, agent);
+                    if let Some(s) = get_str("summary").filter(|s| !s.is_empty()) {
+                        e.text = s.to_string();
+                    }
+                    e.done = true;
+                    let err = data.get("metadata").and_then(|m| m.get("error"));
+                    if err.map(truthy).unwrap_or(false) {
+                        e.error = true;
+                    }
+                }
+            }
+            _ => {}
+        }
+        // Sliding TTL, capped at the hard lifetime.
+        let created = state.created_at.unwrap_or(now);
+        state.deadline = Some((now + STREAM_TTL).min(created + MAX_TURN_LIFETIME));
+
+        if state.subscribers.is_empty() {
+            return;
+        }
+        let wire = env.to_wire();
+        state.subscribers.retain(|q| {
+            if q.push(wire.clone()) {
+                true
+            } else {
+                tracing::warn!("sse_subscriber_queue_full session_id={} event_type={} dropping_client qsize={}", session_id, env.event, q.len());
+                q.terminate();
+                false
+            }
+        });
+    }
+
+    /// `commit_agent_content`.
+    pub fn commit_agent_content(&self, session_id: &str, agent: &str) {
+        let mut turns = self.turns.lock().unwrap();
+        let Some(state) = turns.get_mut(session_id) else {
+            return;
+        };
+        remove(&mut state.content, agent);
+        remove(&mut state.thinking, agent);
+        if let Some(i) = state.summarization.iter().position(|(k, _)| k == agent) {
+            let s = &state.summarization[i].1;
+            if s.done && !s.error {
+                state.summarization.remove(i);
+            }
+        }
+        state.tool_calls.retain(|tc| tc_str(tc, "agent") != Some(agent));
+    }
+
+    /// `mark_done`.
+    pub fn mark_done(&self, session_id: &str) {
+        let mut turns = self.turns.lock().unwrap();
+        let Some(state) = turns.get_mut(session_id) else {
+            return;
+        };
+        state.is_streaming = false;
+        state.deadline = Some(Instant::now() + FINISHED_TURN_TTL);
+        for q in &state.subscribers {
+            q.terminate();
+        }
+    }
+
+    /// `clear`.
+    pub fn clear(&self, session_id: &str) {
+        if let Some(state) = self.turns.lock().unwrap().remove(session_id) {
+            for q in &state.subscribers {
+                q.terminate();
+            }
+        }
+    }
+
+    pub fn close_all(&self) {
+        let mut turns = self.turns.lock().unwrap();
+        for state in turns.values() {
+            for q in &state.subscribers {
+                q.terminate();
+            }
+        }
+        turns.clear();
+    }
+
+    pub fn running_session_ids(&self) -> Vec<String> {
+        self.turns.lock().unwrap().iter().filter(|(_, s)| s.is_streaming).map(|(k, _)| k.clone()).collect()
+    }
+
+    pub fn is_running(&self, session_id: &str) -> bool {
+        self.turns.lock().unwrap().get(session_id).map(|s| s.is_streaming).unwrap_or(false)
+    }
+
+    pub fn get_agent_statuses(&self, session_id: &str) -> Vec<(String, String)> {
+        match self.turns.lock().unwrap().get(session_id) {
+            Some(s) if s.is_streaming => s.agent_statuses.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Expiry pass (replaces v2's per-turn `call_later` timers).
+    pub fn sweep(&self, now: Instant) {
+        let mut turns = self.turns.lock().unwrap();
+        let mut expired = Vec::new();
+        for (sid, st) in turns.iter_mut() {
+            if st.deadline.map(|d| d > now).unwrap_or(true) {
+                continue;
+            }
+            if st.is_streaming && !st.subscribers.is_empty() {
+                st.clear_replay_payload();
+                st.created_at = Some(now);
+                st.deadline = Some(now + STREAM_TTL);
+            } else {
+                expired.push(sid.clone());
+            }
+        }
+        for sid in expired {
+            turns.remove(&sid);
+        }
+    }
+
+    /// Background sweeper task (1s resolution).
+    pub fn spawn_sweeper(&'static self) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                tick.tick().await;
+                self.sweep(Instant::now());
+            }
+        })
+    }
+
+    /// `attach`: registers a subscriber and snapshots the replay frames.
+    /// `None` when there is no streaming turn (the DB is authoritative).
+    pub fn attach(&'static self, session_id: &str) -> Option<Subscription> {
+        let mut turns = self.turns.lock().unwrap();
+        let state = turns.get_mut(session_id)?;
+        if !state.is_streaming {
+            return None;
+        }
+        let q: Sub = Arc::new(SubQueue::new(SUBSCRIBER_QUEUE_SIZE));
+        state.subscribers.push(q.clone());
+        let mut replay: Vec<Envelope> = Vec::new();
+        for (agent, status) in &state.agent_statuses {
+            if agent.is_empty() || !REPLAYABLE_STATUSES.contains(&status.as_str()) {
+                continue;
+            }
+            let meta = state.agent_errors.get(agent).cloned().unwrap_or_else(|| json!({}));
+            replay.push(events::agent_status(agent, status, Some(meta)));
+        }
+        if let Some(nc) = &state.agent_not_configured {
+            let agent = nc.get("agent").and_then(|v| v.as_str()).unwrap_or("");
+            let message = nc.get("message").and_then(|v| v.as_str()).unwrap_or("");
+            let mut e = events::agent_not_configured(agent, message);
+            if let Some(a) = nc.get("action") {
+                e.data.insert("action".into(), a.clone());
+            }
+            replay.push(e);
+        }
+        for (agent, s) in &state.summarization {
+            if agent.is_empty() {
+                continue;
+            }
+            replay.push(events::summarization_start(agent));
+            if !s.text.is_empty() && !s.done {
+                replay.push(events::summarization_content(agent, &s.text));
+            }
+            if s.done {
+                let meta = if s.error { json!({"error": true}) } else { json!({}) };
+                replay.push(events::summarization_end(agent, &s.text, Some(meta)));
+            }
+        }
+        for qt in &state.queued_turns {
+            replay.push(Envelope::from_parts("queued_turn_start", Value::Object(qt.clone())));
+        }
+        for (agent, chunks) in &state.thinking {
+            if !chunks.is_empty() {
+                replay.push(events::thinking(agent, &chunks.concat(), None));
+            }
+        }
+        for (agent, chunks) in &state.content {
+            if !chunks.is_empty() {
+                replay.push(events::message(agent, &chunks.concat(), None));
+            }
+        }
+        for tc in &state.tool_calls {
+            let agent = tc_str(tc, "agent").unwrap_or("");
+            let id = tc_str(tc, "tool_call_id");
+            let name = tc_str(tc, "name").unwrap_or("");
+            replay.push(events::tool_call(agent, id, name));
+            if tc_bool(tc, "started") {
+                let mut e = events::tool_start(agent, id, name, None);
+                e.data.insert("arguments".into(), tc.get("arguments").cloned().unwrap_or(Value::Null));
+                replay.push(e);
+            }
+            if tc_bool(tc, "done") {
+                let mut e = events::tool_end(agent, id, name, None, None);
+                e.data.insert("result".into(), tc.get("result").cloned().unwrap_or(Value::Null));
+                replay.push(e);
+            }
+        }
+        Some(Subscription { store: self, session_id: session_id.to_string(), replay: replay.into_iter().map(|e| e.to_wire()).collect(), queue: q })
+    }
+
+    fn detach(&self, session_id: &str, q: &Sub) {
+        if let Some(state) = self.turns.lock().unwrap().get_mut(session_id) {
+            state.subscribers.retain(|s| !Arc::ptr_eq(s, q));
+        }
+    }
+
+    /// Test/diagnostic view of the replay blob.
+    pub fn debug_state(&self, session_id: &str) -> Option<Value> {
+        let turns = self.turns.lock().unwrap();
+        let s = turns.get(session_id)?;
+        Some(json!({
+            "is_streaming": s.is_streaming,
+            "content": s.content.iter().map(|(k, v)| (k.clone(), json!(v.concat()))).collect::<Map<_, _>>(),
+            "tool_calls": s.tool_calls,
+            "subscribers": s.subscribers.len(),
+            "usage": s.usage,
+            "error": s.error,
+        }))
+    }
+}
+
+fn truthy(v: &Value) -> bool {
+    match v {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(false),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        Value::Object(o) => !o.is_empty(),
+    }
+}
+
+/// Live attachment to one session's turn. Dropping detaches.
+pub struct Subscription {
+    store: &'static StreamStore,
+    session_id: String,
+    replay: std::collections::VecDeque<Arc<WireEvent>>,
+    queue: Sub,
+}
+
+impl Subscription {
+    /// Next frame, or `None` once the turn finished / the client was dropped.
+    pub async fn next(&mut self) -> Option<Arc<WireEvent>> {
+        if let Some(r) = self.replay.pop_front() {
+            return Some(r);
+        }
+        self.queue.recv().await
+    }
+}
+
+impl Drop for Subscription {
+    fn drop(&mut self) {
+        self.store.detach(&self.session_id, &self.queue);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn leak() -> &'static StreamStore {
+        Box::leak(Box::new(StreamStore::default()))
+    }
+
+    #[tokio::test]
+    async fn replay_order_and_commit() {
+        let s = leak();
+        s.push_event("x", &events::message("a", "dropped", None), false);
+        assert!(!s.has_turn("x"));
+        s.init_turn("x", false);
+        s.push_event("x", &events::agent_status("a", "working", None), false);
+        s.push_event("x", &events::thinking("a", "th", None), false);
+        s.push_event("x", &events::message("a", "he", None), false);
+        s.push_event("x", &events::message("a", "llo", None), false);
+        s.push_event("x", &events::tool_call("a", Some("t1"), "read"), false);
+        s.push_event("x", &events::tool_start("a", Some("t1"), "read", Some("{}")), false);
+        let mut sub = s.attach("x").unwrap();
+        let mut got = vec![];
+        for _ in 0..5 {
+            got.push(sub.next().await.unwrap().event.clone());
+        }
+        assert_eq!(got, vec!["agent_status", "thinking", "message", "tool_call", "tool_start"]);
+        s.push_event("x", &events::tool_end("a", Some("t1"), "read", Some("r"), None), false);
+        assert_eq!(sub.next().await.unwrap().event, "tool_end");
+        s.commit_agent_content("x", "a");
+        let st = s.debug_state("x").unwrap();
+        assert_eq!(st["tool_calls"], json!([]));
+        s.mark_done("x");
+        assert!(sub.next().await.is_none());
+        drop(sub);
+        assert!(s.attach("x").is_none());
+    }
+
+    #[tokio::test]
+    async fn full_queue_drops_client_with_sentinel() {
+        let s = leak();
+        s.init_turn("y", false);
+        let mut sub = s.attach("y").unwrap();
+        for i in 0..(SUBSCRIBER_QUEUE_SIZE + 1) {
+            s.push_event("y", &events::message("a", &i.to_string(), None), false);
+        }
+        assert_eq!(s.debug_state("y").unwrap()["subscribers"], json!(0));
+        let mut n = 0;
+        while sub.next().await.is_some() {
+            n += 1;
+        }
+        assert_eq!(n, SUBSCRIBER_QUEUE_SIZE - 1);
+    }
+}

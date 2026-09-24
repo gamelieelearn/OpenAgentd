@@ -1,0 +1,447 @@
+# OpenAgentd v3 (Rust) — migration status and v2 vs v3 benchmark
+
+Status as of this run: every v2 surface is ported. That covers the HTTP API,
+SSE, WebSockets, the desktop sidecar contract, the full `openagentd` CLI,
+providers (including codex/copilot/grok/bedrock/vertexai), user plugins
+through an embedded QuickJS host for TypeScript/JavaScript plugin files
+(§5), provider and MCP OAuth, multimodal tools, LSP, OTEL spans, file
+logging, Alembic migrations and PyYAML-exact YAML. v3 contains no plugin code
+and reads no Python files. v2 (`app/`) remains the source of truth.
+v3 shares v2's DB and config files. What still behaves differently is
+listed in §3.
+
+## 1. How parity was verified
+
+**The differential harnesses (`appv3/scripts/`) and their Rust probe
+examples (`crates/*/examples/`) have since been deleted.** The table below
+records what they showed for the final state of the port. It can no longer
+be reproduced; the ongoing check is `cargo test --workspace`. Script names
+here and in §3 identify which harness produced each result.
+
+All checks ran v2 and v3 side by side in throw-away sandboxes (`/tmp/oad-*`,
+own `HOME`/XDG roots, production mode). The real DB is never touched. The
+cloned DB is a migrated copy of the production clone (~880 MB, 1,016
+sessions, 224k messages). Every row below is from the last full run
+(`run_all_diffs.sh` against the release binary; exit 0), with one
+exception. After the switch to the JS plugin host, only the harnesses that
+cover changed code were re-run: plugin cases, plugin chat, plugin payloads,
+scrubber, builtin OAuth and MCP OAuth. Those rows show the new numbers. The
+full suite was not re-run; the other rows cover code this change did not touch.
+
+| Harness | What it compares | Result |
+|---|---|---|
+| `diff_api.py` (cloned DB) | read endpoints, error envelopes, 404/422 paths | 69/69 identical |
+| `diff_sessions.py` (cloned DB) | session detail, history (+paging), subagents, todos, files, questions, permissions, session list pages | 1,142/1,142 identical over a 150-session sample. An earlier full sweep (`SESSIONS=1100`) gave 8,158/8,158 over every session; it was not re-run in this pass. |
+| `diff_api.py mutation_cases.json` (fresh) | 45 write flows: settings, providers, agents, MCP, skills, scheduler | 45/45 identical |
+| `diff_api.py yaml_cases.json` | agent/skill frontmatter, command files, raw `denied_paths.yaml`/`multimodal.yaml` | 115/115 identical |
+| `diff_chat.py` (mock OpenAI provider; plain, forced `/compact`, user plugins) | real agent turns with tools and permission prompts, SSE stream, history, undo/redo with restored files, exact provider request bodies, pruned `code.md`, span structure | 0 diffs in all three runs (the plugin run is v2 `.py` vs v3 `.ts` plugins) |
+| `diff_api.py plugin_cases.json` / `oauth_cases.json` | provider plugins (catalog/usage/auth; v2 `.py` vs v3 `.ts`); builtin OAuth providers (login/usage/reset/models/disconnect) | 21/21 and 18/18 identical |
+| `diff_mcp_oauth.py` | MCP OAuth + streamable HTTP transport (mock AS and MCP server) | 32/32 identical |
+| `diff_plugins.py`, `diff_builtin_providers.py`, `diff_usage.py` | provider request payloads for cloned sessions (user `.ts` plugins vs v2 `.py`; codex/copilot/grok/bedrock), usage-parser fuzz | 1,600 plugin cases over a 400-session sample (the earlier all-session sweep with the native ports gave 4,076), 4,000 and 15,000 cases; 0 mismatches |
+| `diff_multimodal.py` | generate_image/generate_video against mock backends | 69/69 identical (63 spans compared) |
+| `diff_lsp.py` | fake LSP servers, managed ruff/ty/TypeScript installs, diagnostics hook | 218/218 identical |
+| `diff_observability.py` | span JSONL fixtures → `/api/observability/*` | 33/33 identical |
+| `diff_migrations.py` | Alembic replay from an empty DB and from every revision, seeded rows | 22/22 identical |
+| `diff_yaml.py` | PyYAML `safe_load` (PyYAML test corpus, repo YAML, edge cases, fuzz) and `safe_dump` | load 30,722/30,728 (the other 6 are documented deviations); dump 22,303/22,303 byte-identical (9 unrepresentable values skipped) |
+| `diff_prune.py` | `_prune_unknown_tools_from_file` rewrites | 2,016/2,017 (1 documented anchors case) |
+| `diff_cli.py` | CLI argparse tree: help/usage at 8 widths, 3.14 colour theme, error texts, abbreviations, parsed namespace, 3,000 fuzzed argv | 3,307/3,307 identical |
+| `diff_cli_cmds.py` | CLI commands in seeded sandboxes: doctor, `server start/status/health/restart/stop` against live daemons, logs, auth, cleanup (dry/apply/vacuum), transfer export/import/migrate (incl. bad archives), `run` (mock provider, tool loop), lsp, and a pty run for the TTY colour paths | 24 scenarios / 81 commands, 0 diffs (outputs, file trees, DB rows, archive members) |
+| `diff_scrubber.py` | secret scrubber fuzz (v2 `.py` vs `secret_scrubber.ts` in QuickJS) | seeds 11, 7, 3, 99: 20,000 cases each, 0 mismatches |
+| `diff_auth.py` | access key / desktop token, 401s, exempt paths, WS 403, CORS, `--generate-token` handshake, non-loopback refusal | 0 diffs |
+| `diff_terminal.py` | PTY ticket → WS → resize/input/output/exit | identical |
+| route sweep (task 57) | all 118 v2 routes with dummy params | same status on every route |
+| `cargo test --workspace --no-fail-fast` | unit + integration tests (incl. `jsplugin` host tests, chat-schema JSON round-trips, document/HTML conversion) | 146 passed, 1 failed. The failure is `terminal::echo_roundtrip`, which drives the developer's real login shell; an oh-my-zsh update prompt swallowed its input. It is environmental, not a code regression. |
+| document / HTML conversion vs v2 (one-off, corpus in `/tmp/oad-eval`) | `read`/`web_fetch` documents (3 real PDFs + 17 anydoc fixtures); `web_fetch` on 34 real pages (docs, articles, blogs, listings, forums, error pages) | documents 20/20 byte-identical; `format="text"` 34/34 byte-identical; `format="markdown"` median word-F1 0.993 vs v2, 29/34 pages ≥ 0.9, code-block and heading counts match on 28 and 30 pages |
+
+I also checked the desktop sidecar contract by hand earlier.
+`openagentd server serve --host 127.0.0.1 --port 0 --handshake --parent-pid <pid>`
+with `OPENAGENTD_DESKTOP_TOKEN` printed the same handshake as v2, returned 401
+without the token and 200 with it, and shut down cleanly when the parent died.
+
+### Bugs this verification found (all fixed)
+
+- **Undo/redo did not restore files.** `snapshot_service` had never been
+  ported, so v3 undo only moved the message boundary. It is now a full port
+  (`crates/agent/src/snapshot.rs`). It uses the same git calls and the same
+  `{STATE_DIR}/snapshot/<sid>` repo layout as v2, so the two versions can
+  share snapshot repos. The port covers queued-message snapshots, session
+  delete cleanup and the 6-hourly retention sweep. Snapshot hashes come out
+  byte-identical to v2's.
+- **Float values drifted.** serde_json's default parser is not correctly
+  rounded, so stored costs such as `0.12220750000000001` came back as
+  `0.1222075`. Fixed by enabling `float_roundtrip`. Python's `round(x, n)`
+  and compensated `sum()` are now ported bit-exactly (`core::pymath`,
+  fuzzed against 200k CPython results). That fixed off-by-one-ulp
+  `estimated_cost_usd` values.
+- **Concurrent reads were serialised.** SQLite's global memory-stats mutex
+  (`SQLITE_DEFAULT_MEMSTATUS=1`) was taken on every row free, so concurrent
+  history reads queued behind one another. Turning it off before init made
+  history throughput 5.6x higher.
+- **CORS headers differed.** tower-http's `CorsLayer` behaves differently
+  from Starlette, e.g. it sends `allow-credentials` without an `Origin`
+  header and uses a different preflight body. Replaced it with an exact port.
+- **Small wire-format differences** in the WS-reject response headers and the
+  MCP stdio spawn error text.
+- **`server.yaml` port parsing was stricter than v2.** v3 typed the port as
+  `u16`, so a file with `port: "4082"` or `port: 70000` failed to load
+  while pydantic accepts both. It now follows pydantic's lax `int`.
+
+## 2. Benchmark
+
+A black-box comparison (the deleted `bench.py`): same machine, same sandbox
+layout, same inputs, one server at a time.
+
+**Setup:**
+- Host: Apple M1, 8 cores, 16 GB.
+- Load generator: ApacheBench `-k -c 16 -n 5000` after a warm-up.
+- v2: a single uvicorn process started with the venv python directly. This is
+  how the CLI and desktop app ship it; there is no `uv run` wrapper in the
+  timing.
+- v3: `cargo build --release`, all features in this report enabled.
+
+| metric | v2 | v3 | v3 advantage |
+|---|---|---|---|
+| Cold start, spawn → `/health/ready` 200 (fresh DB), p50 of 5 | 1,007 ms | 38 ms | 26x |
+| Cold start (880 MB cloned DB), p50 of 5 | 950 ms | 27 ms | 35x |
+| Idle RSS after start | 167 MB | 21 MB | 8x |
+| RSS after the HTTP load phase¹ | 252 MB | 247 MB | ~1x |
+| RSS after the chat phase | 207 MB | 77 MB | 2.7x |
+| `GET /api/health/live` | 9,232 req/s (p99 2 ms) | 69,077 req/s (p99 1 ms)² | 7.5x |
+| `GET /api/agents` | 857 req/s (p50 19 ms) | 11,904 req/s (p50 1 ms) | 14x |
+| `GET /api/skills` | 682 req/s (p50 23 ms) | 2,730 req/s (p50 5 ms) | 4x |
+| `GET /api/settings/providers` | 449 req/s (p50 35 ms) | 11,230 req/s (p50 1 ms) | 25x |
+| `GET /api/agent/sessions?limit=20` (real data) | 279 req/s (p50 56 ms, p99 96) | 9,025 req/s (p50 2 ms, p99 4) | 32x |
+| `GET /api/agent/{largest session}/history` | 93 req/s (p50 160 ms, p99 301) | 808 req/s (p50 17 ms, p99 97) | 8.6x |
+| Total server CPU for the whole HTTP phase | 43.0 s | 22.5 s | 1.9x less CPU |
+| Chat turn, sequential (POST → SSE `done`), p50 | 34.1 ms | 16.9 ms | 2.0x |
+| Chat, 8 sessions in parallel × 3 turns: turn p50 | 201 ms | 49 ms | 4.1x |
+| Chat, 8 × 3 throughput | 28 turns/s | 64 turns/s | 2.3x |
+| Server CPU for the chat phase | 1.42 s | 0.54 s | 2.6x less CPU |
+
+Every run had 0 failed and 0 non-2xx responses. Response sizes were identical
+between v2 and v3.
+
+Compared with the previous report, v3's cold start went from ~22 ms to
+27–38 ms and idle RSS from 17 MB to 21 MB. That is the cost of the
+subsystems ported since then: OTEL setup and retention, LSP manager, MCP
+manager, plugins, file logging. It is still 26–35x faster than v2.
+
+**JS plugin host footprint** (measured separately in the same sandbox env;
+the table above predates the host). Median of 5 runs:
+
+| | no plugin files | the 4 user plugins |
+|---|---|---|
+| Stripped binary | 29 MB before the host | 34.7 MB (oxc + rquickjs add ~5.7 MB); 43.1 MB with anydoc + trafilatura (+8.4 MB) |
+| Handshake after spawn | 21 ms | 20 ms |
+| Idle RSS | 19.1 MB | 19.1 MB (plugins load on first use) |
+| First `GET /api/settings/providers` (loads the plugins) | 168 ms | 170 ms |
+| RSS after that request | 27.9 MB | 33.5 MB (+5.6 MB for 4 runtimes and threads) |
+
+Loading all four files in parallel takes about 10 ms: oxc transpile plus
+QuickJS eval. Each plugin thread builds its HTTP client on first `fetch`.
+Before that change, loading took 323 ms, because every thread loaded the
+native TLS root store eagerly. One call across the JS boundary is a ~4 µs
+JSON round trip. A `transformChunk` hook pays this once per stream chunk,
+which is negligible next to network time.
+
+The document and HTML converters (anydoc, trafilatura) leave start-up and
+idle memory unchanged: 20 ms handshake, 18.8 MB idle RSS.
+
+**Caveats:**
+
+1. Post-load RSS is dominated by SQLite's 256 MiB `mmap_size`, which both
+   versions set. Those are file-backed pages that the OS can reclaim, not
+   heap. Idle RSS and after-chat RSS are the fairer memory comparison.
+2. At ~69k req/s, `ab` (single-threaded, same machine) is probably the limit,
+   not v3.
+3. The chat numbers measure orchestration overhead only. The mock provider
+   answers instantly. Each turn also spawns several `git` processes for
+   workspace snapshots, in both versions. With a real LLM, a turn takes
+   seconds of model time, so users will barely notice the chat speed-up.
+   What they will notice is faster start-up, lower memory, and a UI that
+   stays responsive (history and sessions endpoints) while agents run.
+4. v2 runs as one worker, which is how it ships. Extra uvicorn workers would
+   raise v2's throughput, not its latency or start-up time, and would
+   multiply its memory. In-process state such as agent sessions and streams
+   rules out multiple workers for v2 anyway.
+5. `/api/skills` is the weakest result (4x). Its cost is dominated by
+   `realpath` syscalls, which v2 pays too. Roots are now resolved once per
+   request, but I did not optimise it further.
+
+## 3. Remaining differences from v2
+
+No v2 feature is left unported. Each item below is a deliberate, documented
+deviation. The harnesses in §1 either did not reach it or normalised it
+explicitly.
+
+- **Desktop sidecar:** the uncommitted `desktop/src-tauri/src/sidecar.rs`
+  branch launches `bin/openagentd server serve …`, the same subcommand as
+  v2. `make -C desktop sidecar SIDECAR=v3` (or `dev-bundled-v3`,
+  `build-v3`) builds a v3-only bundle; the default is still v2. v3 also
+  keeps a hidden `serve` alias of `server serve`, which v2 rejects. The
+  spawn command and handshake have been checked by running them by hand,
+  but no desktop app has been built or launched with v3. Nothing has been
+  committed.
+- **Version:** v3 reports its own version, `3.0.0` (from the workspace
+  `Cargo.toml`), not v2's `app/version.txt`. This shows in
+  `openagentd --version`, the sidecar handshake, `/api/health/live` and
+  `/api/health/ready`, the provider client headers (codex, copilot, grok),
+  OTEL `telemetry.sdk.version`, and the JS plugin host's `version`. No
+  consumer compares backend versions.
+- **Diagnostics fields:** `runtime.python="n/a"` and
+  `implementation="Rust"`.
+- **`.env` handling:** v3 loads `config_dir/.env` into its own process
+  environment. Checks for whether a provider is configured ignore these
+  injected values, the same way v2 does.
+- **CLI:** `crates/cli/src/argparse.rs` ports the CPython 3.14 argparse
+  subset v2 uses (help/usage wrapping via a `textwrap` port, the colour
+  theme, `COLUMNS`/terminal width, abbreviations, error texts, exit 2), and
+  `crates/cli/src/cmd/` ports every command. Deviations:
+  - An exception that v2 leaves uncaught prints a full traceback. v3 prints
+    only the last line (`ExcType: message`); the exit status is 1 in both.
+    A few class names are approximations: OAuth login failures print as
+    `RuntimeError` unless the flow already printed its `failed` message,
+    and DB errors in `cleanup` print as `sqlalchemy.exc.OperationalError`.
+  - `doctor`'s first check reads `Rust runtime (openagentd vX)` instead of
+    the Python version. The pass count is the same. "Alembic config
+    bundled" always passes because the migrations are compiled in.
+  - `server start` daemonises this binary's `server serve --host H --port P`
+    instead of uvicorn, with the binary's directory as cwd (v2: the package
+    root). The PID file, log file, banner, `--wait` polling and stop
+    semantics are the same. The daemon child skips the sidecar
+    `openagentd: sidecar bootstrap` stderr line.
+  - `upgrade`'s pip fallback runs `python3 -m pip install --upgrade
+    openagentd`, since there is no `sys.executable`. The brew / uv tool /
+    pipx detection is unchanged.
+  - `--key` without a TTY prints `Warning: Password input may be echoed.`
+    instead of Python's `GetPassWarning` with its source location.
+  - `transfer export` writes GNU tar headers (no PAX mtime records or
+    uname/gname). Member names, types, sizes and contents match v2's
+    archives, and v2's `transfer import` reads them.
+  - `transfer import` reports tar damage after the first header as
+    `unexpected end of data`. v2 raises it out of `getmembers()`.
+- **Plugins:** v3 loads `*.ts`/`*.js` plugin files and never reads `*.py`
+  (§5). v2 loads only `*.py`. The same plugin dir therefore serves both
+  versions, but every plugin needs a TS/JS port. The four user plugins are
+  ported. Other gaps:
+  - v2's class-based `Plugin(BaseAgentHook)` form has no equivalent. Only
+    the functional contract is supported: `plugin()` returns
+    `tool.before` / `tool.after` / `applies_to`.
+  - The JS runtime is QuickJS with a small host API: no Node, no npm
+    packages, no `URL`/`URLSearchParams`. Imports can only be relative or
+    `"openagentd"`.
+  - JSON that passes through JS loses the int/float distinction (`1.0`
+    becomes `1`). The plugin payloads the harnesses compare are unaffected.
+  - The loopback OAuth callback page sends `Server: openagentd` instead of
+    `BaseHTTP/0.6 Python/3.x`.
+  - Plugin disconnect removes only that plugin's token dir.
+- **Documents (`read`, `web_fetch`):** no deviation. v3 uses the `anydoc`
+  crate that v2's `firecrawl-anydoc` wheel wraps, at the same version, with
+  its PDF engine pinned to the wheel's (`pdf-inspector` 1.14.2). Output is
+  byte-identical, and the encrypted / needs-OCR → vision fallback paths
+  match. Error hints use anydoc's own texts, which are the Python exception
+  strings.
+- **`web_fetch` HTML:** v2's control flow is ported exactly, with the
+  `trafilatura` crate (a port of go-trafilatura) standing in for Python
+  trafilatura: main-content extraction, a fallback to `html2txt` when the
+  extraction is empty or lost the code blocks, and `format="text"` via
+  `html2txt`. `html2txt` is ported line by line and byte-identical on every
+  page tested. The Markdown is close but not identical:
+  - Code blocks are fenced with custom `htmd` handlers, like Python.
+  - Links are made absolute.
+  - Listing pages (blog indexes, HN) yield more content than v2's
+    extraction.
+  - GitHub issue pages are weak in both.
+  - Where Python renders a page's code inline and v3 fences it, v2's
+    "code lost" fallback fires only in v2. Example: RFC 9110, where v2
+    returns the whole page as one text line and v3 returns structured
+    Markdown.
+  - Short pages (≤ ~100 characters of body text) reproduce Python's
+    baseline output, because go-trafilatura's last step there duplicates
+    text.
+- **`web_search`:** scrapes DuckDuckGo's HTML endpoint instead of using the
+  `ddgs` library, then falls back to Exa the same way v2 does.
+- **Copilot:** catalog cached for 5 min; reasoning-effort gating resolved at
+  provider build; `_verify_copilot_access` prints only in CLI mode.
+- **HTTP error texts:** network-level failures carry reqwest's wording
+  instead of httpx's. OAuth-flow requests send reqwest's `accept: */*`.
+- **MCP:** v3 does not hold the auth lock across the whole
+  body read of concurrent requests. A loopback-callback timeout followed by
+  a second wait returns an immediate timeout (v2 waits another 300 s).
+- **Validation texts:** pydantic `ValidationError` messages are approximated.
+- **Multimodal:** API keys are read from the environment at call time (v2
+  captures settings at startup).
+- **LSP:** full port (`crates/tools/src/lsp/`: client, manager, managed
+  Bun/TypeScript + PyPI ruff/ty installs, `lsp_install_required` event,
+  `LspHook`, `/api/settings/lsp*`, `openagentd lsp status|install`).
+  `diff_lsp.py` (fake stdio servers + mock PyPI/Bun host): 218/218
+  identical. Deviations: "packaged" ruff/ty are looked up beside the v3
+  executable (and `../bin`) instead of beside the Python interpreter; musl
+  is detected at compile time; malformed server payloads (non-object
+  `params`, non-list `diagnostics`) are tolerated where v2's read loop would
+  die; the `lsp` navigation tool is ported but, exactly like v2, is not in
+  any runtime registry.
+- **OTEL:** full port without the opentelemetry crates
+  (`crates/core/src/otel.rs`). It covers task-local span context, the JSONL
+  span/metric writers and their export filter, retention, and
+  histogram/counter repr with exemplars. The span producers are the agent
+  hook, summarization, title, generate_image/video and `MCP send …` (with
+  `_meta.traceparent`). `/api/observability/*` is a port of
+  `observability_service` including its 5 s cache. Verified by
+  `diff_observability.py` (33/33) and by span/metric structure checks in
+  `diff_chat.py` (plain, `/compact` and title runs), `diff_mcp_oauth.py` and
+  `diff_multimodal.py`. Deviations:
+  - The `resource` block reads `telemetry.sdk.language: rust` /
+    `telemetry.sdk.name: openagentd-v3`.
+  - Exception events carry no `exception.stacktrace`.
+  - Spans reach the file within ~1 s. v2's BatchSpanProcessor takes ~5 s.
+  - Float formatting in the JSONL may differ from orjson, but the values
+    are the same.
+  - The counter exemplar reservoir uses its own RNG.
+  - The observability endpoints skip malformed span rows (non-object lines,
+    non-numeric `end_time`, non-dict `attributes`). v2 answers 500 on them.
+  - The v3 MCP client now numbers JSON-RPC ids from 1 like the v2 SDK. It
+    previously started at 0.
+- **Alembic migrations:** v3 replays v2's chain 00000001…00000022 from
+  statements captured off v2's Alembic (into
+  `crates/db/resources/migrations/*.sql`; the capture script is deleted, see
+  the `migrations.rs` header for how to capture a new revision). Only the
+  parts v2 does in Python are code: the 00000013 slug backfill and the
+  resume checks in 00000013 and
+  00000019. Like v2, the replay runs with `foreign_keys=OFF` under the
+  `.migrate.lock` file lock and runs `PRAGMA optimize` afterwards. Fresh
+  databases are created the same way. `diff_migrations.py` starts from an
+  empty DB and from every revision 1…21 with seeded rows, and compares
+  schema and data: 22/22 identical. Deviations:
+  - Each revision is applied in one transaction.
+  - `DROP INDEX` of an index that is already gone is skipped instead of
+    failing.
+  - The `sqlite_master` row order of indexes that Alembic batch copies
+    recreate can differ. v2 recreates them in Python set (object-id) order,
+    so its own order is not stable either. The index set is the same.
+- **YAML dumping:** `crates/core/src/pyyaml/dump.rs` ports PyYAML's
+  SafeRepresenter, Serializer and Emitter. Every YAML file v3 writes is
+  byte-identical to v2's `yaml.safe_dump(..., sort_keys=False)`, including
+  folding long scalars at 80 columns, `"\xE9"` escapes, `!!binary`/`!!set`
+  and `...` end markers: settings/server/denied_paths/multimodal files, the
+  legacy `server:` migration, the tools-prune rewrite, `transfer migrate`
+  frontmatter and the redacted `server.yaml` in `transfer export`.
+  `diff_yaml.py` byte-compares every loaded corpus document plus random
+  trees (22,303 values in this run): 0 diffs.
+- **Unknown agent tools** are pruned from the agent file on build, as
+  `_prune_unknown_tools_from_file` does (`loader::prune_unknown_tools_from_file`).
+  `diff_prune.py` runs 2,017 generated agent files (CRLF, comments, dates,
+  int keys, invalid YAML, non-list `tools`): all identical to v2. One more
+  check was added to `diff_chat.py`: an unknown tool added to `code.md`
+  before the first turn is pruned identically.
+  Deviation: v2 re-emits shared objects with `&id001` anchors, but v3's
+  trees have no aliases, so an agent file that uses YAML anchors is
+  rewritten with the aliased values expanded.
+- **YAML loading:** `crates/core/src/pyyaml/load.rs` is a line-by-line port
+  of PyYAML 6.0.3's pure-Python `SafeLoader`, which is what v2's
+  `yaml.safe_load` runs: reader, scanner, parser, composer, resolver and
+  SafeConstructor. It covers YAML 1.1 scalars (`yes`/`on`, `012` octal,
+  `1:30` sexagesimal, timestamps), anchors/aliases, `<<` merge, `!!set`,
+  `!!omap`, `!!binary`, Python dict-key equality (`1`/`true`/`1.0` merge),
+  and the exact `MarkedYAMLError` texts with snippets. Exceptions that
+  PyYAML lets escape (`ValueError` from `2024-13-01`, `KeyError` from
+  `!!bool maybe`, …) keep their class, so callers reproduce v2's
+  `except yaml.YAMLError` / `except ValueError` / HTTP 500 split.
+  serde_yaml is gone from the workspace. Every v2 `safe_load` site uses the
+  port: settings/server/denied_paths/multimodal/model_registry files, agent
+  and skill frontmatter, memory pages and lint, commands/snippets.
+  `diff_yaml.py` covers PyYAML's own test corpus, every YAML file and
+  frontmatter in the repo, 200+ edge cases and 30k seeded fuzz/mutation
+  documents. It compares typed values plus the exception class and full
+  message: 0 diffs. `yaml_cases.json` covers 115 HTTP cases: agent and
+  skill frontmatter, command files, and raw `denied_paths.yaml` /
+  `multimodal.yaml` files. It is 115/115 identical on a fresh sandbox and
+  on a reused one.
+  Behaviour now matched along the way:
+  - The denied-paths 422 renders pydantic's full `ValidationError` text,
+    including `input_value`/`input_type`, `invalid_key` and the docs URL.
+  - Malformed command/snippet frontmatter makes `/api/commands` and
+    `/api/snippets` answer 500. v2 has no `except` there.
+  - While `denied_paths.yaml` makes v2's default `DeniedPathsConfig`
+    constructor raise, skill discovery falls back to the process cwd as
+    the project root, as v2's `_project_root()` does.
+  Deviations:
+  - Lone surrogates from `"\uD800"` escapes become U+FFFD, because Rust
+    strings cannot hold them.
+  - A self-referential alias (`&a [*a]`) fails with `ValueError: Circular
+    reference detected`. v2 builds a recursive list, which only breaks
+    later when it is serialised.
+  - Nesting beyond 494 levels raises `RecursionError`. For flow nesting
+    this matches CPython's limit; for block nesting CPython stops a few
+    levels earlier.
+  - Integers beyond i128 become ±inf floats (Python has bignums).
+  - JSON-facing callers see dates as ISO strings. Pydantic `str` fields
+    therefore accept `description: 2024-01-01`, where v2 rejects it.
+    Callers that type-check (memory frontmatter, model registry, denied
+    paths) use the typed `Py` tree and match v2.
+  - `!!set` order is insertion order. v2's order depends on string hashing,
+    which varies from run to run.
+
+## 4. Layout
+
+- Workspace crates: `core`, `db`, `tools`, `terminal`, `providers`, `agent`,
+  `memory`, `mcp`, `api`, `cli`, `jsplugin`. The obsolete `scheduler`, `lsp`
+  and `bench` crates were removed; the scheduler lives in `agent`.
+- `contract/`: v2 data v3 embeds (command/prompt catalogues, provider
+  catalogue, tool definitions, mimetypes).
+- The v2-vs-v3 differential harnesses and probe examples were removed after
+  verification (§1).
+
+## 5. Plugins (embedded QuickJS)
+
+v3 contains no plugin code. It loads plugins at runtime from the same
+`plugins_dirs` v2 uses: `~/.config/openagentd/plugins` in production and
+`.openagentd/dev/config/plugins` in dev.
+
+- **Discovery** (`crates/jsplugin/src/lib.rs`): every `*.ts`/`*.js` file,
+  sorted per dir, deduplicated by canonical path. Files matching `_*`,
+  `.*` and `*.d.ts` are skipped, and so is every `*.py`. Broken files are
+  logged (`plugin_load_failed`, `provider_plugin_load_failed`) and skipped,
+  as in v2.
+- **Classification is by export.** A file can be either kind, but not both:
+  - `export const provider = definePlugin({...})` is a provider plugin. It
+    uses v2's validation (id, `build`, oauth needs `login`).
+  - `export async function plugin()` (or a default export) that returns
+    `{"tool.before", "tool.after", "applies_to"}` is a tool plugin. This is
+    v2's functional contract. `applies_to` receives role `"agent"`, as in v2.
+- **Runtime** (`runtime.rs`): rquickjs 0.14. Each file gets its own OS
+  thread, QuickJS runtime and current-thread tokio LocalSet, so plugins are
+  isolated from each other and concurrent calls interleave at `await`
+  points. The memory limit is 512 MB per runtime. oxc 0.146 strips
+  TypeScript on load (`transpile.rs`). Errors are reported as
+  `path:line:col`.
+- **Host API** (`host.rs`, `prelude.js`, `module.js`): the `openagentd`
+  module provides:
+  - `fetch` (Rust reqwest), `listen` (loopback OAuth callbacks),
+    `subprocess`, `crypto`, `base64`, `utf8`, `url`, `env`, `fs` and
+    `tokenPath`. Plugins are trusted code, as in v2: `fs` and `subprocess`
+    are not sandboxed. Isolation is between plugins, not from the host.
+  - `credentialStore`, the error classes (`AuthError`, `HttpError`, …),
+    which map onto the Rust `ProviderError`, and Python-compatible helpers
+    (`pyJsonDumps`, `pyRepr`, `url.parseQuery`, ISO parsing). These keep
+    output byte-identical to v2.
+  - Globals: `fetch`, `Headers`, `Response`, `console`, `setTimeout`,
+    `TextEncoder`/`TextDecoder`, `crypto`.
+- **Provider instances** reuse the Rust providers, so streaming I/O stays
+  native:
+  - `base: "anthropic"` wraps `AnthropicProvider`, with the `beforeCall`,
+    `transformInput`, `transformChunk` and `transformResponse` hooks.
+  - `base: "http"` lets the plugin describe the request (`request`,
+    `onError`, `streamParser().event`, `parseResponse`). Rust performs it.
+  - The Gemini message/tool conversions are exposed as natives
+    (`gemini.convertMessages`, …) for `http` plugins.
+  - Chat types cross the boundary through a lossless JSON schema
+    (`providers/src/plugin_json.rs`).
+- **Authoring:** `crates/jsplugin/openagentd.d.ts` (also exported as
+  `appv3_jsplugin::TYPES`) types the whole API. With that file and a
+  `tsconfig.json` in the plugin dir, `tsc -p <plugin dir>` type-checks the
+  plugins. The runtime itself never type-checks.
+- **The user plugins** now exist as `.ts` files next to their `.py`
+  originals in both plugin dirs. v2 globs `*.py` only, so both versions
+  run side by side from the same dir. The
+  harnesses in §1 compared v2's `.py` against v3's `.ts` on the same inputs.

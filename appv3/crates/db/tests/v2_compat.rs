@@ -1,0 +1,154 @@
+//! Compatibility with databases written by the v2 (Python) backend.
+//!
+//! `fresh_db_*` tests always run. `real_v2_db_*` run against a copy of a real
+//! v2 database when `OAD_V2_DB` points at one (never the original file).
+
+use appv3_db::codec::{api_uuid, db_id};
+use appv3_db::migrations::{SchemaState, ALEMBIC_HEAD};
+use appv3_db::queries::*;
+use appv3_db::{api, create_pool};
+
+async fn fresh() -> (tempfile::TempDir, appv3_db::DbPool) {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = create_pool(dir.path().join("oad.db")).await.unwrap();
+    (dir, pool)
+}
+
+#[tokio::test]
+async fn fresh_db_is_stamped_at_alembic_head() {
+    let (_d, pool) = fresh().await;
+    let v: String = sqlx::query_scalar("SELECT version_num FROM alembic_version")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(v, ALEMBIC_HEAD);
+    // Re-opening detects it as current rather than recreating.
+    assert_eq!(
+        appv3_db::migrations::run_migrations(&pool).await.unwrap(),
+        SchemaState::Current
+    );
+}
+
+#[tokio::test]
+async fn fresh_db_writes_v2_encoding() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), agent_name: Some("code".into()), ..Default::default() })
+        .await
+        .unwrap();
+    assert_eq!(s.id.len(), 32, "uuid must be stored as 32-char hex");
+    assert!(!s.id.contains('-'));
+    assert_eq!(s.created_at.len(), 26, "datetime must be 'YYYY-MM-DD HH:MM:SS.ffffff'");
+    assert_eq!(&s.created_at[10..11], " ");
+    let m = save_message(&pool, &s.id, NewMessage::user("hi")).await.unwrap();
+    assert_eq!(m.id.len(), 32);
+    assert_eq!(m.seq, appv3_db::SEQ_STEP);
+    // Lookup works with the hyphenated API spelling.
+    let hy = api_uuid(&s.id);
+    assert!(get_session(&pool, &hy).await.unwrap().is_some());
+    let resp = api::session_response(&s, &Default::default());
+    assert_eq!(resp["id"], hy);
+    assert!(resp["created_at"].as_str().unwrap().ends_with('Z'));
+    assert!(resp.get("revert").is_none(), "JSON null revert must be omitted");
+}
+
+#[tokio::test]
+async fn undo_boundary_then_cleanup_matches_v2_semantics() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let u1 = save_message(&pool, &s.id, NewMessage::user("one")).await.unwrap();
+    save_message(&pool, &s.id, NewMessage::assistant(Some("a1".into()))).await.unwrap();
+    let u2 = save_message(&pool, &s.id, NewMessage::user("two")).await.unwrap();
+    save_message(&pool, &s.id, NewMessage::assistant(Some("a2".into()))).await.unwrap();
+
+    let target = find_undo_target(&pool, &s).await.unwrap().unwrap();
+    assert_eq!(target.id, u2.id);
+    let s = update_session(&pool, &s.id, SessionUpdate { revert: Some(Some(revert_state(&target, None))), ..Default::default() })
+        .await.unwrap().unwrap();
+    // Boundary hides u2+a2 from the LLM window without mutating rows.
+    let win = llm_window_rows(&pool, &s.id, true).await.unwrap();
+    assert_eq!(win.len(), 2);
+    // Undo again walks back to u1.
+    assert_eq!(find_undo_target(&pool, &s).await.unwrap().unwrap().id, u1.id);
+    // Sending a new message materialises the undo.
+    assert_eq!(cleanup_reverted_tail(&pool, &s.id).await.unwrap(), 2);
+    let s = get_session(&pool, &s.id).await.unwrap().unwrap();
+    assert!(s.revert_json().is_none());
+    let (page, _, _) = history_page(&pool, &s.id, None).await.unwrap();
+    assert_eq!(page.len(), 2);
+}
+
+#[tokio::test]
+async fn queued_messages_promote_to_tail() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    save_message(&pool, &s.id, NewMessage::user("first")).await.unwrap();
+    let q = save_queued_user_message(&pool, &s.id, "later", None).await.unwrap();
+    assert_eq!(q.kind, "queued");
+    assert!(llm_window_rows(&pool, &s.id, true).await.unwrap().iter().all(|r| r.kind != "queued"));
+    save_message(&pool, &s.id, NewMessage::assistant(Some("reply".into()))).await.unwrap();
+    let released = release_queued_user_messages(&pool, &s.id, Some("snap1")).await.unwrap();
+    assert_eq!(released.len(), 1);
+    let win = llm_window_rows(&pool, &s.id, true).await.unwrap();
+    assert_eq!(win.last().unwrap().content.as_deref(), Some("later"));
+    assert_eq!(win.last().unwrap().snapshot().as_deref(), Some("snap1"));
+}
+
+#[tokio::test]
+async fn pending_question_round_trip() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let qs = vec![serde_json::json!({"question": "Proceed?", "header": "Go", "options": []})];
+    let q = create_pending_question(&pool, &s.id, "call_1", &qs).await.unwrap();
+    assert!(sessions_awaiting_input(&pool).await.unwrap().contains(&s.id));
+    let answers = serde_json::json!([["Yes"]]);
+    let r = resolve_pending_question(&pool, &q.id, "answered", Some(&answers)).await.unwrap();
+    assert!(r.is_some());
+    // Second resolution loses the race.
+    assert!(resolve_pending_question(&pool, &q.id, "answered", Some(&answers)).await.unwrap().is_none());
+    let win = llm_window_rows(&pool, &s.id, true).await.unwrap();
+    assert_eq!(
+        win.last().unwrap().content.as_deref(),
+        Some("User has answered your questions: \"Proceed?\"=\"Yes\". Continue with the user's answers in mind.")
+    );
+}
+
+#[tokio::test]
+async fn refuses_unstamped_foreign_schema() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("old.db");
+    {
+        let pool = sqlx::SqlitePool::connect(&format!("sqlite://{}?mode=rwc", path.display())).await.unwrap();
+        sqlx::query("CREATE TABLE chat_sessions (id TEXT)").execute(&pool).await.unwrap();
+    }
+    let err = create_pool(&path).await.unwrap_err().to_string();
+    assert!(err.contains("alembic_version"), "{err}");
+}
+
+#[tokio::test]
+async fn real_v2_db_reads_existing_history() {
+    let Ok(src) = std::env::var("OAD_V2_DB") else { return };
+    let dir = tempfile::tempdir().unwrap();
+    let copy = dir.path().join("copy.db");
+    std::fs::copy(&src, &copy).unwrap();
+    let pool = create_pool(&copy).await.unwrap();
+
+    let (page, _cursor, _more) = list_sessions_page(&pool, None, 5, None).await.unwrap();
+    assert!(!page.is_empty(), "expected sessions in the v2 database");
+    for s in &page {
+        let hy = api_uuid(&s.id);
+        let found = get_session(&pool, &hy).await.unwrap().expect("lookup by hyphenated id");
+        assert_eq!(found.id, db_id(&hy));
+        let (rows, _, _) = history_page(&pool, &hy, None).await.unwrap();
+        for r in &rows {
+            let m = api::message_response(r);
+            assert_eq!(m["session_id"], hy);
+        }
+        let _ = session_usage_totals(&pool, &hy).await.unwrap();
+        let _ = llm_window_rows(&pool, &hy, true).await.unwrap();
+    }
+    // Writes from v3 into the v2 file use the v2 encoding.
+    let first = &page[0];
+    let m = save_message(&pool, &api_uuid(&first.id), NewMessage::user("v3 write")).await.unwrap();
+    assert_eq!(m.session_id, first.id);
+    assert_eq!(m.id.len(), 32);
+}

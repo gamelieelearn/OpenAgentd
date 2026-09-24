@@ -1,0 +1,256 @@
+//! Small hooks: current date, workspace instructions, memory context,
+//! tool-result offload, queued-message injection.
+
+use super::{AgentState, Hook, ModelRequest, RunContext, SharedMeta, ToolCallScope};
+use crate::events::Envelope;
+use crate::stream_store::store;
+use crate::util::{head_chars, tail_chars};
+use appv3_db::DbPool;
+use appv3_providers::ToolCall;
+use async_trait::async_trait;
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+// ── inject_current_date ─────────────────────────────────────────────────────
+
+pub struct CurrentDateHook;
+
+#[async_trait]
+impl Hook for CurrentDateHook {
+    async fn wrap_system_prompt(&self, _ctx: &RunContext, _state: &AgentState, prompt: String) -> String {
+        format!("{prompt}\n\nCurrent date (UTC): {}", chrono::Utc::now().format("%Y-%m-%d"))
+    }
+}
+
+// ── WorkspaceInstructionsHook ────────────────────────────────────────────────
+
+pub const MAX_AGENTS_MD_BYTES: u64 = 128 * 1024;
+
+pub fn global_instructions_path() -> PathBuf {
+    let p = appv3_core::settings().config_dir.join("AGENTS.md");
+    if p.is_file() {
+        return p;
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let u = PathBuf::from(home).join(".agents").join("AGENTS.md");
+        if u.is_file() {
+            return u;
+        }
+    }
+    p
+}
+
+pub struct WorkspaceInstructionsHook {
+    workspace: Option<PathBuf>,
+    include_workspace: bool,
+    global: PathBuf,
+    cache: Mutex<HashMap<PathBuf, ((u128, u64, u64), String)>>,
+}
+
+impl WorkspaceInstructionsHook {
+    pub fn new(workspace: Option<&str>, include_workspace: bool) -> Self {
+        let workspace = workspace.filter(|w| !w.is_empty()).map(|w| appv3_tools::denied::resolve(Path::new(w)));
+        Self { workspace, include_workspace, global: global_instructions_path(), cache: Mutex::new(HashMap::new()) }
+    }
+
+    fn read_file(&self, path: &Path) -> String {
+        let Ok(md) = std::fs::metadata(path) else {
+            self.cache.lock().unwrap().remove(path);
+            return String::new();
+        };
+        if !md.is_file() {
+            self.cache.lock().unwrap().remove(path);
+            return String::new();
+        }
+        let mtime = md.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+        #[cfg(unix)]
+        let ino = std::os::unix::fs::MetadataExt::ino(&md);
+        #[cfg(not(unix))]
+        let ino = 0u64;
+        let sig = (mtime, md.len(), ino);
+        if let Some((s, text)) = self.cache.lock().unwrap().get(path) {
+            if *s == sig {
+                return text.clone();
+            }
+        }
+        let text = if md.len() > MAX_AGENTS_MD_BYTES {
+            tracing::warn!("workspace_instructions_file_too_large path={} bytes={} limit={}", path.display(), md.len(), MAX_AGENTS_MD_BYTES);
+            String::new()
+        } else {
+            match std::fs::read_to_string(path) {
+                Ok(t) => t.trim().to_string(),
+                Err(e) => {
+                    tracing::warn!("workspace_instructions_file_read_failed path={} error={}", path.display(), e);
+                    return String::new();
+                }
+            }
+        };
+        self.cache.lock().unwrap().insert(path.to_path_buf(), (sig, text.clone()));
+        text
+    }
+}
+
+#[async_trait]
+impl Hook for WorkspaceInstructionsHook {
+    async fn wrap_system_prompt(&self, _ctx: &RunContext, _state: &AgentState, prompt: String) -> String {
+        let mut blocks = Vec::new();
+        if let Some(ws) = &self.workspace {
+            blocks.push(format!("## Workspace\nRoot: `{}`", ws.display()));
+        }
+        let global = self.read_file(&self.global);
+        if !global.is_empty() {
+            blocks.push(format!("## Global Instructions\n\nSource: `{}`\n\n{global}", self.global.display()));
+        }
+        if self.include_workspace {
+            if let Some(ws) = &self.workspace {
+                for f in ["AGENTS.md", ".agents/AGENTS.md"] {
+                    let t = self.read_file(&ws.join(f));
+                    if !t.is_empty() {
+                        blocks.push(format!("## Workspace Instructions\n\n{t}"));
+                        break;
+                    }
+                }
+            }
+        }
+        if blocks.is_empty() {
+            return prompt;
+        }
+        let block = blocks.join("\n\n");
+        if prompt.is_empty() {
+            block
+        } else {
+            format!("{prompt}\n\n{block}")
+        }
+    }
+}
+
+// ── MemoryContextHook ────────────────────────────────────────────────────────
+
+/// Appends the rendered `<openagentd_memory>` block (computed by the session).
+pub struct MemoryContextHook {
+    pub content: String,
+}
+
+#[async_trait]
+impl Hook for MemoryContextHook {
+    async fn before_agent(&self, _ctx: &RunContext, state: &mut AgentState) {
+        if !self.content.is_empty() {
+            state.system_prompt = format!("{}\n\n{}", state.system_prompt, self.content);
+        }
+    }
+}
+
+// ── ToolResultOffloadHook ────────────────────────────────────────────────────
+
+pub const DEFAULT_CHAR_THRESHOLD: usize = 40_000;
+pub const DEFAULT_PREVIEW_CHARS: usize = 1000;
+
+pub struct ToolResultOffloadHook {
+    pub char_threshold: usize,
+    pub preview_chars: usize,
+}
+
+impl Default for ToolResultOffloadHook {
+    fn default() -> Self {
+        Self { char_threshold: DEFAULT_CHAR_THRESHOLD, preview_chars: DEFAULT_PREVIEW_CHARS }
+    }
+}
+
+/// Python `f"{n:,}"`.
+pub fn thousands(n: usize) -> String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+#[async_trait]
+impl Hook for ToolResultOffloadHook {
+    async fn after_tool(&self, ctx: &RunContext, meta: &SharedMeta, tc: &ToolCall, _scope: &mut ToolCallScope, result: &mut String) {
+        let chars = result.chars().count();
+        let name = tc.function.name.as_str();
+        if self.char_threshold == 0 || chars <= self.char_threshold || name == "read" || name == "skill" {
+            return;
+        }
+        let tc_id = if tc.id.is_empty() { format!("tc_{name}") } else { tc.id.clone() };
+        let dir = appv3_tools::denied::session_artifacts_dir(ctx.session_id.as_deref()).join(".tool_results").join(&ctx.agent_name);
+        let digest = Sha256::digest(tc_id.as_bytes());
+        let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+        let dest = dir.join(format!("{hex}.txt"));
+        let write = std::fs::create_dir_all(&dir).and_then(|_| appv3_core::secret_files::write_secret_file(&dest, result));
+        if let Err(e) = write {
+            tracing::warn!("tool_result_offload_write_failed agent={} tool={} tool_call_id={} error={}", ctx.agent_name, name, tc_id, e);
+            return;
+        }
+        let lines = result.matches('\n').count() + 1;
+        let p = self.preview_chars;
+        let head = head_chars(result, p).trim_end().to_string();
+        let tail = if chars > p * 2 { tail_chars(result, p).trim_start().to_string() } else { String::new() };
+        let omitted = if !tail.is_empty() { chars - p * 2 } else { chars.saturating_sub(p) };
+        let path = dest.display().to_string();
+        let mut compact = format!(
+            "[Tool result offloaded — content saved to session artifacts]\nFile: {path}\nSize: {} lines · {} chars\n\nPreview (first):\n{head}",
+            thousands(lines),
+            thousands(chars)
+        );
+        if !tail.is_empty() {
+            compact.push_str(&format!("\n… ({} chars omitted)\n\nPreview (last):\n{tail}", thousands(omitted)));
+        } else if chars > p {
+            compact.push_str(&format!("\n… ({} more chars — use read to load full output)", thousands(omitted)));
+        }
+        tracing::info!("tool_result_offloaded agent={} tool={} tool_call_id={} chars={} path={}", ctx.agent_name, name, tc_id, chars, path);
+        let mut m = meta.lock().unwrap();
+        let entry = m.entry("_offloaded_tool_results").or_insert_with(|| json!({}));
+        if let Some(o) = entry.as_object_mut() {
+            o.insert(tc_id, json!({"offloaded": true, "path": path, "lines": lines, "chars": chars}));
+        }
+        drop(m);
+        *result = compact;
+    }
+}
+
+// ── QueuedMessageInjectionHook ───────────────────────────────────────────────
+
+pub struct QueuedInjectionHook {
+    pub session_id: String,
+    pub agent_name: String,
+    pub pool: DbPool,
+    pub support_interrupt: bool,
+}
+
+#[async_trait]
+impl Hook for QueuedInjectionHook {
+    async fn before_model(&self, _ctx: &RunContext, state: &mut AgentState, _req: &ModelRequest) -> Option<ModelRequest> {
+        if !self.support_interrupt || appv3_db::codec::parse_uuid(&self.session_id).is_none() {
+            return None;
+        }
+        let queued = match crate::snapshot::release_queued(&self.pool, &self.session_id).await {
+            Ok(q) if !q.is_empty() => q,
+            Ok(_) => return None,
+            Err(e) => {
+                tracing::warn!("queued_injection_failed error={}", e);
+                return None;
+            }
+        };
+        state.messages.extend(crate::history::rows_to_llm_messages(&queued));
+        state.meta_pop("question_resume");
+        let ids: Vec<String> = queued.iter().map(|r| appv3_db::codec::api_uuid(&r.id)).collect();
+        let data: Vec<Value> =
+            queued.iter().map(|r| json!({"id": appv3_db::codec::api_uuid(&r.id), "content": r.content.clone().unwrap_or_default(), "extra": r.extra_json()})).collect();
+        store().push_event(
+            &self.session_id,
+            &Envelope::from_parts("queued_turn_start", json!({"type": "queued_turn_start", "agent": self.agent_name, "message_ids": ids, "messages": data})),
+            false,
+        );
+        tracing::info!("queued_messages_injected session_id={} count={}", self.session_id, queued.len());
+        Some(ModelRequest { messages: state.messages_for_llm(), system_prompt: _req.system_prompt.clone() })
+    }
+}
