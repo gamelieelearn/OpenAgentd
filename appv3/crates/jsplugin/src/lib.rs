@@ -8,6 +8,7 @@
 //! v3 never reads the v2 `*.py` plugins.
 
 mod host;
+mod re;
 mod runtime;
 pub mod transpile;
 

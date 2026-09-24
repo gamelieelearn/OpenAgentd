@@ -292,11 +292,58 @@
     convertTools: (tools) => native("gemini.convertTools", tools ?? null),
   };
 
+  // ── regex (native; Python-style syntax) ───────────────────────────────────
+  const expandReplacement = (t, m) =>
+    t.replace(/\$(\$|\d+|<([^>]+)>)/g, (_all, x, name) =>
+      x === "$" ? "$" : name !== undefined ? (m.named[name] ?? "") : x === "0" ? m.text : (m.groups[Number(x) - 1] ?? ""));
+  class NativeRegex {
+    constructor(source, flags) {
+      const r = sync("reCompile", { pattern: source, flags });
+      this.source = source;
+      this.flags = flags;
+      this.groupNames = r.names;
+      Object.defineProperty(this, "_id", { value: r.id });
+      Object.freeze(this);
+    }
+    _match(text, s) {
+      const groups = [];
+      for (let k = 2; k < s.length; k += 2) groups.push(s[k] < 0 ? undefined : text.slice(s[k], s[k + 1]));
+      const named = {};
+      for (const [n, i] of Object.entries(this.groupNames)) named[n] = groups[i - 1];
+      return { text: text.slice(s[0], s[1]), index: s[0], end: s[1], groups, named };
+    }
+    _spans(text, all) { return unwrap(N.re(all ? "all" : "first", this._id, text)); }
+    test(text) { return unwrap(N.re("test", this._id, String(text))); }
+    find(text) {
+      text = String(text);
+      const s = this._spans(text, false);
+      return s.length ? this._match(text, s[0]) : null;
+    }
+    findAll(text) {
+      text = String(text);
+      return this._spans(text, true).map((s) => this._match(text, s));
+    }
+    subn(text, repl) {
+      text = String(text);
+      const spans = this._spans(text, true);
+      if (!spans.length) return [text, 0];
+      let out = "", last = 0;
+      for (const s of spans) {
+        const m = this._match(text, s);
+        out += text.slice(last, s[0]) + (typeof repl === "function" ? String(repl(m)) : expandReplacement(String(repl), m));
+        last = s[1];
+      }
+      return [out + text.slice(last), spans.length];
+    }
+    replace(text, repl) { return this.subn(text, repl)[0]; }
+  }
+  const regex = { compile: (pattern, flags) => new NativeRegex(String(pattern), flags == null ? "" : String(flags)) };
+
   const api = {
     definePlugin: (p) => p,
     defineProvider: (p) => p,
     log, sleep, fetch, Headers, Response, crypto, base64, utf8, url, env, fs, subprocess, listen,
-    pyJsonDumps, pyRepr, parseIsoTimestamp, httpStatusMessage, gemini, native,
+    pyJsonDumps, pyRepr, parseIsoTimestamp, httpStatusMessage, gemini, regex, native,
     credentialStore: (providerId, overrides) => credentials({ providerId: String(providerId), overrides: overrides || {} }),
     ProviderError, AuthError, ValueError, UnconfiguredError, NetworkError, HttpError,
     platform: sync("platform", null),

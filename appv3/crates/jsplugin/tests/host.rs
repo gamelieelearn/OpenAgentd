@@ -222,3 +222,42 @@ fn load_errors_are_reported() {
     let e = JsPlugin::load(&p).unwrap_err();
     assert_eq!(e, "boom");
 }
+
+const REGEX_DEMO: &str = r#"
+import { regex } from "openagentd";
+
+const TOKEN = regex.compile(String.raw`\b(?P<kind>sk|gh)-(\w{4,})\b`, "i");
+const PEM = regex.compile(String.raw`-----BEGIN (?P<l>[A-Z ]+)-----.*?-----END (?P=l)-----`, "s");
+
+export function run(text: string) {
+  const all = TOKEN.findAll(text);
+  let err = "";
+  try { regex.compile("("); } catch (e: any) { err = e.name; }
+  return {
+    test: [TOKEN.test(text), TOKEN.test("nothing")],
+    first: TOKEN.find(text),
+    spans: all.map((m) => text.slice(m.index, m.end)),
+    names: TOKEN.groupNames,
+    subn: TOKEN.subn(text, (m) => `<${m.named.kind!.toLowerCase()}>`),
+    template: TOKEN.replace(text, "[$<kind>:$2|$$]"),
+    pem: PEM.subn("a -----BEGIN X KEY-----\n1\n-----END X KEY----- b", "[KEY]"),
+    err,
+  };
+}
+"#;
+
+#[test]
+fn native_regex_module() {
+    let d = tempfile::tempdir().unwrap();
+    let p = JsPlugin::load(&write(d.path(), "re.ts", REGEX_DEMO)).unwrap();
+    // "é" and "😀" check that offsets are UTF-16 (what JS `slice` expects).
+    let v = p.call_blocking(&Target::export(""), "run", &[json!("é SK-abcd 😀 gh-wxyz9 xsk-nope")], Mode::Value).unwrap().value;
+    assert_eq!(v["test"], json!([true, false]));
+    assert_eq!(v["first"], json!({"text": "SK-abcd", "index": 2, "end": 9, "groups": ["SK", "abcd"], "named": {"kind": "SK"}}));
+    assert_eq!(v["spans"], json!(["SK-abcd", "gh-wxyz9"]));
+    assert_eq!(v["names"], json!({"kind": 1}));
+    assert_eq!(v["subn"], json!(["é <sk> 😀 <gh> xsk-nope", 2]));
+    assert_eq!(v["template"], json!("é [SK:abcd|$] 😀 [gh:wxyz9|$] xsk-nope"));
+    assert_eq!(v["pem"], json!(["a [KEY] b", 1]));
+    assert_eq!(v["err"], json!("SyntaxError"));
+}

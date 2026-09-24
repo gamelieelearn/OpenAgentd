@@ -92,11 +92,19 @@ pub struct HostState {
     next_id: Cell<u64>,
     servers: RefCell<HashMap<u64, Rc<tokio::net::TcpListener>>>,
     conns: RefCell<HashMap<u64, tokio::net::TcpStream>>,
+    regexes: RefCell<crate::re::Regexes>,
 }
 
 impl HostState {
     pub fn new(plugin: &str) -> Rc<Self> {
-        Rc::new(Self { plugin: plugin.to_string(), client: OnceCell::new(), next_id: Cell::new(1), servers: RefCell::default(), conns: RefCell::default() })
+        Rc::new(Self {
+            plugin: plugin.to_string(),
+            client: OnceCell::new(),
+            next_id: Cell::new(1),
+            servers: RefCell::default(),
+            conns: RefCell::default(),
+            regexes: RefCell::default(),
+        })
     }
     fn id(&self) -> u64 {
         let id = self.next_id.get();
@@ -126,6 +134,22 @@ pub fn install(ctx: &Ctx<'_>, st: Rc<HostState>) -> rquickjs::Result<()> {
         Function::new(ctx.clone(), move |name: String, arg: String| -> String {
             let arg: Value = serde_json::from_str(&arg).unwrap_or(Value::Null);
             envelope(sync_call(&s1, &name, arg))
+        })?,
+    )?;
+    // Regex ops take the haystack as a plain JS string: routing it through
+    // the JSON envelope would escape and re-parse every tool output per call.
+    let s3 = st.clone();
+    n.set(
+        "re",
+        Function::new(ctx.clone(), move |op: String, id: f64, text: String| -> String {
+            let re = s3.regexes.borrow();
+            let id = if id >= 0.0 { id as u64 } else { u64::MAX };
+            let r = match op.as_str() {
+                "test" => re.test(id, &text).map(|b| json!(b)),
+                "first" => re.exec(id, &text, false),
+                _ => re.exec(id, &text, true),
+            };
+            envelope(r.map_err(NativeError::error))
         })?,
     )?;
     let s2 = st;
@@ -232,6 +256,7 @@ fn sync_call(st: &HostState, name: &str, arg: Value) -> NResult {
         },
         "mkdir" => std::fs::create_dir_all(s(&arg, "path")).map(|_| Value::Null).map_err(|e| NativeError::error(e.to_string())),
         "pyJsonDumps" => Ok(json!(appv3_core::pyjson::dumps(arg.get("value").unwrap_or(&Value::Null)))),
+        "reCompile" => st.regexes.borrow_mut().compile(s(&arg, "pattern"), s(&arg, "flags")).map_err(|e| NativeError::new("SyntaxError", e)),
         "parseIso" => Ok(parse_iso_ts(arg.get("text").and_then(|x| x.as_str())).map(|t| json!(t)).unwrap_or(Value::Null)),
         "parseQuery" => {
             let mut m = Map::new();

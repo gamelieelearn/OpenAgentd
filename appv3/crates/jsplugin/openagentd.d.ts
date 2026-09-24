@@ -374,6 +374,37 @@ declare module "openagentd" {
     normalizeTurns(contents: any[]): any[];
     convertTools(tools: ToolSpec[] | null): any[] | null;
   };
+  export interface RegexMatch {
+    text: string;
+    /** UTF-16 offsets, usable with `String.prototype.slice`. */
+    index: number;
+    end: number;
+    /** Capture groups 1..n (`undefined` when a group did not participate). */
+    groups: (string | undefined)[];
+    named: Record<string, string | undefined>;
+  }
+  export interface NativeRegex {
+    readonly source: string;
+    readonly flags: string;
+    readonly groupNames: Record<string, number>;
+    test(text: string): boolean;
+    find(text: string): RegexMatch | null;
+    findAll(text: string): RegexMatch[];
+    /** `re.subn`: string replacements expand `$0`, `$1`, `$<name>`, `$$`. */
+    subn(text: string, repl: string | ((m: RegexMatch) => string)): [string, number];
+    replace(text: string, repl: string | ((m: RegexMatch) => string)): string;
+  }
+  /**
+   * Native regular expressions in Python-style syntax (`\b`, `\s`, `\w` are
+   * Unicode-aware; `(?P<name>…)`, `(?P=name)`). Linear-time unless the pattern
+   * needs lookaround or back-references. Much faster than `RegExp` for
+   * scanning large tool output; compile once and reuse. One difference from
+   * Python: `\s` is Unicode White_Space, which excludes `\x1c`–`\x1f`.
+   */
+  export const regex: {
+    /** Flags: `i` ignore case, `m` multi-line, `s` dot matches newline, `x` verbose. Throws `SyntaxError`. */
+    compile(pattern: string, flags?: string): NativeRegex;
+  };
   /** Call a native function registered by OpenAgentd. */
   export function native(name: string, arg?: any): any;
   export const platform: "macos" | "linux" | "windows" | string;
