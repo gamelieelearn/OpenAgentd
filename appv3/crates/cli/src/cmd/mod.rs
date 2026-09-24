@@ -3,6 +3,7 @@ pub mod cleanup;
 pub mod doctor;
 pub mod lsp;
 pub mod run;
+pub mod self_update;
 pub mod serve;
 pub mod server;
 pub mod transfer;

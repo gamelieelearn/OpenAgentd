@@ -216,9 +216,11 @@ explicitly.
     root). The PID file, log file, banner, `--wait` polling and stop
     semantics are the same. The daemon child skips the sidecar
     `openagentd: sidecar bootstrap` stderr line.
-  - `upgrade`'s pip fallback runs `python3 -m pip install --upgrade
-    openagentd`, since there is no `sys.executable`. The brew / uv tool /
-    pipx detection is unchanged.
+  - `upgrade` runs `brew upgrade` for Homebrew installs and otherwise
+    updates itself from the GitHub release archives (`cmd/self_update.rs`:
+    sha256-verified, swapped by rename, `<exe>.old` on Windows). v2's
+    uv/pipx/pip paths are gone because v3 is not on PyPI. A binary inside
+    the desktop app's `sidecar/bin` refuses and defers to the app updater.
   - `--key` without a TTY prints `Warning: Password input may be echoed.`
     instead of Python's `GetPassWarning` with its source location.
   - `transfer export` writes GNU tar headers (no PAX mtime records or

@@ -1,10 +1,14 @@
-//! `openagentd upgrade` — port of `app/cli/commands/upgrade.py`.
-//! The pip fallback runs `python3 -m pip` (v3 has no `sys.executable`).
+//! `openagentd upgrade` — stop the server, update, restart it (as
+//! `app/cli/commands/upgrade.py`). Homebrew installs run `brew upgrade`;
+//! every other install updates itself from the GitHub release archives
+//! (`self_update`). v2's uv/pipx/pip paths are gone: v3 is not on PyPI, so
+//! they would install the old Python package.
 
 use crate::argparse::Ns;
+use crate::cmd::self_update::{self, Outcome};
 use crate::cmd::server::{cmd_stop, ns_int, ns_str, system_exit_code};
 use crate::paths::find_pids;
-use crate::ui::{bold, cyan, dim};
+use crate::ui::{bold, cyan, dim, green};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -37,26 +41,40 @@ fn is_brew_managed() -> bool {
     capture(&[&brew.to_string_lossy(), "list", "--formula", "openagentd"]).is_some_and(|(c, _)| c == 0)
 }
 
-fn tool_listed(tool: &str, args: &[&str]) -> bool {
-    let Some(bin) = which(tool) else { return false };
-    let mut cmd = vec![bin.to_string_lossy().into_owned()];
-    cmd.extend(args.iter().map(|s| s.to_string()));
-    let refs: Vec<&str> = cmd.iter().map(String::as_str).collect();
-    capture(&refs).is_some_and(|(_, out)| out.contains("openagentd"))
+/// `brew upgrade` (after `brew update`); returns the exit code.
+fn brew_upgrade() -> i32 {
+    let pre = vec!["brew".to_string(), "update".to_string()];
+    println!("  {}", dim(&pre.join(" ")));
+    let code = run(&pre);
+    if code != 0 {
+        return code;
+    }
+    let cmd: Vec<String> = ["brew", "upgrade", "--formula", "lthoangg/tap/openagentd"].iter().map(|s| s.to_string()).collect();
+    println!("  {}", dim(&cmd.join(" ")));
+    run(&cmd)
 }
 
-fn upgrade_command() -> (&'static str, Vec<String>) {
-    let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    if is_brew_managed() {
-        return ("brew", v(&["brew", "upgrade", "--formula", "lthoangg/tap/openagentd"]));
+/// Update this binary from the release archives; returns the exit code.
+fn release_upgrade(exe: &std::path::Path) -> i32 {
+    let Some(dir) = exe.parent() else { return 1 };
+    self_update::cleanup_old(dir);
+    let base = self_update::releases_base();
+    println!("  {}", dim(&format!("{base}/latest → {}", self_update::target_triple())));
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("tokio runtime");
+    match rt.block_on(self_update::update(&base, appv3_core::VERSION, dir)) {
+        Ok(Outcome::UpToDate(v)) => {
+            println!("  {} (v{v})", green("Already up to date"));
+            0
+        }
+        Ok(Outcome::Updated { from, to }) => {
+            println!("  {} v{from} → v{to} ({})", green("Updated"), dir.display());
+            0
+        }
+        Err(e) => {
+            eprintln!("  Upgrade failed: {e:#}");
+            1
+        }
     }
-    if tool_listed("uv", &["tool", "list"]) {
-        return ("uv tool", v(&["uv", "tool", "upgrade", "openagentd"]));
-    }
-    if tool_listed("pipx", &["list", "--short"]) {
-        return ("pipx", v(&["pipx", "upgrade", "openagentd"]));
-    }
-    ("pip", v(&["python3", "-m", "pip", "install", "--upgrade", "openagentd"]))
 }
 
 fn restart_command(ns: &Ns) -> Vec<String> {
@@ -93,23 +111,19 @@ fn run(cmd: &[String]) -> i32 {
 }
 
 pub fn cmd_upgrade(ns: &Ns) {
+    let exe = std::env::current_exe().ok().and_then(|p| dunce::canonicalize(p).ok()).unwrap_or_default();
+    if self_update::is_desktop_bundled(&exe) {
+        println!("  This openagentd is bundled with the desktop app, which updates it (Settings → About).");
+        return;
+    }
     let was_running = !find_pids().is_empty();
     if was_running {
         println!("  {} before upgrade ...", bold("Stopping openagentd"));
         cmd_stop(ns);
     }
-    let (manager, command) = upgrade_command();
+    let manager = if is_brew_managed() { "brew" } else { "GitHub releases" };
     println!("  {} via {} ...", bold("Upgrading openagentd"), cyan(manager));
-    let mut code = 0;
-    if manager == "brew" {
-        let pre = vec!["brew".to_string(), "update".to_string()];
-        println!("  {}", dim(&pre.join(" ")));
-        code = run(&pre);
-    }
-    if code == 0 {
-        println!("  {}", dim(&command.join(" ")));
-        code = run(&command);
-    }
+    let code = if manager == "brew" { brew_upgrade() } else { release_upgrade(&exe) };
     let mut restart_code = 0;
     if was_running {
         let restart = restart_command(ns);

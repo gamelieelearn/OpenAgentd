@@ -132,7 +132,9 @@ jobs:
             (cd "$stage" && 7z a -tzip "$GITHUB_WORKSPACE/_release/$archive" ./* >/dev/null)
           else
             archive="${name}.tar.gz"
-            tar -C "$stage" -czf "_release/$archive" .
+            # COPYFILE_DISABLE stops macOS tar from adding `._*` AppleDouble
+            # entries for files with extended attributes.
+            COPYFILE_DISABLE=1 tar -C "$stage" -czf "_release/$archive" .
           fi
           (cd _release && { sha256sum "$archive" 2>/dev/null || shasum -a 256 "$archive"; } > "$archive.sha256")
           cat "_release/$archive.sha256"
@@ -187,7 +189,7 @@ jobs:
             test -f "_artifacts/openagentd-${VERSION}-${t}.tar.gz.sha256"
           done
           test -f "_artifacts/openagentd-${VERSION}-x86_64-pc-windows-msvc.zip.sha256"
-          (cd _artifacts && cat *.sha256 > SHA256SUMS && sha256sum -c SHA256SUMS)
+          (cd _artifacts && cat ./*.sha256 > SHA256SUMS && sha256sum -c SHA256SUMS)
 
       # If release-desktop.yml ran first the tag exists already.
       - name: Create and push tag (if missing)
