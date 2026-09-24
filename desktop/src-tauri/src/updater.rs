@@ -574,7 +574,7 @@ pub async fn run_update_install(app: AppHandle) -> Result<(), String> {
     persist_active_window_state(&app);
     state.quitting.store(true, Ordering::SeqCst);
 
-    // Shut the Python sidecar down *before* the bundle swap so the child
+    // Shut the backend sidecar down *before* the bundle swap so the child
     // receives SIGTERM while we still own a clean process tree. Doing it after
     // `install()` races the updater's relaunch.
     shutdown_sidecar_now(&app).await;

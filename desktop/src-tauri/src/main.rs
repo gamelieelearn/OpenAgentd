@@ -43,7 +43,7 @@ pub struct AppState {
     pub backend_base_url: Arc<Mutex<Option<String>>>,
     pub backend_mode: Arc<Mutex<BackendMode>>,
     /// True only while a bundled-sidecar spawn/handshake/health sequence is
-    /// in progress. Shared with the retry command to prevent two Python
+    /// in progress. Shared with the retry command to prevent two sidecar
     /// backends from being launched concurrently after a slow cold start.
     pub backend_starting: Arc<AtomicBool>,
     /// Remains true after a bundled-sidecar startup attempt fails so a
@@ -172,8 +172,8 @@ pub const NORMAL_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 /// Size cap for one `desktop.log` generation. The plugin's 40 KB default
 /// kept less than a day of history.
 pub const DESKTOP_LOG_MAX_BYTES: u128 = 5 * 1024 * 1024;
-/// First execution of the freshly installed 400+ MB sidecar can spend tens
-/// of seconds in OS security scanning before Python emits any stdout.
+/// First execution of a freshly installed sidecar can spend tens of seconds
+/// in OS security scanning (Gatekeeper, Defender) before it emits stdout.
 pub const SIDECAR_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(60);
 #[cfg(not(target_os = "macos"))]
 pub const RELOAD_SHUTDOWN_GRACE: Duration = Duration::from_millis(750);
@@ -367,7 +367,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 
-/// Cleanly stop the Python sidecar before a process re-exec.
+/// Cleanly stop the backend sidecar before a process re-exec.
 ///
 /// Idempotent: ``.take()``s the sidecar out of shared state, so repeat
 /// calls (or a race with ``ExitRequested``) are no-ops.

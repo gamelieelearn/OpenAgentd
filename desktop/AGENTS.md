@@ -1,7 +1,8 @@
 # Desktop Shell Guide
 
 The Tauri desktop shell embeds the shared web UI, can supervise a bundled
-Python API sidecar or use a saved external server, and owns native packaging,
+native `openagentd` backend sidecar (built from `appv3/`) or use a saved
+external server, and owns native packaging,
 updates, tray/window behavior, and desktop credentials.
 
 ## Development and packaging
@@ -9,8 +10,8 @@ updates, tray/window behavior, and desktop credentials.
 Run the desktop Makefile from the repository root as shown below:
 
 ```bash
-make -C desktop sidecar       # generate the slim local Python (v2) bundle
-make -C desktop sidecar SIDECAR=v3  # native Rust (v3) bundle instead
+make -C desktop sidecar       # build appv3 (fat-LTO `dist`) into sidecar-bundle/
+make -C desktop sidecar PROFILE=release  # quicker local build
 make -C desktop dev           # Tauri dev shell; Vite :5173 must be running
 make -C desktop dev-bundled   # regenerate/use bundled sidecar explicitly
 make -C desktop build         # release desktop bundle
