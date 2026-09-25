@@ -65,6 +65,16 @@ describe("parseDetailOrThrow", () => {
     expect(err.message).toBe("getTrace failed: 404")
   })
 
+  it("keeps a structured detail on the error for callers to inspect", async () => {
+    const err = await captureError(jsonResponse(404, { detail: { reason: "trace_not_found", trace_id: "t1" } }), "getTrace")
+    expect(err.detail).toEqual({ reason: "trace_not_found", trace_id: "t1" })
+  })
+
+  it("uses the message of a structured detail when it has one", async () => {
+    const err = await captureError(jsonResponse(503, { detail: { status: "degraded", message: "Database unavailable" } }), "ready")
+    expect(err.message).toBe("Database unavailable")
+  })
+
   it("falls back to the label for a non-JSON body", async () => {
     const err = await captureError(new Response("<html>502</html>", { status: 502 }), "getThing")
     expect(err.status).toBe(502)
