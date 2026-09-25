@@ -14,6 +14,41 @@ async fn fresh() -> (tempfile::TempDir, appv3_db::DbPool) {
     (dir, pool)
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_saves_get_distinct_positions() {
+    // A queued user message and the agent's reply can be written at the
+    // same time; each row must still get its own `seq`.
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), ..Default::default() }).await.unwrap();
+    let handles: Vec<_> = (0..40)
+        .map(|i| {
+            let (pool, sid) = (pool.clone(), s.id.clone());
+            tokio::spawn(async move { save_message(&pool, &sid, NewMessage::user(format!("m{i}"))).await.unwrap().seq })
+        })
+        .collect();
+    let mut seqs = vec![];
+    for h in handles {
+        seqs.push(h.await.unwrap());
+    }
+    seqs.sort();
+    let n = seqs.len();
+    seqs.dedup();
+    assert_eq!(seqs.len(), n, "duplicate seq values");
+}
+
+#[tokio::test]
+async fn released_queued_messages_move_to_the_tail() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), ..Default::default() }).await.unwrap();
+    let queued = save_message(&pool, &s.id, NewMessage { kind: Some("queued".into()), ..NewMessage::user("later") }).await.unwrap();
+    let reply = save_message(&pool, &s.id, NewMessage::user("meanwhile")).await.unwrap();
+    let released = release_queued_user_messages(&pool, &s.id, Some("abc")).await.unwrap();
+    assert_eq!(released.len(), 1);
+    assert_eq!(released[0].id, queued.id);
+    assert_eq!(released[0].kind, "chat");
+    assert!(released[0].seq > reply.seq, "{} <= {}", released[0].seq, reply.seq);
+}
+
 #[tokio::test]
 async fn fresh_db_is_stamped_at_alembic_head() {
     let (_d, pool) = fresh().await;

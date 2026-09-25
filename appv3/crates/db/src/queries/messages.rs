@@ -77,19 +77,20 @@ pub async fn save_message(pool: &DbPool, session_id: &str, msg: NewMessage) -> R
     let pinned = msg
         .pinned
         .unwrap_or_else(|| row_kind == kind::NOTE && msg.extra.as_ref().and_then(|e| e.get("hidden_from_summary")).map(|v| v.as_bool().unwrap_or(!v.is_null())).unwrap_or(false));
-    let seq = match msg.seq {
-        Some(s) => s,
-        None => next_seq(pool, &sid).await?,
-    };
     let id = new_id();
     let extra = msg.extra.filter(|e| !e.is_empty()).map(Value::Object);
     let tool_calls = msg.tool_calls.filter(|t| !t.is_null());
     let created = msg.created_at.as_deref().and_then(crate::codec::db_dt).unwrap_or_else(now_db);
+    // `seq` is allocated inside the INSERT: SQLite takes the write lock for
+    // the whole statement, so concurrent saves (a queued message while the
+    // agent writes its reply) cannot read the same MAX(seq).
     sqlx::query(
         r#"INSERT INTO session_messages
            (id, session_id, role, content, reasoning_content, tool_calls,
             tool_call_id, name, extra, created_at, seq, kind, pinned)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                   COALESCE(?, (SELECT COALESCE(MAX(seq), 0) + ? FROM session_messages WHERE session_id = ?)),
+                   ?, ?)"#,
     )
     .bind(&id)
     .bind(&sid)
@@ -101,7 +102,9 @@ pub async fn save_message(pool: &DbPool, session_id: &str, msg: NewMessage) -> R
     .bind(&msg.name)
     .bind(json_db(extra.as_ref()))
     .bind(&created)
-    .bind(seq)
+    .bind(msg.seq)
+    .bind(SEQ_STEP)
+    .bind(&sid)
     .bind(&row_kind)
     .bind(pinned)
     .execute(pool)
@@ -448,9 +451,12 @@ pub async fn release_queued_user_messages(pool: &DbPool, session_id: &str, snaps
     if queued.is_empty() {
         return Ok(queued);
     }
-    let base = next_seq(pool, &sid).await?;
     let released = chrono::Utc::now();
-    let mut tx = pool.begin().await?;
+    // IMMEDIATE takes the write lock up front, so the tail read below and
+    // the updates cannot interleave with a concurrent `save_message`.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let max: Option<i64> = sqlx::query_scalar("SELECT MAX(seq) FROM session_messages WHERE session_id = ?").bind(&sid).fetch_one(&mut *tx).await?;
+    let base = max.unwrap_or(0) + SEQ_STEP;
     for (i, row) in queued.iter().enumerate() {
         let mut extra = match row.extra_json() {
             Some(Value::Object(m)) => m,
