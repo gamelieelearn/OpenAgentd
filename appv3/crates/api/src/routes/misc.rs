@@ -290,7 +290,7 @@ async fn diagnostics(q: Qs) -> ApiResult<Response> {
                 "os": format!("{}-{}", std::env::consts::OS, machine()),
                 "machine": machine(),
                 "executable": exe,
-                "desktop_session": std::env::var("OPENAGENTD_DESKTOP_TOKEN").map(|v| !v.is_empty()).unwrap_or(false),
+                "desktop_session": appv3_core::auth::is_desktop_session(),
                 "sidecar_version": appv3_core::VERSION,
             },
             "dirs": {

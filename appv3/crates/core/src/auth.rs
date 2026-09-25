@@ -2,10 +2,36 @@
 //! (the HTTP middleware lives in the api crate).
 
 use crate::runtime_settings::load_server_settings;
+use std::sync::OnceLock;
 
 pub const DESKTOP_TOKEN_ENV: &str = "OPENAGENTD_DESKTOP_TOKEN";
 pub const ACCESS_KEY_ENV: &str = "OPENAGENTD_ACCESS_KEY";
+/// Windows desktop fallback: where `server serve --handshake` also writes
+/// its handshake line.
+pub const HANDSHAKE_FILE_ENV: &str = "OPENAGENTD_HANDSHAKE_FILE";
 pub const QS_TOKEN_PARAM: &str = "_token";
+
+/// Server-process variables no child process may inherit: any child holding
+/// the token could call the API with full rights.
+pub const CHILD_ENV_SECRETS: [&str; 3] = [DESKTOP_TOKEN_ENV, ACCESS_KEY_ENV, HANDSHAKE_FILE_ENV];
+
+static DESKTOP_SESSION: OnceLock<bool> = OnceLock::new();
+
+/// Whether the desktop app started this process (it passes a token).
+pub fn is_desktop_session() -> bool {
+    *DESKTOP_SESSION.get_or_init(|| std::env::var(DESKTOP_TOKEN_ENV).is_ok_and(|v| !v.is_empty()))
+}
+
+/// Remove [`CHILD_ENV_SECRETS`] from the process environment once the
+/// server has read them, so nothing it spawns (agent shell, terminal, git
+/// hooks, package installs, MCP servers, plugins) inherits them. Call before
+/// the async runtime starts: environment mutation is not thread-safe.
+pub fn scrub_child_env_secrets() {
+    is_desktop_session();
+    for k in CHILD_ENV_SECRETS {
+        std::env::remove_var(k);
+    }
+}
 
 /// `configured_access_token()`: desktop token > access-key env > server.yaml.
 pub fn configured_access_token() -> String {

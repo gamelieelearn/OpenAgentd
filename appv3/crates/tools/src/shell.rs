@@ -23,8 +23,12 @@ const STREAM_INTERVAL: Duration = Duration::from_millis(500);
 const LIVE_MAX_CHARS: usize = 100_000;
 const LIVE_MAX_LINES: usize = 100;
 const LIVE_TRUNCATED: &str = "... [truncated live output] ...\n";
-pub const LEAK_KEYS: &[&str] =
-    &["PYTHONPATH", "PYTHONHOME", "PYTHONEXECUTABLE", "PYTHONUSERBASE", "PYTHONSTARTUP", "VIRTUAL_ENV", "VIRTUAL_ENV_PROMPT", "UV_PYTHON", "UV_PROJECT_ENVIRONMENT"];
+/// Server-process variables that must never reach commands the agent or the
+/// user runs. `server serve` already drops them from its own environment;
+/// this also covers embedders that do not. v2 stripped its own Python/venv
+/// variables here; the native server sets none, so a user's venv passes
+/// through consistently with `PATH`.
+pub const LEAK_KEYS: &[&str] = &appv3_core::auth::CHILD_ENV_SECRETS;
 const BLACKLIST: &[&str] = &["fish", "nu", "nushell"];
 
 pub fn shell_name_of(path: &str) -> String {
@@ -612,6 +616,16 @@ fn unsafe_file_from_reader(r: os_pipe::PipeReader) -> std::fs::File {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn child_env_never_inherits_openagentd_secrets() {
+        let mut cmd = tokio::process::Command::new("sh");
+        scrubbed_env(&mut cmd);
+        let removed: Vec<String> = cmd.as_std().get_envs().filter(|(_, v)| v.is_none()).map(|(k, _)| k.to_string_lossy().into_owned()).collect();
+        for k in ["OPENAGENTD_DESKTOP_TOKEN", "OPENAGENTD_ACCESS_KEY", "OPENAGENTD_HANDSHAKE_FILE"] {
+            assert!(removed.iter().any(|r| r == k), "{k} reaches agent shell commands: {removed:?}");
+        }
+    }
 
     #[test]
     fn tail_text_line_cut() {

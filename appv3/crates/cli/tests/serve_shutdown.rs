@@ -36,6 +36,23 @@ fn spawn_server(root: &std::path::Path, desktop_token: Option<&str>) -> (Child, 
     (child, stdout, port)
 }
 
+/// One `Connection: close` GET; returns (status, body).
+fn http_get(port: u16, path: &str, token: Option<&str>) -> (u16, String) {
+    let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    let auth = token.map(|t| format!("Authorization: Bearer {t}\r\n")).unwrap_or_default();
+    s.write_all(format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n{auth}Connection: close\r\n\r\n").as_bytes()).unwrap();
+    let mut raw = String::new();
+    s.read_to_string(&mut raw).unwrap();
+    let status = raw.split(' ').nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
+    let body = raw.split_once("\r\n\r\n").map(|(_, b)| b.to_string()).unwrap_or_default();
+    (status, body)
+}
+
+fn terminate(child: &mut Child) {
+    nix::sys::signal::kill(nix::unistd::Pid::from_raw(child.id() as i32), nix::sys::signal::Signal::SIGTERM).unwrap();
+    let _ = child.wait();
+}
+
 /// Open `/api/events/stream` and wait for the response head, like the web UI.
 fn open_event_stream(port: u16) -> TcpStream {
     let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
@@ -75,4 +92,16 @@ fn sigterm_with_an_open_event_stream_exits_promptly_after_shutdown_hooks() {
     // quit, so an open SSE stream must not hold the drain open.
     assert!(elapsed < Duration::from_millis(1500), "shutdown took {elapsed:?}\n{stderr}");
     assert!(stderr.contains("server_shutdown"), "shutdown hooks did not run:\n{stderr}");
+}
+
+#[test]
+fn the_desktop_token_still_guards_the_api_after_leaving_the_environment() {
+    let root = tempfile::tempdir().unwrap();
+    let (mut child, _stdout, port) = spawn_server(root.path(), Some("desk-tok"));
+    assert_eq!(http_get(port, "/api/agents", None).0, 401);
+    assert_eq!(http_get(port, "/api/agents", Some("desk-tok")).0, 200);
+    let (st, body) = http_get(port, "/api/diagnostics", Some("desk-tok"));
+    assert_eq!(st, 200, "{body}");
+    assert!(body.contains(r#""desktop_session":true"#), "{body}");
+    terminate(&mut child);
 }

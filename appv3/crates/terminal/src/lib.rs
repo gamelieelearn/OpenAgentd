@@ -266,13 +266,15 @@ mod tests {
         // oh-my-zsh update prompt) can swallow the scripted input. This is
         // the only test in the binary, so the process-wide env is safe.
         std::env::set_var("SHELL", "/bin/sh");
+        // The server's own access token must not reach the user's terminal.
+        std::env::set_var("OPENAGENTD_DESKTOP_TOKEN", "oad-leak-canary");
         let d = std::env::temp_dir();
         let s = create_session(&d.display().to_string(), 24, 80).unwrap();
         // The output must differ from the echoed input, so compute the "42".
         let script: &[u8] = match appv3_tools::shell::shell_name_of(&appv3_tools::shell::acceptable()).as_str() {
-            "pwsh" | "powershell" => b"'oad_term_' + (40+2)\r\nexit\r\n",
-            "cmd" => b"echo oad_term_4^2\r\nexit\r\n",
-            _ => b"echo oad_term_$((40+2))\nexit\n",
+            "pwsh" | "powershell" => b"'oad_term_' + (40+2) + '[' + $env:OPENAGENTD_DESKTOP_TOKEN + ']'\r\nexit\r\n",
+            "cmd" => b"echo oad_term_4^2[%OPENAGENTD_DESKTOP_TOKEN%]\r\nexit\r\n",
+            _ => b"echo \"oad_term_$((40+2))[${OPENAGENTD_DESKTOP_TOKEN}]\"\nexit\n",
         };
         s.write(script.to_vec()).await.unwrap();
         let mut out = String::new();
@@ -287,6 +289,7 @@ mod tests {
             }
         }
         assert!(out.contains("oad_term_42"), "{out:?}");
+        assert!(!out.contains("oad-leak-canary"), "desktop token leaked into the terminal: {out:?}");
         s.close().await;
         assert!(get_session(&s.session_id).is_none());
     }

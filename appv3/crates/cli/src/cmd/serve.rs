@@ -42,7 +42,7 @@ fn start_parent_watch(parent: i32) {
         .expect("spawn parent watch");
 }
 
-fn emit_handshake(port: u16, token: Option<&str>) {
+fn emit_handshake(port: u16, token: Option<&str>, handshake_file: Option<&str>) {
     let mut payload = json!({"port": port, "pid": std::process::id(), "version": appv3_core::VERSION});
     if let Some(t) = token {
         payload["token"] = json!(t);
@@ -51,13 +51,11 @@ fn emit_handshake(port: u16, token: Option<&str>) {
     let mut out = std::io::stdout().lock();
     let _ = writeln!(out, "OPENAGENTD_HANDSHAKE {line}");
     let _ = out.flush();
-    if let Ok(path) = std::env::var("OPENAGENTD_HANDSHAKE_FILE") {
-        if !path.is_empty() {
-            let tmp = format!("{path}.tmp");
-            let res = std::fs::write(&tmp, &line).and_then(|_| std::fs::rename(&tmp, &path));
-            if let Err(e) = res {
-                eprintln!("handshake file write failed path={path} error={e}");
-            }
+    if let Some(path) = handshake_file {
+        let tmp = format!("{path}.tmp");
+        let res = std::fs::write(&tmp, &line).and_then(|_| std::fs::rename(&tmp, path));
+        if let Err(e) = res {
+            eprintln!("handshake file write failed path={path} error={e}");
         }
     }
 }
@@ -115,6 +113,11 @@ pub fn cmd_serve(ns: &Ns) -> anyhow::Result<()> {
         start_parent_watch(p as i32);
     }
     let handshake = ns_bool(ns, "handshake");
+    // Read the token and handshake path, then drop them from the process
+    // environment before any thread or child process can inherit them.
+    let policy = Policy::from_env();
+    let handshake_file = std::env::var(appv3_core::auth::HANDSHAKE_FILE_ENV).ok().filter(|p| !p.is_empty());
+    appv3_core::auth::scrub_child_env_secrets();
 
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     rt.block_on(async move {
@@ -123,12 +126,12 @@ pub fn cmd_serve(ns: &Ns) -> anyhow::Result<()> {
         let pool = appv3_db::pool::create_pool(&s.database_path).await?;
         appv3_api::startup::startup(&pool).await?;
 
-        let app = create_app(AppState { pool: pool.clone() }, Policy::from_env());
+        let app = create_app(AppState { pool: pool.clone() }, policy);
         let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
         let port = listener.local_addr()?.port();
         tracing::info!("server_listening host={} port={}", host, port);
         if handshake {
-            emit_handshake(port, token.as_deref());
+            emit_handshake(port, token.as_deref(), handshake_file.as_deref());
         }
         // SSE streams never finish on their own, so end them as soon as the
         // signal arrives (sse-starlette does the same); the timeout only
