@@ -13,7 +13,9 @@ def test_windows_installer_uses_the_official_release_msi_and_msiexec():
     text = SCRIPT.read_text()
 
     assert "lthoangg/openagentd" in text
-    assert "releases/latest" in text
+    # The releases base URL is overridable for tests; latest resolves under it.
+    assert '"https://github.com/$repo/releases"' in text
+    assert '"$releasesUrl/latest"' in text
     assert "OpenAgentd_${resolvedVersion}_x64_en-US.msi" in text
     assert "Invoke-WebRequest" in text
     assert "Start-Process" in text
