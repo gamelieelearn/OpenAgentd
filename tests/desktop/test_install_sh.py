@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -373,13 +374,35 @@ class TestNoSignatureClobberGuard:
 class TestEntitlementsFallback:
     """The script should ship a fallback entitlements plist if none is found."""
 
+    HARDENED_RUNTIME_EXCEPTIONS = (
+        "com.apple.security.cs.allow-unsigned-executable-memory",
+        "com.apple.security.cs.allow-jit",
+        "com.apple.security.cs.allow-dyld-environment-variables",
+        "com.apple.security.cs.disable-library-validation",
+    )
+
+    @staticmethod
+    def _keys(plist: str) -> set[str]:
+        return set(re.findall(r"<key>([^<]+)</key>", plist))
+
     def test_falls_back_to_inline_plist(self):
         text = SCRIPT.read_text()
         # Inline plist heredoc is keyed against ``PLIST`` (terminator)
         assert "<<'PLIST'" in text
-        assert "com.apple.security.cs.allow-unsigned-executable-memory" in text
-        # Audio-input entitlement allows client-side speech recognition mic access.
-        assert "com.apple.security.device.audio-input" in text
+
+    def test_fallback_matches_the_release_entitlements(self):
+        # A locally re-signed app must not get broader entitlements than the
+        # release build, and the native sidecar needs no hardened-runtime
+        # exceptions (the v2 Python runtime did).
+        text = SCRIPT.read_text()
+        fallback = text.split("<<'PLIST'\n", 1)[1].split("\nPLIST\n", 1)[0]
+        release = (
+            REPO_ROOT / "desktop" / "src-tauri" / "entitlements.plist"
+        ).read_text()
+
+        assert self._keys(fallback) == self._keys(release)
+        for key in self.HARDENED_RUNTIME_EXCEPTIONS:
+            assert key not in self._keys(release)
 
 
 class TestDocsConsistency:
