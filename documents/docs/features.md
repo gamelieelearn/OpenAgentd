@@ -1305,8 +1305,11 @@ Desktop is primary. CLI / server is the developer path.
 - **Signed update manifests** `[v1.2.2+]` — minisign-signed `latest.json` at the
   rolling `latest-desktop` release; verified before install.
 - **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-coding-workspace).
-- **CLI install** `[since v1.0]` — `uv tool install openagentd`, `pipx`, `pip`,
-  `brew install lthoangg/tap/openagentd`.
+- **CLI install** `[since v1.0, native since v3.0.0]` — `install.sh --cli` (macOS / Linux),
+  `install.ps1 -Cli` (Windows), or `brew install lthoangg/tap/openagentd` installs the
+  native standalone executable into `~/.local/bin` (or `%LOCALAPPDATA%\OpenAgentd\bin`)
+  and cleans up any existing Python v2 uv/pipx install. The Python package managers
+  (`uv tool`, `pipx`, `pip`) were used through v2 and are sunset in v2.27.0.
 - **v2 end-of-life notice** `[v2.27.0]` — the last Python release. Interactive
   CLI commands and `openagentd upgrade` say that v2 gets no further updates and
   print the v3 install command plus the step that removes the uv/pipx/pip copy.
@@ -1323,9 +1326,11 @@ Desktop is primary. CLI / server is the developer path.
 - **CLI start --wait** `[v1.73.0, v2.4.0]` — `openagentd server start --wait`
   starts the background server and polls `/api/health/ready` until the database
   connection and the agent session are fully ready.
-- **CLI upgrade** `[v1.41.0]` — `openagentd upgrade` stops the background
-  server, delegates to the detected package manager, then restarts it when it
-  was running.
+- **CLI upgrade** `[v1.41.0, self-update v3.0.0]` — `openagentd upgrade` in v3 stops the
+  background server, downloads the latest prebuilt release archive from GitHub, verifies
+  its SHA-256 checksum, swaps the binaries in place, and restarts the server if it was
+  running. Homebrew installations delegate to `brew upgrade`. In v2.27.0, `openagentd upgrade`
+  migrates existing uv/pipx/pip installations to the v3 native binary.
 - **CLI artifact cleanup** `[v2.18.0]` — `openagentd cleanup` previews a dry run
   and, with `--apply`, deletes sessions older than `--older-than-days`
   (default 14) together with their messages, session artifacts, undo/redo

@@ -256,8 +256,7 @@ jobs:
               the app in Finder and choose "Open" once.
 
               Apple Silicon only. Intel Mac users: install the CLI with
-              "brew install openagentd" instead, and open the cockpit at
-              http://localhost:4082.
+              "brew install openagentd" instead.
 
               Uninstall keeps your data. ``brew uninstall --cask
               openagentd`` removes the app only; agents, sessions, and

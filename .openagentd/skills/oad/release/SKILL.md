@@ -80,6 +80,7 @@ git diff --stat main..HEAD -- documents/docs/features.md README.md
 git rev-parse HEAD
 
 # List the most recent runs of each CI workflow and confirm conclusion=success
+gh run list --workflow=appv3.yml --branch=main --limit=3
 gh run list --workflow=core.yml --branch=main --limit=3
 gh run list --workflow=web.yml  --branch=main --limit=3
 
@@ -128,6 +129,7 @@ git add app/version.txt pyproject.toml uv.lock web/package.json \
         desktop/src-tauri/Cargo.lock \
         mobile/src-tauri/tauri.conf.json mobile/src-tauri/Cargo.toml \
         mobile/src-tauri/Cargo.lock \
+        appv3/Cargo.toml appv3/Cargo.lock \
         documents/docs/features.md
 git commit -m "<release commit title>"
 git push -u origin <branch>
@@ -213,10 +215,10 @@ Both workflows publish into the **same** `v<X.Y.Z>` tag (introduced in
 1.0.9 — older releases used a separate `v<X.Y.Z>-desktop` tag). Whichever
 workflow runs first creates the release; the other appends artefacts via
 `gh release upload --clobber`. Run `release.yml` first so the canonical
-auto-generated notes come from the PyPI workflow.
+auto-generated notes and native CLI binaries attach to the tag first.
 
 ```bash
-# CLI / PyPI release (~90 seconds)
+# CLI release (~3–5 minutes for native cross-platform build)
 gh workflow run release.yml --field confirm=release
 gh run list --workflow=release.yml --limit=3
 # Watch this workflow in-session until status=completed conclusion=success before continuing.
@@ -224,7 +226,7 @@ gh run list --workflow=release.yml --limit=3
 
 9. GitHub release notes:
 
-- After the CLI/PyPI workflow creates the release and **before** starting the desktop workflow, draft concise, user-facing notes. Focus on `## What's changed`, adding `## Breaking Changes` only when migration is required. Keep installation and upgrade instructions in the README.
+- After the CLI workflow creates the release and **before** starting the desktop workflow, draft concise, user-facing notes. Focus on `## What's changed`, adding `## Breaking Changes` only when migration is required. Keep installation and upgrade instructions in the README.
 - Write the drafted release notes to an OS temp path (for example `/tmp/release-notes-v<version>.md`), not to a file under the repository workspace. This keeps ad-hoc release artefacts out of the repo tree.
 - Replace the auto-generated notes from that `/tmp` file, then verify:
 
