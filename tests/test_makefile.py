@@ -25,3 +25,12 @@ def test_dev_lan_uses_the_guarded_server_module_entry_point():
     assert "uv run uvicorn app.server:app" not in body
     assert "bun dev --host 0.0.0.0" in body
     assert "API_ALLOW_INSECURE_LAN=true" in body
+
+
+def test_v3_dev_targets_keep_source_checkout_data_out_of_production():
+    # `server serve` switches to production paths when APP_ENV is unset, so the
+    # source-checkout targets must default it to development.
+    for name in ("run", "dev"):
+        body = _target_body(name)
+        assert "server serve" in body
+        assert "APP_ENV=$${APP_ENV:-development} cargo run" in body, name
