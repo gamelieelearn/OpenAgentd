@@ -869,7 +869,18 @@ mod tests {
     // ── gix engine vs git CLI engine ────────────────────────────────────────
 
     fn sh(dir: &Path, args: &[&str]) {
-        let st = std::process::Command::new("git").args(args).current_dir(dir).env("GIT_CONFIG_NOSYSTEM", "1").output().unwrap();
+        // Both workspaces must produce the same nested commit (its hash is
+        // the gitlink in the tree), so pin the dates and ignore the
+        // developer's global config.
+        let st = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
+            .env("GIT_AUTHOR_DATE", "@1700000000 +0000")
+            .env("GIT_COMMITTER_DATE", "@1700000000 +0000")
+            .output()
+            .unwrap();
         assert!(st.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&st.stderr));
     }
 
