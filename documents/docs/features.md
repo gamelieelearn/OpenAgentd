@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-24
+updated: 2026-09-25
 ---
 
 # Features
@@ -48,16 +48,27 @@ Conventions used in this document:
 ## 1. The desktop coding workspace
 
 The product's primary coding surface. A native double-click app on macOS, Windows,
-and Linux that hosts the same FastAPI sidecar + React UI you would otherwise
-run from the terminal.
+and Linux that hosts the same backend sidecar + React UI you would otherwise
+run from the terminal (the native Rust binary since v3.0.0).
 
 - **Native Rust backend engine (OpenAgentd v3)** `[v3.0.0]` — compiles the entire
-  backend into one ~43 MB binary (`appv3/`). The desktop app can bundle it instead of
-  the 220 MB Python runtime (`make -C desktop sidecar SIDECAR=v3`; v2 stays the default).
+  backend into one ~43 MB binary (`appv3/`). The desktop app and the CLI release ship it
+  in place of the 220 MB Python runtime (`make -C desktop sidecar`).
   It shares v2's DB, config and plugin dirs. Cold start takes 27–38 ms (26–35x faster)
   and idle memory is ~20 MB (8x less). User plugins are TypeScript/JavaScript files run in
   an embedded QuickJS runtime. v3 does not load `.py` plugins; `openagentd.d.ts` in the
   plugin dir types the API. Measurements and remaining differences: `appv3/REPORT.md`.
+- **Safer local server and backend auto-restart (v3)** `[v3.0.0]` — without an
+  access key, the server refuses requests from other websites and from foreign
+  `Host` names, so a page open in your browser cannot drive your agent. The
+  desktop, mobile and local dev UIs are unaffected; `CORS_ORIGINS` adds
+  origins and `["*"]` restores the open default. The desktop token and access
+  key are removed from the environment of every process the agent starts
+  (shell, terminal, git, MCP, plugins). The desktop app restarts a crashed
+  bundled backend (up to 3 times in 10 minutes) and reconnects open windows.
+  Stopping the server with open streams exits at once instead of after 5 s.
+  An internal crash in one turn ends that turn with an error instead of leaving
+  the session busy, and concurrent messages keep distinct history positions.
 - **v3 on macOS, Linux and Windows** `[v3.0.0]` — CI builds and tests all three.
   Snapshots use in-process `gix`, so no `git` binary is needed (up to 6x faster).
   Grep is linear-time and parallel. The file tree, git status and diff refresh live
@@ -88,7 +99,8 @@ run from the terminal.
   together in single-branch and all-branch views. Commit lists provide an
   explicit Load more action and a retry action for failed history requests.
 - **Native desktop app for macOS, Windows, Linux** `[since v1.0; Windows restored v1.106.0]` — Tauri 2 shell,
-  bundled Python sidecar, embedded Web UI, one process, no terminal required.
+  bundled backend sidecar (Python until v2, native since v3.0.0), embedded Web UI,
+  one process, no terminal required.
 - **Explicit backend connection state** `[v1.68.0, v1.99.8, v1.113.0]` — desktop connection options
   are limited to the builtin sidecar and saved servers; no-backend dev windows
   show **Backend unreachable**, active server removal clears the current backend,
@@ -1285,7 +1297,8 @@ Desktop is primary. CLI / server is the developer path.
 - **Windows desktop** `[v1.106.0]` — native x64 `.msi` installer with the
   bundled Python sidecar, WebView2 shell, Job Object process cleanup, native
   PowerShell/cmd shell execution, and signed in-app updates. Interactive PTY
-  terminal tabs remain unavailable pending a ConPTY backend.
+  terminal tabs were unavailable until v3.0.0, which bundles the native backend
+  and opens terminals through ConPTY.
 - **Windows one-command install** `[v1.107.0]` — the `install.ps1` PowerShell
   installer resolves the latest GitHub release, downloads its x64 MSI, rejects
   a non-MSI download before elevation, and invokes Windows Installer.

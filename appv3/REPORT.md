@@ -6,7 +6,10 @@ providers (including codex/copilot/grok/bedrock/vertexai), user plugins
 through an embedded QuickJS host for TypeScript/JavaScript plugin files
 (§5), provider and MCP OAuth, multimodal tools, LSP, OTEL spans, file
 logging, Alembic migrations and PyYAML-exact YAML. v3 contains no plugin code
-and reads no Python files. v2 (`app/`) remains the source of truth.
+and reads no Python files. v3 is now the shipped backend: the CLI release
+binaries and the desktop sidecar are built from `appv3/`, and `make run` /
+`make dev` start it. v2 (`app/`) is end-of-life and remains the reference
+for wire and on-disk formats.
 v3 shares v2's DB and config files. What still behaves differently is
 listed in §3. macOS/Linux/Windows support, the in-process `gix` snapshot
 engine, the new grep and live workspace refresh are in §6.
@@ -58,6 +61,10 @@ I also checked the desktop sidecar contract by hand earlier.
 `openagentd server serve --host 127.0.0.1 --port 0 --handshake --parent-pid <pid>`
 with `OPENAGENTD_DESKTOP_TOKEN` printed the same handshake as v2, returned 401
 without the token and 200 with it, and shut down cleanly when the parent died.
+
+Later hardening changed some of this on purpose (§3, "Hardening beyond v2").
+In particular, `diff_auth.py`'s CORS rows would now differ unless
+`CORS_ORIGINS=["*"]` is set.
 
 ### Bugs this verification found (all fixed)
 
@@ -177,17 +184,58 @@ explicitly.
 
 - **Desktop sidecar:** `desktop/src-tauri/src/sidecar.rs` launches
   `bin/openagentd server serve …`, the same subcommand as v2.
-  `make -C desktop sidecar SIDECAR=v3` (or `dev-bundled-v3`, `build-v3`)
-  builds a v3-only bundle (`dist` profile); the default and the release
-  workflow are still v2. v3 also keeps a hidden `serve` alias of
+  `make -C desktop sidecar` builds it (`dist` profile) and
+  `release-desktop.yml` builds it per target inside the signed app. The
+  Python sidecar is gone. v3 also keeps a hidden `serve` alias of
   `server serve`, which v2 rejects. A v3 dev app bundle (macOS) is 67 MB
   against 241 MB for the v2 build. Checked against the bundled binary
   with the desktop's exact argv: handshake line in ~24 ms, generated and
   desktop-provided tokens (401 without), exit ~0.5 s after the parent
   dies (`--parent-pid`), clean SIGTERM with the WAL checkpointed, and the
-  Windows handshake-file fallback. Still to do before v3 can be the
-  default: per-target v3 builds, signing and notarization in
-  `release-desktop.yml`.
+  Windows handshake-file fallback. The desktop shell now restarts a
+  crashed sidecar (`desktop/src-tauri/src/watchdog.rs`: backoff 1 s / 5 s
+  / 15 s, at most 3 restarts per 10 minutes, same token) and reports
+  `backend-error` once the budget is spent. The macOS entitlements no
+  longer grant JIT, unsigned executable memory, DYLD variables or disabled
+  library validation, which the Python runtime needed and the native binary
+  does not.
+- **Hardening beyond v2:** deliberate behaviour changes, each covered by
+  tests in the named crate:
+  - *Origin and Host guard* (`api/src/middleware.rs`, `core/src/auth.rs`).
+    v2 defaults `CORS_ORIGINS` to `["*"]`. In v3, with `CORS_ORIGINS` unset,
+    the Tauri and loopback origins are always allowed. If no access key is
+    set (and no `API_ALLOW_INSECURE_LAN`), other origins are refused: a
+    preflight gets 400, a request 403, and a WebSocket upgrade the WS
+    reject. A `Host` header that is not a loopback name also gets 403, which
+    blocks DNS rebinding. With a key, or with `API_ALLOW_INSECURE_LAN`, every
+    origin is allowed as in v2, because the key is the boundary. An explicit
+    `CORS_ORIGINS` list still includes the first-party origins, and
+    `CORS_ORIGINS=["*"]` restores v2's behaviour.
+  - *Secrets in child processes.* `server serve` reads the desktop token,
+    the access key and the handshake-file path, then removes
+    `core::auth::CHILD_ENV_SECRETS` from its own environment before the
+    runtime starts. No child process can inherit them: shell tool,
+    terminal, git, MCP servers, plugins. The shell tool's `LEAK_KEYS` is
+    that same list; v2's Python/venv entries are dropped because v3 has no
+    venv. Diagnostics still reports `desktop_session`.
+  - *Shutdown.* v2's parent watch sends SIGTERM to its own process. v3 wakes
+    the graceful-shutdown path directly, which also works on Windows. SSE
+    streams close when shutdown starts, so a server with open streams exits
+    in milliseconds instead of after the 5 s graceful timeout (measured:
+    5.02 s → 8 ms). The registry refresh wait is capped at 1 s, and the DB
+    pool is closed at exit.
+  - *Panics.* A panic inside a turn becomes an ordinary turn error: the
+    session moves to `error` and is free for the next turn instead of
+    staying busy. A handler panic returns a plain
+    `500 Internal Server Error`, as Starlette does.
+  - *Message positions.* `save_message` allocates `seq` inside the INSERT,
+    and releasing queued messages reads `MAX(seq)` under `BEGIN IMMEDIATE`.
+    v2 reads and writes in separate statements, so concurrent saves could
+    share a position.
+  - *SSE contract.* `contract/sse_events.json` lists every event type per
+    stream. The broadcaster and stream store check each event against it
+    (debug builds panic, release builds log), and the web tests check their
+    unions against the same file.
 - **Version:** the workspace `Cargo.toml` version follows `app/version.txt`
   (from 3.0.0 on; `scripts/bump_version.sh` sets it and
   `scripts/check_version_consistency.sh` enforces it). It shows in
@@ -211,6 +259,9 @@ explicitly.
   - `doctor`'s first check reads `Rust runtime (openagentd vX)` instead of
     the Python version. The pass count is the same. "Alembic config
     bundled" always passes because the migrations are compiled in.
+  - The start banner labels the URL `Server:` instead of `Open:`. v2 serves
+    the web UI at that address; v3 is API-only, so the URL is what the
+    desktop or mobile app connects to.
   - `server start` daemonises this binary's `server serve --host H --port P`
     instead of uvicorn, with the binary's directory as cwd (v2: the package
     root). The PID file, log file, banner, `--wait` polling and stop
