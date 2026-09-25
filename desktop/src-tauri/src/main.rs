@@ -9,6 +9,7 @@ mod commands;
 mod sidecar;
 mod usage;
 mod tray_popup;
+mod watchdog;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -665,6 +666,8 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 menu::run_usage_poll_loop(usage_poll_handle).await;
             });
+            let watchdog_handle = app.handle().clone();
+            tauri::async_runtime::spawn(watchdog::run(watchdog_handle));
             Ok(())
         })
         .build(tauri::generate_context!())

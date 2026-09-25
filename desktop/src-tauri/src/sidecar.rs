@@ -425,6 +425,11 @@ impl Sidecar {
         }
     }
 
+    /// Exit status once the process has exited (reaping it), else `None`.
+    pub fn exit_status(&mut self) -> Option<std::process::ExitStatus> {
+        self.child.try_wait().ok().flatten()
+    }
+
     pub async fn shutdown(&mut self) {
         self.shutdown_with_grace(SHUTDOWN_GRACE).await;
     }

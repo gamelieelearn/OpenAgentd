@@ -1,6 +1,7 @@
 # Desktop Rust/Tauri Guide
 
-This directory owns the desktop-native shell and its Python sidecar bridge.
+This directory owns the desktop-native shell and its bridge to the bundled
+native backend sidecar (`sidecar-bundle/bin/openagentd`, built from `appv3/`).
 
 ## Module map
 
@@ -12,6 +13,9 @@ This directory owns the desktop-native shell and its Python sidecar bridge.
 - `src/commands.rs`: Tauri commands exposed to the frontend; keyring and
   download commands are thin wrappers over `openagentd-shell-core`.
 - `src/sidecar.rs`: sidecar discovery, spawn, handshake, health, and cleanup.
+- `src/watchdog.rs`: restarts a crashed bundled sidecar with a bounded
+  backoff budget, then re-points bundled windows; windows on an external
+  server are left alone.
 - `src/menu.rs`: tray/menu construction, polling, and event routing.
 - `src/usage.rs`: usage formatting and shared HTTP client.
 - `src/updater.rs`: update checks, download/install preconditions, and install.
@@ -26,6 +30,8 @@ bridge and all relevant Tauri config variants.
 
 - Keep the sidecar token/handshake private and preserve process-tree cleanup:
   POSIX process groups and Windows Job Objects have different paths.
+  A watchdog restart reuses the same desktop token so open windows stay
+  authenticated.
 - On macOS updater installation replaces the process; do not add the
   non-macOS post-install `app.restart()` path there. Preserve the double-invoke
   quitting guard.

@@ -178,9 +178,11 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
       },
       onError: () => {
         // Do not wait out the generic startup timeout when native startup has
-        // already failed. The shell's detailed error remains in its log;
-        // the recovery UI intentionally exposes only safe generic copy.
+        // already failed, and leave a running UI when the bundled backend
+        // died and could not be restarted. The shell's detailed error
+        // remains in its log; the recovery UI exposes only generic copy.
         if (!cancelled) {
+          setReady(false)
           setFailed(true)
           setUnavailable(true)
         }
