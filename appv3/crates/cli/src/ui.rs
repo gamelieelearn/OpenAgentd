@@ -42,7 +42,9 @@ const WORDMARK: &str = concat!(
     "      |_|               |___|"
 );
 
-/// `_print_banner(host=, port=)`.
+/// `_print_banner(host=, port=)`. The server is API-only (the UI ships in the
+/// desktop and mobile apps), so the URL is labelled as what to connect to
+/// rather than something to open in a browser.
 pub fn print_banner(host: &str, port: i64) {
     let url = format!("http://{host}:{port}");
     println!();
@@ -52,10 +54,10 @@ pub fn print_banner(host: &str, port: i64) {
         }
         println!();
         println!("  {}", dim(&format!("v{}", appv3_core::VERSION)));
-        println!("  {}  {}", dim("Open:"), bold(&url));
+        println!("  {}  {}", dim("Server:"), bold(&url));
     } else {
         println!("  OpenAgentd v{}", appv3_core::VERSION);
-        println!("  Open: {url}");
+        println!("  Server: {url}");
     }
     println!();
 }
