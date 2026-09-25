@@ -18,6 +18,7 @@ use appv3_core::settings::settings;
 use appv3_db::{self as db, DbPool, NewMessage};
 use appv3_providers::{Kwargs, LlmProvider, ProviderError};
 use appv3_tools::{DeniedPaths, ToolRef};
+use futures::FutureExt;
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -732,7 +733,15 @@ impl AgentSession {
         }
 
         let runtime_model = opts.runtime_model.clone();
-        if let Err(e) = self.execute_turn(&opts).await {
+        // A panic below (provider parser, tool, hook) must still reach the
+        // error path and the `finally` block, or the session stays "working"
+        // with no `done` event until the server restarts.
+        let outcome = std::panic::AssertUnwindSafe(self.execute_turn(&opts)).catch_unwind().await.unwrap_or_else(|payload| {
+            let msg = appv3_core::panic_message(payload.as_ref());
+            tracing::error!("agent_turn_panicked name={} session_id={} panic={}", self.name(), sid, msg);
+            Err(AgentError::Other(format!("Internal error: {msg}")))
+        });
+        if let Err(e) = outcome {
             if !matches!(e, AgentError::Cancelled) {
                 if e.is_logged_as_warning() {
                     tracing::warn!("agent_session_error name={} error={}", self.name(), e);

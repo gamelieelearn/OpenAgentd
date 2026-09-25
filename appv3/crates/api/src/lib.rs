@@ -39,6 +39,7 @@ pub fn create_app(state: AppState, policy: Policy) -> Router {
     let cors = middleware::Cors::new(&appv3_core::settings().cors_origins);
     routes::router()
         .with_state(state)
+        .layer(middleware::catch_panic_layer())
         .layer(DefaultBodyLimit::max(policy.max_bytes as usize))
         .layer(axum::middleware::from_fn_with_state(policy.clone(), middleware::network_bind_guard))
         .layer(axum::middleware::from_fn_with_state(policy.clone(), middleware::request_size_limit))

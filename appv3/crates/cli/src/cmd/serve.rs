@@ -12,6 +12,7 @@ use std::io::Write;
 fn init_logging() {
     let file_level = std::env::var("FILE_LOG_LEVEL").ok().filter(|v| !v.is_empty()).unwrap_or_else(|| "DEBUG".into());
     crate::logging::setup(&appv3_core::settings().log_level, &file_level, true);
+    crate::logging::install_panic_hook();
 }
 
 /// `_start_parent_watch` — SIGTERM ourselves when the parent dies, hard

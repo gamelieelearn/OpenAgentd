@@ -303,3 +303,34 @@ pub fn gzip_layer() -> tower_http::compression::CompressionLayer<impl tower_http
     use tower_http::compression::predicate::{NotForContentType, Predicate, SizeAbove};
     tower_http::compression::CompressionLayer::new().no_br().no_deflate().no_zstd().compress_when(SizeAbove::new(1000).and(NotForContentType::SSE).and(NotForContentType::GRPC))
 }
+
+// ── Panics ──────────────────────────────────────────────────────────────────
+
+fn panic_response(payload: Box<dyn std::any::Any + Send + 'static>) -> Response {
+    tracing::error!("request_handler_panicked panic={}", appv3_core::panic_message(payload.as_ref()));
+    crate::ApiError::internal("handler panicked").into_response()
+}
+
+/// A panicking handler answers `500 Internal Server Error` (Starlette's
+/// `ServerErrorMiddleware` text) instead of dropping the connection.
+pub fn catch_panic_layer() -> tower_http::catch_panic::CatchPanicLayer<fn(Box<dyn std::any::Any + Send + 'static>) -> Response> {
+    tower_http::catch_panic::CatchPanicLayer::custom(panic_response as fn(_) -> Response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn a_panicking_handler_answers_500() {
+        async fn boom() -> &'static str {
+            panic!("handler bug")
+        }
+        let app = axum::Router::new().route("/boom", axum::routing::get(boom)).layer(catch_panic_layer());
+        let resp = app.oneshot(Request::get("/boom").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = http_body_util::BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"Internal Server Error");
+    }
+}

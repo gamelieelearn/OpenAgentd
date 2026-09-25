@@ -19,7 +19,7 @@ pub mod settings;
 pub mod slug;
 pub mod which;
 
-pub use error::{AppError, AppResult};
+pub use error::{panic_message, AppError, AppResult};
 pub use path_locks::{acquire_all_locks, path_lock, PathLockManager};
 pub use settings::{settings, Settings};
 

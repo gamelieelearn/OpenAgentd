@@ -295,6 +295,19 @@ pub fn setup(log_level: &str, file_log_level: &str, files: bool) {
     };
 }
 
+/// Record every panic in the structured log (`app-error.log`) as well.
+/// Panics are caught per request and per agent turn, so without this the
+/// only trace would be the default hook's line on stderr.
+pub fn install_panic_hook() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default();
+        let thread = std::thread::current().name().unwrap_or("unnamed").to_string();
+        tracing::error!("panic thread={} location={} message={}", thread, location, appv3_core::panic_message(info.payload()));
+        default(info);
+    }));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
