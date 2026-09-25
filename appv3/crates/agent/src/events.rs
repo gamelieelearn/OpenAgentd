@@ -6,7 +6,48 @@
 //! last, with `None` fields serialised as `null` like `model_dump(mode="json")`.
 
 use serde_json::{json, Map, Value};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+
+// ── Wire contract ───────────────────────────────────────────────────────────
+
+const CONTRACT_JSON: &str = include_str!("../../../contract/sse_events.json");
+
+/// Which SSE stream an event travels on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stream {
+    /// `/api/agent/{sid}/stream` (the stream store).
+    Session,
+    /// `/api/events/stream` (the broadcaster).
+    Global,
+}
+
+fn contract() -> &'static (Vec<String>, Vec<String>) {
+    static C: OnceLock<(Vec<String>, Vec<String>)> = OnceLock::new();
+    C.get_or_init(|| {
+        let v: Value = serde_json::from_str(CONTRACT_JSON).expect("sse_events.json");
+        let names = |k: &str| v[k].as_array().expect(k).iter().map(|n| n.as_str().expect("event name").to_string()).collect::<Vec<_>>();
+        (names("session_stream"), names("global_stream"))
+    })
+}
+
+/// Whether `appv3/contract/sse_events.json` lists `name` for `stream`.
+pub fn in_contract(stream: Stream, name: &str) -> bool {
+    let (session, global) = contract();
+    match stream {
+        Stream::Session => session.iter().any(|n| n == name),
+        Stream::Global => global.iter().any(|n| n == name),
+    }
+}
+
+/// Every emitted name must be in the shared contract so the web client can
+/// be checked against it. Panics in debug builds (tests, `cargo run`) so a
+/// new event cannot ship unregistered; release builds only log.
+pub fn check_contract(stream: Stream, name: &str) {
+    if !in_contract(stream, name) {
+        tracing::error!("sse_event_not_in_contract stream={:?} event={}", stream, name);
+        debug_assert!(false, "SSE event {name:?} ({stream:?} stream) is missing from appv3/contract/sse_events.json");
+    }
+}
 
 /// One SSE frame on the wire: `event:` line + compact JSON `data:`.
 #[derive(Debug, Clone, PartialEq)]
@@ -241,6 +282,53 @@ pub fn summarization_end(agent: &str, summary: &str, metadata: Option<Value>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_builder_emits_a_contract_name() {
+        let builders = [
+            session("s"),
+            thinking("a", "t", None),
+            message("a", "t", None),
+            tool_call("a", None, "read"),
+            tool_start("a", None, "read", None),
+            tool_end("a", None, "read", None, None),
+            tool_output_delta("a", None, "read", "x", 1),
+            usage(&UsageFrame::default(), json!({})),
+            done(None),
+            rate_limit(1, 1, 3),
+            provider_status("a", &ProviderStatus::default()),
+            agent_not_configured("a", "m"),
+            agent_status("a", "idle", None),
+            permission_asked("r", "s", "read", &[], json!({})),
+            question_asked("q", "s", "c", &[]),
+            question_answered("q", "s", &json!({})),
+            question_dismissed("q", "s", "dismissed"),
+            summarization_start("a"),
+            summarization_content("a", "t"),
+            summarization_end("a", "t", None),
+        ];
+        for e in builders {
+            assert!(in_contract(Stream::Session, &e.event), "{}", e.event);
+        }
+    }
+
+    #[test]
+    fn contract_lists_are_unique() {
+        let (session, global) = contract();
+        for list in [session, global] {
+            let mut sorted = list.clone();
+            sorted.sort();
+            sorted.dedup();
+            assert_eq!(sorted.len(), list.len(), "duplicate event names: {list:?}");
+        }
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "missing from appv3/contract/sse_events.json")]
+    fn unregistered_events_fail_loudly_in_debug_builds() {
+        check_contract(Stream::Global, "not_a_real_event");
+    }
 
     #[test]
     fn field_order_and_nulls_match_v2() {

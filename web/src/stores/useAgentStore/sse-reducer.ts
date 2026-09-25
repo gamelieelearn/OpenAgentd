@@ -22,10 +22,19 @@ import {
   extractToolPaths,
 } from './helpers'
 import type { CacheInvalidation, AgentError, AgentStore } from './types'
-import type { ContentBlock, PendingQuestion, QuestionItem } from '@/api/types'
+import type { ContentBlock, PendingQuestion, QuestionItem, SSEEventType } from '@/api/types'
 
 type Setter = (fn: (draft: AgentStore) => void) => void
 type Getter = () => AgentStore
+
+/**
+ * Session-stream events the reducer deliberately drops, with the reason.
+ * Every other contract event needs a `case` below (`sse-contract.test.ts`).
+ */
+export const IGNORED_SSE_EVENTS: Partial<Record<SSEEventType, string>> = {
+  rate_limit: 'always followed by a provider_status "retrying" event carrying the same retry_after, which the UI renders',
+  permission_asked: 'tools are auto-allowed; the event is an announcement for API clients that implement approvals',
+}
 
 /**
  * Coerce the ``question_asked`` payload into ``QuestionItem[]``.

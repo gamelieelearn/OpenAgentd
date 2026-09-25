@@ -192,6 +192,7 @@ impl StreamStore {
 
     /// `push_event`.
     pub fn push_event(&self, session_id: &str, env: &Envelope, create_if_missing: bool) {
+        crate::events::check_contract(crate::events::Stream::Session, &env.event);
         let now = Instant::now();
         let mut turns = self.turns.lock().unwrap();
         if !turns.contains_key(session_id) {

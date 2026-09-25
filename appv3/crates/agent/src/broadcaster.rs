@@ -31,6 +31,7 @@ pub fn publish(event: &str, data: Value) {
 
 impl Broadcaster {
     pub fn publish(&self, event: &str, data: Value) {
+        crate::events::check_contract(crate::events::Stream::Global, event);
         let wire = Arc::new(WireEvent { event: event.to_string(), data: compact(&data) });
         let mut subs = self.subs.lock().unwrap();
         subs.retain(|q| {
