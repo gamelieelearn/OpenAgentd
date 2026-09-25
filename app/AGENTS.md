@@ -2,6 +2,9 @@
 
 Python `>=3.14` backend managed with `uv`. This subtree contains the FastAPI
 app, CLI, agent runtime, SQLModel persistence, scheduler, and migrations.
+It is the end-of-life v2 backend: releases and the desktop sidecar ship the
+Rust backend in `appv3/` (see `appv3/AGENTS.md`), which keeps v2's wire and
+on-disk formats.
 
 ## Ownership
 
@@ -27,8 +30,8 @@ expected.
 
 ```bash
 uv sync --frozen
-make run
-make dev
+make run-v2                               # v2 API on :8000 (`make run` is v3)
+make dev-v2                               # v2 API with reload + Vite :5173
 uv run pytest tests/path/test_file.py::test_name -q
 uv run ruff format app/ tests/            # apply Python formatting
 make migrate                              # development DB only
@@ -59,4 +62,5 @@ iterating, then run the target before finishing backend changes.
 - Do not edit packaged copies under `app/_web_dist/` or sidecar bundles. They
   are generated build output.
 - When a backend wire or SSE shape changes, update the consumers under
-  `web/src/` and run both backend and web checks.
+  `web/src/`, keep `appv3/` and `appv3/contract/sse_events.json` in step,
+  and run the backend, v3, and web checks.

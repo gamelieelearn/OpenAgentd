@@ -1,7 +1,9 @@
 # Mobile Shell Guide
 
 This subtree is the Tauri mobile shell. It embeds the shared `web/dist` UI and
-connects to an existing OpenAgentd API; it never starts or bundles Python.
+connects to an existing OpenAgentd API; it never starts or bundles a backend.
+A server reachable from a phone must have an access key (it refuses a LAN bind
+without one) and has no built-in TLS, so HTTPS needs a reverse proxy.
 
 ## Development and builds
 
