@@ -98,9 +98,19 @@ pub async fn startup(pool: &DbPool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// End every open SSE stream (global feed and per-session turn streams).
+/// Called as soon as the shutdown signal arrives: the streams never finish
+/// on their own, and the graceful drain waits for every open response.
+pub fn close_event_streams() {
+    appv3_agent::broadcaster::broadcaster().close();
+    appv3_agent::stream_store::store().close_all();
+}
+
 /// Lifespan shutdown.
 pub async fn shutdown() {
-    drop(crate::registry_refresh_gate().read().await);
+    // A startup registry refresh still on the network must not outlast the
+    // desktop's shutdown grace period.
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), crate::registry_refresh_gate().read()).await;
     appv3_terminal::close_all().await;
     scheduler::scheduler().stop();
     appv3_agent::snapshot::stop_maintenance();

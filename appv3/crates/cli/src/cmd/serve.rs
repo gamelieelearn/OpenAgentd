@@ -7,6 +7,8 @@ use crate::cmd::server::{ns_bool, ns_int, ns_str, DAEMON_ENV};
 use appv3_api::{create_app, AppState, ConnInfo, Policy};
 use serde_json::json;
 use std::io::Write;
+use std::sync::OnceLock;
+use tokio::sync::Notify;
 
 /// `app/server.py`: `setup_logging(settings.LOG_LEVEL, file_log_level=settings.FILE_LOG_LEVEL)`.
 fn init_logging() {
@@ -15,16 +17,23 @@ fn init_logging() {
     crate::logging::install_panic_hook();
 }
 
-/// `_start_parent_watch` — SIGTERM ourselves when the parent dies, hard
+/// Shutdown request from the parent-watch thread. A stored permit, so it
+/// also works if the parent dies before the server awaits it.
+fn parent_gone() -> &'static Notify {
+    static N: OnceLock<Notify> = OnceLock::new();
+    N.get_or_init(Notify::new)
+}
+
+/// `_start_parent_watch` — shut down gracefully when the parent dies (on
+/// every OS; v2 signalled itself with SIGTERM, which Windows lacks), hard
 /// exit if shutdown has not finished within the grace period.
 fn start_parent_watch(parent: i32) {
     std::thread::Builder::new()
         .name("parent-watch".into())
         .spawn(move || loop {
             if !crate::paths::pid_alive(parent) {
-                eprintln!("parent-watch: parent pid {parent} no longer alive; sending SIGTERM to self");
-                #[cfg(unix)]
-                let _ = nix::sys::signal::kill(nix::unistd::getpid(), nix::sys::signal::Signal::SIGTERM);
+                eprintln!("parent-watch: parent pid {parent} no longer alive; shutting down");
+                parent_gone().notify_one();
                 std::thread::sleep(std::time::Duration::from_secs(15));
                 std::process::exit(1);
             }
@@ -54,6 +63,7 @@ fn emit_handshake(port: u16, token: Option<&str>) {
 }
 
 async fn shutdown_signal() {
+    let parent = parent_gone().notified();
     #[cfg(unix)]
     {
         use tokio::signal::unix::{signal, SignalKind};
@@ -61,10 +71,14 @@ async fn shutdown_signal() {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {}
             _ = term.recv() => {}
+            _ = parent => {}
         }
     }
     #[cfg(not(unix))]
-    let _ = tokio::signal::ctrl_c().await;
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = parent => {}
+    }
 }
 
 pub fn cmd_serve(ns: &Ns) -> anyhow::Result<()> {
@@ -105,8 +119,8 @@ pub fn cmd_serve(ns: &Ns) -> anyhow::Result<()> {
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     rt.block_on(async move {
         let s = appv3_core::settings();
+        // Runs the migrations too.
         let pool = appv3_db::pool::create_pool(&s.database_path).await?;
-        appv3_db::migrations::run_migrations(&pool).await?;
         appv3_api::startup::startup(&pool).await?;
 
         let app = create_app(AppState { pool: pool.clone() }, Policy::from_env());
@@ -116,11 +130,14 @@ pub fn cmd_serve(ns: &Ns) -> anyhow::Result<()> {
         if handshake {
             emit_handshake(port, token.as_deref());
         }
-        // SSE streams never finish on their own (sse-starlette ends them on
-        // shutdown), so bound the graceful drain.
+        // SSE streams never finish on their own, so end them as soon as the
+        // signal arrives (sse-starlette does the same); the timeout only
+        // bounds requests that are still running.
         let (tx, mut rx) = tokio::sync::watch::channel(false);
         let server = axum::serve(listener, app.into_make_service_with_connect_info::<ConnInfo>()).with_graceful_shutdown(async move {
             shutdown_signal().await;
+            tracing::info!("server_shutdown_requested");
+            appv3_api::startup::close_event_streams();
             let _ = tx.send(true);
         });
         tokio::select! {
@@ -131,7 +148,7 @@ pub fn cmd_serve(ns: &Ns) -> anyhow::Result<()> {
             } => tracing::info!("graceful_shutdown_timeout"),
         }
         appv3_api::startup::shutdown().await;
-        pool.close().await;
+        appv3_db::close_pool(&pool).await;
         anyhow::Ok(())
     })
 }

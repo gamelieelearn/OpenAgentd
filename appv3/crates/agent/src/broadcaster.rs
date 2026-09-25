@@ -4,6 +4,7 @@
 use crate::events::{compact, WireEvent};
 use crate::queue::SubQueue;
 use serde_json::Value;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 const QUEUE_SIZE: usize = 256;
@@ -13,6 +14,9 @@ type Sub = Arc<SubQueue<Arc<WireEvent>>>;
 #[derive(Default)]
 pub struct Broadcaster {
     subs: Mutex<Vec<Sub>>,
+    /// Set on server shutdown: open streams end and new ones end at once,
+    /// so they cannot hold the graceful drain open.
+    closed: AtomicBool,
 }
 
 pub fn broadcaster() -> &'static Broadcaster {
@@ -42,7 +46,13 @@ impl Broadcaster {
 
     pub fn attach(&'static self) -> GlobalSubscription {
         let q: Sub = Arc::new(SubQueue::new(QUEUE_SIZE));
-        self.subs.lock().unwrap().push(q.clone());
+        let mut subs = self.subs.lock().unwrap();
+        if self.closed.load(Ordering::SeqCst) {
+            q.terminate();
+        } else {
+            subs.push(q.clone());
+        }
+        drop(subs);
         GlobalSubscription { owner: self, queue: q }
     }
 
@@ -51,7 +61,11 @@ impl Broadcaster {
     }
 
     pub fn close(&self) {
-        let subs: Vec<Sub> = std::mem::take(&mut *self.subs.lock().unwrap());
+        let subs: Vec<Sub> = {
+            let mut guard = self.subs.lock().unwrap();
+            self.closed.store(true, Ordering::SeqCst);
+            std::mem::take(&mut *guard)
+        };
         for q in subs {
             q.terminate();
         }
@@ -72,5 +86,23 @@ impl GlobalSubscription {
 impl Drop for GlobalSubscription {
     fn drop(&mut self) {
         self.owner.subs.lock().unwrap().retain(|q| !Arc::ptr_eq(q, &self.queue));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn close_ends_open_and_later_subscriptions() {
+        let b: &'static Broadcaster = Box::leak(Box::default());
+        let mut open = b.attach();
+        b.publish("config_changed", serde_json::json!({}));
+        b.close();
+        assert_eq!(open.next().await.map(|e| e.event.clone()).as_deref(), Some("config_changed"));
+        assert!(open.next().await.is_none());
+        let mut late = b.attach();
+        assert!(late.next().await.is_none());
+        assert_eq!(b.subscriber_count(), 0);
     }
 }
