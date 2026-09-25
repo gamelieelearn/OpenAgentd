@@ -36,7 +36,7 @@ pub fn registry_refresh_gate() -> std::sync::Arc<tokio::sync::RwLock<()>> {
 
 /// `create_app()` — routers + v2 middleware stack.
 pub fn create_app(state: AppState, policy: Policy) -> Router {
-    let cors = middleware::Cors::new(&appv3_core::settings().cors_origins);
+    let cors = middleware::Cors::new(appv3_core::settings().cors_origins.as_deref(), &policy);
     routes::router()
         .with_state(state)
         .layer(middleware::catch_panic_layer())

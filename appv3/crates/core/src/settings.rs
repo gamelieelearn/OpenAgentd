@@ -13,7 +13,9 @@ pub struct Settings {
     pub api_host: String,
     pub api_port: u16,
     pub api_allow_insecure_lan: bool,
-    pub cors_origins: Vec<String>,
+    /// `CORS_ORIGINS` when set. `None` lets the API pick its default, which
+    /// depends on whether an access key protects the server.
+    pub cors_origins: Option<Vec<String>>,
     pub data_dir: PathBuf,
     pub config_dir: PathBuf,
     pub state_dir: PathBuf,
@@ -87,12 +89,10 @@ impl Settings {
             }
             None => data_dir.join("openagentd.db"),
         };
-        let cors_origins = env_str("CORS_ORIGINS")
-            .map(|raw| {
-                // pydantic-settings parses list env vars as JSON.
-                serde_json::from_str::<Vec<String>>(&raw).unwrap_or_else(|_| raw.split(',').map(|s| s.trim().to_string()).collect())
-            })
-            .unwrap_or_else(|| vec!["*".into()]);
+        let cors_origins = env_str("CORS_ORIGINS").map(|raw| {
+            // pydantic-settings parses list env vars as JSON.
+            serde_json::from_str::<Vec<String>>(&raw).unwrap_or_else(|_| raw.split(',').map(|s| s.trim().to_string()).collect())
+        });
         let sep = if cfg!(windows) { ';' } else { ':' };
         let plugins_dirs = env_str("OPENAGENTD_PLUGINS_DIRS")
             .map(|raw| raw.split(sep).filter(|s| !s.trim().is_empty()).map(PathBuf::from).collect())

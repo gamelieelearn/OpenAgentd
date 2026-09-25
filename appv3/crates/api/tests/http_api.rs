@@ -66,12 +66,16 @@ async fn mock_openai() -> SocketAddr {
 
 struct Client {
     app: Router,
+    /// Address the connection arrived on (uvicorn's `scope["server"]`).
+    local: SocketAddr,
 }
 
 impl Client {
+    fn new(app: Router) -> Self {
+        Client { app, local: "127.0.0.1:8000".parse().unwrap() }
+    }
     async fn send(&self, mut req: Request<Body>) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
-        let local: SocketAddr = "127.0.0.1:8000".parse().unwrap();
-        req.extensions_mut().insert(ConnectInfo(ConnInfo { local: Some(local), remote: Some("127.0.0.1:50000".parse().unwrap()) }));
+        req.extensions_mut().insert(ConnectInfo(ConnInfo { local: Some(self.local), remote: Some("127.0.0.1:50000".parse().unwrap()) }));
         let resp = self.app.clone().oneshot(req).await.unwrap();
         let (parts, body) = resp.into_parts();
         let bytes = body.collect().await.unwrap().to_bytes().to_vec();
@@ -132,7 +136,7 @@ async fn http_api_end_to_end() {
     let pool = appv3_db::create_pool(&s.database_path).await.unwrap();
     appv3_db::migrations::run_migrations(&pool).await.unwrap();
     appv3_api::startup::startup(&pool).await.unwrap();
-    let c = Client { app: create_app(AppState { pool: pool.clone() }, Policy::from_env()) };
+    let c = Client::new(create_app(AppState { pool: pool.clone() }, Policy::from_env()));
 
     // ── health + security headers ────────────────────────────────────────
     let (st, h, body) = c.send(Request::get("/api/health/live").body(Body::empty()).unwrap()).await;
@@ -236,7 +240,7 @@ async fn http_api_end_to_end() {
     assert_eq!(st, StatusCode::NOT_FOUND);
 
     // ── desktop token middleware ─────────────────────────────────────────
-    let authed = Client { app: create_app(AppState { pool: pool.clone() }, Policy { token: Arc::new("tok".into()), ..Policy::from_env() }) };
+    let authed = Client::new(create_app(AppState { pool: pool.clone() }, Policy { token: Arc::new("tok".into()), ..Policy::from_env() }));
     let (st, v) = authed.json("GET", "/api/agents", None).await;
     assert_eq!(st, StatusCode::UNAUTHORIZED);
     assert_eq!(v, json!({"detail": "Unauthorized — OpenAgentd access key required."}));
@@ -247,13 +251,79 @@ async fn http_api_end_to_end() {
     let (st, _, _) = authed.send(Request::get("/api/agents").header("authorization", "Bearer tok").body(Body::empty()).unwrap()).await;
     assert_eq!(st, StatusCode::OK);
 
-    // ── CORS preflight (Starlette semantics) ─────────────────────────────
-    let (st, h, body) = c
+    // ── CORS preflight (Starlette semantics) with an access key ──────────
+    let (st, h, body) = authed
         .send(Request::builder().method("OPTIONS").uri("/api/agents").header("origin", "http://x").header("access-control-request-method", "GET").body(Body::empty()).unwrap())
         .await;
     assert_eq!((st, body.as_slice()), (StatusCode::OK, b"OK".as_slice()));
     assert_eq!(h.get("access-control-allow-origin").unwrap(), "http://x");
     assert_eq!(h.get("access-control-allow-methods").unwrap(), "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT");
+
+    // ── cross-origin guard without an access key ─────────────────────────
+    // Without a key the loopback API trusts its callers, so a web page on
+    // another origin must not be able to drive it (terminal tickets, chat).
+    let preflight = |origin: &str| {
+        Request::builder()
+            .method("OPTIONS")
+            .uri("/api/terminal/ticket")
+            .header("origin", origin)
+            .header("access-control-request-method", "POST")
+            .header("access-control-request-headers", "content-type")
+            .body(Body::empty())
+            .unwrap()
+    };
+    let (st, h, _) = c.send(preflight("https://evil.example")).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+    assert!(h.get("access-control-allow-origin").is_none());
+    for origin in ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost", "http://localhost:5173", "http://127.0.0.1:5173"] {
+        let (st, h, _) = c.send(preflight(origin)).await;
+        assert_eq!(st, StatusCode::OK, "{origin}");
+        assert_eq!(h.get("access-control-allow-origin").unwrap(), origin);
+    }
+    // A "simple" request skips the preflight, so the guard must refuse it outright.
+    let ticket = |origin: &str| {
+        Request::post("/api/terminal/ticket").header("origin", origin).header("content-type", "text/plain").body(Body::from(json!({"workspace": wss}).to_string())).unwrap()
+    };
+    let (st, _, body) = c.send(ticket("https://evil.example")).await;
+    assert_eq!(st, StatusCode::FORBIDDEN, "{}", String::from_utf8_lossy(&body));
+    let (st, _, body) = c.send(ticket("http://localhost:5173")).await;
+    assert_eq!(st, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let upgrade = Request::get("/api/terminal/ws?ticket=x")
+        .header("origin", "https://evil.example")
+        .header("connection", "upgrade")
+        .header("upgrade", "websocket")
+        .header("sec-websocket-version", "13")
+        .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+        .body(Body::empty())
+        .unwrap();
+    let (st, _, _) = c.send(upgrade).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    // DNS rebinding: a same-origin GET carries no Origin, only a foreign Host.
+    let (st, _, _) = c.send(Request::get("/api/agents").header("host", "attacker.example:8000").body(Body::empty()).unwrap()).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    for host in ["localhost:8000", "127.0.0.1:8000", "[::1]:8000"] {
+        let (st, _, _) = c.send(Request::get("/api/agents").header("host", host).body(Body::empty()).unwrap()).await;
+        assert_eq!(st, StatusCode::OK, "{host}");
+    }
+
+    // ── LAN server with an access key (mobile app) ───────────────────────
+    // The key is the boundary there: any Host/Origin works once it matches.
+    let lan =
+        Client { app: create_app(AppState { pool: pool.clone() }, Policy { token: Arc::new("tok".into()), ..Policy::from_env() }), local: "192.168.1.100:4082".parse().unwrap() };
+    let lan_get = |origin: &str, auth: Option<&str>| {
+        let mut b = Request::get("/api/agents").header("host", "192.168.1.100:4082").header("origin", origin);
+        if let Some(a) = auth {
+            b = b.header("authorization", a);
+        }
+        b.body(Body::empty()).unwrap()
+    };
+    for origin in ["tauri://localhost", "http://tauri.localhost"] {
+        let (st, h, _) = lan.send(lan_get(origin, Some("Bearer tok"))).await;
+        assert_eq!(st, StatusCode::OK, "{origin}");
+        assert_eq!(h.get("access-control-allow-origin").unwrap(), origin);
+    }
+    let (st, _, _) = lan.send(lan_get("https://evil.example", None)).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
 
     appv3_api::startup::shutdown().await;
 }

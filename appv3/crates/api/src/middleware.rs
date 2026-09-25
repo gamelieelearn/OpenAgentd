@@ -5,7 +5,9 @@
 //! RequestSizeLimit → NetworkBindGuard → router.
 
 use crate::util::json_status;
-use appv3_core::auth::{configured_access_token, constant_time_eq, is_loopback_host, path_is_api, path_is_exempt, QS_TOKEN_PARAM};
+use appv3_core::auth::{
+    authority_host, configured_access_token, constant_time_eq, is_first_party_origin, is_local_host_name, is_loopback_host, path_is_api, path_is_exempt, QS_TOKEN_PARAM,
+};
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Request};
 use axum::http::{header, HeaderName, HeaderValue, StatusCode, Uri};
@@ -66,6 +68,21 @@ impl Policy {
         }
         Policy { token: Arc::new(token), allow_insecure_lan: appv3_core::settings().api_allow_insecure_lan, max_bytes: DEFAULT_MAX_BYTES }
     }
+
+    /// No access key and no `API_ALLOW_INSECURE_LAN` opt-out: only loopback
+    /// callers reach the API and nothing authenticates them, so browser
+    /// requests are screened by `Origin`/`Host` instead.
+    pub fn trusts_loopback_callers(&self) -> bool {
+        self.token.is_empty() && !self.allow_insecure_lan
+    }
+}
+
+/// DNS-rebinding guard: a page on `attacker.example` whose name now resolves
+/// to 127.0.0.1 sends same-origin requests (no `Origin` on GET) carrying its
+/// own `Host`. `None` when the header is absent (non-browser clients).
+fn foreign_host(req: &Request) -> Option<String> {
+    let raw = req.headers().get(header::HOST).map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned()).or_else(|| req.uri().authority().map(|a| a.to_string()))?;
+    (!authority_host(raw.trim()).is_some_and(is_local_host_name)).then_some(raw)
 }
 
 pub async fn network_bind_guard(policy: axum::extract::State<Policy>, req: Request, next: Next) -> Response {
@@ -73,17 +90,21 @@ pub async fn network_bind_guard(policy: axum::extract::State<Policy>, req: Reque
         return next.run(req).await;
     }
     let host = req.extensions().get::<ConnectInfo<ConnInfo>>().and_then(|c| c.0.local).map(|a| a.ip().to_string());
-    match host {
-        None => next.run(req).await,
-        Some(h) if is_loopback_host(&h) => next.run(req).await,
-        Some(h) => {
-            tracing::error!("non_loopback_bind_rejected host={}", h);
-            if is_ws_upgrade(&req) {
-                return ws_reject();
-            }
-            detail(StatusCode::SERVICE_UNAVAILABLE, "Non-loopback binding requires an access key.")
+    if let Some(h) = host.filter(|h| !is_loopback_host(h)) {
+        tracing::error!("non_loopback_bind_rejected host={}", h);
+        if is_ws_upgrade(&req) {
+            return ws_reject();
         }
+        return detail(StatusCode::SERVICE_UNAVAILABLE, "Non-loopback binding requires an access key.");
     }
+    if let Some(h) = foreign_host(&req) {
+        tracing::warn!("foreign_host_rejected host={:?}", h);
+        if is_ws_upgrade(&req) {
+            return ws_reject();
+        }
+        return detail(StatusCode::FORBIDDEN, "Host not allowed.");
+    }
+    next.run(req).await
 }
 
 // ── RequestSizeLimit ────────────────────────────────────────────────────────
@@ -214,18 +235,30 @@ pub async fn security_headers(req: Request, next: Next) -> Response {
 /// (`allow_credentials=True`, `allow_methods=["*"]`, `allow_headers=["*"]`,
 /// `expose_headers=[Accept-Ranges, Content-Range, Content-Length]`,
 /// `max_age=600`). Requests without `Origin` pass through untouched.
+///
+/// Allowed origins: first-party clients (Tauri webviews, loopback pages),
+/// every entry of `CORS_ORIGINS`, and — when `CORS_ORIGINS` is unset — any
+/// origin if an access key protects the server. Without a key the server
+/// trusts its loopback callers, so a disallowed origin is refused outright:
+/// a "simple" cross-site POST skips the preflight and would otherwise run.
 #[derive(Clone)]
 pub struct Cors {
     origins: Arc<Vec<String>>,
     allow_all: bool,
+    reject_disallowed: bool,
 }
 
 impl Cors {
-    pub fn new(origins: &[String]) -> Self {
-        Self { allow_all: origins.iter().any(|o| o == "*"), origins: Arc::new(origins.to_vec()) }
+    pub fn new(configured: Option<&[String]>, policy: &Policy) -> Self {
+        let loopback_only = policy.trusts_loopback_callers();
+        let allow_all = match configured {
+            Some(list) => list.iter().any(|o| o == "*"),
+            None => !loopback_only,
+        };
+        Self { allow_all, origins: Arc::new(configured.unwrap_or_default().to_vec()), reject_disallowed: loopback_only }
     }
     fn allowed(&self, origin: &str) -> bool {
-        self.allow_all || self.origins.iter().any(|o| o == origin)
+        self.allow_all || is_first_party_origin(origin) || self.origins.iter().any(|o| o == origin)
     }
 }
 
@@ -286,6 +319,13 @@ pub async fn cors(axum::extract::State(c): axum::extract::State<Cors>, req: Requ
         h.insert(header::CONTENT_TYPE, hv("text/plain; charset=utf-8"));
         return resp;
     }
+    if c.reject_disallowed && !c.allowed(&origin) {
+        tracing::warn!("cross_origin_request_rejected origin={:?} path={}", origin, req.uri().path());
+        if is_ws_upgrade(&req) {
+            return ws_reject();
+        }
+        return detail(StatusCode::FORBIDDEN, "Cross-origin request refused. Protect the server with an access key or add this origin to CORS_ORIGINS.");
+    }
     let mut resp = next.run(req).await;
     let h = resp.headers_mut();
     h.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, hv("true"));
@@ -332,5 +372,36 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
         let body = http_body_util::BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
         assert_eq!(&body[..], b"Internal Server Error");
+    }
+
+    fn policy(token: &str, insecure_lan: bool) -> Policy {
+        Policy { token: Arc::new(token.into()), allow_insecure_lan: insecure_lan, max_bytes: DEFAULT_MAX_BYTES }
+    }
+
+    #[test]
+    fn cors_defaults_follow_the_access_key() {
+        let open = Cors::new(None, &policy("", false));
+        assert!(open.reject_disallowed);
+        assert!(!open.allowed("https://evil.example"));
+        assert!(open.allowed("tauri://localhost") && open.allowed("http://localhost:5173"));
+
+        let keyed = Cors::new(None, &policy("k", false));
+        assert!(!keyed.reject_disallowed);
+        assert!(keyed.allowed("https://evil.example"), "the key is the boundary");
+
+        let lan = Cors::new(None, &policy("", true));
+        assert!(!lan.reject_disallowed && lan.allowed("http://192.168.1.10:5173"), "API_ALLOW_INSECURE_LAN keeps v2 behaviour");
+    }
+
+    #[test]
+    fn explicit_cors_origins_extend_the_first_party_set() {
+        let list = vec!["https://ui.example".to_string()];
+        for p in [policy("", false), policy("k", false)] {
+            let c = Cors::new(Some(&list), &p);
+            assert!(c.allowed("https://ui.example") && c.allowed("tauri://localhost"));
+            assert!(!c.allowed("https://evil.example"));
+        }
+        let star = vec!["*".to_string()];
+        assert!(Cors::new(Some(&star), &policy("", false)).allowed("https://evil.example"), "explicit opt-out");
     }
 }
