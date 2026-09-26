@@ -395,6 +395,9 @@ run from the terminal (the native Rust binary since v3.0.0).
    output update `[v1.132.0]`.
   Auto-follow remains attached when tool output collapses, turn pruning, or layout shrinkage reduces scroll height during token streaming `[v2.12.0]`.
 - **Mobile keyboard viewport guardrails** `[v1.99.1]` — virtual-keyboard detection now uses the pre-keyboard layout height, the mobile shell stays pinned instead of following `visualViewport.offsetTop`, and chat auto-stick ignores keyboard-only scrollport resizes so manual transcript scrolling no longer flickers on iOS/WebViews.
+- **iOS text size** `[v3.0.0]` — the iOS app follows the system text size
+  (Settings or Control Center) while it runs: larger settings scale the text
+  and spacing together, up to 125%. Smaller settings keep the design size.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits. Read
   results and file-change diffs keep line numbers visible while scrolling

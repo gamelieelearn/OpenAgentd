@@ -737,6 +737,13 @@ resizing. While the keyboard is up, `.pb-safe` drops from the home-indicator
 inset to a flat 8px, because the indicator is hidden behind the keyboard and the
 inset would only waste a strip of space.
 
+The shell blocks pinch zoom, so the iOS app follows **Dynamic Type** instead
+(`lib/dynamic-type.ts`). A hidden probe set in `font: -apple-system-body` reads
+the user's text size, and the root font size scales from 16px by that size over
+iOS's default of 17px. The scale never goes below 1, because the 11px floor
+assumes the design size, and stops at 1.25. Everything in rem scales with it:
+text, spacing, and touch targets. Px sizes do not.
+
 ## Do's and Don'ts
 
 **Color**
@@ -756,6 +763,8 @@ inset would only waste a strip of space.
   IDs, token counts, diffs.
 - Don't render UI text below 11px; the floor is enforced in CSS, so specifying
   9–10px only creates a mismatch between the class name and the result.
+- Do size reading text (messages, labels, controls) with the rem scale so it
+  follows Dynamic Type on iOS; keep px sizes for dense metadata only.
 - Don't stack more than two font weights in one view.
 
 **Layout & depth**

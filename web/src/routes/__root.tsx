@@ -12,6 +12,7 @@ import { SkipLink } from '@/components/motion'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { MacTitleBar } from '@/components/MacTitleBar'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
+import { useDynamicType } from '@/hooks/use-dynamic-type'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { closestRestorableRoute, LAST_ROUTE_KEY, lastRouteStorageKey } from '@/lib/route-restore'
 import { getPlatform } from '@/hooks/use-platform'
@@ -40,6 +41,7 @@ function PluginNoticeGate() {
 
 export function Root() {
   useMobileViewportGuards()
+  useDynamicType()
   useDesktopCommands()
   useContainerSelectAll()
   usePreventBackspaceNavigation()
