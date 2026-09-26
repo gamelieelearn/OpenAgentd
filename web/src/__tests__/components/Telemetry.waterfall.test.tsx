@@ -6,7 +6,7 @@ afterEach(cleanup)
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
-import { Waterfall } from '@/routes/telemetry/waterfall/Waterfall'
+import { Waterfall } from '@/components/Telemetry/Waterfall'
 
 function span(overrides: Partial<SpanDetail> = {}): SpanDetail {
   return {

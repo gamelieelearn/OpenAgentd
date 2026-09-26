@@ -25,23 +25,29 @@ interface UIStore {
   agentCapabilitiesOpen: boolean
   paletteOpen: boolean
   quickOpenOpen: boolean
+  /** Telemetry overlay (mounted at the app root, reachable from any route). */
+  telemetryOpen: boolean
   toggleScheduler: () => void
   toggleAgentCapabilities: () => void
   togglePalette: () => void
   toggleQuickOpen: () => void
+  openTelemetry: () => void
+  toggleTelemetry: () => void
   closeScheduler: () => void
   closeAgentCapabilities: () => void
   closePalette: () => void
   closeQuickOpen: () => void
+  closeTelemetry: () => void
   closeAll: () => void
 }
 
 export const useUIStore = create<UIStore>()(
-  immer((set) => ({
+  immer((set, get) => ({
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
     paletteOpen: false,
     quickOpenOpen: false,
+    telemetryOpen: false,
     toggleScheduler: () => {
       set((state) => {
         const nextOpen = !state.schedulerOpen
@@ -50,6 +56,7 @@ export const useUIStore = create<UIStore>()(
           state.agentCapabilitiesOpen = false
           state.paletteOpen = false
           state.quickOpenOpen = false
+          state.telemetryOpen = false
         }
       })
       if (useUIStore.getState().schedulerOpen) _closeSettings?.()
@@ -62,6 +69,7 @@ export const useUIStore = create<UIStore>()(
           state.schedulerOpen = false
           state.paletteOpen = false
           state.quickOpenOpen = false
+          state.telemetryOpen = false
         }
       })
       if (useUIStore.getState().agentCapabilitiesOpen) _closeSettings?.()
@@ -74,6 +82,7 @@ export const useUIStore = create<UIStore>()(
           state.schedulerOpen = false
           state.agentCapabilitiesOpen = false
           state.quickOpenOpen = false
+          state.telemetryOpen = false
         }
       })
       if (useUIStore.getState().paletteOpen) _closeSettings?.()
@@ -86,19 +95,36 @@ export const useUIStore = create<UIStore>()(
           state.schedulerOpen = false
           state.agentCapabilitiesOpen = false
           state.paletteOpen = false
+          state.telemetryOpen = false
         }
       })
       if (useUIStore.getState().quickOpenOpen) _closeSettings?.()
+    },
+    openTelemetry: () => {
+      set((state) => {
+        state.telemetryOpen = true
+        state.schedulerOpen = false
+        state.agentCapabilitiesOpen = false
+        state.paletteOpen = false
+        state.quickOpenOpen = false
+      })
+      _closeSettings?.()
+    },
+    toggleTelemetry: () => {
+      if (get().telemetryOpen) get().closeTelemetry()
+      else get().openTelemetry()
     },
     closeScheduler: () => set((state) => { state.schedulerOpen = false }),
     closeAgentCapabilities: () => set((state) => { state.agentCapabilitiesOpen = false }),
     closePalette: () => set((state) => { state.paletteOpen = false }),
     closeQuickOpen: () => set((state) => { state.quickOpenOpen = false }),
+    closeTelemetry: () => set((state) => { state.telemetryOpen = false }),
     closeAll: () => set((state) => {
       state.schedulerOpen = false
       state.agentCapabilitiesOpen = false
       state.paletteOpen = false
       state.quickOpenOpen = false
+      state.telemetryOpen = false
     }),
   }))
 )

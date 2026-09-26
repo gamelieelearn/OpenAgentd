@@ -5,7 +5,7 @@ afterEach(cleanup)
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
-import { SpanDetailPanel } from '@/routes/telemetry/waterfall/SpanDetailPanel'
+import { SpanDetailPanel } from '@/components/Telemetry/SpanDetailPanel'
 import type { SpanDetail } from '@/api/client'
 
 function span(attributes: Record<string, unknown>): SpanDetail {
@@ -52,5 +52,17 @@ describe('SpanDetailPanel', () => {
     )
 
     expect(screen.queryByText('Estimated cost')).toBeNull()
+  })
+
+  it('lists only attributes the span set', () => {
+    render(
+      <SpanDetailPanel
+        span={span({ 'gen_ai.request.model': 'gpt-test', 'gen_ai.response.model': null })}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('gen_ai.request.model')).toBeTruthy()
+    expect(screen.queryByText('gen_ai.response.model')).toBeNull()
   })
 })

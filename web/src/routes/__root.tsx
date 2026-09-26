@@ -7,6 +7,7 @@ import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
 import { Home } from 'lucide-react'
 import { ToastStack } from '@/components/ToastStack'
 import { SettingsModal } from '@/components/SettingsModal'
+import { TelemetryOverlay } from '@/components/Telemetry/TelemetryOverlay'
 import { SkipLink } from '@/components/motion'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { MacTitleBar } from '@/components/MacTitleBar'
@@ -122,6 +123,7 @@ export function Root() {
         <Outlet />
       </Suspense>
       <SettingsModal />
+      <TelemetryOverlay />
       <LspInstallPrompt />
       <ToastStack />
     </QueryClientProvider>

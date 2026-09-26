@@ -8,6 +8,7 @@ function resetUIStore(): void {
     agentCapabilitiesOpen: false,
     paletteOpen: false,
     quickOpenOpen: false,
+    telemetryOpen: false,
   })
 }
 
@@ -53,13 +54,30 @@ describe('useUIStore utility modals', () => {
   })
 
   it('closeAll resets all utility panels', () => {
-    useUIStore.setState({ schedulerOpen: true, agentCapabilitiesOpen: true, paletteOpen: true, quickOpenOpen: true })
+    useUIStore.setState({ schedulerOpen: true, agentCapabilitiesOpen: true, paletteOpen: true, quickOpenOpen: true, telemetryOpen: true })
     useUIStore.getState().closeAll()
     expect(useUIStore.getState()).toMatchObject({
       schedulerOpen: false,
       agentCapabilitiesOpen: false,
       paletteOpen: false,
       quickOpenOpen: false,
+      telemetryOpen: false,
     })
+  })
+
+  it('opening telemetry closes the other overlays, and they close it', () => {
+    useUIStore.getState().toggleScheduler()
+    useUIStore.getState().openTelemetry()
+    expect(useUIStore.getState()).toMatchObject({ telemetryOpen: true, schedulerOpen: false })
+
+    useUIStore.getState().togglePalette()
+    expect(useUIStore.getState()).toMatchObject({ telemetryOpen: false, paletteOpen: true })
+  })
+
+  it('toggleTelemetry flips the overlay', () => {
+    useUIStore.getState().toggleTelemetry()
+    expect(useUIStore.getState().telemetryOpen).toBe(true)
+    useUIStore.getState().toggleTelemetry()
+    expect(useUIStore.getState().telemetryOpen).toBe(false)
   })
 })

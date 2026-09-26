@@ -47,6 +47,7 @@ const codingSessionRoute = createRoute({
 const telemetrySearchSchema = z.object({
   days: z.number().optional(),
   traceId: z.string().optional(),
+  session: z.string().optional(),
 })
 
 const schedulerSearchSchema = z.object({
@@ -54,7 +55,7 @@ const schedulerSearchSchema = z.object({
   task: z.string().optional(),
 })
 
-// /telemetry — standalone observability page (span aggregates & latency)
+// /telemetry — deep-link shim: opens the telemetry overlay, then /coding
 const telemetryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/telemetry',

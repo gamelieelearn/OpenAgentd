@@ -16,7 +16,6 @@ import {
 } from '@/utils/traceTree'
 import { formatMs } from '@/utils/telemetryFormat'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { EmptyTable } from '../primitives'
 import { categoryBarClass, categoryDotClass } from './categories'
 
 export function Waterfall({
@@ -35,7 +34,7 @@ export function Waterfall({
   }, [spans])
 
   if (rows.length === 0) {
-    return <EmptyTable label="This trace contains no spans." />
+    return <p className="p-6 text-center text-xs text-(--color-text-muted)">This trace contains no spans.</p>
   }
 
   return (
@@ -48,7 +47,7 @@ export function Waterfall({
       </div>
       <div className="overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card)">
         <div className="min-w-[480px]">
-          <div className="flex border-b border-(--color-border)/60 bg-(--bg-key)/25 px-3 py-1.5 text-xs md:text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+          <div className="flex border-b border-(--color-border)/60 bg-(--bg-key)/30 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-(--color-text-muted) select-none">
             <div className="w-48 shrink-0 sm:w-64">Span</div>
             <div className="flex-1">Timeline</div>
             <div className="w-20 shrink-0 text-right">Duration</div>

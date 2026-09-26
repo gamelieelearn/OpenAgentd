@@ -62,11 +62,19 @@ export const queryKeys = {
     list: (workspace: string) => ['snippets', 'list', workspace] as const,
   },
   observability: {
-    summary: (days: number) => ['observability', 'summary', days] as const,
+    summary: (days: number, filters: { workspace?: string | null; model?: string | null; session?: string | null } = {}) =>
+      ['observability', 'summary', days, filters.workspace ?? null, filters.model ?? null, filters.session ?? null] as const,
     traces: (days: number, limit: number, offset: number) =>
       ['observability', 'traces', days, limit, offset] as const,
-    infiniteTraces: (days: number, limit: number) =>
-      ['observability', 'traces', 'infinite', days, limit] as const,
+    infiniteTraces: (
+      days: number,
+      limit: number,
+      filters: { workspace?: string | null; model?: string | null; session?: string | null } = {},
+      errorsOnly = false,
+    ) => [
+      'observability', 'traces', 'infinite', days, limit,
+      filters.workspace ?? null, filters.model ?? null, filters.session ?? null, errorsOnly,
+    ] as const,
     trace: (traceId: string) => ['observability', 'trace', traceId] as const,
   },
   scheduler: {
