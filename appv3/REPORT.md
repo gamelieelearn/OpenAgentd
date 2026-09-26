@@ -359,6 +359,14 @@ explicitly.
   - The counter exemplar reservoir uses its own RNG.
   - The observability endpoints skip malformed span rows (non-object lines,
     non-numeric `end_time`, non-dict `attributes`). v2 answers 500 on them.
+  - `agent_run` spans carry `openagentd.workspace` (the turn's workspace
+    root). `/api/observability/summary` and `/traces` accept `workspace`,
+    `model` (`provider:model`), and `session` filters, applied per turn, and
+    `/traces` accepts `status=error`. The summary adds `by_workspace`,
+    `by_session` (top 100 by spend, labelled with the session title from the
+    database), whole-window filter `facets`, and
+    `daily_turns[].estimated_cost_usd`. Trace rows add `workspace`. v2 has
+    none of these.
   - The v3 MCP client now numbers JSON-RPC ids from 1 like the v2 SDK. It
     previously started at 0.
 - **Alembic migrations:** v3 replays v2's chain 00000001…00000022 from

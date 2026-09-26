@@ -105,6 +105,21 @@ pub async fn list_child_sessions(pool: &DbPool, parent_ids: &[String]) -> Result
     Ok(q.fetch_all(pool).await?)
 }
 
+/// The sessions among `ids` (hex or hyphenated) that still exist, in no
+/// particular order. Missing ids are simply absent.
+pub async fn get_sessions_by_ids(pool: &DbPool, ids: &[String]) -> Result<Vec<ChatSession>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = vec!["?"; ids.len()].join(",");
+    let sql = format!("SELECT * FROM chat_sessions WHERE id IN ({placeholders})");
+    let mut q = sqlx::query_as::<_, ChatSession>(&sql);
+    for id in ids {
+        q = q.bind(db_id(id));
+    }
+    Ok(q.fetch_all(pool).await?)
+}
+
 /// Newest top-level session for a workspace (v2 `get_latest_top_level_session`).
 pub async fn get_latest_top_level_session(pool: &DbPool, workspace: &str) -> Result<Option<ChatSession>> {
     Ok(sqlx::query_as::<_, ChatSession>(

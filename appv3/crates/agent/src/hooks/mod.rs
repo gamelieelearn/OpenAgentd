@@ -26,6 +26,9 @@ pub struct RunContext {
     pub session_id: Option<String>,
     pub run_id: String,
     pub agent_name: String,
+    /// Workspace root the turn runs in; recorded on the `agent_run` span so
+    /// `/api/observability/*` can filter and break down by workspace.
+    pub workspace: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]

@@ -37,6 +37,20 @@ async fn concurrent_saves_get_distinct_positions() {
 }
 
 #[tokio::test]
+async fn sessions_by_ids_accepts_both_id_forms_and_skips_missing() {
+    let (_d, pool) = fresh().await;
+    let a = create_session(&pool, NewSession { workspace: "/w".into(), title: Some("Fix login".into()), ..Default::default() }).await.unwrap();
+    let b = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let ids = vec![api_uuid(&a.id), db_id(&b.id), "0190a1b2-0000-7000-8000-000000000000".to_string()];
+    let mut rows = get_sessions_by_ids(&pool, &ids).await.unwrap();
+    rows.sort_by(|x, y| x.id.cmp(&y.id));
+    let mut expected = vec![a.id.clone(), b.id.clone()];
+    expected.sort();
+    assert_eq!(rows.iter().map(|r| r.id.clone()).collect::<Vec<_>>(), expected);
+    assert!(get_sessions_by_ids(&pool, &[]).await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn released_queued_messages_move_to_the_tail() {
     let (_d, pool) = fresh().await;
     let s = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), ..Default::default() }).await.unwrap();

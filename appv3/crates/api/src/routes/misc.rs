@@ -10,7 +10,7 @@ use appv3_agent::manager;
 use appv3_agent::WireEvent;
 use appv3_core::runtime_settings as rs;
 use appv3_core::settings;
-use axum::extract::Path as AxPath;
+use axum::extract::{Path as AxPath, State};
 use axum::response::Response;
 use axum::routing::{delete, get, post};
 use axum::Router;
@@ -316,18 +316,50 @@ pub fn observability_router() -> Router<AppState> {
     Router::new().route("/summary", get(obs_summary)).route("/traces", get(obs_traces)).route("/traces/{trace_id}", get(obs_trace))
 }
 
-async fn obs_summary(q: Qs) -> ApiResult<Response> {
+async fn obs_summary(State(st): State<AppState>, q: Qs) -> ApiResult<Response> {
     let days = q.int("days", 7, Some(1), Some(90))?;
-    let v = tokio::task::spawn_blocking(move || crate::observability::summarize(days)).await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let filters = obs_filters(&q);
+    let mut v = tokio::task::spawn_blocking(move || crate::observability::summarize(days, &filters)).await.map_err(|e| ApiError::internal(e.to_string()))?;
+    label_sessions(&st.pool, &mut v).await;
     Ok(json(v))
+}
+
+/// Add `title` and `deleted` to each `by_session` row. Spans only carry the
+/// id; the title lives in the database and can change after the turn, so it
+/// is looked up per request rather than cached with the span aggregates.
+/// A failed lookup leaves the rows unlabeled rather than failing the page.
+async fn label_sessions(pool: &appv3_db::DbPool, summary: &mut Value) {
+    let Some(rows) = summary.get_mut("by_session").and_then(Value::as_array_mut) else { return };
+    let ids: Vec<String> = rows.iter().filter_map(|r| r["session_id"].as_str().map(str::to_string)).collect();
+    let Ok(found) = appv3_db::get_sessions_by_ids(pool, &ids).await else { return };
+    let by_id: std::collections::HashMap<String, appv3_db::ChatSession> = found.into_iter().map(|s| (appv3_db::codec::db_id(&s.id), s)).collect();
+    for row in rows.iter_mut() {
+        let session = row["session_id"].as_str().and_then(|id| by_id.get(&appv3_db::codec::db_id(id)));
+        row["title"] = json!(session.and_then(|s| s.title.clone()));
+        row["parent_session_id"] = json!(session.and_then(|s| s.parent_session_id.as_deref().map(appv3_db::codec::api_uuid)));
+        row["deleted"] = json!(session.is_none());
+    }
+}
+
+/// `workspace` / `model` / `session` query filters; blank values mean "all".
+fn obs_filters(q: &Qs) -> crate::observability::Filters {
+    let non_blank = |k: &str| q.opt(k).filter(|v| !v.trim().is_empty());
+    crate::observability::Filters { workspace: non_blank("workspace"), model: non_blank("model"), session: non_blank("session") }
 }
 
 async fn obs_traces(q: Qs) -> ApiResult<Response> {
     let days = q.int("days", 7, Some(1), Some(90))?;
     let limit = q.int("limit", 50, Some(1), Some(200))?;
     let offset = q.int("offset", 0, Some(0), None)?;
-    let (items, total) =
-        tokio::task::spawn_blocking(move || crate::observability::list_traces_with_count(days, limit, offset)).await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let errors_only = match q.opt("status").as_deref() {
+        None | Some("") => false,
+        Some("error") => true,
+        Some(_) => return Err(ApiError::unprocessable("Invalid status: expected 'error'.")),
+    };
+    let filters = obs_filters(&q);
+    let (items, total) = tokio::task::spawn_blocking(move || crate::observability::list_traces_with_count(days, limit, offset, &filters, errors_only))
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     Ok(json(json!({"traces": items, "limit": limit, "offset": offset, "total": total, "has_next": offset + limit < total})))
 }
 
@@ -341,5 +373,35 @@ async fn obs_trace(AxPath(trace_id): AxPath<String>, q: Qs) -> ApiResult<Respons
     match tokio::task::spawn_blocking(move || crate::observability::get_trace(&tid, days)).await.map_err(|e| ApiError::internal(e.to_string()))? {
         Some(v) => Ok(json(v)),
         None => Err(ApiError::with_detail(404, json!({"reason": "trace_not_found", "trace_id": trace_id}))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use appv3_db::codec::api_uuid;
+    use appv3_db::queries::{create_session, NewSession};
+
+    #[tokio::test]
+    async fn session_rows_get_titles_and_deleted_flags() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = appv3_db::create_pool(dir.path().join("oad.db")).await.unwrap();
+        let lead = create_session(&pool, NewSession { workspace: "/w".into(), title: Some("Fix login".into()), ..Default::default() }).await.unwrap();
+        let child = create_session(&pool, NewSession { workspace: "/w".into(), parent_session_id: Some(lead.id.clone()), ..Default::default() }).await.unwrap();
+        let gone = "0190a1b2-0000-7000-8000-000000000000";
+        let mut summary = json!({"by_session": [
+            {"session_id": api_uuid(&lead.id)},
+            {"session_id": api_uuid(&child.id)},
+            {"session_id": gone},
+        ]});
+
+        label_sessions(&pool, &mut summary).await;
+
+        let rows = summary["by_session"].as_array().unwrap();
+        assert_eq!(rows[0]["title"], "Fix login");
+        assert_eq!(rows[0]["deleted"], false);
+        assert_eq!(rows[1]["title"], Value::Null);
+        assert_eq!(rows[1]["parent_session_id"], api_uuid(&lead.id));
+        assert_eq!(rows[2]["deleted"], true);
     }
 }

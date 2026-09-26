@@ -5,19 +5,54 @@
 //! Results are memoised per 5 s bucket + file signatures `(path, size,
 //! mtime_ns, inode)` exactly like v2's `lru_cache` wrappers, so repeated
 //! calls inside one bucket return the same window.
+//!
+//! v3 additions (not in v2): workspace / model filters, `by_workspace`,
+//! filter `facets`, per-day cost, and `workspace` on trace rows. Filters
+//! apply per turn — a span belongs to the workspace and model of the
+//! `agent_run` span in its trace — so every aggregate stays consistent.
+//! Also v3: a `session` filter and the `by_session` breakdown, under the
+//! same per-turn rule (spans outside a run use their own conversation id).
 
+use appv3_agent::hooks::otel::WORKSPACE_ATTR;
 use appv3_core::pymath::py_round;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 const CACHE_BUCKET_SECONDS: i64 = 5;
 const CACHE_MAXSIZE: usize = 64;
+/// Conversation id the OTEL hook records for runs outside a session.
+const NO_SESSION: &str = "no-session";
+/// `by_session` keeps the top sessions by spend; the rest stay reachable
+/// through the session filter.
+const BY_SESSION_LIMIT: usize = 100;
 
 type Signatures = Vec<(String, u64, i128, u64)>;
+
+/// Optional narrowing for the summary and trace list.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Filters {
+    /// Workspace root, exactly as recorded on the `agent_run` span.
+    pub workspace: Option<String>,
+    /// `provider:model`, as in `by_model[].provider_model`.
+    pub model: Option<String>,
+    /// Session id, as recorded in `gen_ai.conversation.id`.
+    pub session: Option<String>,
+}
+
+impl Filters {
+    fn is_empty(&self) -> bool {
+        self.workspace.is_none() && self.model.is_none() && self.session.is_none()
+    }
+
+    fn key_parts(&self) -> [String; 3] {
+        [self.workspace.clone().unwrap_or_default(), self.model.clone().unwrap_or_default(), self.session.clone().unwrap_or_default()]
+    }
+}
 
 fn spans_dir() -> PathBuf {
     appv3_core::settings().state_dir.join("otel").join("spans")
@@ -265,6 +300,134 @@ fn str_or(v: Option<&Value>, default: &str) -> String {
     }
 }
 
+fn is_run_span(s: &Map<String, Value>) -> bool {
+    str_or(s.get("name"), "").starts_with("agent_run")
+}
+
+fn trace_id_of(s: &Map<String, Value>) -> Option<String> {
+    s.get("trace_id").filter(|v| truthy(v)).map(py_str)
+}
+
+/// `provider:model` of a turn, with the same `unknown` fallbacks as `by_model`.
+fn turn_model(attrs: &Map<String, Value>) -> String {
+    format!("{}:{}", str_or(attrs.get("gen_ai.provider.name"), "unknown"), str_or(attrs.get("gen_ai.request.model"), "unknown"))
+}
+
+fn workspace_attr(attrs: &Map<String, Value>) -> Option<String> {
+    attrs.get(WORKSPACE_ATTR).filter(|v| truthy(v)).map(py_str)
+}
+
+fn conversation_attr(attrs: &Map<String, Value>) -> Option<String> {
+    attrs.get("gen_ai.conversation.id").filter(|v| truthy(v)).map(py_str)
+}
+
+/// UTC day (`YYYY-MM-DD`) of a span's end time.
+fn end_day(s: &Map<String, Value>) -> Option<String> {
+    let et = s.get("end_time").filter(|v| truthy(v)).and_then(|v| num(Some(v)))?;
+    let secs = et / 1e9;
+    let dt = Utc.timestamp_opt(secs.floor() as i64, ((secs - secs.floor()) * 1e9) as u32).single().unwrap_or_default();
+    Some(dt.format("%Y-%m-%d").to_string())
+}
+
+struct TurnKey {
+    model: String,
+    workspace: Option<String>,
+    session: Option<String>,
+    agent: Option<String>,
+}
+
+/// Per-trace turn identity, built from the `agent_run` spans in a window.
+/// Spans outside any run (title generation) fall back to their session's
+/// workspace so they are not orphaned by a workspace filter.
+#[derive(Default)]
+struct TurnIndex {
+    by_trace: HashMap<String, TurnKey>,
+    session_workspace: HashMap<String, String>,
+}
+
+impl TurnIndex {
+    fn build(spans: &[Map<String, Value>]) -> Self {
+        let mut index = Self::default();
+        for s in spans.iter().filter(|s| is_run_span(s)) {
+            let Some(tid) = trace_id_of(s) else { continue };
+            let attrs = attrs_of(s);
+            let workspace = workspace_attr(&attrs);
+            let session = conversation_attr(&attrs);
+            if let (Some(ws), Some(conv)) = (&workspace, &session) {
+                index.session_workspace.insert(conv.clone(), ws.clone());
+            }
+            let agent = attrs.get("gen_ai.agent.name").filter(|v| truthy(v)).map(py_str);
+            index.by_trace.insert(tid, TurnKey { model: turn_model(&attrs), workspace, session, agent });
+        }
+        index
+    }
+
+    fn turn(&self, s: &Map<String, Value>) -> Option<&TurnKey> {
+        trace_id_of(s).and_then(|tid| self.by_trace.get(&tid))
+    }
+
+    fn workspace_of(&self, s: &Map<String, Value>) -> Option<String> {
+        if let Some(ws) = self.turn(s).and_then(|t| t.workspace.clone()) {
+            return Some(ws);
+        }
+        let conv = conversation_attr(&attrs_of(s))?;
+        self.session_workspace.get(&conv).cloned()
+    }
+
+    /// The turn's session, else the span's own (title generation runs
+    /// outside the turn's trace).
+    fn session_of(&self, s: &Map<String, Value>) -> Option<String> {
+        match self.turn(s) {
+            Some(t) => t.session.clone(),
+            None => conversation_attr(&attrs_of(s)),
+        }
+    }
+
+    fn matches(&self, s: &Map<String, Value>, f: &Filters) -> bool {
+        if let Some(model) = &f.model {
+            if self.turn(s).map(|t| &t.model) != Some(model) {
+                return false;
+            }
+        }
+        if let Some(session) = &f.session {
+            if self.session_of(s).as_ref() != Some(session) {
+                return false;
+            }
+        }
+        match &f.workspace {
+            Some(ws) => self.workspace_of(s).as_ref() == Some(ws),
+            None => true,
+        }
+    }
+}
+
+fn apply_filters<'a>(spans: &'a [Map<String, Value>], index: &TurnIndex, f: &Filters) -> Vec<&'a Map<String, Value>> {
+    if f.is_empty() {
+        return spans.iter().collect();
+    }
+    spans.iter().filter(|s| index.matches(s, f)).collect()
+}
+
+/// Filter options for the whole window, independent of the active filters,
+/// most-used first.
+fn facets(spans: &[Map<String, Value>]) -> Value {
+    let mut workspaces: IndexMap<String, i64> = IndexMap::new();
+    let mut models: IndexMap<String, i64> = IndexMap::new();
+    for s in spans.iter().filter(|s| is_run_span(s)) {
+        let attrs = attrs_of(s);
+        if let Some(ws) = workspace_attr(&attrs) {
+            *workspaces.entry(ws).or_default() += 1;
+        }
+        *models.entry(turn_model(&attrs)).or_default() += 1;
+    }
+    let ranked = |m: IndexMap<String, i64>| {
+        let mut v: Vec<(String, i64)> = m.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        v.into_iter().map(|(k, _)| k).collect::<Vec<_>>()
+    };
+    json!({"workspaces": ranked(workspaces), "models": ranked(models)})
+}
+
 // ── cache ───────────────────────────────────────────────────────────────────
 
 fn cache() -> &'static Mutex<IndexMap<String, Option<Value>>> {
@@ -301,7 +464,9 @@ fn sig_paths(sigs: &Signatures) -> Vec<PathBuf> {
 // ── summary ─────────────────────────────────────────────────────────────────
 
 fn empty_summary(start: DateTime<Utc>, end: DateTime<Utc>) -> Value {
-    summary_json(start, end, Totals::default(), [0.0; 4], vec![], vec![], vec![], vec![])
+    let mut v = summary_json(start, end, Totals::default(), [0.0; 4], Breakdowns::default());
+    v["facets"] = json!({"workspaces": [], "models": []});
+    v
 }
 
 #[derive(Default)]
@@ -317,8 +482,18 @@ struct Totals {
     errors: i64,
 }
 
-#[allow(clippy::too_many_arguments)]
-fn summary_json(start: DateTime<Utc>, end: DateTime<Utc>, t: Totals, lat: [f64; 4], daily: Vec<Value>, by_model: Vec<Value>, by_step: Vec<Value>, by_tool: Vec<Value>) -> Value {
+/// The ranked per-dimension tables of a summary.
+#[derive(Default)]
+struct Breakdowns {
+    daily: Vec<Value>,
+    by_model: Vec<Value>,
+    by_step: Vec<Value>,
+    by_tool: Vec<Value>,
+    by_workspace: Vec<Value>,
+    by_session: Vec<Value>,
+}
+
+fn summary_json(start: DateTime<Utc>, end: DateTime<Utc>, t: Totals, lat: [f64; 4], b: Breakdowns) -> Value {
     json!({
         "window_start": py_iso(start),
         "window_end": py_iso(end),
@@ -336,10 +511,12 @@ fn summary_json(start: DateTime<Utc>, end: DateTime<Utc>, t: Totals, lat: [f64; 
             "errors": t.errors,
         },
         "latency_ms": {"turn_p50": lat[0], "turn_p95": lat[1], "llm_p50": lat[2], "llm_p95": lat[3]},
-        "daily_turns": daily,
-        "by_model": by_model,
-        "cache_by_step": by_step,
-        "by_tool": by_tool,
+        "daily_turns": b.daily,
+        "by_model": b.by_model,
+        "cache_by_step": b.by_step,
+        "by_tool": b.by_tool,
+        "by_workspace": b.by_workspace,
+        "by_session": b.by_session,
     })
 }
 
@@ -361,19 +538,54 @@ struct ToolAgg {
     durations: Vec<f64>,
 }
 
-fn run_queries(spans: &[Map<String, Value>], start: DateTime<Utc>, end: DateTime<Utc>) -> Value {
+#[derive(Default)]
+struct DayAgg {
+    turns: i64,
+    errors: i64,
+    cost: f64,
+}
+
+#[derive(Default)]
+struct WorkspaceAgg {
+    turns: i64,
+    errors: i64,
+    input: i64,
+    output: i64,
+    cost: f64,
+}
+
+#[derive(Default)]
+struct SessionAgg {
+    turns: i64,
+    errors: i64,
+    input: i64,
+    output: i64,
+    cached: i64,
+    cost: f64,
+    last_active_ms: i64,
+    /// From the session's latest turn.
+    last_turn_ms: i64,
+    workspace: Option<String>,
+    model: Option<String>,
+    agent: Option<String>,
+}
+
+fn run_queries(spans: &[&Map<String, Value>], index: &TurnIndex, start: DateTime<Utc>, end: DateTime<Utc>) -> Value {
     if spans.is_empty() {
         return empty_summary(start, end);
     }
     let mut t = Totals::default();
     let mut turn_d = vec![];
     let mut llm_d = vec![];
-    let mut daily: IndexMap<String, (i64, i64)> = IndexMap::new();
+    let mut daily: IndexMap<String, DayAgg> = IndexMap::new();
     let mut models: IndexMap<(String, String), ModelAgg> = IndexMap::new();
     let mut steps: IndexMap<(String, String, String), ModelAgg> = IndexMap::new();
     let mut tools: IndexMap<String, ToolAgg> = IndexMap::new();
+    // `None` collects spans from turns recorded before workspaces were.
+    let mut workspaces: IndexMap<Option<String>, WorkspaceAgg> = IndexMap::new();
+    let mut sessions: IndexMap<String, SessionAgg> = IndexMap::new();
 
-    for s in spans {
+    for &s in spans {
         let name = str_or(s.get("name"), "");
         let is_error = s.get("status").and_then(|v| v.as_str()) == Some("ERROR");
         let dur = safe_float(s.get("duration_ms"));
@@ -381,19 +593,40 @@ fn run_queries(spans: &[Map<String, Value>], start: DateTime<Utc>, end: DateTime
         let is_run = name.starts_with("agent_run");
         let is_chat = name.starts_with("chat");
         let is_tool = name.starts_with("execute_tool");
+        let end_ms = ns_to_ms(&ns_or_zero(s.get("end_time")));
+        let mut session = index.session_of(s).filter(|id| id != NO_SESSION).map(|id| sessions.entry(id).or_default());
+        if let Some(agg) = session.as_mut() {
+            agg.last_active_ms = agg.last_active_ms.max(end_ms);
+        }
         if is_error {
             t.errors += 1;
         }
         if is_run {
             t.turns += 1;
             turn_d.push(dur);
-            if let Some(et) = s.get("end_time").filter(|v| truthy(v)).and_then(|v| num(Some(v))) {
-                let secs = et / 1e9;
-                let dt = Utc.timestamp_opt(secs.floor() as i64, ((secs - secs.floor()) * 1e9) as u32).single().unwrap_or_default();
-                let e = daily.entry(dt.format("%Y-%m-%d").to_string()).or_default();
-                e.0 += 1;
+            if let Some(day) = end_day(s) {
+                let e = daily.entry(day).or_default();
+                e.turns += 1;
                 if is_error {
-                    e.1 += 1;
+                    e.errors += 1;
+                }
+            }
+            let w = workspaces.entry(index.workspace_of(s)).or_default();
+            w.turns += 1;
+            if is_error {
+                w.errors += 1;
+            }
+            if let Some(agg) = session.as_mut() {
+                agg.turns += 1;
+                if is_error {
+                    agg.errors += 1;
+                }
+                if end_ms >= agg.last_turn_ms {
+                    agg.last_turn_ms = end_ms;
+                    let turn = index.turn(s);
+                    agg.workspace = index.workspace_of(s);
+                    agg.model = turn.map(|t| t.model.clone());
+                    agg.agent = turn.and_then(|t| t.agent.clone());
                 }
             }
         } else {
@@ -413,6 +646,23 @@ fn run_queries(spans: &[Map<String, Value>], start: DateTime<Utc>, end: DateTime
             t.cached += ct;
             t.cache_write += cw;
             t.cost += cost;
+            if cost != 0.0 {
+                if let Some(day) = end_day(s) {
+                    daily.entry(day).or_default().cost += cost;
+                }
+            }
+            if it != 0 || ot != 0 || cost != 0.0 {
+                let w = workspaces.entry(index.workspace_of(s)).or_default();
+                w.input += it;
+                w.output += ot;
+                w.cost += cost;
+            }
+            if let Some(agg) = session.as_mut() {
+                agg.input += it;
+                agg.output += ot;
+                agg.cached += ct;
+                agg.cost += cost;
+            }
             let provider = str_or(attrs.get("gen_ai.provider.name"), "unknown");
             let model = str_or(attrs.get("gen_ai.request.model"), "unknown");
             if attrs.contains_key("gen_ai.usage.input_tokens") || attrs.contains_key("gen_ai.usage.output_tokens") {
@@ -451,9 +701,9 @@ fn run_queries(spans: &[Map<String, Value>], start: DateTime<Utc>, end: DateTime
         }
     }
 
-    let mut daily_v: Vec<(String, (i64, i64))> = daily.into_iter().collect();
+    let mut daily_v: Vec<(String, DayAgg)> = daily.into_iter().collect();
     daily_v.sort_by(|a, b| a.0.cmp(&b.0));
-    let daily_turns = daily_v.into_iter().map(|(day, (turns, errors))| json!({"day": day, "turns": turns, "errors": errors})).collect();
+    let daily_turns = daily_v.into_iter().map(|(day, d)| json!({"day": day, "turns": d.turns, "errors": d.errors, "estimated_cost_usd": py_round(d.cost, 8)})).collect();
 
     let mut mv: Vec<_> = models.into_iter().collect();
     mv.sort_by(|a, b| cmp_f64(b.1.cost, a.1.cost).then(b.1.calls.cmp(&a.1.calls)));
@@ -490,37 +740,74 @@ fn run_queries(spans: &[Map<String, Value>], start: DateTime<Utc>, end: DateTime
     tv.sort_by_key(|t| std::cmp::Reverse(t.1.calls));
     let by_tool = tv.into_iter().map(|(tool, d)| json!({"tool": tool, "calls": d.calls, "errors": d.errors, "p95_ms": py_round(quantile(&d.durations, 0.95), 1)})).collect();
 
+    let mut wv: Vec<_> = workspaces.into_iter().collect();
+    wv.sort_by(|a, b| cmp_f64(b.1.cost, a.1.cost).then(b.1.turns.cmp(&a.1.turns)));
+    let by_workspace = wv
+        .into_iter()
+        .map(|(ws, d)| {
+            json!({
+                "workspace": ws, "turns": d.turns, "errors": d.errors,
+                "input_tokens": d.input, "output_tokens": d.output,
+                "estimated_cost_usd": py_round(d.cost, 8),
+            })
+        })
+        .collect();
+
+    let mut sv_rows: Vec<_> = sessions.into_iter().collect();
+    sv_rows.sort_by(|a, b| cmp_f64(b.1.cost, a.1.cost).then(b.1.turns.cmp(&a.1.turns)).then(b.1.last_active_ms.cmp(&a.1.last_active_ms)));
+    let by_session = sv_rows
+        .into_iter()
+        .take(BY_SESSION_LIMIT)
+        .map(|(id, d)| {
+            json!({
+                "session_id": id, "workspace": d.workspace, "model": d.model, "agent_name": d.agent,
+                "turns": d.turns, "errors": d.errors,
+                "input_tokens": d.input, "output_tokens": d.output, "cached_tokens": d.cached,
+                "cache_percent": percent(d.cached as f64, d.input as f64),
+                "estimated_cost_usd": py_round(d.cost, 8),
+                "last_active_ms": d.last_active_ms,
+            })
+        })
+        .collect();
+
     t.cost = py_round(t.cost, 8);
     let lat = [py_round(quantile(&turn_d, 0.5), 1), py_round(quantile(&turn_d, 0.95), 1), py_round(quantile(&llm_d, 0.5), 1), py_round(quantile(&llm_d, 0.95), 1)];
-    summary_json(start, end, t, lat, daily_turns, by_model, by_step, by_tool)
+    summary_json(start, end, t, lat, Breakdowns { daily: daily_turns, by_model, by_step, by_tool, by_workspace, by_session })
 }
 
-/// `summarize(days)`.
-pub fn summarize(days: i64) -> Value {
+/// `summarize(days)`, narrowed by `filters`. `facets` always covers the
+/// whole window so the filter options do not collapse to the selection.
+pub fn summarize(days: i64, filters: &Filters) -> Value {
     let days = days.clamp(1, 90);
     let (now, bucket, dir, sigs) = cache_context(days);
     let ratio = appv3_core::otel::sample_ratio();
-    let key = sig_key("summary", &[days.to_string(), appv3_core::pyjson::float_repr(ratio)], bucket, &dir, &sigs);
+    let [ws_key, model_key, session_key] = filters.key_parts();
+    let key = sig_key("summary", &[days.to_string(), appv3_core::pyjson::float_repr(ratio), ws_key, model_key, session_key], bucket, &dir, &sigs);
     cached(key, || {
         let start = now - Duration::days(days);
         let files = sig_paths(&sigs);
         if files.is_empty() {
             return Some(empty_summary(start, now));
         }
-        Some(run_queries(&load_spans_in_window(&files, start, now), start, now))
+        let spans = load_spans_in_window(&files, start, now);
+        let index = TurnIndex::build(&spans);
+        let mut v = run_queries(&apply_filters(&spans, &index, filters), &index, start, now);
+        v["facets"] = facets(&spans);
+        Some(v)
     })
     .unwrap_or(Value::Null)
 }
 
 // ── traces ──────────────────────────────────────────────────────────────────
 
-/// `list_traces_with_count` → `(items, total)`.
-pub fn list_traces_with_count(days: i64, limit: i64, offset: i64) -> (Vec<Value>, i64) {
+/// `list_traces_with_count` → `(items, total)`; `errors_only` keeps failed turns.
+pub fn list_traces_with_count(days: i64, limit: i64, offset: i64, filters: &Filters, errors_only: bool) -> (Vec<Value>, i64) {
     let days = days.clamp(1, 90);
     let limit = limit.clamp(1, 200);
     let offset = offset.max(0);
     let (now, bucket, dir, sigs) = cache_context(days);
-    let key = sig_key("traces", &[days.to_string(), limit.to_string(), offset.to_string()], bucket, &dir, &sigs);
+    let [ws_key, model_key, session_key] = filters.key_parts();
+    let key = sig_key("traces", &[days.to_string(), limit.to_string(), offset.to_string(), ws_key, model_key, session_key, errors_only.to_string()], bucket, &dir, &sigs);
     let v = cached(key, || {
         let start = now - Duration::days(days);
         let files = sig_paths(&sigs);
@@ -528,7 +815,8 @@ pub fn list_traces_with_count(days: i64, limit: i64, offset: i64) -> (Vec<Value>
             return Some(json!([[], 0]));
         }
         let spans = load_spans_in_window(&files, start, now);
-        let (items, total) = list_traces(&spans, limit, offset);
+        let index = TurnIndex::build(&spans);
+        let (items, total) = list_traces(&apply_filters(&spans, &index, filters), &index, limit, offset, errors_only);
         Some(json!([items, total]))
     })
     .unwrap_or(json!([[], 0]));
@@ -552,16 +840,18 @@ fn opt_str(v: Option<&Value>) -> Value {
     }
 }
 
-fn list_traces(spans: &[Map<String, Value>], limit: i64, offset: i64) -> (Vec<Value>, i64) {
+fn list_traces(spans: &[&Map<String, Value>], index: &TurnIndex, limit: i64, offset: i64, errors_only: bool) -> (Vec<Value>, i64) {
     let mut counts: IndexMap<String, TraceAgg> = IndexMap::new();
     let mut runs: Vec<&Map<String, Value>> = vec![];
-    for s in spans {
+    for &s in spans {
         let name = str_or(s.get("name"), "");
         let Some(tid) = s.get("trace_id").filter(|v| truthy(v)) else { continue };
         let attrs = attrs_of(s);
         let c = counts.entry(py_str(tid)).or_default();
         if name.starts_with("agent_run") {
-            runs.push(s);
+            if !errors_only || s.get("status").and_then(|v| v.as_str()) == Some("ERROR") {
+                runs.push(s);
+            }
         } else {
             if name.starts_with("chat") {
                 c.llm_calls += 1;
@@ -598,6 +888,7 @@ fn list_traces(spans: &[Map<String, Value>], limit: i64, offset: i64) -> (Vec<Va
                 "run_id": opt_str(attrs.get("run_id")),
                 "session_id": opt_str(attrs.get("gen_ai.conversation.id")),
                 "agent_name": opt_str(attrs.get("gen_ai.agent.name")),
+                "workspace": index.workspace_of(s),
                 "provider": provider,
                 "model": model,
                 "provider_model": pm,
@@ -685,5 +976,148 @@ mod tests {
         assert_eq!(safe_int(Some(&json!(2.9))), 2);
         assert_eq!(safe_int(Some(&json!("7"))), 7);
         assert_eq!(safe_int(Some(&json!("7.5"))), 0);
+    }
+
+    const DAY_NS: f64 = 86_400e9;
+
+    fn span(name: &str, trace: &str, status: &str, end_ns: f64, attrs: Value) -> Map<String, Value> {
+        let Value::Object(m) = json!({
+            "name": name, "trace_id": trace, "span_id": format!("{trace}-{name}"), "status": status,
+            "start_time": end_ns - 1e9, "end_time": end_ns, "duration_ms": 1000.0, "attributes": attrs,
+        }) else {
+            unreachable!()
+        };
+        m
+    }
+
+    fn turn(trace: &str, workspace: Option<&str>, model: &str, status: &str, end_ns: f64, cost: f64) -> Vec<Map<String, Value>> {
+        let (provider, model) = model.split_once(':').unwrap();
+        let mut run_attrs = json!({"gen_ai.provider.name": provider, "gen_ai.request.model": model, "gen_ai.conversation.id": format!("s-{trace}")});
+        if let Some(ws) = workspace {
+            run_attrs[WORKSPACE_ATTR] = json!(ws);
+        }
+        vec![
+            span("agent_run lead", trace, status, end_ns, run_attrs),
+            span(
+                "chat m",
+                trace,
+                "OK",
+                end_ns,
+                json!({"gen_ai.provider.name": provider, "gen_ai.request.model": model, "gen_ai.usage.input_tokens": 100, "gen_ai.usage.output_tokens": 10, "gen_ai.usage.estimated_cost_usd": cost, "gen_ai.conversation.id": format!("s-{trace}")}),
+            ),
+        ]
+    }
+
+    fn fixture() -> Vec<Map<String, Value>> {
+        let base = 1_700_000_000e9;
+        let mut spans = vec![];
+        spans.extend(turn("0xa", Some("/w/app"), "openai:gpt", "OK", base, 0.5));
+        spans.extend(turn("0xb", Some("/w/app"), "anthropic:claude", "ERROR", base + DAY_NS, 1.25));
+        spans.extend(turn("0xc", Some("/w/site"), "openai:gpt", "OK", base + DAY_NS, 0.25));
+        // Recorded before workspaces were written on spans.
+        spans.extend(turn("0xd", None, "openai:gpt", "OK", base, 0.125));
+        // Title generation outside any run, attributed through its session.
+        spans.push(span("title_generation", "0xe", "OK", base, json!({"gen_ai.conversation.id": "s-0xc", "gen_ai.usage.estimated_cost_usd": 0.01})));
+        spans
+    }
+
+    fn summary_for(spans: &[Map<String, Value>], f: &Filters) -> Value {
+        let index = TurnIndex::build(spans);
+        let now = Utc::now();
+        run_queries(&apply_filters(spans, &index, f), &index, now, now)
+    }
+
+    #[test]
+    fn workspace_filter_keeps_whole_turns_and_session_spans() {
+        let spans = fixture();
+        let v = summary_for(&spans, &Filters { workspace: Some("/w/site".into()), ..Default::default() });
+        assert_eq!(v["totals"]["turns"], 1);
+        assert!((v["totals"]["estimated_cost_usd"].as_f64().unwrap() - 0.26).abs() < 1e-9);
+        assert_eq!(v["by_workspace"][0]["workspace"], "/w/site");
+    }
+
+    #[test]
+    fn model_filter_matches_the_turn_model() {
+        let spans = fixture();
+        let v = summary_for(&spans, &Filters { model: Some("openai:gpt".into()), ..Default::default() });
+        assert_eq!(v["totals"]["turns"], 3);
+        assert_eq!(v["by_model"].as_array().unwrap().len(), 1);
+        assert_eq!(v["totals"]["errors"], 0);
+    }
+
+    #[test]
+    fn breakdowns_carry_daily_cost_and_unrecorded_workspaces() {
+        let spans = fixture();
+        let v = summary_for(&spans, &Filters::default());
+        let days = v["daily_turns"].as_array().unwrap();
+        assert_eq!(days.len(), 2);
+        assert_eq!(days[1]["turns"], 2);
+        assert!((days[1]["estimated_cost_usd"].as_f64().unwrap() - 1.5).abs() < 1e-9);
+        let unrecorded = v["by_workspace"].as_array().unwrap().iter().find(|w| w["workspace"].is_null()).unwrap();
+        assert_eq!(unrecorded["turns"], 1);
+        assert_eq!(v["by_workspace"][0]["workspace"], "/w/app");
+    }
+
+    #[test]
+    fn facets_rank_the_whole_window() {
+        let v = facets(&fixture());
+        assert_eq!(v["workspaces"], json!(["/w/app", "/w/site"]));
+        assert_eq!(v["models"], json!(["openai:gpt", "anthropic:claude"]));
+    }
+
+    #[test]
+    fn trace_list_filters_failed_turns_and_reports_workspace() {
+        let spans = fixture();
+        let index = TurnIndex::build(&spans);
+        let all: Vec<&Map<String, Value>> = spans.iter().collect();
+        let (items, total) = list_traces(&all, &index, 50, 0, true);
+        assert_eq!(total, 1);
+        assert_eq!(items[0]["trace_id"], "0xb");
+        assert_eq!(items[0]["workspace"], "/w/app");
+        assert_eq!(items[0]["error"], true);
+
+        let (items, _) = list_traces(&apply_filters(&spans, &index, &Filters { workspace: Some("/w/app".into()), ..Default::default() }), &index, 50, 0, false);
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn session_filter_keeps_the_session_turns_and_its_title_span() {
+        let spans = fixture();
+        let v = summary_for(&spans, &Filters { session: Some("s-0xc".into()), ..Default::default() });
+        assert_eq!(v["totals"]["turns"], 1);
+        assert!((v["totals"]["estimated_cost_usd"].as_f64().unwrap() - 0.26).abs() < 1e-9);
+
+        let index = TurnIndex::build(&spans);
+        let f = Filters { session: Some("s-0xb".into()), ..Default::default() };
+        let (items, total) = list_traces(&apply_filters(&spans, &index, &f), &index, 50, 0, false);
+        assert_eq!(total, 1);
+        assert_eq!(items[0]["session_id"], "s-0xb");
+    }
+
+    #[test]
+    fn by_session_ranks_by_spend_and_skips_runs_outside_sessions() {
+        let mut spans = fixture();
+        let base = 1_700_000_000e9;
+        spans.push(span("agent_run lead", "0xf", "OK", base, json!({"gen_ai.conversation.id": "no-session", "gen_ai.provider.name": "openai", "gen_ai.request.model": "gpt"})));
+        spans.push(span(
+            "chat m",
+            "0xf",
+            "OK",
+            base,
+            json!({"gen_ai.usage.input_tokens": 400, "gen_ai.usage.cache_read.input_tokens": 100, "gen_ai.usage.estimated_cost_usd": 9.0, "gen_ai.conversation.id": "no-session"}),
+        ));
+        let v = summary_for(&spans, &Filters::default());
+        let sessions = v["by_session"].as_array().unwrap();
+        let ids: Vec<&str> = sessions.iter().map(|s| s["session_id"].as_str().unwrap()).collect();
+        assert_eq!(ids, vec!["s-0xb", "s-0xa", "s-0xc", "s-0xd"]);
+        let top = &sessions[0];
+        assert_eq!(top["turns"], 1);
+        assert_eq!(top["errors"], 1);
+        assert_eq!(top["workspace"], "/w/app");
+        assert_eq!(top["model"], "anthropic:claude");
+        assert_eq!(top["input_tokens"], 100);
+        assert_eq!(top["last_active_ms"], ns_to_ms(&json!(base + DAY_NS)));
+        // The title span counts toward its session.
+        assert!((sessions[2]["estimated_cost_usd"].as_f64().unwrap() - 0.26).abs() < 1e-9);
     }
 }

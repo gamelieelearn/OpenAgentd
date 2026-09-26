@@ -258,7 +258,7 @@ impl Agent {
             run_tools.add(t.clone());
         }
         let messages: Vec<ChatMessage> = history.into_iter().filter(|m| !matches!(m, ChatMessage::System { .. })).collect();
-        let ctx = RunContext { session_id: opts.session_id.clone(), run_id: uuid::Uuid::now_v7().to_string(), agent_name: self.name.clone() };
+        let ctx = RunContext { session_id: opts.session_id.clone(), run_id: uuid::Uuid::now_v7().to_string(), agent_name: self.name.clone(), workspace: opts.workspace.clone() };
         let mut state = AgentState::new(messages, self.system_prompt.clone());
         let base_ctx = ToolContext {
             session_id: ctx.session_id.clone(),

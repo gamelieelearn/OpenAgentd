@@ -11,6 +11,10 @@ use serde_json::{json, Value};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
+/// Span attribute naming the turn's workspace root (v3 addition; GenAI
+/// semantic conventions have no workspace notion).
+pub const WORKSPACE_ATTR: &str = "openagentd.workspace";
+
 /// `set_usage_span_attributes` (usage dict from `usage_to_dict`).
 pub fn set_usage_span_attributes(span: &Span, usage: &Value) {
     let get = |k: &str| usage.get(k).cloned().unwrap_or(json!(0));
@@ -203,17 +207,17 @@ impl Hook for OtelHook {
 
     async fn before_agent(&self, ctx: &RunContext, _state: &mut AgentState) {
         *self.run_start.lock().unwrap() = Some(Instant::now());
-        let span = Span::start(
-            format!("agent_run {}", self.agent_name),
-            SpanKind::Internal,
-            vec![
-                ("gen_ai.agent.name", json!(self.agent_name)),
-                ("gen_ai.provider.name", json!(self.provider)),
-                ("gen_ai.request.model", json!(self.model)),
-                ("gen_ai.conversation.id", json!(Self::conv(ctx))),
-                ("run_id", json!(ctx.run_id)),
-            ],
-        );
+        let mut attrs = vec![
+            ("gen_ai.agent.name", json!(self.agent_name)),
+            ("gen_ai.provider.name", json!(self.provider)),
+            ("gen_ai.request.model", json!(self.model)),
+            ("gen_ai.conversation.id", json!(Self::conv(ctx))),
+            ("run_id", json!(ctx.run_id)),
+        ];
+        if let Some(workspace) = ctx.workspace.as_deref().filter(|w| !w.is_empty()) {
+            attrs.push((WORKSPACE_ATTR, json!(workspace)));
+        }
+        let span = Span::start(format!("agent_run {}", self.agent_name), SpanKind::Internal, attrs);
         *self.token.lock().unwrap() = otel::attach(Some(span.ctx()));
         *self.agent_span.lock().unwrap() = Some(span);
     }
