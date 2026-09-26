@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { ChevronRight, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { useCodingWorkspaceSessionsQuery, useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
@@ -15,7 +15,7 @@ function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
 const ROW_ACTION =
   'flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-9'
 
-function WorkspaceSessionRow({
+function WorkspaceSessionRowView({
   session,
   isCurrent,
   currentSessionId,
@@ -292,6 +292,14 @@ function WorkspaceSessionRow({
   )
 }
 
+/** Memoized: the sidebar re-renders often; unchanged session rows need not. */
+const WorkspaceSessionRow = memo(WorkspaceSessionRowView)
+
+type SessionHandlers = Pick<
+  React.ComponentProps<typeof WorkspaceSessionRowView>,
+  'onSessionSelect' | 'onSessionDelete' | 'onSessionEdit' | 'onSessionLongPress' | 'onSessionContextActions'
+>
+
 export function WorkspaceSessionList({
   path,
   currentSessionId,
@@ -323,6 +331,20 @@ export function WorkspaceSessionList({
     ? (runningSessions ?? [])
     : (sessions.data?.pages.flatMap((page) => page.data) ?? [])
 
+  // The sidebar passes inline callbacks; rows get stable wrappers that call
+  // the latest ones, so ``memo`` can skip rows whose session did not change.
+  const handlersRef = useRef<SessionHandlers>({ onSessionSelect, onSessionDelete, onSessionEdit, onSessionLongPress, onSessionContextActions })
+  useEffect(() => {
+    handlersRef.current = { onSessionSelect, onSessionDelete, onSessionEdit, onSessionLongPress, onSessionContextActions }
+  })
+  const handlers = useMemo<SessionHandlers>(() => ({
+    onSessionSelect: (session, workspacePath, event) => handlersRef.current.onSessionSelect(session, workspacePath, event),
+    onSessionDelete: (event, session) => handlersRef.current.onSessionDelete(event, session),
+    onSessionEdit: (session) => handlersRef.current.onSessionEdit(session),
+    onSessionLongPress: (session) => handlersRef.current.onSessionLongPress(session),
+    onSessionContextActions: (session, event) => handlersRef.current.onSessionContextActions(session, event),
+  }), [])
+
   // Paging is an explicit row rather than an IntersectionObserver inside a
   // nested scroll box: the sidebar keeps a single scroller and every session
   // page is one deliberate click (or Enter) away.
@@ -341,11 +363,7 @@ export function WorkspaceSessionList({
             currentSessionId={currentSessionId}
             path={path}
             mobileLongPressActions={mobileLongPressActions}
-            onSessionSelect={onSessionSelect}
-            onSessionDelete={onSessionDelete}
-            onSessionEdit={onSessionEdit}
-            onSessionLongPress={onSessionLongPress}
-            onSessionContextActions={onSessionContextActions}
+            {...handlers}
           />
         )
       })}

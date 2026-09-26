@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { ExternalLink } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -67,7 +67,7 @@ function refChipClass(ref: string): string {
   return 'bg-(--color-accent)/10 text-(--color-accent) border-(--color-accent)/20'
 }
 
-export function CommitHistorySubPanel({
+function CommitHistorySubPanelView({
   subTab,
   gitHistory,
   commits,
@@ -339,3 +339,6 @@ export function CommitHistorySubPanel({
     </div>
   )
 }
+
+/** Memoized: the dock re-renders on every width change; the list need not. */
+export const CommitHistorySubPanel = memo(CommitHistorySubPanelView)

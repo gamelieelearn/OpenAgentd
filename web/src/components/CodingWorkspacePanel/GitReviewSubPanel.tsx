@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { ChevronRight, ExternalLink, FileDiff } from 'lucide-react'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -37,7 +38,7 @@ export function DockListNotice({ children, tone = 'muted' }: { children: React.R
   )
 }
 
-export function GitReviewSubPanel({
+function GitReviewSubPanelView({
   changedFiles,
   diffSections,
   diff,
@@ -154,3 +155,6 @@ export function GitReviewSubPanel({
     </div>
   )
 }
+
+/** Memoized: the dock re-renders on every width change; the rows need not. */
+export const GitReviewSubPanel = memo(GitReviewSubPanelView)

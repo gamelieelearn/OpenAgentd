@@ -282,16 +282,20 @@ export function CodingWorkspacePanel({
   const expandedDiffs = useMemo(() => new Set(gitState.expandedDiffs), [gitState.expandedDiffs])
   const expandedCommitFiles = useMemo(() => new Set(gitState.expandedCommitFiles), [gitState.expandedCommitFiles])
 
-  const setSubTab = (tab: GitSubTab) => useGitPanelStore.getState().setSubTab(workspace, tab)
-  const setAllBranches = (val: boolean) => useGitPanelStore.getState().setAllBranches(workspace, val)
-  const setExpandedCommitSha = (updater: string | null | ((prev: string | null) => string | null)) => {
-    const next = typeof updater === 'function' ? updater(gitState.expandedCommitSha) : updater
-    useGitPanelStore.getState().setExpandedCommitSha(workspace, next)
-  }
-  const setExpandedCommitFiles = (updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
-    const next = typeof updater === 'function' ? updater(new Set(gitState.expandedCommitFiles)) : updater
-    useGitPanelStore.getState().setExpandedCommitFiles(workspace, Array.from(next))
-  }
+  // Stable setters (read the store at call time) so the memoized Git list
+  // views below are not re-rendered by a fresh callback on every dock render.
+  const setSubTab = useCallback((tab: GitSubTab) => useGitPanelStore.getState().setSubTab(workspace, tab), [workspace])
+  const setAllBranches = useCallback((val: boolean) => useGitPanelStore.getState().setAllBranches(workspace, val), [workspace])
+  const setExpandedCommitSha = useCallback((updater: string | null | ((prev: string | null) => string | null)) => {
+    const store = useGitPanelStore.getState()
+    const current = (store.workspaces[workspace] || DEFAULT_WORKSPACE_STATE).expandedCommitSha
+    store.setExpandedCommitSha(workspace, typeof updater === 'function' ? updater(current) : updater)
+  }, [workspace])
+  const setExpandedCommitFiles = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    const store = useGitPanelStore.getState()
+    const current = new Set((store.workspaces[workspace] || DEFAULT_WORKSPACE_STATE).expandedCommitFiles)
+    store.setExpandedCommitFiles(workspace, Array.from(typeof updater === 'function' ? updater(current) : updater))
+  }, [workspace])
   const historyLimit = 50
   // "All branches" is a Tree-only toggle; the Commits list always follows HEAD.
   const historyAllBranches = subTab === 'tree' && allBranches
@@ -326,6 +330,23 @@ export function CodingWorkspacePanel({
     staleTime: COMMIT_DIFF_STALE_MS,
   })
   const commitDiffText = commitDiff.data?.diff
+
+  // React Query hands back a new result object every render; the list views
+  // get memoized slices of the fields they read so ``memo`` can skip them.
+  const diffView = useMemo(
+    () => ({ isLoading: diff.isLoading, isError: diff.isError, data: diff.data }),
+    [diff.isLoading, diff.isError, diff.data],
+  )
+  const filesView = useMemo(() => ({ isLoading: files.isLoading, data: files.data }), [files.isLoading, files.data])
+  const { isLoading: historyLoading, isError: historyError, isFetchingNextPage, hasNextPage, fetchNextPage, refetch: refetchHistory, data: historyData } = gitHistory
+  const historyView = useMemo(
+    () => ({ isLoading: historyLoading, isError: historyError, isFetchingNextPage, hasNextPage, fetchNextPage, refetch: refetchHistory, data: historyData }),
+    [historyLoading, historyError, isFetchingNextPage, hasNextPage, fetchNextPage, refetchHistory, historyData],
+  )
+  const commitDiffView = useMemo(
+    () => ({ isLoading: commitDiff.isLoading, isError: commitDiff.isError }),
+    [commitDiff.isLoading, commitDiff.isError],
+  )
   const commitChangedFiles = useMemo(() => {
     if (!commitDiffText) return []
     return collectChangedFiles({ workspace, is_git_repo: true, diff: commitDiffText })
@@ -493,9 +514,9 @@ export function CodingWorkspacePanel({
     target: typeof document === 'undefined' ? null : document,
   })
 
-  const toggleDiffExpanded = (path: string) => {
+  const toggleDiffExpanded = useCallback((path: string) => {
     useGitPanelStore.getState().toggleDiffExpanded(workspace, path)
-  }
+  }, [workspace])
   const allExpanded = changedFiles.length > 0 && changedFiles.every((f) => expandedDiffs.has(f.path))
   const toggleExpandAll = () => {
     useGitPanelStore.getState().setExpandedDiffs(workspace, allExpanded ? [] : changedFiles.map((f) => f.path))
@@ -628,8 +649,8 @@ export function CodingWorkspacePanel({
             workspace={workspace}
             changedFiles={changedFiles}
             diffSections={diffSections}
-            diff={diff}
-            files={files}
+            diff={diffView}
+            files={filesView}
             selectedFilePath={selectedFilePath}
             expandedDiffs={expandedDiffs}
             toggleDiffExpanded={toggleDiffExpanded}
@@ -643,13 +664,13 @@ export function CodingWorkspacePanel({
           <CommitHistorySubPanel
             workspace={workspace}
             subTab={subTab}
-            gitHistory={gitHistory}
+            gitHistory={historyView}
             commits={commits}
             expandedCommitSha={expandedCommitSha}
             setExpandedCommitSha={setExpandedCommitSha}
             expandedCommitFiles={expandedCommitFiles}
             setExpandedCommitFiles={setExpandedCommitFiles}
-            commitDiff={commitDiff}
+            commitDiff={commitDiffView}
             commitChangedFiles={commitChangedFiles}
             commitDiffSections={commitDiffSections}
             parsedGraphLines={parsedGraphLines}
