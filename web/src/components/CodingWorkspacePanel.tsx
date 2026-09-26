@@ -186,10 +186,12 @@ export function CodingWorkspacePanel({
     }
   }
   const historyLimit = 50
+  // "All branches" is a Tree-only toggle; the Commits list always follows HEAD.
+  const historyAllBranches = subTab === 'tree' && allBranches
 
   const gitHistory = useInfiniteQuery({
-    queryKey: queryKeys.coding.history(workspace, historyLimit, allBranches),
-    queryFn: ({ pageParam, signal }) => getCodingWorkspaceGitHistory(workspace, historyLimit, pageParam, allBranches, signal),
+    queryKey: queryKeys.coding.history(workspace, historyLimit, historyAllBranches),
+    queryFn: ({ pageParam, signal }) => getCodingWorkspaceGitHistory(workspace, historyLimit, pageParam, historyAllBranches, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? null,
     enabled: open && !chatWorkspace && activeTabId === 'review' && (subTab === 'commits' || subTab === 'tree'),

@@ -102,6 +102,21 @@ async function renderCommitsTab(mobile = false) {
 }
 
 describe('CodingWorkspacePanel – commit body expand/collapse', () => {
+  it('keeps the Commits list on the current branch even when Tree has All branches enabled', async () => {
+    // Regression: the persisted "All branches" toggle lives only on the Tree
+    // sub-tab but used to leak into the Commits list, where it can't be seen
+    // or turned off.
+    useGitPanelStore.getState().setAllBranches(WORKSPACE, true)
+    await renderCommitsTab()
+    await waitFor(() => expect(screen.getByText('fix: handle null session')).toBeTruthy())
+
+    const historyUrls = (globalThis.fetch as ReturnType<typeof mock>).mock.calls
+      .map((args) => String(args[0]))
+      .filter((url) => url.includes('/workspace/git/history'))
+    expect(historyUrls.length).toBeGreaterThan(0)
+    for (const url of historyUrls) expect(url).toContain('all=false')
+  })
+
   it('offers a manual load-more action after a cold history load', async () => {
     const previous = globalThis.fetch
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
