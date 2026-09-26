@@ -67,6 +67,15 @@ export function dockMaxWidth(centerWidth: number): number {
 }
 
 /**
+ * Whether the dock covers the chat instead of sitting beside it. The shell
+ * reads this alone (to make the chat inert) so it can skip re-rendering on
+ * every center-width change; the dock resolves the full geometry itself.
+ */
+export function dockOverlaysChat(centerWidth: number, maximized: boolean): boolean {
+  return maximized || Math.max(0, Math.round(centerWidth)) < DOCK_SIDE_BY_SIDE_MIN_CENTER
+}
+
+/**
  * Resolve the dock's geometry. ``overlay`` covers the chat column — used for
  * the explicit maximize toggle and as the fallback when the window is too
  * narrow for a usable side-by-side split.
@@ -81,7 +90,7 @@ export function resolveDockLayout({
   maximized: boolean
 }): DockLayout {
   const center = Math.max(0, Math.round(centerWidth))
-  if (maximized || center < DOCK_SIDE_BY_SIDE_MIN_CENTER) {
+  if (dockOverlaysChat(center, maximized)) {
     return { mode: 'overlay', width: center }
   }
   const safeRatio = Number.isFinite(ratio) && ratio > 0 ? ratio : DOCK_DEFAULT_RATIO

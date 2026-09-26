@@ -7,6 +7,7 @@ import {
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
   clampSidebarWidth,
+  dockOverlaysChat,
   ratioFromWidth,
   resolveDockLayout,
   resolveSidebarCollapsed,
@@ -65,6 +66,18 @@ describe('resolveDockLayout', () => {
 
   it('treats an invalid ratio as the default', () => {
     expect(resolveDockLayout({ centerWidth: 1000, ratio: Number.NaN, maximized: false }).width).toBe(450)
+  })
+
+  it('agrees with dockOverlaysChat, which the shell reads on its own', () => {
+    const split = CHAT_MIN_WIDTH + DOCK_MIN_WIDTH
+    for (const centerWidth of [split - 0.6, split - 0.4, split, 1200]) {
+      for (const maximized of [false, true]) {
+        const overlay = resolveDockLayout({ centerWidth, ratio: 0.45, maximized }).mode === 'overlay'
+        expect(dockOverlaysChat(centerWidth, maximized)).toBe(overlay)
+      }
+    }
+    expect(dockOverlaysChat(split - 0.6, false)).toBe(true)
+    expect(dockOverlaysChat(split - 0.4, false)).toBe(false)
   })
 })
 

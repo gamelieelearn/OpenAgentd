@@ -35,12 +35,11 @@ import {
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { panelResizeHandleClass, usePanelResize } from '@/hooks/use-panel-resize'
 import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
-import { useViewportWidth } from '@/hooks/use-viewport-width'
+import { useElementWidth } from '@/hooks/use-element-width'
 import { usePlatform } from '@/hooks/use-platform'
 import { formatShortcut } from '@/lib/keyboard-shortcut'
 import {
   DOCK_MIN_WIDTH,
-  type DockLayout,
   dockMaxWidth,
   ratioFromWidth,
   resolveDockLayout,
@@ -103,6 +102,8 @@ const SchedulerDockView = lazy(() =>
 )
 
 const EMPTY_TODOS: TodoItem[] = []
+/** Stable empty ref: with no center element the width falls back to the viewport. */
+const NO_CENTER: React.RefObject<HTMLElement | null> = { current: null }
 
 /** Insert a tab before the terminal group so terminals stay at the end. */
 function withTab(current: DockTab[], tab: DockTab): DockTab[] {
@@ -132,8 +133,8 @@ export function CodingWorkspacePanel({
   open,
   mobile = false,
   mobileDragOffset = null,
+  centerRef = NO_CENTER,
   centerWidth,
-  dockLayout,
   selectedFilePath = null,
   selectedFileOpenKey = 0,
   terminalOpenKey = 0,
@@ -152,10 +153,13 @@ export function CodingWorkspacePanel({
   open: boolean
   mobile?: boolean
   mobileDragOffset?: number | null
-  /** Measured width of the chat + dock region. Falls back to the viewport. */
+  /**
+   * The chat + dock region. The dock measures it itself, so the shell does
+   * not re-render on every width change. Without it, the viewport is used.
+   */
+  centerRef?: React.RefObject<HTMLElement | null>
+  /** Explicit center width; overrides the measurement (tests, fixed hosts). */
   centerWidth?: number
-  /** Shell-resolved geometry; computed from the layout store when omitted. */
-  dockLayout?: DockLayout
   selectedFilePath?: string | null
   selectedFileOpenKey?: number
   terminalOpenKey?: number
@@ -218,9 +222,9 @@ export function CodingWorkspacePanel({
   // ── Geometry ───────────────────────────────────────────────────────────────
   const dockRatio = useLayoutStore((s) => s.dockRatio)
   const dockMaximized = useLayoutStore((s) => s.dockMaximized)
-  const viewportWidth = useViewportWidth()
-  const center = centerWidth ?? viewportWidth
-  const layout = dockLayout ?? resolveDockLayout({ centerWidth: center, ratio: dockRatio, maximized: dockMaximized })
+  const measuredCenter = useElementWidth(centerRef)
+  const center = centerWidth ?? measuredCenter
+  const layout = resolveDockLayout({ centerWidth: center, ratio: dockRatio, maximized: dockMaximized })
   const overlay = !mobile && layout.mode === 'overlay'
   const resize = usePanelResize({
     width: layout.width,

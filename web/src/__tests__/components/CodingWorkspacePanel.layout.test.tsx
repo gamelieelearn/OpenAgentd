@@ -101,6 +101,27 @@ describe('Review dock layout', () => {
     expect(screen.queryByRole('button', { name: /^(Maximize|Restore) review dock/ })).toBeNull()
   })
 
+  it('measures the center element it is given so the shell need not re-render on resize', async () => {
+    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const centerRef: { current: HTMLDivElement | null } = { current: null }
+    const attach = (node: HTMLDivElement | null) => {
+      if (node) node.getBoundingClientRect = () => ({ width: 600 }) as DOMRect
+      centerRef.current = node
+    }
+    await act(async () => {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <div ref={attach}>
+            <CodingWorkspacePanel workspace={WORKSPACE} open centerRef={centerRef} />
+          </div>
+        </QueryClientProvider>,
+      )
+    })
+
+    expect(screen.getByRole('complementary', { name: 'Review dock' }).className).toContain('md:absolute')
+  })
+
   it('takes focus stranded in the covered chat so keyboard users land on the active tab', async () => {
     const chat = document.createElement('main')
     chat.setAttribute('inert', '')

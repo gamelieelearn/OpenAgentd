@@ -28,9 +28,9 @@ import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
-import { useElementWidth } from '@/hooks/use-element-width'
+import { useElementWidthSelect } from '@/hooks/use-element-width'
 import { useReturnFocusFromDock } from '@/hooks/use-dock-focus'
-import { resolveDockLayout } from '@/lib/workbench-layout'
+import { dockOverlaysChat } from '@/lib/workbench-layout'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
@@ -65,6 +65,8 @@ const EMPTY_BLOCKS: ContentBlock[] = []
 const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
 
 const isInReviewDock = (element: Element) => element.closest('[data-review-dock]') !== null
+/** Stable selector: the shell only needs to know when the split stops fitting. */
+const isCenterTooNarrow = (width: number) => dockOverlaysChat(width, false)
 
 // The review dock (tabs, diffs, commit views, file previews) is closed until
 // asked for, so it loads as its own chunk and stays off the startup bundle.
@@ -439,13 +441,13 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   // Review dock geometry: a ratio of the center region (chat + dock), with a
   // maximized / narrow-window overlay that covers the chat instead of
   // squeezing it. The chat stays mounted underneath so its scroll position
-  // and live stream survive a maximize round-trip.
+  // and live stream survive a maximize round-trip. The dock measures the
+  // center itself; the shell subscribes to one bit so a sidebar tween or a
+  // window drag does not re-render this whole tree every frame.
   const centerRef = useRef<HTMLDivElement>(null)
-  const centerWidth = useElementWidth(centerRef)
-  const dockRatio = useLayoutStore((s) => s.dockRatio)
+  const centerTooNarrow = useElementWidthSelect(centerRef, isCenterTooNarrow)
   const dockMaximized = useLayoutStore((s) => s.dockMaximized)
-  const dockLayout = resolveDockLayout({ centerWidth, ratio: dockRatio, maximized: dockMaximized })
-  const chatCoveredByDock = !isMobile && Boolean(workspace) && codingPanel !== null && dockLayout.mode === 'overlay'
+  const chatCoveredByDock = !isMobile && Boolean(workspace) && codingPanel !== null && (dockMaximized || centerTooNarrow)
   // The dock claims focus while it covers the chat; give it back when it
   // closes or uncovers the chat so it is never left on <body>.
   useReturnFocusFromDock({
@@ -780,8 +782,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 chatWorkspace={isChatWorkspace}
                 mobile={isMobile}
                 mobileDragOffset={codingPanelDragOffset}
-                centerWidth={centerWidth}
-                dockLayout={dockLayout}
+                centerRef={centerRef}
                 selectedFilePath={codingFileViewer?.path ?? null}
                 selectedFileOpenKey={codingFileOpenKey}
                 terminalOpenKey={terminalOpenKey}
