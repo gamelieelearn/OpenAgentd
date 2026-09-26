@@ -652,6 +652,12 @@ agent against it.
     hides the dock; the header's review-dock button shows and hides it. On
     phones with a workspace, scheduled tasks open as a tab in the review sheet
     too, while the task list stays a popover so the chat remains visible.
+- **Keyboard and touch access** `[v3.0.0]` — right-click menus (dock rows,
+  terminal tabs, sidebar sessions and workspaces, scheduled tasks, provider
+  models) take keyboard focus when they open. Arrow keys, Home and End move
+  through the items, and Escape closes the menu without closing the panel
+  around it, then returns focus. On touch screens, list rows and row actions
+  grow to 44px tap targets, and text never renders below 11px.
 - **Desktop workbench layout** `[v3.0.0]` — the desktop coding view is split into
   a header with a command center (**Search or run a command**, `Ctrl/⌘+K`), the
   sidebar, the chat, the review dock and a status bar. The status bar shows
