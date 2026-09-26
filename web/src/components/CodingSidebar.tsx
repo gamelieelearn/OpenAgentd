@@ -25,7 +25,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { formatShortcut } from '@/lib/keyboard-shortcut'
-import { panelResizeHandleClass, usePanelResize } from '@/hooks/use-panel-resize'
+import { PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
 import { useViewportWidth } from '@/hooks/use-viewport-width'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useLayoutStore } from '@/stores/useLayoutStore'
@@ -525,15 +525,23 @@ export function CodingSidebar({
   const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth)
   const commitSidebarWidth = useCallback((width: number) => setSidebarWidth(width), [setSidebarWidth])
   const resetSidebarWidth = useCallback(() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH), [setSidebarWidth])
-  const resizable = usePanelResize({
+  const sidebarResize = {
     width: clampSidebarWidth(storedSidebarWidth, viewportWidth),
     min: SIDEBAR_MIN_WIDTH,
     max: sidebarMaxWidth(viewportWidth),
-    edge: 'right',
+    edge: 'right' as const,
     onCommit: commitSidebarWidth,
     onReset: resetSidebarWidth,
     disabled: isMobile || desktopCollapsed,
     label: 'Resize coding sidebar',
+  }
+  const sidebarMotion = ({ width, isResizing }: LiveWidth) => ({
+    animate: isMobile
+      ? { x: mobileDragOffset ?? (mobileOpen ? 0 : -280), width: 'min(272px, calc(100vw - 2rem))' }
+      : { width: desktopCollapsed ? 0 : width },
+    transition: mobileDragOffset !== null
+      ? { duration: 0 }
+      : { duration: isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: EASINGS.inOut },
   })
 
   const collapseAllWorkspaces = () => {
@@ -664,30 +672,17 @@ export function CodingSidebar({
         )}
       </AnimatePresence>
 
-    <motion.aside
+    <ResizableAside
       initial={false}
-      animate={
-        isMobile
-          ? { x: mobileDragOffset ?? (mobileOpen ? 0 : -280), width: 'min(272px, calc(100vw - 2rem))' }
-          : { width: desktopCollapsed ? 0 : resizable.width }
-      }
-      transition={
-        mobileDragOffset !== null
-          ? { duration: 0 }
-          : { duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: EASINGS.inOut }
-      }
+      resize={sidebarResize}
+      getMotion={sidebarMotion}
       className={
         isMobile
           ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-sidebar) shadow-xl'
           : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-sidebar)'
       }
     >
-      {!isMobile && !desktopCollapsed && (
-        <div
-          {...resizable.handleProps}
-          className={panelResizeHandleClass('right', resizable.isResizing)}
-        />
-      )}
+      {!isMobile && !desktopCollapsed && <PanelResizeHandle edge="right" />}
 
       {/* Section header — actions stay reachable however long the list is. */}
       <div className="flex h-8 shrink-0 items-center justify-between gap-2 pl-3 pr-1.5">
@@ -1622,7 +1617,7 @@ export function CodingSidebar({
         setRemoveWorktreeTarget={setRemoveWorktreeTarget}
         onConfirmRemoveWorktree={confirmRemoveWorktree}
       />
-    </motion.aside>
+    </ResizableAside>
     </>
   )
 }

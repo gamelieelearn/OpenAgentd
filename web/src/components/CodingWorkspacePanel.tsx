@@ -11,7 +11,6 @@
 import { Suspense, lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useHotkey } from '@tanstack/react-hotkeys'
-import { motion } from 'framer-motion'
 import {
   getCodingWorkspaceStatus,
   getCodingWorkspaceGitHistory,
@@ -33,7 +32,7 @@ import {
   codingWorkspaceDiffQueryOptions,
 } from '@/queries/workspace-git'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { panelResizeHandleClass, usePanelResize } from '@/hooks/use-panel-resize'
+import { PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
 import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { usePlatform } from '@/hooks/use-platform'
@@ -226,17 +225,28 @@ export function CodingWorkspacePanel({
   const center = centerWidth ?? measuredCenter
   const layout = resolveDockLayout({ centerWidth: center, ratio: dockRatio, maximized: dockMaximized })
   const overlay = !mobile && layout.mode === 'overlay'
-  const resize = usePanelResize({
+  const dockResize = {
     width: layout.width,
     min: DOCK_MIN_WIDTH,
     max: dockMaxWidth(center),
-    edge: 'left',
-    onCommit: (width) => useLayoutStore.getState().setDockRatio(ratioFromWidth(width, center)),
+    edge: 'left' as const,
+    onCommit: (width: number) => useLayoutStore.getState().setDockRatio(ratioFromWidth(width, center)),
     onReset: () => useLayoutStore.getState().resetDockRatio(),
     disabled: mobile || overlay,
     label: 'Resize review dock',
+  }
+  // Desktop always animates width (instantly while dragging or under reduced
+  // motion) so the aside is sized even when motion is off.
+  const dockMotion = ({ width, isResizing }: LiveWidth) => ({
+    animate: !mobile
+      ? { width: overlay ? layout.width : width }
+      : prefersReducedMotion
+        ? { opacity: 1 }
+        : mobileDragOffset !== null ? { opacity: 1, x: mobileDragOffset } : { opacity: 1, x: 0 },
+    transition: mobile && mobileDragOffset !== null
+      ? { duration: 0 }
+      : { duration: isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: EASINGS.inOut },
   })
-  const dockWidth = overlay ? layout.width : resize.width
   // The toggle is meaningless while a narrow window already forces overlay.
   const maximizeState = mobile || (overlay && !dockMaximized) ? null : dockMaximized
   // Covering the chat makes it inert, which drops its focus onto <body>.
@@ -659,22 +669,12 @@ export function CodingWorkspacePanel({
   )
 
   return (
-    <motion.aside
+    <ResizableAside
       aria-label="Review dock"
-      // Desktop always animates width (instantly under reduced motion, via
-      // the transition below) so the aside is sized even when motion is off.
       initial={mobile ? { opacity: 0 } : { width: 0 }}
-      animate={
-        !mobile
-          ? { width: dockWidth }
-          : prefersReducedMotion
-            ? { opacity: 1 }
-            : mobileDragOffset !== null ? { opacity: 1, x: mobileDragOffset } : { opacity: 1, x: 0 }
-      }
       exit={mobile ? { opacity: 0 } : { width: 0 }}
-      transition={mobile && mobileDragOffset !== null
-        ? { duration: 0 }
-        : { duration: resize.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: EASINGS.inOut }}
+      resize={dockResize}
+      getMotion={dockMotion}
       className={cn(
         'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:w-auto md:shadow-none',
         // Overlay covers the chat column (kept mounted underneath); side mode
@@ -686,9 +686,7 @@ export function CodingWorkspacePanel({
       )}
     >
       <div data-review-dock className="relative flex h-full min-h-0 w-full flex-col">
-        {!mobile && !overlay && (
-          <div {...resize.handleProps} className={panelResizeHandleClass('left', resize.isResizing)} />
-        )}
+        {!mobile && !overlay && <PanelResizeHandle edge="left" />}
         <DockTabBar
           tabs={visibleTabs}
           activeTabId={activeTabId}
@@ -764,6 +762,6 @@ export function CodingWorkspacePanel({
           onConfirmDiscard={() => void handleConfirmDiscard()}
         />
       </div>
-    </motion.aside>
+    </ResizableAside>
   )
 }
