@@ -17,8 +17,8 @@ function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>>
     headerTokens: undefined,
     sessionId: 'session-1',
     todos: [],
-    showTodos: false,
-    setShowTodos: () => undefined,
+    onToggleTasks: () => undefined,
+    tasksViewActive: false,
     codingPanel: null,
     onWorkspaceFiles: () => undefined,
     agentCapabilitiesOpen: false,
@@ -118,5 +118,86 @@ describe('AgentChatHeader', () => {
 
     expect(screen.getByRole('tooltip')).toHaveTextContent('Chat')
     expect(screen.queryByText('/Users/name')).not.toBeInTheDocument()
+  })
+
+  it('opens the command palette from the desktop command center', async () => {
+    const user = userEvent.setup()
+    const onOpenPalette = mock(() => {})
+    renderHeader({ isMobile: false, onOpenPalette })
+
+    await user.click(screen.getByRole('button', { name: /Search or run a command/ }))
+
+    expect(onOpenPalette).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the command center off the mobile header', () => {
+    renderHeader({ isMobile: true, onOpenPalette: () => undefined })
+
+    expect(screen.queryByRole('button', { name: /Search or run a command/ })).not.toBeInTheDocument()
+  })
+
+  it('reflects the review dock state on its toggle', () => {
+    const { rerender } = renderHeader({ isMobile: false, codingPanel: null })
+    expect(screen.getByRole('button', { name: 'Changed files and workspace files' })).toHaveAttribute('aria-pressed', 'false')
+
+    rerender(
+      <AgentChatHeader
+        dragHandlers={{}}
+        isMacOverlay={false}
+        isMobile={false}
+        workspace="/Users/name/Workspace A"
+        sessionTitle={null}
+        onCodingSidebarToggle={() => undefined}
+        sessionId="session-1"
+        todos={[]}
+        onToggleTasks={() => undefined}
+        tasksViewActive={false}
+        codingPanel="changed"
+        onWorkspaceFiles={() => undefined}
+        agentCapabilitiesOpen={false}
+        onToggleAgentCapabilities={() => undefined}
+        showMobileActions={false}
+        setShowMobileActions={() => undefined}
+        onToggleScheduler={() => undefined}
+        onFindInTranscript={() => undefined}
+        onCloseMobileActionsMenu={() => undefined}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Changed files and workspace files' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('routes the desktop Tasks button through onToggleTasks with progress and pressed state', async () => {
+    const user = userEvent.setup()
+    const onToggleTasks = mock(() => {})
+    renderHeader({
+      isMobile: false,
+      onToggleTasks,
+      tasksViewActive: true,
+      todos: [
+        { task_id: '1', content: 'Plan', status: 'completed' },
+        { task_id: '2', content: 'Build', status: 'in_progress' },
+        { task_id: '3', content: 'Ship', status: 'pending' },
+      ],
+    })
+
+    const button = screen.getByRole('button', { name: 'Task list' })
+    expect(button).toHaveAttribute('aria-pressed', 'true')
+    expect(button).toHaveTextContent('1/3')
+    await user.click(button)
+    expect(onToggleTasks).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables the desktop Tasks button without a session', () => {
+    renderHeader({ isMobile: false, sessionId: null })
+    expect(screen.getByRole('button', { name: 'Task list' })).toBeDisabled()
+  })
+
+  it('toggles tasks from the mobile header through the same handler', async () => {
+    const user = userEvent.setup()
+    const onToggleTasks = mock(() => {})
+    renderHeader({ isMobile: true, onToggleTasks })
+
+    await user.click(screen.getByRole('button', { name: /Tasks/ }))
+    expect(onToggleTasks).toHaveBeenCalledTimes(1)
   })
 })

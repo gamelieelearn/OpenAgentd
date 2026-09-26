@@ -1,9 +1,11 @@
 import { Download } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { CodingFilePreviewContent, CopyButton } from '../CodingFileViewerPanel'
+import { CodingFilePreviewContent, CopyButton, canCopyFileContents } from '../CodingFileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
+import { formatBytes } from '@/utils/format'
 import type { WorkspaceFileInfo } from '@/api/types'
+import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 
 interface FilePreviewSubPanelProps {
   workspace: string
@@ -11,41 +13,47 @@ interface FilePreviewSubPanelProps {
   onAddComment?: (path: string, startLine: number, endLine: number) => void
 }
 
+/** A file tab: one 32px toolbar (path, size, actions) over the preview. */
 export function FilePreviewSubPanel({
   workspace,
   file,
   onAddComment,
 }: FilePreviewSubPanelProps) {
+  const deleted = file.deleted === true
+  const downloadLabel = deleted ? 'File deleted from workspace' : 'Download file'
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key)/25 px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <FileTypeIcon name={file.name || file.path} size={16} />
-          <Tooltip className="min-w-0">
-            <TooltipTrigger
-              className="min-w-0"
-              render={<p className="truncate font-mono text-xs font-medium text-(--color-text)">{file.path}</p>}
-            />
-            <TooltipContent>{file.path}</TooltipContent>
-          </Tooltip>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) bg-(--bg-page) pr-1 pl-3">
+        <FileTypeIcon name={file.name || file.path} size={13} />
+        <Tooltip className="min-w-0 flex-1">
+          <TooltipTrigger
+            className="min-w-0 flex-1"
+            render={<p className="truncate font-mono text-xs text-(--color-text)">{file.path}</p>}
+          />
+          <TooltipContent side="bottom">{file.path}</TooltipContent>
+        </Tooltip>
+        {file.size > 0 && (
+          <span className="hidden shrink-0 font-mono text-[11px] text-(--color-text-subtle) md:inline">{formatBytes(file.size)}</span>
+        )}
+        <div className="flex shrink-0 items-center gap-0.5">
           <Tooltip>
             <TooltipTrigger
               render={
                 <button
                   type="button"
                   onClick={() => void downloadCodingWorkspaceFile(workspace, file)}
-                  aria-label="Download file"
-                  className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:w-auto md:p-1"
+                  disabled={deleted}
+                  aria-label={downloadLabel}
+                  className={DOCK_ACTION_BUTTON_CLASS}
                 >
-                  <Download size={13} />
+                  <Download size={13} aria-hidden="true" />
                 </button>
               }
             />
-            <TooltipContent>Download file</TooltipContent>
+            <TooltipContent side="bottom">{downloadLabel}</TooltipContent>
           </Tooltip>
-          <CopyButton workspace={workspace} file={file} />
+          {canCopyFileContents(file) && <CopyButton workspace={workspace} file={file} />}
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">

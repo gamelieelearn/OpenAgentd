@@ -21,9 +21,12 @@ const diffResponse = { workspace: WORKSPACE, is_git_repo: false, diff: '', untra
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
+  CalendarClock: Icon, ListTodo: Icon,
   Check: Icon, ChevronDown: Icon, ChevronLeft: Icon, ChevronRight: Icon,
-  Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileText: Icon,
-  Folder: Icon, FolderOpen: Icon, GitCompare: Icon, Loader2: Icon, Plus: Icon,
+  ChevronsDownUp: Icon, ChevronsUpDown: Icon,
+  Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileText: Icon,
+  Folder: Icon, FolderOpen: Icon, GitCommitHorizontal: Icon, GitCompare: Icon, Loader2: Icon,
+  Maximize2: Icon, Minimize2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon, TerminalSquare: Icon, Undo2: Icon, X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
@@ -76,8 +79,7 @@ describe('CodingWorkspacePanel terminal tabs', () => {
     await renderPanel(1)
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
     const termBtn = screen.getByRole('button', { name: 'Terminal 1' })
-    const termTabContainer = termBtn.closest('div')
-    expect(termTabContainer?.className).toContain('border-(--color-border-strong)')
+    expect(termBtn.getAttribute('aria-current')).toBe('true')
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
   })
 

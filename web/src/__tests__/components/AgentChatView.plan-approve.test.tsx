@@ -47,7 +47,6 @@ mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHeader: () => null }))
 mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: () => null }))
-mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
 mock.module('@/components/FloatingInputComposer', () => ({
   FloatingInputComposer: forwardRef<
     Record<string, (...args: never[]) => void>,

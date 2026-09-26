@@ -11,7 +11,6 @@
 import { useCallback, useEffect } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useHotkeys } from '@tanstack/react-hotkeys'
-import type { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
   WORKSPACE_FILES_STALE_MS,
@@ -20,6 +19,7 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getPlatform } from '@/hooks/use-platform'
 import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
+import { useLayoutStore } from '@/stores/useLayoutStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 import { useAgentCommands } from './useAgentCommands'
@@ -28,13 +28,15 @@ export interface UseCommandPaletteArgs {
   workspace: string | null
   quickOpenOpen: boolean
   sessionIdState: string | null
-  navigate: ReturnType<typeof useNavigate>
+  /** True while the review dock is mounted (``codingPanel !== null``). */
+  codingPanelOpen: boolean
 
   handleNewSession: () => void
   handleWorkspaceFiles: () => void
   handleCodingSidebarToggle: () => void
   handleToggleAgentCapabilities: () => void
-  handleSetShowTodos: Dispatch<SetStateAction<boolean>>
+  /** Desktop + workspace: the dock's Tasks tab; otherwise the popover. */
+  handleToggleTasks: () => void
   handleTogglePalette: () => void
   handleToggleQuickOpen: () => void
   handleToggleScheduler: () => void
@@ -42,7 +44,6 @@ export interface UseCommandPaletteArgs {
   handleFindInTranscript: () => void
 
   setCodingFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
-  setCodingFileViewerDetached: Dispatch<SetStateAction<boolean>>
   setCodingFileOpenKey: Dispatch<SetStateAction<number>>
   setCodingPanel: Dispatch<SetStateAction<null | 'changed' | 'files'>>
 }
@@ -59,34 +60,45 @@ export function useCommandPalette({
   workspace,
   quickOpenOpen,
   sessionIdState,
-  navigate,
+  codingPanelOpen,
   handleNewSession,
   handleWorkspaceFiles,
   handleCodingSidebarToggle,
   handleToggleAgentCapabilities,
-  handleSetShowTodos,
+  handleToggleTasks,
   handleTogglePalette,
   handleToggleQuickOpen,
   handleToggleScheduler,
   handleOpenTerminal,
   handleFindInTranscript,
   setCodingFileViewer,
-  setCodingFileViewerDetached,
   setCodingFileOpenKey,
   setCodingPanel,
 }: UseCommandPaletteArgs): UseCommandPaletteResult {
   const isMobile = useIsMobile()
 
+  // ⌘⇧D — maximize the review dock over the chat (Zed's panel zoom). Opens
+  // the dock first when it is closed. Mobile docks are already full-screen.
+  const handleToggleDockMaximized = useCallback(() => {
+    if (!workspace || isMobile) return
+    const layout = useLayoutStore.getState()
+    if (!codingPanelOpen) {
+      setCodingPanel('changed')
+      layout.setDockMaximized(true)
+      return
+    }
+    layout.toggleDockMaximized()
+  }, [codingPanelOpen, isMobile, setCodingPanel, workspace])
 
   const paletteCommands = useAgentCommands({
     toggleAgentCapabilities: handleToggleAgentCapabilities,
-    setShowTodos: handleSetShowTodos,
+    toggleTasks: handleToggleTasks,
     handleWorkspaceFiles,
     handleCodingSidebarToggle,
     handleNewSession,
     handleOpenTerminal,
-    navigate,
     handleFindInTranscript,
+    handleToggleDockMaximized: workspace && !isMobile ? handleToggleDockMaximized : undefined,
   })
 
   // ── Quick Open workspace file search ───────────────────────────────────────
@@ -114,10 +126,9 @@ export function useCommandPalette({
 
   const handleQuickOpenFileOpen = useCallback((file: WorkspaceFileInfo) => {
     setCodingFileViewer(file)
-    setCodingFileViewerDetached(false)
     setCodingFileOpenKey((k) => k + 1)
     setCodingPanel((prev) => prev ?? 'files')
-  }, [setCodingFileViewer, setCodingFileViewerDetached, setCodingFileOpenKey, setCodingPanel])
+  }, [setCodingFileViewer, setCodingFileOpenKey, setCodingPanel])
 
   const { os } = getPlatform()
   useHotkeys(
@@ -126,14 +137,23 @@ export function useCommandPalette({
       { hotkey: 'Mod+Shift+A', callback: handleToggleAgentCapabilities, options: { meta: { name: 'Agent capabilities' } } },
       { hotkey: 'Mod+F', callback: handleFindInTranscript, options: { meta: { name: 'Find in transcript' } } },
       { hotkey: 'Mod+D', callback: handleWorkspaceFiles, options: { meta: { name: 'Workspace files' } } },
-      { hotkey: 'Mod+T', callback: () => handleSetShowTodos((v) => !v), options: { enabled: Boolean(sessionIdState), meta: { name: 'Todos' } } },
+      { hotkey: 'Mod+Shift+D', callback: handleToggleDockMaximized, options: { enabled: !isMobile && Boolean(workspace), meta: { name: 'Maximize review dock' } } },
+      { hotkey: 'Mod+T', callback: handleToggleTasks, options: { enabled: Boolean(sessionIdState), meta: { name: 'Todos' } } },
       { hotkey: 'Mod+P', callback: handleToggleQuickOpen, options: { enabled: !isMobile && hasQuickOpenWorkspace, meta: { name: 'Quick Open' } } },
       { hotkey: 'Mod+K', callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
       // Mod+B belongs to the general sidebar. Only the coding sidebar owns this
       // registration when coding mode is active, preventing duplicate handlers.
       { hotkey: 'Mod+B', callback: handleCodingSidebarToggle, options: { meta: { name: 'Coding sidebar' } } },
       { hotkey: 'Mod+S', callback: handleToggleScheduler, options: { meta: { name: 'Scheduler' } } },
-      { hotkey: 'Mod+I', callback: () => window.dispatchEvent(new CustomEvent('focus-chat-input')), options: { meta: { name: 'Focus chat input' } } },
+      {
+        hotkey: 'Mod+I',
+        callback: () => {
+          // The composer is inert under a maximized dock; restore it first.
+          useLayoutStore.getState().setDockMaximized(false)
+          window.dispatchEvent(new CustomEvent('focus-chat-input'))
+        },
+        options: { meta: { name: 'Focus chat input' } },
+      },
     ],
     {
       target: document,

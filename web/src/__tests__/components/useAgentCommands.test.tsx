@@ -26,6 +26,7 @@ import { describe, it, expect, afterEach, mock } from "bun:test"
 import { renderHook, cleanup } from "@testing-library/react"
 import { useAgentCommands } from "@/components/AgentChatView/useAgentCommands"
 import { useSettingsStore } from "@/stores/useSettingsStore"
+import { useUIStore } from "@/stores/useUIStore"
 import type { Command } from "@/components/CommandPalette"
 
 afterEach(cleanup)
@@ -35,17 +36,12 @@ function makeArgs(overrides: Partial<Parameters<typeof useAgentCommands>[0]> = {
   const noop = () => {}
   return {
     toggleAgentCapabilities: noop,
-    setShowTodos: noop,
+    toggleTasks: noop,
     handleWorkspaceFiles: noop,
     handleCodingSidebarToggle: noop,
     handleOpenTerminal: noop,
     handleNewSession: noop,
     handleFindInTranscript: noop,
-    // navigate is only called inside action lambdas; tests that need
-    // it pass their own spy.
-    navigate: mock(() => Promise.resolve()) as unknown as Parameters<
-      typeof useAgentCommands
-    >[0]["navigate"],
     ...overrides,
   }
 }
@@ -74,6 +70,25 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(byId(result.current, "find-transcript").shortcut).toBe("Ctrl+F")
     expect(byId(result.current, "find-transcript").label).toBe("Find in Transcript")
     expect(result.current.find((c) => c.id === "go-home")).toBeUndefined()
+  })
+
+  it("lists Maximize Review Dock only when a dock handler is provided", () => {
+    const noDock = renderHook(() => useAgentCommands(makeArgs()))
+    expect(noDock.result.current.find((c) => c.id === "maximize-dock")).toBeUndefined()
+
+    const toggle = mock(() => {})
+    const withDock = renderHook(() => useAgentCommands(makeArgs({ handleToggleDockMaximized: toggle })))
+    const cmd = byId(withDock.result.current, "maximize-dock")
+    expect(cmd.shortcut).toBe("Ctrl+Shift+D")
+    cmd.action()
+    expect(toggle).toHaveBeenCalledTimes(1)
+  })
+
+  it("Task List runs the shared tasks toggle (dock tab or popover)", () => {
+    const toggleTasks = mock(() => {})
+    const { result } = renderHook(() => useAgentCommands(makeArgs({ toggleTasks })))
+    byId(result.current, "todos").action()
+    expect(toggleTasks).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -172,14 +187,10 @@ describe("useAgentCommands — navigation", () => {
     expect(openSettings).toHaveBeenCalledWith("agents")
   })
 
-  it("go-telemetry navigates to '/telemetry'", () => {
-    const navigate = mock(() => Promise.resolve())
-    const { result } = renderHook(() =>
-      useAgentCommands(
-        makeArgs({ navigate: navigate as unknown as Parameters<typeof useAgentCommands>[0]["navigate"] }),
-      ),
-    )
+  it("go-telemetry opens the telemetry overlay", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
     byId(result.current, "go-telemetry").action()
-    expect(navigate).toHaveBeenCalledWith({ to: "/telemetry" })
+    expect(useUIStore.getState().telemetryOpen).toBe(true)
+    useUIStore.getState().closeTelemetry()
   })
 })

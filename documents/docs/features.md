@@ -633,6 +633,30 @@ agent against it.
   across dock close/reopen; clicking inline `@file` mentions opens the
   referenced file in the dock. Dock, sidebar, and viewer widths are
   independently resizable via drag handles on desktop.
+  - **Review dock tabs and maximize** `[v3.0.0]` — a changed file's diff or a
+    commit opens as a full-height tab next to file and terminal tabs, from the
+    row's hover action or its right-click / long-press menu. The Git tab has one
+    **Changes / Commits / Tree** toolbar with an expand-all toggle. On desktop,
+    `Ctrl/⌘+Shift+D`, the dock's maximize button or **Maximize Review Dock** in
+    the palette gives the dock the full width over the chat; the conversation
+    stays loaded underneath. Tabs close with ×, middle-click or `Ctrl/⌘+W`, and
+    focus moves to the neighbouring tab.
+  - **Tasks and Scheduled tasks in the dock** `[v3.0.0]` — on desktop with a
+    workspace open, the header's task-list button (`Ctrl/⌘+T`) and the status
+    bar's scheduler button (`Ctrl/⌘+S`) open the agent's task list and the
+    scheduled-task list (every workspace, with search, details, and **New
+    task**) as dock tabs. Pressing the shortcut again while that tab is focused
+    hides the dock; the header's review-dock button shows and hides it. Phones
+    keep the task popover and the scheduler overlay.
+- **Desktop workbench layout** `[v3.0.0]` — the desktop coding view is split into
+  a header with a command center (**Search or run a command**, `Ctrl/⌘+K`), the
+  sidebar, the chat, the review dock and a status bar. The status bar shows
+  backend health, the branch with commits to push/pull and uncommitted changes,
+  and the session model. The sidebar opens expanded on windows at least 1280px
+  wide and resizes between 220 and 440px. The dock takes a share of the chat
+  area and always leaves the chat at least 400px; on narrower windows it opens
+  over the chat instead. Both dividers resize by drag or keyboard (arrow keys,
+  Home/End, Enter to reset), and the layout is remembered.
   - **Git Commits & Commit Tree in workspace dock** `[v1.70.2]` — additional sub-tabs inside the "Changes" panel to see recent git commits and a visual branch graph. The commits list supports high-performance cursor-based infinite scrolling (fetching more commits on scroll using a native `IntersectionObserver`) and inline expansion to view the files modified in any commit and their interactive diff previews. The visual tree graph renders the textual `git log --graph` output with branch splits, merges, and an "All Branches" toggle. **Workspace Git UI state (including the selected sub-tab, All Branches toggle, expanded commits, and expanded file diffs) is persisted in the local browser state, maintaining your context across dock toggles and workspace switches** `[v1.73.0]`.
     - **Git Commit Actions (Undo & Revert)** `[v1.88.0]` — right-clicking a commit/file on desktop opens a native-feeling context menu at the cursor, while long-pressing on mobile opens a touch-friendly action sheet. Allows you to **Undo commit** (soft-resets the last commit, keeping all changes staged in your working copy) or **Revert commit** (creates a new commit that reverts the changes of the selected commit, with auto-abort protection if conflicts occur), and confirmation dialogs use responsive side-by-side buttons on desktop.
     - **Time shown alongside date in commit history** `[v1.92.0]` — the commits
@@ -1240,6 +1264,17 @@ Everything stays local. No third-party telemetry SaaS.
 - **Built-in telemetry dashboard** `[since v1.0]` — `/telemetry` route in the web
   UI. Focused usage/cost cards, cache hit/miss by step and provider:model,
   scroll-paginated traces, and trace waterfall details.
+- **Telemetry overlay** `[v3.0.0]` — telemetry opens over the current screen from
+  the status bar, the mobile drawer, or **Open Telemetry** in the palette; `/telemetry`
+  links (`?days=`, `?traceId=`, `?session=`) open it too. It shows spend, turns
+  (and how many failed), median turn time, tokens, and cache hit rate, per-day
+  spend or turns, and spend by workspace, session, model, and tool. Filter by
+  range (24h to 90d), workspace, model, or session; clicking a workspace,
+  session, or model row applies that filter, so a session becomes a per-session
+  view with an **Open session** action. Recent turns can be limited to failed ones,
+  and a turn opens to its facts (workspace, model, duration, tokens, cost),
+  **Copy trace ID**, **Open session**, and the span waterfall. Turns record their
+  workspace from v3.0.0; older turns show as **Not recorded**.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
 - **Estimated model-call cost telemetry** `[v1.34.0]` — chat, title-generation,

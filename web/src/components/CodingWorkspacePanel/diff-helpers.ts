@@ -28,6 +28,13 @@ export function safeDecodeURIComponent(val: string): string {
   }
 }
 
+/** ``dd/mm/yyyy HH:mm`` for a git commit's unix timestamp (seconds). */
+export function formatCommitTime(timestamp: number): string {
+  const date = new Date(timestamp * 1000)
+  const time = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
+  return `${date.toLocaleDateString('en-GB')} ${time}`
+}
+
 export function collectChangedFiles(diff?: WorkspaceGitDiffResponse): ChangedFileInfo[] {
   const files = new Map<string, ChangedFileInfo>()
   if (!diff?.is_git_repo) return []

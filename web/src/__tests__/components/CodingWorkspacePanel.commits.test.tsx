@@ -9,12 +9,14 @@ const WORKSPACE = '/repo/project'
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
+  CalendarClock: Icon, ListTodo: Icon,
   Check: Icon, ChevronDown: Icon, ChevronLeft: Icon, ChevronRight: Icon,
-  Copy: Icon, Download: Icon, ExternalLink: Icon,
+  ChevronsDownUp: Icon, ChevronsUpDown: Icon,
+  Copy: Icon, Download: Icon, ExternalLink: Icon, FileDiff: Icon,
   File: Icon, FileText: Icon, FileType: Icon,
   Folder: Icon, FolderOpen: Icon,
-  GitBranch: Icon, GitCompare: Icon,
-  Loader2: Icon, Pencil: Icon, Plus: Icon, RefreshCw: Icon, RotateCcw: Icon,
+  GitBranch: Icon, GitCommitHorizontal: Icon, GitCompare: Icon,
+  Loader2: Icon, Maximize2: Icon, Minimize2: Icon, Pencil: Icon, Plus: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon,
   TerminalSquare: Icon, Undo2: Icon, X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
@@ -483,15 +485,14 @@ describe('CodingWorkspacePanel – commits_ahead badge', () => {
     const historyCalledBefore = callsBefore.some((args) => String(args[0]).includes('/workspace/git/history'))
     expect(historyCalledBefore).toBe(false)
 
-    // Open the dropdown and switch to commits
-    await user.click(screen.getByRole('button', { name: /changes/i }))
-    await waitFor(() => expect(screen.getByText('Commits')).toBeTruthy())
-    await user.click(screen.getByText('Commits'))
+    // Switch to commits via the Git view segmented control
+    await user.click(screen.getByRole('tab', { name: /commits/i }))
 
-    // Badge should appear in the trigger immediately
+    // Badge is on the Commits segment immediately
     await waitFor(() => {
       expect(screen.getByText('2↑')).toBeTruthy()
     })
+    expect(screen.getByRole('tab', { name: /commits/i }).getAttribute('aria-selected')).toBe('true')
   })
 
   it('badge title uses singular "commit" for count of 1', async () => {

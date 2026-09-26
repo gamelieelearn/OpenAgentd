@@ -43,7 +43,6 @@ mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null }))
 mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
 mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: () => null }))
-mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AppFooter', () => ({ AppFooter: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
@@ -80,8 +79,6 @@ mock.module('@/components/AgentChatView/useOverlayState', () => ({
     setCodingPanel: () => {},
     codingFileViewer: null,
     setCodingFileViewer: () => {},
-    codingFileViewerDetached: false,
-    setCodingFileViewerDetached: () => {},
     codingFileOpenKey: 0,
     setCodingFileOpenKey: () => {},
     terminalOpenKey: 0,

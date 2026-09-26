@@ -66,7 +66,6 @@ mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: 
 mock.module('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
-mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHeader: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))

@@ -36,9 +36,12 @@ const diffResponse = { workspace: WORKSPACE, is_git_repo: true, diff: DIFF, untr
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
+  CalendarClock: Icon, ListTodo: Icon,
   Check: Icon, ChevronDown: Icon, ChevronLeft: Icon, ChevronRight: Icon,
-  Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileText: Icon,
-  Folder: Icon, FolderOpen: Icon, GitCompare: Icon, Loader2: Icon, Plus: Icon,
+  ChevronsDownUp: Icon, ChevronsUpDown: Icon,
+  Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileText: Icon,
+  Folder: Icon, FolderOpen: Icon, GitCommitHorizontal: Icon, GitCompare: Icon, Loader2: Icon,
+  Maximize2: Icon, Minimize2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon,
   TerminalSquare: Icon, Undo2: Icon, X: Icon,
 }))

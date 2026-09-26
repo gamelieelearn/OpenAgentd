@@ -12,11 +12,10 @@ interface AgentChatPanelsProps {
   sessionThinkingLevel: string | null
   onSessionModelSettingsChange: (model: string | null, thinkingLevel: string | null) => void
   onCloseAgentCapabilities: () => void
-  isMobile: boolean
+  /** Popover fallback: mobile, or desktop without a review dock. */
   showTodos: boolean
   onShowTodosChange: (open: boolean) => void
   todos: TodoItem[]
-  sessionId: string | null
   schedulerOpen: boolean
   onCloseScheduler: () => void
   showPalette: boolean
@@ -37,11 +36,9 @@ export function AgentChatPanels({
   sessionThinkingLevel,
   onSessionModelSettingsChange,
   onCloseAgentCapabilities,
-  isMobile,
   showTodos,
   onShowTodosChange,
   todos,
-  sessionId,
   schedulerOpen,
   onCloseScheduler,
   showPalette,
@@ -64,11 +61,9 @@ export function AgentChatPanels({
         onClose={onCloseAgentCapabilities}
       />
       <TodosPopover
-        open={isMobile && showTodos}
+        open={showTodos}
         onOpenChange={onShowTodosChange}
         todos={todos}
-        sessionId={sessionId}
-        trigger={false}
       />
       <SchedulerPanel
         open={schedulerOpen}

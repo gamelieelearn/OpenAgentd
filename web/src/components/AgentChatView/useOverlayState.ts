@@ -24,6 +24,15 @@
  * overlays that shouldn't stack — guarded behind ``isMobile``.
  * Todos / files / capabilities / scheduler / palette are shared surfaces
  * that must not stack on *either* platform, so those run unconditionally.
+ *
+ * ── Desktop dock views ──────────────────────────────────────────────────
+ *
+ * On desktop with a workspace, the agent task list and the scheduler open
+ * as review-dock tabs instead of the popover / overlay. The request mirrors
+ * the terminal pattern: a keyed request plus a parent-owned "handled" ref, so
+ * a dock that mounts in response still honours it, and a later ⌘D does not
+ * replay it. The dock reports its active view back so a second press of the
+ * same shortcut hides the dock (VS Code's panel toggle).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
@@ -31,9 +40,14 @@ import { useQueryClient } from '@tanstack/react-query'
 import { listCodingWorkspaceFiles } from '@/api/client'
 import { queryKeys } from '@/queries'
 import { useUIStore } from '@/stores/useUIStore'
+import { useLayoutStore } from '@/stores/useLayoutStore'
+import { resolveSidebarCollapsed } from '@/lib/workbench-layout'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import type { WorkspaceFileInfo } from '@/api/types'
+import type { DockView, DockViewRequest } from '../CodingWorkspacePanel/dock-tabs'
 import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
+
+export type { DockView, DockViewRequest }
 
 export interface UseOverlayStateArgs {
   isMobile: boolean
@@ -51,12 +65,17 @@ export interface UseOverlayStateResult {
   setCodingPanel: Dispatch<SetStateAction<null | 'changed' | 'files'>>
   codingFileViewer: WorkspaceFileInfo | null
   setCodingFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
-  codingFileViewerDetached: boolean
-  setCodingFileViewerDetached: Dispatch<SetStateAction<boolean>>
   codingFileOpenKey: number
   setCodingFileOpenKey: Dispatch<SetStateAction<number>>
   terminalOpenKey: number
   handledTerminalOpenKeyRef: React.RefObject<number>
+  dockViewRequest: DockViewRequest | null
+  handledDockViewKeyRef: React.RefObject<number>
+  /** Dock view tab currently focused in the mounted dock, else ``null``. */
+  dockActiveView: DockView | null
+  setDockActiveView: Dispatch<SetStateAction<DockView | null>>
+  /** True when tasks / scheduler open as dock tabs (desktop + workspace). */
+  dockViewsEnabled: boolean
   codingSidebarCollapsed: boolean
   setCodingSidebarCollapsed: Dispatch<SetStateAction<boolean>>
   openWorkspaceDialogKey: number
@@ -76,6 +95,8 @@ export interface UseOverlayStateResult {
   handleTogglePalette: () => void
   handleToggleQuickOpen: () => void
   handleSetShowTodos: Dispatch<SetStateAction<boolean>>
+  /** ⌘T, the header Tasks button, and the palette's Task List command. */
+  handleToggleTasks: () => void
   handleToggleFilesPanel: () => void
   handleOpenTerminal: () => void
   closeAllDrawers: () => void
@@ -100,20 +121,38 @@ export function useOverlayState({
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'changed' | 'files'>(null)
   const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
-  const [codingFileViewerDetached, setCodingFileViewerDetached] = useState(false)
   const [codingFileOpenKey, setCodingFileOpenKey] = useState(0)
   // Terminal is available in coding workspaces.
   const [terminalOpenKey, setTerminalOpenKey] = useState(0)
   const handledTerminalOpenKeyRef = useRef(0)
-  const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
+  const [dockViewRequest, setDockViewRequest] = useState<DockViewRequest | null>(null)
+  const handledDockViewKeyRef = useRef(0)
+  const [dockActiveView, setDockActiveView] = useState<DockView | null>(null)
+  const dockViewsEnabled = !isMobile && Boolean(workspace)
+  // Desktop sidebar collapse is persisted in the layout store. Until the user
+  // toggles it once, wide windows open with the sidebar expanded.
+  const storedSidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed)
+  const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth
+  const codingSidebarCollapsed = resolveSidebarCollapsed(storedSidebarCollapsed, viewportWidth)
+  const setCodingSidebarCollapsed = useCallback<Dispatch<SetStateAction<boolean>>>((value) => {
+    useLayoutStore.getState().setSidebarCollapsed(
+      value,
+      resolveSidebarCollapsed(useLayoutStore.getState().sidebarCollapsed, window.innerWidth),
+    )
+  }, [])
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
   const [showMobileActions, setShowMobileActions] = useState(false)
 
   useEffect(() => {
     setCodingFileViewer(null)
-    setCodingFileViewerDetached(false)
   }, [workspace])
+
+  // Maximize is a per-opening affordance: closing the dock always restores
+  // the chat so the next ⌘D opens side by side.
+  useEffect(() => {
+    if (codingPanel === null) useLayoutStore.getState().setDockMaximized(false)
+  }, [codingPanel])
 
   useEffect(() => {
     if (isMobile) {
@@ -128,7 +167,6 @@ export function useOverlayState({
       setShowMobileActions(false)
       setCodingPanel(null)
       setCodingFileViewer(null)
-      setCodingFileViewerDetached(false)
     }
     if (toClose.has('todos')) setShowTodos(false)
     const ui = useUIStore.getState()
@@ -143,16 +181,12 @@ export function useOverlayState({
   const handleWorkspaceFiles = useCallback(() => {
     if (workspace) {
         if (isMobile) { setMobileSidebarOpen(false); closeOtherMobileOverlays('coding-panel') }
-        setCodingPanel((value) => {
-          const next = value === null ? 'changed' : null
-          if (next === null) setCodingFileViewerDetached(false)
-          return next
-        })
+        setCodingPanel((value) => (value === null ? 'changed' : null))
       } else {
         setCodingSidebarCollapsed(false)
         setOpenWorkspaceDialogKey((value) => value + 1)
       }
-  }, [closeOtherMobileOverlays, isMobile, workspace])
+  }, [closeOtherMobileOverlays, isMobile, setCodingSidebarCollapsed, workspace])
 
   const handleCodingSidebarToggle = useCallback(() => {
     if (isMobile) {
@@ -166,16 +200,15 @@ export function useOverlayState({
       return
     }
     setCodingSidebarCollapsed((value) => !value)
-  }, [closeOtherMobileOverlays, isMobile])
+  }, [closeOtherMobileOverlays, isMobile, setCodingSidebarCollapsed])
 
   const handleOpenWorkspaceDialog = useCallback(() => {
     setCodingSidebarCollapsed(false)
     setOpenWorkspaceDialogKey((value) => value + 1)
-  }, [])
+  }, [setCodingSidebarCollapsed])
 
   const handleCodingFileSelect = useCallback((file: WorkspaceFileInfo | null) => {
     setCodingFileViewer(file)
-    setCodingFileViewerDetached(false)
   }, [])
 
   const handleMentionFileOpen = useCallback(async (path: string) => {
@@ -185,7 +218,6 @@ export function useOverlayState({
     const current = codingFileViewer?.path === cleanPath ? codingFileViewer : null
     if (current) {
       setCodingFileViewer(current)
-      setCodingFileViewerDetached(false)
       setCodingFileOpenKey((value) => value + 1)
       setCodingPanel((value) => value ?? 'files')
       return
@@ -199,7 +231,6 @@ export function useOverlayState({
       const file = result.files.find((item) => item.path === cleanPath)
       if (file) {
         setCodingFileViewer(file)
-        setCodingFileViewerDetached(false)
         setCodingFileOpenKey((value) => value + 1)
         setCodingPanel((value) => value ?? 'files')
       }
@@ -229,10 +260,26 @@ export function useOverlayState({
     toggleAgentCapabilities()
   }, [closeOtherMobileOverlays, toggleAgentCapabilities])
 
+  // Second press of the same view's shortcut hides the dock; otherwise the
+  // dock opens (if needed) and focuses that view's tab.
+  const toggleDockView = useCallback((view: DockView) => {
+    if (codingPanel !== null && dockActiveView === view) {
+      setCodingPanel(null)
+      return
+    }
+    closeOtherMobileOverlays('coding-panel')
+    setCodingPanel((value) => value ?? 'changed')
+    setDockViewRequest((prev) => ({ view, key: (prev?.key ?? 0) + 1 }))
+  }, [closeOtherMobileOverlays, codingPanel, dockActiveView])
+
   const handleToggleScheduler = useCallback(() => {
+    if (dockViewsEnabled) {
+      toggleDockView('schedule')
+      return
+    }
     if (!useUIStore.getState().schedulerOpen) closeOtherMobileOverlays('scheduler')
     toggleScheduler()
-  }, [closeOtherMobileOverlays, toggleScheduler])
+  }, [closeOtherMobileOverlays, dockViewsEnabled, toggleDockView, toggleScheduler])
 
   const handleTogglePalette = useCallback(() => {
     if (!useUIStore.getState().paletteOpen) closeOtherMobileOverlays('palette')
@@ -251,6 +298,17 @@ export function useOverlayState({
       return next
     })
   }, [closeOtherMobileOverlays])
+
+  const handleToggleTasks = useCallback(() => {
+    if (dockViewsEnabled) toggleDockView('tasks')
+    else handleSetShowTodos((value) => !value)
+  }, [dockViewsEnabled, handleSetShowTodos, toggleDockView])
+
+  // The fallback popover must not linger when the dock takes over (e.g. a
+  // workspace attaches while it is open on desktop).
+  useEffect(() => {
+    if (dockViewsEnabled) setShowTodos(false)
+  }, [dockViewsEnabled])
 
   const handleToggleFilesPanel = handleWorkspaceFiles
 
@@ -291,7 +349,6 @@ export function useOverlayState({
     setShowMobileActions(false)
     setCodingPanel(null)
     setCodingFileViewer(null)
-    setCodingFileViewerDetached(false)
   }, [])
 
   const openLeftDrawer = useCallback(() => {
@@ -336,12 +393,15 @@ export function useOverlayState({
     setCodingPanel,
     codingFileViewer,
     setCodingFileViewer,
-    codingFileViewerDetached,
-    setCodingFileViewerDetached,
     codingFileOpenKey,
     setCodingFileOpenKey,
     terminalOpenKey,
     handledTerminalOpenKeyRef,
+    dockViewRequest,
+    handledDockViewKeyRef,
+    dockActiveView,
+    setDockActiveView,
+    dockViewsEnabled,
     codingSidebarCollapsed,
     setCodingSidebarCollapsed,
     openWorkspaceDialogKey,
@@ -361,6 +421,7 @@ export function useOverlayState({
     handleTogglePalette,
     handleToggleQuickOpen,
     handleSetShowTodos,
+    handleToggleTasks,
     handleToggleFilesPanel,
     handleOpenTerminal,
     closeAllDrawers,

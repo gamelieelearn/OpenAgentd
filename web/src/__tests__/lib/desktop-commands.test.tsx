@@ -51,21 +51,36 @@ function resetUIStore(): void {
 
 afterEach(resetUIStore)
 
+/** Collect synthetic shortcut keydowns while ``run`` executes. */
+async function captureKeys(run: () => Promise<void>): Promise<KeyboardEvent[]> {
+  const events: KeyboardEvent[] = []
+  const onKeyDown = (event: KeyboardEvent) => events.push(event)
+  window.addEventListener('keydown', onKeyDown)
+  try {
+    await run()
+  } finally {
+    window.removeEventListener('keydown', onKeyDown)
+  }
+  return events
+}
+
 describe('useDesktopCommands', () => {
-  it('routes panel commands through the shared UI store and keeps panels mutually exclusive', async () => {
+  it('routes the scheduler through the in-app Ctrl+S shortcut so the shell picks dock tab or overlay', async () => {
+    const events = await captureKeys(async () => {
+      await renderBridge()
+      listener?.({ payload: 'scheduler' })
+    })
+
+    expect(events.map((e) => [e.key, e.ctrlKey, e.metaKey])).toEqual([['s', true, false]])
+    // The store flag is left to the shell's handler, not flipped directly.
+    expect(useUIStore.getState().schedulerOpen).toBe(false)
+  })
+
+  it('toggles session settings through the shared UI store', async () => {
     await renderBridge()
 
-    listener?.({ payload: 'scheduler' })
-    expect(useUIStore.getState()).toMatchObject({
-      schedulerOpen: true,
-      agentCapabilitiesOpen: false,
-    })
-
     listener?.({ payload: 'agent_capabilities' })
-    expect(useUIStore.getState()).toMatchObject({
-      schedulerOpen: false,
-      agentCapabilitiesOpen: true,
-    })
+    expect(useUIStore.getState().agentCapabilitiesOpen).toBe(true)
   })
 
   it('dispatches the same Ctrl+K keyboard event used by the in-app command palette shortcut', async () => {
@@ -93,17 +108,15 @@ describe('useDesktopCommands', () => {
     const times = [1_000, 1_100, 1_200]
     Date.now = mock(() => times.shift() ?? 1_200) as typeof Date.now
     try {
-      await renderBridge()
-
-      listener?.({ payload: 'scheduler' })
-      listener?.({ payload: 'scheduler' })
-      expect(useUIStore.getState().schedulerOpen).toBe(true)
+      const events = await captureKeys(async () => {
+        await renderBridge()
+        listener?.({ payload: 'scheduler' })
+        listener?.({ payload: 'scheduler' })
+      })
+      expect(events.map((e) => e.key)).toEqual(['s'])
 
       listener?.({ payload: 'agent_capabilities' })
-      expect(useUIStore.getState()).toMatchObject({
-        schedulerOpen: false,
-        agentCapabilitiesOpen: true,
-      })
+      expect(useUIStore.getState().agentCapabilitiesOpen).toBe(true)
     } finally {
       Date.now = originalNow
     }
@@ -114,13 +127,12 @@ describe('useDesktopCommands', () => {
     const times = [2_000, 2_500]
     Date.now = mock(() => times.shift() ?? 2_500) as typeof Date.now
     try {
-      await renderBridge()
-
-      listener?.({ payload: 'scheduler' })
-      expect(useUIStore.getState().schedulerOpen).toBe(true)
-
-      listener?.({ payload: 'scheduler' })
-      expect(useUIStore.getState().schedulerOpen).toBe(false)
+      const events = await captureKeys(async () => {
+        await renderBridge()
+        listener?.({ payload: 'scheduler' })
+        listener?.({ payload: 'scheduler' })
+      })
+      expect(events.map((e) => e.key)).toEqual(['s', 's'])
     } finally {
       Date.now = originalNow
     }

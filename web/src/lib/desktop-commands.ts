@@ -29,7 +29,9 @@ function runDesktopCommand(command: unknown, router: AnyRouter): void {
       dispatchShortcutKey('k', getPlatform().os)
       break
     case 'scheduler':
-      useUIStore.getState().toggleScheduler()
+      // Through ⌘S so the chat shell decides: dock tab on desktop with a
+      // workspace, the overlay otherwise.
+      dispatchShortcutKey('s', getPlatform().os)
       break
     case 'agent_capabilities':
       useUIStore.getState().toggleAgentCapabilities()

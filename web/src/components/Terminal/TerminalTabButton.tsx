@@ -17,6 +17,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  dockTabButtonClass,
+  dockTabClass,
+  dockTabCloseClass,
+} from '@/components/CodingWorkspacePanel/dock-tab-styles'
 import { softHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { useTerminalStore, type TerminalSessionMeta } from '@/stores/useTerminalStore'
@@ -57,27 +62,18 @@ export function TerminalTabButton({
 
   return (
     <>
-      {/* Background/border live on this wrapper (not the inner button) so
-          the inline close control sits in the same flex row as the label —
-          matching the file-tab layout — instead of floating over truncated
-          text via absolute positioning. */}
-      <div
-        className={cn(
-          'group flex h-7 max-w-40 shrink-0 items-center gap-0.5 rounded-xs pl-2 text-xs',
-          mobile && 'pr-2',
-          active
-            ? 'border border-(--color-border-strong) bg-(--bg-key)/35 text-(--color-text)'
-            : 'border border-transparent text-(--color-text-muted) hover:text-(--color-text-2)',
-          className,
-        )}
-      >
-        <Tooltip className="min-w-0 flex-1">
+      {/* Same editor-tab chrome as the dock's file/diff/commit tabs: the
+          wrapper carries the tab surface, the activate button and the close
+          button are siblings (never a control nested inside a button). */}
+      <div className={cn(dockTabClass(active), className)}>
+        <Tooltip className="h-full min-w-0 flex-1">
           <TooltipTrigger
-            className="min-w-0 flex-1"
+            className="h-full min-w-0 flex-1"
             render={
               <LongPressButton
                 ref={buttonRef}
                 type="button"
+                aria-current={active ? 'true' : undefined}
                 enabled={mobile}
                 onLongPress={() => {
                   softHapticFeedback()
@@ -89,7 +85,12 @@ export function TerminalTabButton({
                   setDesktopMenuAt({ x: e.clientX, y: e.clientY })
                 }}
                 onClick={onActivate}
-                className="flex min-w-0 flex-1 items-center gap-1.5 truncate"
+                onAuxClick={(e) => {
+                  if (mobile || e.button !== 1) return
+                  e.preventDefault()
+                  useTerminalStore.getState().close(meta.id)
+                }}
+                className={cn(dockTabButtonClass(!mobile), 'flex-1')}
               >
                 <TerminalSquare size={12} className="shrink-0" aria-hidden="true" />
                 <span className="truncate font-mono">{meta.title}</span>
@@ -99,25 +100,17 @@ export function TerminalTabButton({
           <TooltipContent>{meta.title}</TooltipContent>
         </Tooltip>
         {!mobile && (
-          <span
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation()
               useTerminalStore.getState().close(meta.id)
             }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                e.stopPropagation()
-                useTerminalStore.getState().close(meta.id)
-              }
-            }}
-            className="ml-0.5 shrink-0 rounded-xs p-0.5 text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+            className={dockTabCloseClass(active)}
             aria-label={`Close ${meta.title}`}
           >
             <X size={11} aria-hidden="true" />
-          </span>
+          </button>
         )}
       </div>
 

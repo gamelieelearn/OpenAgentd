@@ -14,21 +14,22 @@
  * (one primitive per ``useAgentStore`` call) to avoid the infinite loop
  * that returning a freshly-built object on every render would trigger.
  */
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AgentView } from '../AgentView'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { CodingSidebar } from '../CodingSidebar'
-import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
-import { CodingFileViewerPanel } from '../CodingFileViewerPanel'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery } from '@/queries'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
+import { useLayoutStore } from '@/stores/useLayoutStore'
+import { useElementWidth } from '@/hooks/use-element-width'
+import { resolveDockLayout } from '@/lib/workbench-layout'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
@@ -38,6 +39,15 @@ import type { ContentBlock, MessageAttachment } from '@/api/types'
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
 const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
+
+// The review dock (tabs, diffs, commit views, file previews) is closed until
+// asked for, so it loads as its own chunk and stays off the startup bundle.
+// ``loadCodingWorkspacePanel`` is also called ahead of time once a workspace
+// is attached, so the first open does not wait on the network.
+const loadCodingWorkspacePanel = () => import('../CodingWorkspacePanel')
+const CodingWorkspacePanel = lazy(() =>
+  loadCodingWorkspacePanel().then((module) => ({ default: module.CodingWorkspacePanel })),
+)
 
 interface ActiveAgentViewProps {
   emptyState?: React.ReactNode
@@ -248,12 +258,15 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     setCodingPanel,
     codingFileViewer,
     setCodingFileViewer,
-    codingFileViewerDetached,
-    setCodingFileViewerDetached,
     codingFileOpenKey,
     setCodingFileOpenKey,
     terminalOpenKey,
     handledTerminalOpenKeyRef,
+    dockViewRequest,
+    handledDockViewKeyRef,
+    dockActiveView,
+    setDockActiveView,
+    dockViewsEnabled,
     codingSidebarCollapsed,
     setCodingSidebarCollapsed,
     openWorkspaceDialogKey,
@@ -271,6 +284,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     handleTogglePalette,
     handleToggleQuickOpen,
     handleSetShowTodos,
+    handleToggleTasks,
     handleOpenTerminal,
     edgeSwipeHandlers,
     sidebarDragOffset,
@@ -384,6 +398,8 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   })
 
   const handleFindInTranscript = useCallback(() => {
+    // Find searches the chat, which a maximized dock covers.
+    useLayoutStore.getState().setDockMaximized(false)
     setFindOpen(true)
     setFindActiveIndex(0)
   }, [])
@@ -397,22 +413,36 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     workspace,
     quickOpenOpen,
     sessionIdState,
-    navigate,
+    codingPanelOpen: codingPanel !== null,
     handleNewSession,
     handleWorkspaceFiles,
     handleCodingSidebarToggle,
     handleToggleAgentCapabilities,
-    handleSetShowTodos,
+    handleToggleTasks,
     handleTogglePalette,
     handleToggleQuickOpen,
     handleToggleScheduler,
     handleOpenTerminal,
     handleFindInTranscript,
     setCodingFileViewer,
-    setCodingFileViewerDetached,
     setCodingFileOpenKey,
     setCodingPanel,
   })
+
+  // Review dock geometry: a ratio of the center region (chat + dock), with a
+  // maximized / narrow-window overlay that covers the chat instead of
+  // squeezing it. The chat stays mounted underneath so its scroll position
+  // and live stream survive a maximize round-trip.
+  const centerRef = useRef<HTMLDivElement>(null)
+  const centerWidth = useElementWidth(centerRef)
+  const dockRatio = useLayoutStore((s) => s.dockRatio)
+  const dockMaximized = useLayoutStore((s) => s.dockMaximized)
+  const dockLayout = resolveDockLayout({ centerWidth, ratio: dockRatio, maximized: dockMaximized })
+  const chatCoveredByDock = !isMobile && Boolean(workspace) && codingPanel !== null && dockLayout.mode === 'overlay'
+
+  useEffect(() => {
+    if (workspace) void loadCodingWorkspacePanel()
+  }, [workspace])
 
   const handleStartImplementing = useCallback(async () => {
     if (!effectiveWorkspace || isSwitchingInteractionMode || !sessionIdState) return
@@ -463,8 +493,8 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           headerTokens={headerTokens}
           sessionId={sessionIdState}
           todos={todos}
-          showTodos={showTodos}
-          setShowTodos={handleSetShowTodos}
+          onToggleTasks={handleToggleTasks}
+          tasksViewActive={dockViewsEnabled ? codingPanel !== null && dockActiveView === 'tasks' : showTodos}
           codingPanel={codingPanel}
 
         onWorkspaceFiles={handleWorkspaceFiles}
@@ -477,6 +507,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         onFindInTranscript={handleFindInTranscript}
         onOpenTerminal={workspace && !isChatWorkspace ? handleOpenTerminal : undefined}
         onCloseMobileActionsMenu={closeMobileActionsMenu}
+        onOpenPalette={handleTogglePalette}
       />
 
       {/* Body row — sidebar (or coding rail) + main content column. On
@@ -495,10 +526,13 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             onMobileClose={() => setMobileSidebarOpen(false)}
         />
 
+        <div ref={centerRef} className="relative flex min-w-0 flex-1 overflow-hidden">
         <main
           id="main"
           ref={mainColumnRef}
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
+          inert={chatCoveredByDock}
+          aria-hidden={chatCoveredByDock || undefined}
           // Opts this column out of the global stray-file-drop guard
           // (usePreventStrayFileDrop) — drops landing here are ours to handle.
           data-file-drop-zone
@@ -717,44 +751,40 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           />
         ) : null}
         </main>
-        {/* Workspace files panel — coding workspace only.
-            Desktop: in-flow flex sibling — pushes <main> left (no overlay).
-            Mobile: fixed overlay from the right. */}
-        {workspace && codingFileViewer !== null && codingFileViewerDetached && codingPanel === null && (
-          <CodingFileViewerPanel
-            workspace={workspace}
-            file={codingFileViewer}
-            mobile={isMobile}
-            onAddComment={handleAddFileComment}
-            onClose={() => {
-              setCodingFileViewer(null)
-              setCodingFileViewerDetached(false)
-            }}
-          />
-        )}
+        {/* Review dock — coding workspace only.
+            Desktop: in-flow sibling sized as a ratio of this center region,
+            or an overlay across it when maximized / the window is narrow.
+            Mobile: fixed full-screen overlay from the right. */}
         <AnimatePresence initial={false}>
           {workspace && codingPanel !== null && (
-            <CodingWorkspacePanel
-              workspace={workspace}
-              open
-              chatWorkspace={isChatWorkspace}
-              initialTab={codingPanel}
-              mobile={isMobile}
-              mobileDragOffset={codingPanelDragOffset}
-              selectedFilePath={codingFileViewer?.path ?? null}
-              selectedFileOpenKey={codingFileOpenKey}
-              terminalOpenKey={terminalOpenKey}
-              handledTerminalOpenKeyRef={handledTerminalOpenKeyRef}
-              onFileSelect={handleCodingFileSelect}
-              onAddComment={handleAddFileComment}
-              onOpenPalette={handleToggleQuickOpen}
-              onClose={() => {
-                setCodingPanel(null)
-                setCodingFileViewerDetached(false)
-              }}
-            />
+            <Suspense key="review-dock" fallback={null}>
+              <CodingWorkspacePanel
+                workspace={workspace}
+                open
+                chatWorkspace={isChatWorkspace}
+                initialTab={codingPanel}
+                mobile={isMobile}
+                mobileDragOffset={codingPanelDragOffset}
+                centerWidth={centerWidth}
+                dockLayout={dockLayout}
+                selectedFilePath={codingFileViewer?.path ?? null}
+                selectedFileOpenKey={codingFileOpenKey}
+                terminalOpenKey={terminalOpenKey}
+                handledTerminalOpenKeyRef={handledTerminalOpenKeyRef}
+                viewRequest={dockViewRequest}
+                handledViewRequestKeyRef={handledDockViewKeyRef}
+                onActiveViewChange={setDockActiveView}
+                todos={todos}
+                sessionId={sessionIdState}
+                onFileSelect={handleCodingFileSelect}
+                onAddComment={handleAddFileComment}
+                onOpenPalette={handleToggleQuickOpen}
+                onClose={() => setCodingPanel(null)}
+              />
+            </Suspense>
           )}
         </AnimatePresence>
+        </div>
       </div>
 
       <AppFooter
@@ -766,8 +796,8 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         sessionFastMode={storeState.sessionFastMode}
         onToggleScheduler={handleToggleScheduler}
         onToggleSessionSettings={handleToggleAgentCapabilities}
-        onTogglePalette={handleTogglePalette}
         onOpenGitChanges={workspace ? handleWorkspaceFiles : undefined}
+        schedulerActive={dockViewsEnabled ? codingPanel !== null && dockActiveView === 'schedule' : schedulerOpen}
       />
 
       <AgentChatPanels
@@ -777,9 +807,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         sessionThinkingLevel={sessionThinkingLevel}
         onSessionModelSettingsChange={setSessionModelSettings}
         onCloseAgentCapabilities={closeAgentCapabilities}
-        sessionId={sessionIdState}
-        isMobile={isMobile}
-        showTodos={showTodos}
+        showTodos={!dockViewsEnabled && showTodos}
         onShowTodosChange={handleSetShowTodos}
         todos={todos}
         schedulerOpen={schedulerOpen}

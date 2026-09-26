@@ -68,7 +68,6 @@ mock.module('framer-motion', () => ({
     <div data-testid="presence-boundary">{children}</div>
   ),
 }))
-mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
   AgentChatHeader: ({ onWorkspaceFiles }: { onWorkspaceFiles: () => void }) => (
@@ -136,12 +135,13 @@ beforeEach(() => {
 })
 
 describe('AgentChatView coding workspace panel', () => {
-  it('renders the panel inside an exit-animation boundary', () => {
+  it('renders the panel inside an exit-animation boundary', async () => {
     render(<AgentChatView sessionId="test-session" workspace="/repo/project" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Toggle workspace panel' }))
 
-    const panel = screen.getByTestId('coding-workspace-panel')
+    // The dock is a lazily loaded chunk, so it appears after its import settles.
+    const panel = await screen.findByTestId('coding-workspace-panel')
     expect(panel.closest('[data-testid="presence-boundary"]')).not.toBeNull()
   })
 })

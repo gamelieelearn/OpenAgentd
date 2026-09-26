@@ -21,19 +21,26 @@ let isMacOverlay = false
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
+  CalendarClock: Icon, ListTodo: Icon,
   Check: Icon,
   ChevronDown: Icon,
   ChevronLeft: Icon,
   ChevronRight: Icon,
+  ChevronsDownUp: Icon,
+  ChevronsUpDown: Icon,
   Copy: Icon,
   Download: Icon,
   ExternalLink: Icon,
   File: Icon,
+  FileDiff: Icon,
   FileText: Icon,
   Folder: Icon,
   FolderOpen: Icon,
+  GitCommitHorizontal: Icon,
   GitCompare: Icon,
   Loader2: Icon,
+  Maximize2: Icon,
+  Minimize2: Icon,
   Plus: Icon,
   RefreshCw: Icon,
   RotateCcw: Icon,
@@ -98,13 +105,14 @@ async function renderWorkspacePanel(onFileSelect = mock(() => {}), selectedFileP
   return { CodingWorkspacePanel, queryClient, renderResult: renderResult!, onOpenPalette }
 }
 
-async function renderViewer(file: WorkspaceFileInfo | null = readme, onAddComment = mock(() => {}), mobile = false) {
-  const { CodingFileViewerPanel } = await import('@/components/CodingFileViewerPanel')
+/** Render a dock file tab (toolbar + preview) on its own. */
+async function renderViewer(file: WorkspaceFileInfo = readme, onAddComment = mock(() => {})) {
+  const { FilePreviewSubPanel } = await import('@/components/CodingWorkspacePanel/FilePreviewSubPanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <CodingFileViewerPanel workspace={WORKSPACE} file={file} onClose={() => {}} onAddComment={onAddComment} mobile={mobile} />
+        <FilePreviewSubPanel workspace={WORKSPACE} file={file} onAddComment={onAddComment} />
       </QueryClientProvider>,
     )
   })
@@ -229,6 +237,9 @@ describe('Coding workspace two-layer file preview', () => {
     expect(screen.getByText('File deleted from workspace')).toBeTruthy()
     expect(screen.getByText('Open Changes to review the removed contents.')).toBeTruthy()
     expect(screen.queryByText(/Failed to load: HTTP 404/i)).toBeNull()
+    // A deleted file has nothing to download or copy.
+    expect((screen.getByRole('button', { name: 'File deleted from workspace' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: /copy file contents/i })).toBeNull()
   })
 
   it('does not render File/Diff switching in file previews', async () => {
@@ -270,14 +281,16 @@ describe('Coding workspace two-layer file preview', () => {
     expect(document.body.textContent).toContain('<img src=x onerror="window.__pwned = true">')
   })
 
-  it('renders images inline in the separate file viewer panel', async () => {
+  it('renders images inline in the file tab', async () => {
     await renderViewer(image)
     const img = screen.getByRole('img', { name: 'logo.png' }) as HTMLImageElement
     expect(img.src).toContain('workspace/files/read')
     expect(img.src).toContain('logo.png')
+    // Binary contents are never offered as clipboard text.
+    expect(screen.queryByRole('button', { name: /copy file contents/i })).toBeNull()
   })
 
-  it('opens image previews in a lightbox from the separate file viewer panel', async () => {
+  it('opens image previews in a lightbox from the file tab', async () => {
     const user = userEvent.setup()
     await renderViewer(image)
 
@@ -287,7 +300,7 @@ describe('Coding workspace two-layer file preview', () => {
     expect(screen.getByLabelText('Close lightbox')).toBeTruthy()
   })
 
-  it('renders videos inline in the separate file viewer panel', async () => {
+  it('renders videos inline in the file tab', async () => {
     const video: WorkspaceFileInfo = { path: 'assets/clip.mp4', name: 'clip.mp4', size: 1000, mtime: 1, mime: 'video/mp4' }
     await renderViewer(video)
     const videoEl = document.querySelector('video')
@@ -307,7 +320,7 @@ describe('Coding workspace two-layer file preview', () => {
     await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
   })
 
-  it('opens video previews in a lightbox from the separate file viewer panel', async () => {
+  it('opens video previews in a lightbox from the file tab', async () => {
     const user = userEvent.setup()
     const video: WorkspaceFileInfo = { path: 'assets/clip.mp4', name: 'clip.mp4', size: 1000, mtime: 1, mime: 'video/mp4' }
     await renderViewer(video)
@@ -339,7 +352,7 @@ describe('Coding workspace two-layer file preview', () => {
     expect(document.body.querySelector("[role='dialog']")).toBeTruthy()
   })
 
-  it('shows binary fallback links in the separate file viewer panel', async () => {
+  it('shows binary fallback links in the file tab', async () => {
     await renderViewer(binary)
     expect(screen.getByText('No inline preview for this file type')).toBeTruthy()
     expect(screen.getByRole('link', { name: /open in new tab/i })).toBeTruthy()

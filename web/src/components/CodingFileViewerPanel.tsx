@@ -1,19 +1,21 @@
+/**
+ * Workspace file preview renderers for the review dock: text (with line
+ * comments), image, video, PDF, binary and deleted-file previews, plus the
+ * shared ``DiffPreview``. The dock's file tab (``FilePreviewSubPanel``) owns
+ * the surrounding toolbar.
+ */
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import { FileLightbox } from './FileLightbox'
-import { motion } from 'framer-motion'
-import { Check, Copy, Download, ExternalLink, FileText, Loader2, Plus, X } from 'lucide-react'
+import { Check, Copy, Download, ExternalLink, FileText, Loader2, Plus } from 'lucide-react'
 import { codingWorkspaceFileUrl } from '@/api/client'
 import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
 import { cn } from '@/lib/utils'
 import { formatBytes } from '@/utils/format'
 import { highlightLines } from '@/utils/code-highlight'
-import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { isVideoSrc } from '@/utils/workspace'
 import { PdfThumbnail } from './PdfThumbnail'
 import type { WorkspaceFileInfo } from '@/api/types'
-import { EASINGS } from '@/lib/motion'
 
 const TEXT_EXTENSIONS = new Set([
   'txt', 'md', 'markdown', 'rst',
@@ -463,12 +465,38 @@ function DeletedFilePreview() {
   )
 }
 
-export function DiffPreview({ diff }: { diff: string }) {
+/**
+ * Vertically centre ``el`` inside its nearest scroll container only.
+ * ``scrollIntoView`` also scrolls every other ancestor, including
+ * ``overflow: hidden`` shells, which shifts the whole workbench out of view
+ * with no way to scroll it back.
+ */
+function centerInScrollContainer(el: HTMLElement) {
+  let container = el.parentElement
+  while (container) {
+    const { overflowY } = getComputedStyle(container)
+    if (overflowY === 'auto' || overflowY === 'scroll') break
+    container = container.parentElement
+  }
+  if (!container) return
+  const offset = el.getBoundingClientRect().top - container.getBoundingClientRect().top
+  container.scrollTop += offset - (container.clientHeight - el.offsetHeight) / 2
+}
+
+/**
+ * Unified diff body with a line-number gutter. ``autoScroll`` centres the
+ * first change in the nearest scroll container on mount — right for a
+ * single-file view, wrong for inline peeks in a list (each would move the
+ * list), so those pass ``autoScroll={false}``.
+ */
+export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScroll?: boolean }) {
   const firstChangeRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    firstChangeRef.current?.scrollIntoView({ block: 'center', inline: 'nearest' })
-  }, [diff])
+    if (!autoScroll) return
+    const target = firstChangeRef.current
+    if (target) centerInScrollContainer(target)
+  }, [diff, autoScroll])
 
   // Pre-parse the diff lines so each hunk header knows how many old-file lines
   // were skipped since the previous hunk ended. We do this outside the render
@@ -560,7 +588,7 @@ export function DiffPreview({ diff }: { diff: string }) {
                 <div className="sticky left-0 z-[1] shrink-0 border-r border-(--color-border)/40 bg-inherit">
                   <span className="block w-9 py-0.5" />
                 </div>
-                <span className="px-3 py-0.5 text-xs md:text-[10px] italic text-(--color-text-subtle)">
+                <span className="px-3 py-0.5 text-xs md:text-[11px] italic text-(--color-text-subtle)">
                   {p.text}
                 </span>
               </div>
@@ -581,7 +609,7 @@ export function DiffPreview({ diff }: { diff: string }) {
                 <div className="sticky left-0 z-[1] shrink-0 border-r border-(--color-border)/40 bg-inherit">
                   <span className="block w-9 py-0.5" />
                 </div>
-                <span className="px-3 py-0.5 text-xs md:text-[10px] italic text-(--color-text-subtle)">
+                <span className="px-3 py-0.5 text-xs md:text-[11px] italic text-(--color-text-subtle)">
                   {p.skipped} line{p.skipped === 1 ? '' : 's'} unchanged
                 </span>
               </div>
@@ -600,7 +628,7 @@ export function DiffPreview({ diff }: { diff: string }) {
                 isRemoved && 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)',
               )}
             >
-              <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-[10px] text-(--color-text-subtle)">
+              <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-[11px] text-(--color-text-subtle)">
                 <span className="w-9 py-0.5 pr-1.5">{p.lineNo}</span>
               </div>
               <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{p.text}</pre>
@@ -630,100 +658,7 @@ export function CodingFilePreviewContent({
       : <BinaryPreview workspace={workspace} file={file} />
 }
 
-export function CodingFileViewerPanel({
-  workspace,
-  file,
-  onClose,
-  onAddComment,
-  mobile = false,
-}: {
-  workspace: string
-  file: WorkspaceFileInfo | null
-  onClose: () => void
-  onAddComment?: (path: string, startLine: number, endLine: number) => void
-  mobile?: boolean
-}) {
-  const prefersReducedMotion = useReducedMotion()
-  const leftSidebarWidth = typeof document !== 'undefined'
-    ? (document.querySelector('aside.border-r')?.getBoundingClientRect().width ?? 0)
-    : 0
-
-  const resizable = useResizableWidth({
-    storageKey: 'oa.codingFileViewer.width',
-    defaultWidth: 560,
-    minWidth: 420,
-    maxWidth: Math.min(
-      1000,
-      Math.max(
-        420,
-        Math.floor((typeof window === 'undefined' ? 880 : window.innerWidth) - leftSidebarWidth - 380)
-      )
-    ),
-    edge: 'left',
-    disabled: mobile,
-  })
-  if (!file) return null
-
-  const kind = kindOf(file)
-  const deleted = file.deleted === true
-
-  return (
-    <motion.aside
-      initial={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
-      animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: resizable.width }}
-      exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
-      transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: EASINGS.inOut }}
-      className={cn(
-        'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none',
-        mobile ? 'mobile-safe-top max-w-none' : '',
-      )}
-      aria-label="File viewer"
-    >
-      <div className={cn('relative flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'md:w-full')}>
-        {!mobile && (
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize file viewer"
-            title="Drag to resize · double-click to reset"
-            className="absolute left-0 top-0 z-20 h-full w-1 cursor-col-resize transition-colors hover:bg-(--color-accent)/40"
-            onPointerDown={resizable.startResize}
-            onDoubleClick={resizable.resetWidth}
-          />
-        )}
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-3 py-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs md:text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">File</p>
-            <p className="mt-1 truncate font-mono text-xs text-(--color-text)">{file.path}</p>
-            <p className="mt-0.5 text-xs md:text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)} · {file.mime}</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    onClick={() => void downloadCodingWorkspaceFile(workspace, file)}
-                    disabled={deleted}
-                    aria-label={deleted ? 'File deleted from workspace' : 'Download'}
-                    className="flex h-9 w-9 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7"
-                  >
-                    <Download size={14} />
-                  </button>
-                }
-              />
-              <TooltipContent>{deleted ? 'File deleted from workspace' : 'Download'}</TooltipContent>
-            </Tooltip>
-            {kind === 'text' && !deleted && <CopyButton workspace={workspace} file={file} />}
-            <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:bg-(--bg-key)/80 md:h-7 md:w-7" aria-label="Close file viewer">
-              <X size={14} />
-            </button>
-          </div>
-        </header>
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <CodingFilePreviewContent workspace={workspace} file={file} onAddComment={onAddComment} />
-        </div>
-      </div>
-    </motion.aside>
-  )
+/** Copy-to-clipboard only makes sense for a text preview of a live file. */
+export function canCopyFileContents(file: WorkspaceFileInfo): boolean {
+  return kindOf(file) === 'text' && file.deleted !== true
 }
