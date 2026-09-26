@@ -30,7 +30,7 @@ export function dockTabButtonClass(closable: boolean): string {
 /** Inline close control; always shown on the active tab and on touch. */
 export function dockTabCloseClass(active: boolean): string {
   return [
-    'mr-1.5 flex size-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-opacity hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:opacity-100',
+    'mr-1.5 flex size-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-opacity hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:opacity-100 pointer-coarse:size-8',
     active ? 'opacity-100' : 'opacity-70 md:opacity-0 md:group-hover/tab:opacity-100 md:group-focus-within/tab:opacity-100',
   ].join(' ')
 }
@@ -39,6 +39,6 @@ export function dockTabCloseClass(active: boolean): string {
 export const DOCK_ACTION_BUTTON_CLASS =
   'flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7'
 
-/** Hover-revealed row action inside a 28px list row. */
+/** Hover-revealed row action inside a list row (28px, 44px on touch). */
 export const DOCK_ROW_ACTION_CLASS =
-  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) hover:bg-(--bg-card) hover:text-(--color-text)'
+  'flex size-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) hover:bg-(--bg-card) hover:text-(--color-text) pointer-coarse:size-9'

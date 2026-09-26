@@ -1296,6 +1296,9 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.getByLabelText('Expand worktree task-a')).toBeTruthy()
     expect(screen.getByText('task-a')).toBeTruthy()
     expect(screen.queryByLabelText('Create worktree from task-a')).toBeNull()
+    // Inline row actions grow on touch (DESIGN.md touch parity).
+    expect(screen.getByLabelText('New session in worktree task-a').className).toContain('pointer-coarse:size-9')
+    expect(screen.getByLabelText('Actions for worktree task-a').className).toContain('pointer-coarse:size-9')
 
     await user.click(screen.getByLabelText('New session in worktree task-a'))
 

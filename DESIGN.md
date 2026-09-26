@@ -631,6 +631,12 @@ buttons never shift size between states.
 
 **Mobile Touch Parity Scaling**: On touch devices (`pointer: coarse` / mobile shell), standalone icon actions scale up to a **44×44px touch target** (`h-11 w-11`), while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`).
 
+- `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 44px` on `[data-slot="button"]`. Prefer `Button` over a bare `<button>` for icon actions.
+- `--spacing-list-row` becomes 44px on coarse pointers, so sidebar and dock list rows grow with it. Inline row actions add `pointer-coarse:size-9` (36px) to fill the taller row.
+- Controls inside the 36px app header and tab bar grow only to that height (`pointer-coarse:size-9`, tab close `pointer-coarse:size-8`), because overlays are positioned from `--spacing-app-header`.
+- Grow the control itself. Do not stretch hit areas with pseudo-elements: adjacent actions would steal each other's taps.
+- Rows with a long-press action sheet set `-webkit-touch-callout: none` (`LongPressButton` does this while enabled).
+
 **Inputs** use `bg-input` (matching the page, not the card) with a 1px border.
 Focus shifts the border to `focus-ring` and adds a 30% ring. Borders never change
 width on hover — that causes a 1px layout jump.

@@ -102,4 +102,20 @@ describe('LongPressButton', () => {
     expect(button.className).toContain('data-pressing:scale-[0.97]')
     expect(button.className).toContain('custom')
   })
+
+  it('suppresses the iOS touch callout only while long-press is enabled', () => {
+    const { rerender } = render(
+      <LongPressButton enabled onLongPress={() => {}}>
+        Session
+      </LongPressButton>,
+    )
+    expect(screen.getByRole('button').className).toContain('[-webkit-touch-callout:none]')
+
+    rerender(
+      <LongPressButton enabled={false} onLongPress={() => {}}>
+        Session
+      </LongPressButton>,
+    )
+    expect(screen.getByRole('button').className).not.toContain('[-webkit-touch-callout:none]')
+  })
 })

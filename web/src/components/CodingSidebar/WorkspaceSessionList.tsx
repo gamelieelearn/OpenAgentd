@@ -13,7 +13,7 @@ function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
 
 /** Inline row action: in-flow (never overlays the title), 24px target. */
 const ROW_ACTION =
-  'flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)'
+  'flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:size-9'
 
 function WorkspaceSessionRow({
   session,
@@ -101,7 +101,7 @@ function WorkspaceSessionRow({
               e.preventDefault()
               setExpandedOverride(!isExpanded)
             }}
-            className="flex h-6 w-4 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:text-(--color-text)"
+            className="flex h-6 w-4 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:text-(--color-text) pointer-coarse:h-11 pointer-coarse:w-8"
             aria-expanded={isExpanded}
             aria-label={isExpanded ? `Collapse ${subagents.length} subagents` : `Expand ${subagents.length} subagents`}
             title={isExpanded ? `Collapse ${subagents.length} subagents` : `Expand ${subagents.length} subagents`}
@@ -113,7 +113,7 @@ function WorkspaceSessionRow({
             />
           </button>
         ) : (
-          <span className="w-4 shrink-0" aria-hidden="true" />
+          <span className="w-4 shrink-0 pointer-coarse:w-8" aria-hidden="true" />
         )}
         <div className="min-w-0 flex-1">
         <Tooltip className="w-full">
@@ -214,7 +214,8 @@ function WorkspaceSessionRow({
       </div>
 
       {hasSubagents && isExpanded && (
-        <div className="ml-[21px] space-y-px border-l border-(--color-border-subtle) py-0.5 pl-1">
+        // The guide tracks the status dot, so it moves with the wider touch chevron.
+        <div className="ml-[21px] space-y-px border-l border-(--color-border-subtle) py-0.5 pl-1 pointer-coarse:ml-[37px]">
           {subagents.map((sub) => {
             const isSubCurrent = sub.session_id === currentSessionId
             const subTitle = sub.title ? sub.title.replace(/^[^:]+:\s*/, '') : sub.member_id
@@ -233,7 +234,7 @@ function WorkspaceSessionRow({
               updated_at: null,
             }
             return (
-              <div key={sub.session_id} className={`group/sub flex h-6 items-center rounded-sm pr-1 ${isSubCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'}`}>
+              <div key={sub.session_id} className={`group/sub flex h-6 items-center rounded-sm pr-1 pointer-coarse:h-11 ${isSubCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'}`}>
                 <Tooltip className="min-w-0 flex-1">
                 <TooltipTrigger
                   className="w-full min-w-0"
@@ -243,7 +244,7 @@ function WorkspaceSessionRow({
                       onClick={(e) => {
                         onSessionSelect(subSessionPayload, path, e)
                       }}
-                      className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors ${
+                      className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors pointer-coarse:h-11 ${
                         isSubCurrent
                           ? 'text-(--color-text) font-semibold'
                           : 'text-(--color-text-2) hover:text-(--color-text)'

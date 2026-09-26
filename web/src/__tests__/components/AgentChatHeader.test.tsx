@@ -50,6 +50,14 @@ describe('AgentChatHeader', () => {
     expect(screen.getByText('Fix updater restart')).toBeInTheDocument()
   })
 
+  it('sizes every mobile header action to the full header height on touch', () => {
+    renderHeader({ isMobile: true })
+
+    for (const name of ['Tasks', 'Workspace files', 'Session settings']) {
+      expect(screen.getByRole('button', { name }).className).toContain('pointer-coarse:size-9')
+    }
+  })
+
   it('renders token meter on mobile when headerTokens has zero usage', () => {
     renderHeader({
       isMobile: true,

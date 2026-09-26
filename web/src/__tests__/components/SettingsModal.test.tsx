@@ -106,6 +106,13 @@ describe('SettingsModal — mobile edge-swipe exclusion', () => {
     expect(backdrop).toHaveAttribute('data-swipe-ignore')
   })
 
+  it('renders Close as a Button primitive so touch gets the same 44px target as Back', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    expect(screen.getByRole('button', { name: 'Close settings' })).toHaveAttribute('data-slot', 'button')
+  })
+
   it('falls back to About when an old removed section is restored from storage', () => {
     useSettingsStore.setState({
       open: true,

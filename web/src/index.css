@@ -1095,6 +1095,15 @@ html[data-app-hidden="true"] *::after {
   }
 }
 
+/* Touch parity (DESIGN.md): list rows are a 44px target on touch. Rows sized
+   from the token (sidebar sessions and workspaces, dock lists) follow; their
+   inline actions grow with ``pointer-coarse:`` sizes of their own. */
+@media (pointer: coarse) {
+  :root {
+    --spacing-list-row: 2.75rem;
+  }
+}
+
 @media (max-width: 767px), (pointer: coarse) {
   [data-slot="tooltip-content"] {
     display: none !important;

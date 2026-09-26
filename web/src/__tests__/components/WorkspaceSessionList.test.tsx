@@ -209,6 +209,10 @@ describe('WorkspaceSessionList — subagent sessions', () => {
 
     const subDeleteBtn = screen.getByLabelText('Delete subagent session explorer#1')
     expect(subDeleteBtn).toBeTruthy()
+    // Row actions and the subagent chevron grow on touch (DESIGN.md touch parity).
+    expect(subDeleteBtn.className).toContain('pointer-coarse:size-9')
+    expect(screen.getByLabelText(/^Edit session /).className).toContain('pointer-coarse:size-9')
+    expect(screen.getByLabelText(/^(Collapse|Expand) 1 subagents$/).className).toContain('pointer-coarse:h-11')
     fireEvent.click(subDeleteBtn)
     expect(handleDelete).toHaveBeenCalledTimes(1)
     const deletedArg = handleDelete.mock.calls[0][1] as SessionResponse

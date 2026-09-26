@@ -407,14 +407,18 @@ export function SettingsModal() {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <button
+                    // A Button (not a bare <button>) so touch gets the same
+                    // 44px target as Back; desktop keeps the dense 28px.
+                    <Button
                       type="button"
+                      size="icon-sm"
+                      variant="ghost"
                       onClick={closeSettings}
-                      className="flex h-9 w-9 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 md:w-7"
+                      className="md:size-7"
                       aria-label="Close settings"
                     >
                       <X size={14} aria-hidden="true" />
-                    </button>
+                    </Button>
                   }
                 />
                 <TooltipContent>Close (Esc)</TooltipContent>
