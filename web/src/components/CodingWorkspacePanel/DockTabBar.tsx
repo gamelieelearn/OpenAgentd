@@ -14,7 +14,8 @@ import { CalendarClock, FileDiff, GitCommitHorizontal, GitCompare, ListTodo, Max
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { TerminalTabButton } from '../Terminal/TerminalTabButton'
-import { formatShortcut } from '@/lib/keyboard-shortcut'
+import type { OS } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { cn } from '@/lib/utils'
 import type { TerminalSessionMeta } from '@/stores/useTerminalStore'
 import {
@@ -25,7 +26,6 @@ import {
 } from './dock-tab-styles'
 import { type DockTab, dockTabLabel, dockTabTooltip, isViewTab } from './dock-tabs'
 
-type ShortcutOs = Parameters<typeof formatShortcut>[1]
 
 export interface DockTabBarProps {
   tabs: DockTab[]
@@ -33,7 +33,7 @@ export interface DockTabBarProps {
   workspace: string
   terminalMetas: TerminalSessionMeta[]
   mobile: boolean
-  os: ShortcutOs
+  os: OS
   registerTabRef: (id: string, node: HTMLButtonElement | null) => void
   onActivate: (id: string) => void
   onClose: (id: string) => void
@@ -95,7 +95,7 @@ export function DockTabBar({
   maximized,
   onToggleMaximized,
 }: DockTabBarProps) {
-  const searchLabel = `Search files (${formatShortcut('P', os)})`
+  const searchLabel = `Search files (${shortcutLabel(APP_SHORTCUTS.quickOpen, os)})`
 
   return (
     <div className="flex h-(--spacing-tab-bar) min-w-0 shrink-0 bg-(--bg-sidebar)">
@@ -172,7 +172,7 @@ export function DockTabBar({
         </ActionButton>
         {!mobile && maximized !== null && (
           <ActionButton
-            label={`${maximized ? 'Restore' : 'Maximize'} review dock (${formatShortcut('D', os, { shift: true })})`}
+            label={`${maximized ? 'Restore' : 'Maximize'} review dock (${shortcutLabel(APP_SHORTCUTS.maximizeDock, os)})`}
             onClick={onToggleMaximized}
           >
             {maximized

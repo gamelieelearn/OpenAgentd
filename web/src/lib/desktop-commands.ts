@@ -10,7 +10,7 @@ import { useRouter, type AnyRouter } from '@tanstack/react-router'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { getPlatform } from '@/hooks/use-platform'
-import { dispatchShortcutKey } from '@/lib/keyboard-shortcut'
+import { APP_SHORTCUTS, dispatchAppShortcut } from '@/lib/app-shortcuts'
 
 interface NotificationClickPayload {
   sessionId?: unknown
@@ -23,15 +23,15 @@ function runDesktopCommand(command: unknown, router: AnyRouter): void {
       void router.navigate({ to: '/coding' })
       break
     case 'quick_open':
-      dispatchShortcutKey('p', getPlatform().os)
+      dispatchAppShortcut(APP_SHORTCUTS.quickOpen, getPlatform().os)
       break
     case 'command_palette':
-      dispatchShortcutKey('k', getPlatform().os)
+      dispatchAppShortcut(APP_SHORTCUTS.commandPalette, getPlatform().os)
       break
     case 'scheduler':
       // Through ⌘S so the chat shell decides: dock tab on desktop with a
       // workspace, the overlay otherwise.
-      dispatchShortcutKey('s', getPlatform().os)
+      dispatchAppShortcut(APP_SHORTCUTS.scheduler, getPlatform().os)
       break
     case 'agent_capabilities':
       useUIStore.getState().toggleAgentCapabilities()

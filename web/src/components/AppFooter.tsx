@@ -25,7 +25,7 @@ import { HealthDot } from './HealthDot'
 import { ThemeToggle } from './ThemeToggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
-import { formatShortcut } from '@/lib/keyboard-shortcut'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 import { useUIStore } from '@/stores/useUIStore'
@@ -172,7 +172,7 @@ export const AppFooter = memo(function AppFooter({
                 </button>
               }
             />
-            <TooltipContent>{`Active Model: ${sessionModel}${sessionThinkingLevel ? ` (thinking: ${sessionThinkingLevel})` : ''} (${formatShortcut('A', os, { shift: true })})`}</TooltipContent>
+            <TooltipContent>{`Active Model: ${sessionModel}${sessionThinkingLevel ? ` (thinking: ${sessionThinkingLevel})` : ''} (${shortcutLabel(APP_SHORTCUTS.sessionSettings, os)})`}</TooltipContent>
           </Tooltip>
         )}
 
@@ -207,7 +207,7 @@ export const AppFooter = memo(function AppFooter({
                 </button>
               }
             />
-            <TooltipContent>{`Scheduler (${formatShortcut('S', os)})`}</TooltipContent>
+            <TooltipContent>{`Scheduler (${shortcutLabel(APP_SHORTCUTS.scheduler, os)})`}</TooltipContent>
           </Tooltip>
         )}
 
@@ -246,7 +246,7 @@ export const AppFooter = memo(function AppFooter({
               </button>
             }
           />
-          <TooltipContent>{`Settings (${formatShortcut(',', os)})`}</TooltipContent>
+          <TooltipContent>{`Settings (${shortcutLabel(APP_SHORTCUTS.settings, os)})`}</TooltipContent>
         </Tooltip>
       </div>
     </footer>

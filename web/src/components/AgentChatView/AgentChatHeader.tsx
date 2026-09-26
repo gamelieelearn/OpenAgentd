@@ -4,7 +4,7 @@ import { ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
-import { formatShortcut } from '@/lib/keyboard-shortcut'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
 import { CommandCenterButton } from './CommandCenterButton'
@@ -83,8 +83,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   // but never the home path for chat, whose label is already unambiguous.
   const workspaceTooltip = isChatWorkspace ? workspaceName : workspace
   const dockOpen = codingPanel !== null
-  const sidebarShortcut = formatShortcut('B', os)
-  const dockShortcut = formatShortcut('D', os)
+  const sidebarShortcut = shortcutLabel(APP_SHORTCUTS.codingSidebar, os)
+  const dockShortcut = shortcutLabel(APP_SHORTCUTS.workspaceFiles, os)
 
   return (
     <header
@@ -206,7 +206,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               Icon: ListTodo,
               onClick: onToggleTasks,
               disabled: !sessionId,
-              title: sessionId ? `Task list (${formatShortcut('T', os)})` : 'No active session',
+              title: sessionId ? `Task list (${shortcutLabel(APP_SHORTCUTS.tasks, os)})` : 'No active session',
               ariaLabel: 'Task list',
               badge: todoSummary.progressLabel,
               indicator: todoSummary.hasInProgress,

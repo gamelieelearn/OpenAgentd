@@ -15,6 +15,7 @@ import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { closestRestorableRoute, LAST_ROUTE_KEY, lastRouteStorageKey } from '@/lib/route-restore'
 import { getPlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
 import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
 import { usePreventBackspaceNavigation } from '@/hooks/usePreventBackspaceNavigation'
 import { usePreventStrayFileDrop } from '@/hooks/usePreventStrayFileDrop'
@@ -54,7 +55,7 @@ export function Root() {
   useEffect(() => { settingsOpenRef.current = settingsOpen }, [settingsOpen])
   const { os } = getPlatform()
   useHotkey(
-    'Mod+,',
+    hotkeyOf(APP_SHORTCUTS.settings),
     () => {
       if (settingsOpenRef.current) closeSettings()
       else openSettings()

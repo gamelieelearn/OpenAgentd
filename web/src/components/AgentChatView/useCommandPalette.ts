@@ -18,6 +18,7 @@ import {
 } from '@/queries/workspace-files'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getPlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
 import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -133,20 +134,20 @@ export function useCommandPalette({
   const { os } = getPlatform()
   useHotkeys(
     [
-      { hotkey: 'Mod+N', callback: handleNewSession, options: { meta: { name: 'New session' } } },
-      { hotkey: 'Mod+Shift+A', callback: handleToggleAgentCapabilities, options: { meta: { name: 'Agent capabilities' } } },
-      { hotkey: 'Mod+F', callback: handleFindInTranscript, options: { meta: { name: 'Find in transcript' } } },
-      { hotkey: 'Mod+D', callback: handleWorkspaceFiles, options: { meta: { name: 'Workspace files' } } },
-      { hotkey: 'Mod+Shift+D', callback: handleToggleDockMaximized, options: { enabled: !isMobile && Boolean(workspace), meta: { name: 'Maximize review dock' } } },
-      { hotkey: 'Mod+T', callback: handleToggleTasks, options: { enabled: Boolean(sessionIdState), meta: { name: 'Todos' } } },
-      { hotkey: 'Mod+P', callback: handleToggleQuickOpen, options: { enabled: !isMobile && hasQuickOpenWorkspace, meta: { name: 'Quick Open' } } },
-      { hotkey: 'Mod+K', callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.newSession), callback: handleNewSession, options: { meta: { name: 'New session' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.sessionSettings), callback: handleToggleAgentCapabilities, options: { meta: { name: 'Agent capabilities' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.findInTranscript), callback: handleFindInTranscript, options: { meta: { name: 'Find in transcript' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.workspaceFiles), callback: handleWorkspaceFiles, options: { meta: { name: 'Workspace files' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.maximizeDock), callback: handleToggleDockMaximized, options: { enabled: !isMobile && Boolean(workspace), meta: { name: 'Maximize review dock' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.tasks), callback: handleToggleTasks, options: { enabled: Boolean(sessionIdState), meta: { name: 'Todos' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.quickOpen), callback: handleToggleQuickOpen, options: { enabled: !isMobile && hasQuickOpenWorkspace, meta: { name: 'Quick Open' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.commandPalette), callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
       // Mod+B belongs to the general sidebar. Only the coding sidebar owns this
       // registration when coding mode is active, preventing duplicate handlers.
-      { hotkey: 'Mod+B', callback: handleCodingSidebarToggle, options: { meta: { name: 'Coding sidebar' } } },
-      { hotkey: 'Mod+S', callback: handleToggleScheduler, options: { meta: { name: 'Scheduler' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.codingSidebar), callback: handleCodingSidebarToggle, options: { meta: { name: 'Coding sidebar' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.scheduler), callback: handleToggleScheduler, options: { meta: { name: 'Scheduler' } } },
       {
-        hotkey: 'Mod+I',
+        hotkey: hotkeyOf(APP_SHORTCUTS.focusChat),
         callback: () => {
           // The composer is inert under a maximized dock; restore it first.
           useLayoutStore.getState().setDockMaximized(false)

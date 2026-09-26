@@ -11,11 +11,11 @@ import { Search } from 'lucide-react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
-import { formatShortcut } from '@/lib/keyboard-shortcut'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 
 export function CommandCenterButton({ onClick }: { onClick: () => void }) {
   const { os } = usePlatform()
-  const shortcut = formatShortcut('K', os)
+  const shortcut = shortcutLabel(APP_SHORTCUTS.commandPalette, os)
   return (
     <Tooltip>
       <TooltipTrigger

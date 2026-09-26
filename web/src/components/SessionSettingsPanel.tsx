@@ -18,7 +18,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { AppOverlay } from '@/components/ui/app-overlay'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePlatform } from '@/hooks/use-platform'
-import { formatShortcut } from '@/lib/keyboard-shortcut'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { SessionModelSettings } from './SessionModelSettings'
 import { SessionMcpServers } from './SessionMcpServers'
 import { SessionTools } from './SessionTools'
@@ -134,7 +134,7 @@ export function SessionSettingsPanel({
 
       <div className="shrink-0 border-t border-(--color-border) bg-(--bg-card) px-3 py-2.5 sm:px-5">
         <p className="text-[11px] text-(--color-text-muted)">
-          Esc or click outside to close · {formatShortcut('A', os, { shift: true })} to toggle
+          Esc or click outside to close · {shortcutLabel(APP_SHORTCUTS.sessionSettings, os)} to toggle
         </p>
       </div>
     </AppOverlay>

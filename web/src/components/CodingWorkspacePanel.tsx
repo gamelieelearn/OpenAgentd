@@ -34,7 +34,7 @@ import { PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/
 import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { usePlatform } from '@/hooks/use-platform'
-import { formatShortcut } from '@/lib/keyboard-shortcut'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import {
   DOCK_MIN_WIDTH,
   dockMaxWidth,
@@ -562,7 +562,7 @@ export function CodingWorkspacePanel({
             <div className="flex h-full items-center justify-center px-4">
               <p className="max-w-56 text-center text-xs text-(--color-text-subtle)">
                 Open a file with{' '}
-                <span className="font-medium text-(--color-text-muted)">{formatShortcut('P', os)}</span>{' '}
+                <span className="font-medium text-(--color-text-muted)">{shortcutLabel(APP_SHORTCUTS.quickOpen, os)}</span>{' '}
                 or start a terminal.
               </p>
             </div>

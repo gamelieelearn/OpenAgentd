@@ -24,7 +24,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
-import { formatShortcut } from '@/lib/keyboard-shortcut'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
 import { useViewportWidth } from '@/hooks/use-viewport-width'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -968,7 +968,7 @@ export function CodingSidebar({
                 </button>
               }
             />
-            <TooltipContent>{`Settings (${formatShortcut(',', os)})`}</TooltipContent>
+            <TooltipContent>{`Settings (${shortcutLabel(APP_SHORTCUTS.settings, os)})`}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -1002,7 +1002,7 @@ export function CodingSidebar({
                   </button>
                 }
               />
-              <TooltipContent>{`Help and shortcuts (${formatShortcut('K', os)})`}</TooltipContent>
+              <TooltipContent>{`Help and shortcuts (${shortcutLabel(APP_SHORTCUTS.commandPalette, os)})`}</TooltipContent>
             </Tooltip>
           )}
         </div>

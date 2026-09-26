@@ -13,6 +13,7 @@ import { useHotkey } from '@tanstack/react-hotkeys'
 import { useShallow } from 'zustand/react/shallow'
 
 import type { GitCommit, WorkspaceFileInfo } from '@/api/types'
+import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 
 import type { ChangedFileInfo } from './diff-helpers'
@@ -211,7 +212,7 @@ export function useDockTabs({
     }
   }
 
-  useHotkey('Mod+W', () => closeTab(activeTabId), {
+  useHotkey(hotkeyOf(APP_SHORTCUTS.closeTab), () => closeTab(activeTabId), {
     enabled: activeTab !== undefined && activeTab.id === activeTabId && activeTab.type !== 'review',
     ignoreInputs: false,
     platform: os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux',

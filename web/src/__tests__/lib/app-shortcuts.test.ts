@@ -1,0 +1,38 @@
+import { describe, expect, it } from 'bun:test'
+import { readdirSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+import { APP_SHORTCUTS, hotkeyOf, shortcutLabel } from '@/lib/app-shortcuts'
+
+const srcDir = fileURLToPath(new URL('../../', import.meta.url))
+/** Only the table and the low-level helpers may spell out a key. */
+const ALLOWED = new Set(['lib/app-shortcuts.ts', 'lib/keyboard-shortcut.ts'])
+const LITERAL_SHORTCUT = /['"`]Mod\+|formatShortcut\(\s*['"`]|dispatchShortcutKey\(\s*['"`]/
+
+describe('APP_SHORTCUTS', () => {
+  it('assigns each key combination to exactly one command', () => {
+    const combos = Object.values(APP_SHORTCUTS).map((s) => `${'shift' in s && s.shift ? 'Shift+' : ''}${s.key.toUpperCase()}`)
+    expect(new Set(combos).size).toBe(combos.length)
+  })
+
+  it('registers every shortcut on the platform primary modifier', () => {
+    expect(hotkeyOf(APP_SHORTCUTS.maximizeDock)).toEqual({ key: 'D', mod: true, shift: true })
+    expect(hotkeyOf(APP_SHORTCUTS.newSession)).toEqual({ key: 'N', mod: true, shift: false })
+  })
+
+  it('formats labels for each platform', () => {
+    expect(shortcutLabel(APP_SHORTCUTS.maximizeDock, 'macos')).toBe('⌘⇧D')
+    expect(shortcutLabel(APP_SHORTCUTS.settings, 'windows')).toBe('Ctrl+,')
+  })
+
+  it('is the only place a shortcut key is spelled out', () => {
+    const offenders: string[] = []
+    for (const path of readdirSync(srcDir, { recursive: true, encoding: 'utf8' })) {
+      if (path.startsWith('__tests__') || !/\.tsx?$/.test(path) || ALLOWED.has(path)) continue
+      readFileSync(srcDir + path, 'utf8').split('\n').forEach((line, index) => {
+        if (LITERAL_SHORTCUT.test(line)) offenders.push(`${path}:${index + 1}`)
+      })
+    }
+    expect(offenders).toEqual([])
+  })
+})
