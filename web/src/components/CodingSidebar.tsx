@@ -26,6 +26,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { formatShortcut } from '@/lib/keyboard-shortcut'
 import { panelResizeHandleClass, usePanelResize } from '@/hooks/use-panel-resize'
+import { useViewportWidth } from '@/hooks/use-viewport-width'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import {
@@ -518,7 +519,7 @@ export function CodingSidebar({
 
   // Width is persisted in the layout store and clamped against the window so
   // the chat and a side-by-side dock always keep their minimums.
-  const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth
+  const viewportWidth = useViewportWidth()
   const storedSidebarWidth = useLayoutStore((s) => s.sidebarWidth)
   const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth)
   const commitSidebarWidth = useCallback((width: number) => setSidebarWidth(width), [setSidebarWidth])

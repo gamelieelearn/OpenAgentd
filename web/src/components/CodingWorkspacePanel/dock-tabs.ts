@@ -29,6 +29,23 @@ export type DockTabOf<T extends DockTab['type']> = Extract<DockTab, { type: T }>
 /** Singleton view tabs the shell can ask the dock to open (⌘T / ⌘S). */
 export type DockView = 'tasks' | 'schedule'
 
+/**
+ * A file tab's info at render time. Tabs keep the listing entry they opened
+ * with, which goes stale when the agent or a discard changes the file; prefer
+ * the current entry for the same path, and mark the file deleted once the
+ * working diff says so. A path merely missing from the listing is not treated
+ * as deleted: the listing skips ignored files that can still be previewed.
+ */
+export function resolveFileTabInfo(
+  snapshot: WorkspaceFileInfo,
+  listed: WorkspaceFileInfo | undefined,
+  workingStatus: ChangedFileStatus | undefined,
+): WorkspaceFileInfo {
+  if (listed) return listed
+  if (workingStatus === 'D') return { ...snapshot, size: 0, deleted: true }
+  return snapshot
+}
+
 export interface DockViewRequest {
   view: DockView
   /** Monotonic; the dock handles each key once. */

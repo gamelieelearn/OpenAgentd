@@ -40,10 +40,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-/** First-run default: expanded on wide windows, collapsed otherwise. */
-export function resolveSidebarCollapsed(stored: boolean | null | undefined, viewportWidth: number): boolean {
+/**
+ * First-run default: expanded on wide windows (at least
+ * ``SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT``), collapsed otherwise.
+ */
+export function resolveSidebarCollapsed(stored: boolean | null | undefined, wideViewport: boolean): boolean {
   if (typeof stored === 'boolean') return stored
-  return viewportWidth < SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT
+  return !wideViewport
 }
 
 /** Largest sidebar that still leaves room for the chat and a side dock. */

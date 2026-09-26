@@ -26,7 +26,9 @@ export function SessionHeader({
         `active ${timeAgo(row.last_active_ms, now)}`,
       ].filter((part): part is string => part !== null)
     : []
-  const canOpen = onOpenSession && row?.deleted !== true
+  // Only a row proves the session still exists; without one (no turns in the
+  // range, or purged) it may be gone.
+  const canOpen = onOpenSession !== undefined && row !== null && row.deleted !== true
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="min-w-0">

@@ -14,14 +14,13 @@ import {
 
 describe('resolveSidebarCollapsed', () => {
   it('keeps an explicit user choice regardless of viewport', () => {
-    expect(resolveSidebarCollapsed(true, 1920)).toBe(true)
-    expect(resolveSidebarCollapsed(false, 820)).toBe(false)
+    expect(resolveSidebarCollapsed(true, true)).toBe(true)
+    expect(resolveSidebarCollapsed(false, false)).toBe(false)
   })
 
   it('defaults to expanded on wide windows and collapsed on narrow ones', () => {
-    expect(resolveSidebarCollapsed(null, 1280)).toBe(false)
-    expect(resolveSidebarCollapsed(null, 1279)).toBe(true)
-    expect(resolveSidebarCollapsed(undefined, 820)).toBe(true)
+    expect(resolveSidebarCollapsed(null, true)).toBe(false)
+    expect(resolveSidebarCollapsed(undefined, false)).toBe(true)
   })
 })
 

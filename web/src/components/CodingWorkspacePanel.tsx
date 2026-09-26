@@ -34,6 +34,8 @@ import {
 } from '@/queries/workspace-git'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { panelResizeHandleClass, usePanelResize } from '@/hooks/use-panel-resize'
+import { useClaimStrandedFocus } from '@/hooks/use-dock-focus'
+import { useViewportWidth } from '@/hooks/use-viewport-width'
 import { usePlatform } from '@/hooks/use-platform'
 import { formatShortcut } from '@/lib/keyboard-shortcut'
 import {
@@ -84,6 +86,7 @@ import {
   commitTabId,
   diffTabId,
   fileTabId,
+  resolveFileTabInfo,
   terminalIdFromTabId,
   terminalTabId,
 } from './CodingWorkspacePanel/dock-tabs'
@@ -217,7 +220,8 @@ export function CodingWorkspacePanel({
   // ── Geometry ───────────────────────────────────────────────────────────────
   const dockRatio = useLayoutStore((s) => s.dockRatio)
   const dockMaximized = useLayoutStore((s) => s.dockMaximized)
-  const center = centerWidth ?? (typeof window === 'undefined' ? 1280 : window.innerWidth)
+  const viewportWidth = useViewportWidth()
+  const center = centerWidth ?? viewportWidth
   const layout = dockLayout ?? resolveDockLayout({ centerWidth: center, ratio: dockRatio, maximized: dockMaximized })
   const overlay = !mobile && layout.mode === 'overlay'
   const resize = usePanelResize({
@@ -233,6 +237,8 @@ export function CodingWorkspacePanel({
   const dockWidth = overlay ? layout.width : resize.width
   // The toggle is meaningless while a narrow window already forces overlay.
   const maximizeState = mobile || (overlay && !dockMaximized) ? null : dockMaximized
+  // Covering the chat makes it inert, which drops its focus onto <body>.
+  useClaimStrandedFocus(overlay, activeTabId, () => tabButtonRefs.current.get(activeTabId) ?? null)
 
   // ── Server state ──────────────────────────────────────────────────────────
   const files = useQuery({
@@ -253,7 +259,9 @@ export function CodingWorkspacePanel({
   })
   const changedFiles = useMemo(() => collectChangedFiles(diff.data), [diff.data])
   const diffSections = useMemo(() => collectDiffSections(diff.data), [diff.data])
-  const changedPaths = useMemo(() => new Set(changedFiles.map((file) => file.path)), [changedFiles])
+  // Working-tree status per changed path; ``has`` doubles as "is changed".
+  const changedPaths = useMemo(() => new Map(changedFiles.map((file) => [file.path, file.status])), [changedFiles])
+  const filesByPath = useMemo(() => new Map((files.data?.files ?? []).map((file) => [file.path, file])), [files.data?.files])
 
   const gitState = useGitPanelStore((s) => s.workspaces[workspace] || DEFAULT_WORKSPACE_STATE)
   const subTab = gitState.subTab
@@ -345,10 +353,9 @@ export function CodingWorkspacePanel({
 
   /** Open a changed path, synthesising file info when the listing lacks it. */
   const openChangedFile = useCallback((path: string) => {
-    const file = files.data?.files.find((item) => item.path === path)
-      ?? { path, name: basename(path), size: 0, mtime: 0, mime: 'text/plain' }
+    const file = filesByPath.get(path) ?? { path, name: basename(path), size: 0, mtime: 0, mime: 'text/plain' }
     openFileTab(file)
-  }, [files.data?.files, openFileTab])
+  }, [filesByPath, openFileTab])
 
   const openDiffTab = useCallback((file: ChangedFileInfo) => {
     openTab({ id: diffTabId(file.path), type: 'diff', title: basename(file.path), path: file.path, status: file.status })
@@ -676,7 +683,7 @@ export function CodingWorkspacePanel({
         mobile ? 'mobile-safe-top max-w-none' : 'h-full',
       )}
     >
-      <div className="relative flex h-full min-h-0 w-full flex-col">
+      <div data-review-dock className="relative flex h-full min-h-0 w-full flex-col">
         {!mobile && !overlay && (
           <div {...resize.handleProps} className={panelResizeHandleClass('left', resize.isResizing)} />
         )}
@@ -703,7 +710,11 @@ export function CodingWorkspacePanel({
           {!chatWorkspace && activeTab?.type === 'review' ? (
             reviewView
           ) : activeTab?.type === 'file' ? (
-            <FilePreviewSubPanel workspace={workspace} file={activeTab.file} onAddComment={onAddComment} />
+            <FilePreviewSubPanel
+              workspace={workspace}
+              file={resolveFileTabInfo(activeTab.file, filesByPath.get(activeTab.file.path), changedPaths.get(activeTab.file.path))}
+              onAddComment={onAddComment}
+            />
           ) : activeTab?.type === 'diff' ? (
             <DiffTabView key={activeTab.id} workspace={workspace} path={activeTab.path} onOpenFile={openChangedFile} />
           ) : activeTab?.type === 'commit' ? (

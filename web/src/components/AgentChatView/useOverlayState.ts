@@ -41,7 +41,8 @@ import { listCodingWorkspaceFiles } from '@/api/client'
 import { queryKeys } from '@/queries'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
-import { resolveSidebarCollapsed } from '@/lib/workbench-layout'
+import { resolveSidebarCollapsed, SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT } from '@/lib/workbench-layout'
+import { useViewportAtLeast } from '@/hooks/use-viewport-width'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { DockView, DockViewRequest } from '../CodingWorkspacePanel/dock-tabs'
@@ -132,14 +133,14 @@ export function useOverlayState({
   // Desktop sidebar collapse is persisted in the layout store. Until the user
   // toggles it once, wide windows open with the sidebar expanded.
   const storedSidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed)
-  const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth
-  const codingSidebarCollapsed = resolveSidebarCollapsed(storedSidebarCollapsed, viewportWidth)
+  const wideViewport = useViewportAtLeast(SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT)
+  const codingSidebarCollapsed = resolveSidebarCollapsed(storedSidebarCollapsed, wideViewport)
   const setCodingSidebarCollapsed = useCallback<Dispatch<SetStateAction<boolean>>>((value) => {
     useLayoutStore.getState().setSidebarCollapsed(
       value,
-      resolveSidebarCollapsed(useLayoutStore.getState().sidebarCollapsed, window.innerWidth),
+      resolveSidebarCollapsed(useLayoutStore.getState().sidebarCollapsed, wideViewport),
     )
-  }, [])
+  }, [wideViewport])
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
   const [showMobileActions, setShowMobileActions] = useState(false)

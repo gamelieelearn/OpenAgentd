@@ -101,6 +101,33 @@ describe('Review dock layout', () => {
     expect(screen.queryByRole('button', { name: /^(Maximize|Restore) review dock/ })).toBeNull()
   })
 
+  it('takes focus stranded in the covered chat so keyboard users land on the active tab', async () => {
+    const chat = document.createElement('main')
+    chat.setAttribute('inert', '')
+    const composer = document.createElement('textarea')
+    chat.appendChild(composer)
+    document.body.appendChild(chat)
+    composer.focus()
+
+    await renderPanel({ centerWidth: 600 })
+
+    const activeTab = document.querySelector('[data-review-dock] [aria-current="true"]')
+    expect(activeTab).not.toBeNull()
+    expect(document.activeElement).toBe(activeTab)
+    chat.remove()
+  })
+
+  it('does not take focus from the chat when it sits beside it', async () => {
+    const composer = document.createElement('textarea')
+    document.body.appendChild(composer)
+    composer.focus()
+
+    await renderPanel({ centerWidth: 1000 })
+
+    expect(document.activeElement).toBe(composer)
+    composer.remove()
+  })
+
   it('leaves hiding to the header toggle: the tab bar has no hide button', async () => {
     await renderPanel()
 

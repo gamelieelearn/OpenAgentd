@@ -360,6 +360,15 @@ describe('TelemetryView sessions', () => {
     expect(await screen.findByRole('heading', { name: 'Deleted session' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Open session' })).toBeNull()
   })
+
+  it('does not offer to open a session it has no row for (no turns in range, or already purged)', async () => {
+    useTelemetryStore.setState({ session: 'sess-unknown-0001' })
+    useHandlers({ summary: () => summaryFixture({ by_session: [] }) })
+    renderView({ onOpenSession: () => {} })
+
+    expect(await screen.findByRole('heading', { name: /^Session / })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Open session' })).toBeNull()
+  })
 })
 
 describe('TelemetryView trace', () => {

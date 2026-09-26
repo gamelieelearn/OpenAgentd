@@ -858,6 +858,26 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(JSON.parse(sidebar?.getAttribute('data-transition') ?? '{}')).toMatchObject({ duration: 0.22 })
   })
 
+  it('re-clamps the resize bounds when the window shrinks, not only on the next unrelated render', async () => {
+    const originalWidth = window.innerWidth
+    try {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1600 })
+      await renderCodingSidebarWithProps({ desktopCollapsed: false })
+      const separator = screen.getByRole('separator', { name: 'Resize coding sidebar' })
+      expect(separator.getAttribute('aria-valuemax')).toBe('440')
+
+      // 1000 - 400 (chat) - 340 (dock) leaves 260px for the sidebar.
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 })
+      act(() => {
+        window.dispatchEvent(new Event('resize'))
+      })
+      expect(separator.getAttribute('aria-valuemax')).toBe('260')
+      expect(separator.getAttribute('aria-valuenow')).toBe('260')
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
+    }
+  })
+
   it('keeps the mobile drawer visible after a desktop-collapsed coding sidebar crosses the breakpoint', async () => {
     isMobile = true
 

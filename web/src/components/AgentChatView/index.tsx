@@ -29,6 +29,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useElementWidth } from '@/hooks/use-element-width'
+import { useReturnFocusFromDock } from '@/hooks/use-dock-focus'
 import { resolveDockLayout } from '@/lib/workbench-layout'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -39,6 +40,8 @@ import type { ContentBlock, MessageAttachment } from '@/api/types'
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
 const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
+
+const isInReviewDock = (element: Element) => element.closest('[data-review-dock]') !== null
 
 // The review dock (tabs, diffs, commit views, file previews) is closed until
 // asked for, so it loads as its own chunk and stays off the startup bundle.
@@ -155,6 +158,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   const dragHandlers = useTauriDrag()
   const inputRef = useRef<InputComposerHandle>(null)
   const mainColumnRef = useRef<HTMLDivElement>(null)
+  const focusComposer = useCallback(() => inputRef.current?.focus(), [])
 
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
   const [isSwitchingInteractionMode, setIsSwitchingInteractionMode] = useState(false)
@@ -439,6 +443,15 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   const dockMaximized = useLayoutStore((s) => s.dockMaximized)
   const dockLayout = resolveDockLayout({ centerWidth, ratio: dockRatio, maximized: dockMaximized })
   const chatCoveredByDock = !isMobile && Boolean(workspace) && codingPanel !== null && dockLayout.mode === 'overlay'
+  // The dock claims focus while it covers the chat; give it back when it
+  // closes or uncovers the chat so it is never left on <body>.
+  useReturnFocusFromDock({
+    open: codingPanel !== null,
+    covered: chatCoveredByDock,
+    enabled: !isMobile,
+    isInDock: isInReviewDock,
+    onReturn: focusComposer,
+  })
 
   useEffect(() => {
     if (workspace) void loadCodingWorkspacePanel()

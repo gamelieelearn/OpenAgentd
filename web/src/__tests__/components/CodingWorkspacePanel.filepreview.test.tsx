@@ -170,6 +170,41 @@ describe('Coding workspace two-layer file preview', () => {
     expect(screen.queryByRole('button', { name: `Close ${readmePath}` })).toBeNull()
   })
 
+  it('keeps an open file tab in sync with the listing and the working diff', async () => {
+    let listing: WorkspaceFileInfo[] = [readme, image]
+    let diff = { workspace: WORKSPACE, is_git_repo: true, diff: '', untracked: [] as string[] }
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/workspace/files/list')) return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: listing }))
+      if (url.includes('/workspace/files/read')) return new Response('const value = 1')
+      if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(diff))
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+    const { queryClient } = await renderWorkspacePanel(mock(() => {}), readmePath)
+    await waitFor(() => expect(screen.getByText('24 B')).toBeTruthy())
+
+    // The agent rewrites the file: the tab shows the new size, not the one it opened with.
+    listing = [{ ...readme, size: 2048 }, image]
+    await act(async () => {
+      await queryClient.invalidateQueries()
+    })
+    await waitFor(() => expect(screen.getByText('2 KB')).toBeTruthy())
+
+    // Then deletes it: nothing left to download.
+    listing = [image]
+    diff = {
+      ...diff,
+      diff: 'diff --git a/main.ts b/main.ts\ndeleted file mode 100644\nindex 1111111..0000000\n--- a/main.ts\n+++ /dev/null\n@@ -1 +0,0 @@\n-const value = 1\n',
+    }
+    await act(async () => {
+      await queryClient.invalidateQueries()
+    })
+    await waitFor(() => {
+      const download = screen.getByRole('button', { name: 'File deleted from workspace' }) as HTMLButtonElement
+      expect(download.disabled).toBe(true)
+    })
+  })
+
   it('opens file tabs from the plus file search', async () => {
     // The + button delegates to the parent-owned Command Palette via onOpenPalette.
     // File search, filtering, and tab-opening all happen at the AgentChatView level;
