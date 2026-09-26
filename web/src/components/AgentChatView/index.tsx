@@ -35,7 +35,30 @@ import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
-import type { ContentBlock, MessageAttachment } from '@/api/types'
+import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
+import { AlertCircle, FolderCode, X, FileUp } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { usePlatform } from '@/hooks/use-platform'
+import { useTauriDrag } from '@/hooks/use-tauri-drag'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { type InputComposerHandle } from '../InputComposer'
+import { FloatingInputComposer } from '../FloatingInputComposer'
+import { AppFooter } from '../AppFooter'
+import { workspaceLabel } from '@/utils/workspace'
+import type {
+  AgentCapabilities as AgentCapabilitiesType,
+  ContentBlock,
+  MessageAttachment,
+} from '@/api/types'
+import { AgentChatHeader } from './AgentChatHeader'
+import { AgentChatPanels } from './AgentChatPanels'
+import { useDragDrop } from './useDragDrop'
+import { useOverlayState } from './useOverlayState'
+import { useSessionBootstrap } from './useSessionBootstrap'
+import { useSlashCommands } from './useSlashCommands'
+import { useCommandPalette } from './useCommandPalette'
+import { parseBuiltInSlashCommand } from './helpers'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
@@ -110,26 +133,6 @@ const ActiveAgentView = memo(function ActiveAgentView({
     />
   )
 })
-import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { AlertCircle, FolderCode, X, FileUp } from 'lucide-react'
-import { useIsMobile } from '@/hooks/use-mobile'
-import { usePlatform } from '@/hooks/use-platform'
-import { useTauriDrag } from '@/hooks/use-tauri-drag'
-import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/ui/empty-state'
-import { type InputComposerHandle } from '../InputComposer'
-import { FloatingInputComposer } from '../FloatingInputComposer'
-import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
-import { AgentChatHeader } from './AgentChatHeader'
-import { AgentChatPanels } from './AgentChatPanels'
-import { AppFooter } from '../AppFooter'
-import { workspaceLabel } from '@/utils/workspace'
-import { useDragDrop } from './useDragDrop'
-import { useOverlayState } from './useOverlayState'
-import { useSessionBootstrap } from './useSessionBootstrap'
-import { useSlashCommands } from './useSlashCommands'
-import { useCommandPalette } from './useCommandPalette'
-import { parseBuiltInSlashCommand } from './helpers'
 
 interface AgentChatViewProps {
   sessionId?: string
