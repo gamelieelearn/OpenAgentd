@@ -5,6 +5,9 @@
 //! Results are memoised per 5 s bucket + file signatures `(path, size,
 //! mtime_ns, inode)` exactly like v2's `lru_cache` wrappers, so repeated
 //! calls inside one bucket return the same window.
+//! v3 also keeps the latest window's parsed spans and turn index (see
+//! `SpanWindowCache`), so filter changes and the page's other requests
+//! reuse one parse until a span file changes.
 //!
 //! v3 additions (not in v2): workspace / model filters, `by_workspace`,
 //! filter `facets`, per-day cost, and `workspace` on trace rows. Filters
@@ -22,7 +25,7 @@ use serde_json::{json, Map, Value};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 const CACHE_BUCKET_SECONDS: i64 = 5;
 const CACHE_MAXSIZE: usize = 64;
@@ -266,10 +269,39 @@ fn inode(_m: &std::fs::Metadata) -> u64 {
     }
 }
 
-fn load_spans_in_window(files: &[PathBuf], window_start: DateTime<Utc>, window_end: DateTime<Utc>) -> Vec<Map<String, Value>> {
-    let ts_ns = |d: DateTime<Utc>| (d.timestamp() as f64 + d.timestamp_subsec_micros() as f64 / 1e6) * 1e9;
-    let (start_ns, end_ns) = (ts_ns(window_start).trunc(), ts_ns(window_end).trunc());
+/// A window bound in span `end_time` units (ns).
+fn window_ns(d: DateTime<Utc>) -> f64 {
+    ((d.timestamp() as f64 + d.timestamp_subsec_micros() as f64 / 1e6) * 1e9).trunc()
+}
+
+/// Where a loaded window's spans sit, by `end_time`: the latest span before
+/// the window, the first and last span kept, and the earliest span after
+/// it. Another window selects exactly the same spans while its start and
+/// end stay between those.
+#[derive(Debug, Clone, Copy)]
+struct WindowBounds {
+    before: f64,
+    first: f64,
+    last: f64,
+    after: f64,
+}
+
+impl Default for WindowBounds {
+    fn default() -> Self {
+        Self { before: f64::NEG_INFINITY, first: f64::INFINITY, last: f64::NEG_INFINITY, after: f64::INFINITY }
+    }
+}
+
+impl WindowBounds {
+    fn selects_same(&self, start_ns: f64, end_ns: f64) -> bool {
+        self.before < start_ns && start_ns <= self.first && self.last <= end_ns && end_ns < self.after
+    }
+}
+
+fn load_spans_in_window(files: &[PathBuf], window_start: DateTime<Utc>, window_end: DateTime<Utc>) -> (Vec<Map<String, Value>>, WindowBounds) {
+    let (start_ns, end_ns) = (window_ns(window_start), window_ns(window_end));
     let mut spans = vec![];
+    let mut bounds = WindowBounds::default();
     for path in files {
         let Ok(bytes) = std::fs::read(path) else { continue };
         for line in bytes.split(|b| *b == b'\n') {
@@ -278,13 +310,19 @@ fn load_spans_in_window(files: &[PathBuf], window_start: DateTime<Utc>, window_e
             }
             let Ok(Value::Object(s)) = serde_json::from_slice::<Value>(line) else { continue };
             if let Some(et) = num(s.get("end_time")) {
-                if start_ns <= et && et <= end_ns {
+                if et < start_ns {
+                    bounds.before = bounds.before.max(et);
+                } else if et > end_ns {
+                    bounds.after = bounds.after.min(et);
+                } else {
+                    bounds.first = bounds.first.min(et);
+                    bounds.last = bounds.last.max(et);
                     spans.push(s);
                 }
             }
         }
     }
-    spans
+    (spans, bounds)
 }
 
 fn attrs_of(s: &Map<String, Value>) -> Map<String, Value> {
@@ -470,6 +508,45 @@ fn sig_key(kind: &str, parts: &[String], bucket: i64, dir: &str, sigs: &Signatur
 
 fn sig_paths(sigs: &Signatures) -> Vec<PathBuf> {
     sigs.iter().map(|(p, ..)| PathBuf::from(p)).collect()
+}
+
+// ── parsed span windows ─────────────────────────────────────────────────────
+
+/// One window's parsed spans and their turn index. A page's summary, trace
+/// list and trace detail, and every filter change, read the same window, so
+/// the span files are parsed once per change instead of once per request
+/// (`cached` above only short-cuts identical requests).
+struct SpanWindow {
+    key: String,
+    bounds: WindowBounds,
+    spans: Vec<Map<String, Value>>,
+    index: TurnIndex,
+}
+
+/// Keeps only the latest window, so the parsed spans held between requests
+/// stay bounded to one window.
+#[derive(Default)]
+struct SpanWindowCache(Mutex<Option<Arc<SpanWindow>>>);
+
+impl SpanWindowCache {
+    fn get(&self, dir: &str, sigs: &Signatures, start: DateTime<Utc>, end: DateTime<Utc>) -> Arc<SpanWindow> {
+        let key = sig_key("spans", &[], 0, dir, sigs);
+        // Held while loading, so requests sent together wait for one parse
+        // instead of each starting their own.
+        let mut slot = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(w) = slot.as_ref().filter(|w| w.key == key && w.bounds.selects_same(window_ns(start), window_ns(end))) {
+            return w.clone();
+        }
+        let (spans, bounds) = load_spans_in_window(&sig_paths(sigs), start, end);
+        let window = Arc::new(SpanWindow { key, bounds, index: TurnIndex::build(&spans), spans });
+        *slot = Some(window.clone());
+        window
+    }
+}
+
+fn span_windows() -> &'static SpanWindowCache {
+    static C: OnceLock<SpanWindowCache> = OnceLock::new();
+    C.get_or_init(SpanWindowCache::default)
 }
 
 // ── summary ─────────────────────────────────────────────────────────────────
@@ -796,14 +873,12 @@ pub fn summarize(days: i64, filters: &Filters) -> Value {
     let key = sig_key("summary", &[days.to_string(), appv3_core::pyjson::float_repr(ratio), ws_key, model_key, session_key], bucket, &dir, &sigs);
     cached(key, || {
         let start = now - Duration::days(days);
-        let files = sig_paths(&sigs);
-        if files.is_empty() {
+        if sigs.is_empty() {
             return Some(empty_summary(start, now));
         }
-        let spans = load_spans_in_window(&files, start, now);
-        let index = TurnIndex::build(&spans);
-        let mut v = run_queries(&apply_filters(&spans, &index, filters), &index, start, now);
-        v["facets"] = facets(&spans);
+        let w = span_windows().get(&dir, &sigs, start, now);
+        let mut v = run_queries(&apply_filters(&w.spans, &w.index, filters), &w.index, start, now);
+        v["facets"] = facets(&w.spans);
         Some(v)
     })
     .unwrap_or(Value::Null)
@@ -821,13 +896,11 @@ pub fn list_traces_with_count(days: i64, limit: i64, offset: i64, filters: &Filt
     let key = sig_key("traces", &[days.to_string(), limit.to_string(), offset.to_string(), ws_key, model_key, session_key, errors_only.to_string()], bucket, &dir, &sigs);
     let v = cached(key, || {
         let start = now - Duration::days(days);
-        let files = sig_paths(&sigs);
-        if files.is_empty() {
+        if sigs.is_empty() {
             return Some(json!([[], 0]));
         }
-        let spans = load_spans_in_window(&files, start, now);
-        let index = TurnIndex::build(&spans);
-        let (items, total) = list_traces(&apply_filters(&spans, &index, filters), &index, limit, offset, errors_only);
+        let w = span_windows().get(&dir, &sigs, start, now);
+        let (items, total) = list_traces(&apply_filters(&w.spans, &w.index, filters), &w.index, limit, offset, errors_only);
         Some(json!([items, total]))
     })
     .unwrap_or(json!([[], 0]));
@@ -930,12 +1003,11 @@ pub fn get_trace(trace_id: &str, days: i64) -> Option<Value> {
     let key = sig_key("trace", &[tid.clone(), days.to_string()], bucket, &dir, &sigs);
     cached(key, || {
         let start = now - Duration::days(days);
-        let files = sig_paths(&sigs);
-        if files.is_empty() {
+        if sigs.is_empty() {
             return None;
         }
-        let spans = load_spans_in_window(&files, start, now);
-        let mut matching: Vec<&Map<String, Value>> = spans.iter().filter(|s| py_str(s.get("trace_id").unwrap_or(&Value::Null)).to_lowercase() == tid).collect();
+        let w = span_windows().get(&dir, &sigs, start, now);
+        let mut matching: Vec<&Map<String, Value>> = w.spans.iter().filter(|s| py_str(s.get("trace_id").unwrap_or(&Value::Null)).to_lowercase() == tid).collect();
         if matching.is_empty() {
             return None;
         }
@@ -1153,5 +1225,54 @@ mod tests {
         assert_eq!(top["last_active_ms"], ns_to_ms(&json!(base + DAY_NS)));
         // The title span counts toward its session.
         assert!((sessions[2]["estimated_cost_usd"].as_f64().unwrap() - 0.26).abs() < 1e-9);
+    }
+
+    fn write_spans(path: &std::path::Path, spans: &[Map<String, Value>]) -> Signatures {
+        let body: String = spans.iter().map(|s| format!("{}\n", Value::Object(s.clone()))).collect();
+        std::fs::write(path, body).unwrap();
+        let m = std::fs::metadata(path).unwrap();
+        vec![(path.to_string_lossy().into_owned(), m.len(), mtime_ns(&m), inode(&m))]
+    }
+
+    fn at(ns: f64) -> DateTime<Utc> {
+        Utc.timestamp_nanos(ns as i64)
+    }
+
+    #[test]
+    fn span_window_is_reused_until_the_selection_or_a_file_changes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_string_lossy().into_owned();
+        let path = tmp.path().join("2023-11-14-22.jsonl");
+        let base = 1_700_000_000e9;
+        let mut spans = turn("0xa", Some("/w/app"), "openai:gpt", "OK", base, 0.5);
+        spans.extend(turn("0xb", Some("/w/app"), "openai:gpt", "OK", base + 60e9, 0.25));
+        let sigs = write_spans(&path, &spans);
+        let cache = SpanWindowCache::default();
+
+        let first = cache.get(&dir, &sigs, at(base - 3600e9), at(base + 120e9));
+        assert_eq!(first.spans.len(), 4);
+        assert!(first.index.by_trace.contains_key("0xb"));
+
+        // A later window that selects the same spans (a filter change, the
+        // trace list, the next poll) reuses the parse.
+        let same = cache.get(&dir, &sigs, at(base - 60e9), at(base + 300e9));
+        assert!(Arc::ptr_eq(&first, &same));
+
+        // Once the start passes a span, the window drops it.
+        let aged = cache.get(&dir, &sigs, at(base + 30e9), at(base + 300e9));
+        assert!(!Arc::ptr_eq(&first, &aged));
+        assert_eq!(aged.spans.len(), 2);
+        assert!(!aged.index.by_trace.contains_key("0xa"));
+
+        // An earlier start would bring the aged-out span back, so no reuse.
+        let wider = cache.get(&dir, &sigs, at(base - 60e9), at(base + 300e9));
+        assert_eq!(wider.spans.len(), 4);
+
+        // A written span changes the file signature.
+        spans.extend(turn("0xc", Some("/w/app"), "openai:gpt", "OK", base + 90e9, 0.125));
+        let grown = write_spans(&path, &spans);
+        let fresh = cache.get(&dir, &grown, at(base - 60e9), at(base + 300e9));
+        assert_eq!(fresh.spans.len(), 6);
+        assert!(fresh.index.by_trace.contains_key("0xc"));
     }
 }
