@@ -16,7 +16,8 @@ import type { WorkspaceFileInfo } from '@/api/types'
 
 const WORKSPACE = '/repo/project'
 const readme: WorkspaceFileInfo = { path: 'main.ts', name: 'main.ts', size: 24, mtime: 1, mime: 'text/plain' }
-const filesResponse = { workspace: WORKSPACE, truncated: false, files: [readme] }
+const other: WorkspaceFileInfo = { path: 'other.ts', name: 'other.ts', size: 12, mtime: 1, mime: 'text/plain' }
+const filesResponse = { workspace: WORKSPACE, truncated: false, files: [readme, other] }
 const diffResponse = { workspace: WORKSPACE, is_git_repo: false, diff: '', untracked: [] as string[] }
 
 const Icon = () => null
@@ -133,6 +134,39 @@ describe('CodingWorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () =>
     // Must notify parent with null so it can clear codingFileViewer
     expect(onFileSelect).toHaveBeenCalledTimes(1)
     expect(onFileSelect).toHaveBeenCalledWith(null)
+  })
+
+  it('reports the neighbour file to the parent when closing lands on another file tab', async () => {
+    // Closing one of two file tabs leaves the other file on screen, so the
+    // parent must keep a file selected (Git list highlight, mention reuse).
+    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const onFileSelect = mock(() => {})
+    const renderPanel = (path: string, openKey: number) => (
+      <QueryClientProvider client={queryClient}>
+        <CodingWorkspacePanel
+          workspace={WORKSPACE}
+          open
+          selectedFilePath={path}
+          selectedFileOpenKey={openKey}
+          onFileSelect={onFileSelect}
+        />
+      </QueryClientProvider>
+    )
+    let rerender: (ui: React.ReactElement) => void = () => {}
+    await act(async () => {
+      rerender = render(renderPanel(readme.path, 1)).rerender
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: `Close ${readme.name}` })).toBeTruthy())
+    await act(async () => { rerender(renderPanel(other.path, 2)) })
+    await waitFor(() => expect(screen.getByRole('button', { name: `Close ${other.name}` })).toBeTruthy())
+    onFileSelect.mockClear()
+
+    await act(async () => { document.dispatchEvent(buildKeyEvent('w', { ctrlKey: true })) })
+
+    expect(screen.queryByRole('button', { name: `Close ${other.name}` })).toBeNull()
+    expect(onFileSelect).toHaveBeenCalledTimes(1)
+    expect(onFileSelect).toHaveBeenCalledWith(readme)
   })
 
   it('closes the active file tab on Ctrl+W (non-macOS primary shortcut)', async () => {

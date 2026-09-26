@@ -466,7 +466,7 @@ export function CodingWorkspacePanel({
       const index = visibleTabs.findIndex((item) => item.id === id)
       const neighbour = visibleTabs.filter((item) => item.id !== id)[Math.max(0, index - 1)]
       setActiveTabId(neighbour?.id ?? defaultTabId)
-      onFileSelect?.(null)
+      onFileSelect?.(neighbour?.type === 'file' ? neighbour.file : null)
     }
   }
 
