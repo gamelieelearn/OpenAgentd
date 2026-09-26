@@ -1,9 +1,10 @@
 /**
- * useOverlayState — desktop dock views (Tasks / Schedule).
+ * useOverlayState — dock views (Tasks / Schedule).
  *
  * On desktop with a workspace, ⌘T / ⌘S open review-dock tabs; a second press
- * while that tab is focused hides the dock. Mobile and workspace-less
- * desktops keep the popover / overlay.
+ * while that tab is focused hides the dock. Phones with a workspace open the
+ * scheduler in the dock sheet too but keep the Tasks popover; without a
+ * workspace both fall back to the popover / overlay.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
@@ -67,19 +68,35 @@ describe('useOverlayState dock views', () => {
     expect(useUIStore.getState().schedulerOpen).toBe(false)
   })
 
-  it('keeps the popover and overlay on mobile', () => {
+  it('keeps the tasks popover on mobile but opens the scheduler in the dock sheet', () => {
     const { result, args } = renderOverlay({ isMobile: true })
     expect(result.current.dockViewsEnabled).toBe(false)
+    expect(result.current.schedulerInDock).toBe(true)
 
     act(() => result.current.handleToggleTasks())
     expect(result.current.showTodos).toBe(true)
     expect(result.current.dockViewRequest).toBeNull()
 
     act(() => result.current.handleToggleScheduler())
+    expect(args.toggleScheduler).not.toHaveBeenCalled()
+    expect(useUIStore.getState().schedulerOpen).toBe(false)
+    expect(result.current.codingPanel).toBe('changed')
+    expect(result.current.dockViewRequest).toEqual({ view: 'schedule', key: 1 })
+    // Opening the sheet closes the tasks popover (single-overlay rule).
+    expect(result.current.showTodos).toBe(false)
+
+    act(() => result.current.setDockActiveView('schedule'))
+    act(() => result.current.handleToggleScheduler())
+    expect(result.current.codingPanel).toBeNull()
+  })
+
+  it('keeps the scheduler overlay on mobile without a workspace', () => {
+    const { result, args } = renderOverlay({ isMobile: true, workspace: null })
+    expect(result.current.schedulerInDock).toBe(false)
+
+    act(() => result.current.handleToggleScheduler())
     expect(args.toggleScheduler).toHaveBeenCalledTimes(1)
     expect(useUIStore.getState().schedulerOpen).toBe(true)
-    // Opening the scheduler closes the tasks popover (single-overlay rule).
-    expect(result.current.showTodos).toBe(false)
   })
 
   it('falls back to the popover and overlay on desktop without a workspace', () => {

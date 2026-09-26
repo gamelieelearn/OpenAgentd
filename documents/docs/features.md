@@ -646,8 +646,9 @@ agent against it.
     bar's scheduler button (`Ctrl/⌘+S`) open the agent's task list and the
     scheduled-task list (every workspace, with search, details, and **New
     task**) as dock tabs. Pressing the shortcut again while that tab is focused
-    hides the dock; the header's review-dock button shows and hides it. Phones
-    keep the task popover and the scheduler overlay.
+    hides the dock; the header's review-dock button shows and hides it. On
+    phones with a workspace, scheduled tasks open as a tab in the review sheet
+    too, while the task list stays a popover so the chat remains visible.
 - **Desktop workbench layout** `[v3.0.0]` — the desktop coding view is split into
   a header with a command center (**Search or run a command**, `Ctrl/⌘+K`), the
   sidebar, the chat, the review dock and a status bar. The status bar shows

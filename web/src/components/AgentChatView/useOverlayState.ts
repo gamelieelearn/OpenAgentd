@@ -33,6 +33,11 @@
  * a dock that mounts in response still honours it, and a later ⌘D does not
  * replay it. The dock reports its active view back so a second press of the
  * same shortcut hides the dock (VS Code's panel toggle).
+ *
+ * Phones with a workspace open the scheduler in the dock sheet as well: it
+ * is full-screen either way, and the sheet adds swipe-to-close and the
+ * Changes / Files / Terminal tabs. Tasks stay in the popover there, the one
+ * surface that leaves the chat visible while the agent works.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
@@ -77,6 +82,8 @@ export interface UseOverlayStateResult {
   setDockActiveView: Dispatch<SetStateAction<DockView | null>>
   /** True when tasks / scheduler open as dock tabs (desktop + workspace). */
   dockViewsEnabled: boolean
+  /** True when the scheduler opens as a dock tab (any platform + workspace). */
+  schedulerInDock: boolean
   codingSidebarCollapsed: boolean
   setCodingSidebarCollapsed: Dispatch<SetStateAction<boolean>>
   openWorkspaceDialogKey: number
@@ -130,6 +137,7 @@ export function useOverlayState({
   const handledDockViewKeyRef = useRef(0)
   const [dockActiveView, setDockActiveView] = useState<DockView | null>(null)
   const dockViewsEnabled = !isMobile && Boolean(workspace)
+  const schedulerInDock = Boolean(workspace)
   // Desktop sidebar collapse is persisted in the layout store. Until the user
   // toggles it once, wide windows open with the sidebar expanded.
   const storedSidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed)
@@ -274,13 +282,13 @@ export function useOverlayState({
   }, [closeOtherMobileOverlays, codingPanel, dockActiveView])
 
   const handleToggleScheduler = useCallback(() => {
-    if (dockViewsEnabled) {
+    if (schedulerInDock) {
       toggleDockView('schedule')
       return
     }
     if (!useUIStore.getState().schedulerOpen) closeOtherMobileOverlays('scheduler')
     toggleScheduler()
-  }, [closeOtherMobileOverlays, dockViewsEnabled, toggleDockView, toggleScheduler])
+  }, [closeOtherMobileOverlays, schedulerInDock, toggleDockView, toggleScheduler])
 
   const handleTogglePalette = useCallback(() => {
     if (!useUIStore.getState().paletteOpen) closeOtherMobileOverlays('palette')
@@ -403,6 +411,7 @@ export function useOverlayState({
     dockActiveView,
     setDockActiveView,
     dockViewsEnabled,
+    schedulerInDock,
     codingSidebarCollapsed,
     setCodingSidebarCollapsed,
     openWorkspaceDialogKey,
