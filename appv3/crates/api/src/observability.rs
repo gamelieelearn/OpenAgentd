@@ -15,7 +15,8 @@
 //! `agent_run` span in its trace — so every aggregate stays consistent.
 //! Also v3: a `session` filter and the `by_session` breakdown, under the
 //! same per-turn rule (spans outside a run use their own conversation id
-//! and their own `provider:model`).
+//! and their own `provider:model`). The session filter is a set: the route
+//! adds the selected session's sub-agent sessions.
 
 use appv3_agent::hooks::otel::WORKSPACE_ATTR;
 use appv3_core::pymath::py_round;
@@ -23,7 +24,7 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -44,17 +45,19 @@ pub struct Filters {
     pub workspace: Option<String>,
     /// `provider:model`, as in `by_model[].provider_model`.
     pub model: Option<String>,
-    /// Session id, as recorded in `gen_ai.conversation.id`.
-    pub session: Option<String>,
+    /// Session ids, as recorded in `gen_ai.conversation.id`: the selected
+    /// session plus its sub-agent sessions.
+    pub sessions: Option<BTreeSet<String>>,
 }
 
 impl Filters {
     fn is_empty(&self) -> bool {
-        self.workspace.is_none() && self.model.is_none() && self.session.is_none()
+        self.workspace.is_none() && self.model.is_none() && self.sessions.is_none()
     }
 
     fn key_parts(&self) -> [String; 3] {
-        [self.workspace.clone().unwrap_or_default(), self.model.clone().unwrap_or_default(), self.session.clone().unwrap_or_default()]
+        let sessions = self.sessions.as_ref().map(|ids| ids.iter().cloned().collect::<Vec<_>>().join(",")).unwrap_or_default();
+        [self.workspace.clone().unwrap_or_default(), self.model.clone().unwrap_or_default(), sessions]
     }
 }
 
@@ -438,8 +441,8 @@ impl TurnIndex {
                 return false;
             }
         }
-        if let Some(session) = &f.session {
-            if self.session_of(s).as_ref() != Some(session) {
+        if let Some(sessions) = &f.sessions {
+            if !self.session_of(s).is_some_and(|id| sessions.contains(&id)) {
                 return false;
             }
         }
@@ -1189,15 +1192,29 @@ mod tests {
     #[test]
     fn session_filter_keeps_the_session_turns_and_its_title_span() {
         let spans = fixture();
-        let v = summary_for(&spans, &Filters { session: Some("s-0xc".into()), ..Default::default() });
+        let v = summary_for(&spans, &Filters { sessions: Some(BTreeSet::from(["s-0xc".to_string()])), ..Default::default() });
         assert_eq!(v["totals"]["turns"], 1);
         assert!((v["totals"]["estimated_cost_usd"].as_f64().unwrap() - 0.26).abs() < 1e-9);
 
         let index = TurnIndex::build(&spans);
-        let f = Filters { session: Some("s-0xb".into()), ..Default::default() };
+        let f = Filters { sessions: Some(BTreeSet::from(["s-0xb".to_string()])), ..Default::default() };
         let (items, total) = list_traces(&apply_filters(&spans, &index, &f), &index, 50, 0, false);
         assert_eq!(total, 1);
         assert_eq!(items[0]["session_id"], "s-0xb");
+    }
+
+    #[test]
+    fn session_filter_keeps_every_session_in_the_set() {
+        let spans = fixture();
+        let family = Filters { sessions: Some(BTreeSet::from(["s-0xa".to_string(), "s-0xb".to_string()])), ..Default::default() };
+        let v = summary_for(&spans, &family);
+        assert_eq!(v["totals"]["turns"], 2);
+        assert!((v["totals"]["estimated_cost_usd"].as_f64().unwrap() - 1.75).abs() < 1e-9);
+        let ids: Vec<&str> = v["by_session"].as_array().unwrap().iter().map(|s| s["session_id"].as_str().unwrap()).collect();
+        assert_eq!(ids, vec!["s-0xb", "s-0xa"]);
+        // The whole set is part of the cache key.
+        let lead_only = Filters { sessions: Some(BTreeSet::from(["s-0xa".to_string()])), ..Default::default() };
+        assert_ne!(family.key_parts(), lead_only.key_parts());
     }
 
     #[test]

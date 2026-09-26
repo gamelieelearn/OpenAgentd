@@ -318,7 +318,8 @@ pub fn observability_router() -> Router<AppState> {
 
 async fn obs_summary(State(st): State<AppState>, q: Qs) -> ApiResult<Response> {
     let days = q.int("days", 7, Some(1), Some(90))?;
-    let filters = obs_filters(&q);
+    let mut filters = obs_filters(&q);
+    with_subagent_sessions(&st.pool, &mut filters).await;
     let mut v = tokio::task::spawn_blocking(move || crate::observability::summarize(days, &filters)).await.map_err(|e| ApiError::internal(e.to_string()))?;
     label_sessions(&st.pool, &mut v).await;
     Ok(json(v))
@@ -344,10 +345,27 @@ async fn label_sessions(pool: &appv3_db::DbPool, summary: &mut Value) {
 /// `workspace` / `model` / `session` query filters; blank values mean "all".
 fn obs_filters(q: &Qs) -> crate::observability::Filters {
     let non_blank = |k: &str| q.opt(k).filter(|v| !v.trim().is_empty());
-    crate::observability::Filters { workspace: non_blank("workspace"), model: non_blank("model"), session: non_blank("session") }
+    crate::observability::Filters { workspace: non_blank("workspace"), model: non_blank("model"), sessions: non_blank("session").map(|id| [id].into()) }
 }
 
-async fn obs_traces(q: Qs) -> ApiResult<Response> {
+/// Widen a session filter to the session's sub-agent sessions, recursively,
+/// so a lead session's numbers include the work it delegated. Spans record
+/// the id as the runner held it, so both the stored (hex) and the API
+/// (hyphenated) form go in the set. A failed lookup, or a session the
+/// database no longer has, keeps the filter to the selected id.
+async fn with_subagent_sessions(pool: &appv3_db::DbPool, filters: &mut crate::observability::Filters) {
+    let Some(sessions) = filters.sessions.as_mut() else { return };
+    let selected: Vec<String> = sessions.iter().cloned().collect();
+    for id in selected {
+        let Ok(tree) = appv3_db::session_descendants(pool, &id).await else { continue };
+        for (sid, _) in tree {
+            sessions.insert(appv3_db::codec::api_uuid(&sid));
+            sessions.insert(sid);
+        }
+    }
+}
+
+async fn obs_traces(State(st): State<AppState>, q: Qs) -> ApiResult<Response> {
     let days = q.int("days", 7, Some(1), Some(90))?;
     let limit = q.int("limit", 50, Some(1), Some(200))?;
     let offset = q.int("offset", 0, Some(0), None)?;
@@ -356,7 +374,8 @@ async fn obs_traces(q: Qs) -> ApiResult<Response> {
         Some("error") => true,
         Some(_) => return Err(ApiError::unprocessable("Invalid status: expected 'error'.")),
     };
-    let filters = obs_filters(&q);
+    let mut filters = obs_filters(&q);
+    with_subagent_sessions(&st.pool, &mut filters).await;
     let (items, total) = tokio::task::spawn_blocking(move || crate::observability::list_traces_with_count(days, limit, offset, &filters, errors_only))
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
@@ -403,5 +422,30 @@ mod tests {
         assert_eq!(rows[1]["title"], Value::Null);
         assert_eq!(rows[1]["parent_session_id"], api_uuid(&lead.id));
         assert_eq!(rows[2]["deleted"], true);
+    }
+
+    #[tokio::test]
+    async fn session_filter_widens_to_sub_agent_sessions_in_both_id_forms() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = appv3_db::create_pool(dir.path().join("oad.db")).await.unwrap();
+        let lead = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+        let child = create_session(&pool, NewSession { workspace: "/w".into(), parent_session_id: Some(lead.id.clone()), ..Default::default() }).await.unwrap();
+        let grandchild = create_session(&pool, NewSession { workspace: "/w".into(), parent_session_id: Some(child.id.clone()), ..Default::default() }).await.unwrap();
+        let other = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+
+        let mut filters = crate::observability::Filters { sessions: Some([api_uuid(&lead.id)].into()), ..Default::default() };
+        with_subagent_sessions(&pool, &mut filters).await;
+        let sessions = filters.sessions.unwrap();
+        for s in [&lead, &child, &grandchild] {
+            assert!(sessions.contains(&s.id), "hex form of {}", s.id);
+            assert!(sessions.contains(&api_uuid(&s.id)), "hyphenated form of {}", s.id);
+        }
+        assert!(!sessions.contains(&other.id));
+
+        // A session the database no longer has keeps the filter to itself.
+        let gone = "0190a1b2-0000-7000-8000-000000000000".to_string();
+        let mut filters = crate::observability::Filters { sessions: Some([gone.clone()].into()), ..Default::default() };
+        with_subagent_sessions(&pool, &mut filters).await;
+        assert_eq!(filters.sessions.unwrap(), [gone].into());
     }
 }
