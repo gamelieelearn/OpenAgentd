@@ -146,23 +146,31 @@ function TurnRow({
   const model = turn.provider_model ?? turn.model
   const open = () => onOpen(turn.trace_id)
   return (
+    // The row stays a table row (screen readers keep row/cell navigation);
+    // the button in the first cell is the keyboard and assistive-tech path,
+    // and a click anywhere else on the row is a mouse shortcut to it.
     <tr
-      role="button"
-      tabIndex={0}
-      aria-label={`Open turn from ${when}${turn.error ? ', failed' : ''}`}
       onClick={open}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          open()
-        }
-      }}
-      className="group cursor-pointer border-b border-(--color-border)/40 transition-colors duration-(--motion-instant) last:border-b-0 hover:bg-(--bg-page) focus-visible:bg-(--bg-page) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40"
+      className="group cursor-pointer border-b border-(--color-border)/40 transition-colors duration-(--motion-instant) last:border-b-0 hover:bg-(--bg-page) focus-within:bg-(--bg-page)"
     >
       <td className={TD}>
         <span className="flex items-center gap-2">
           <Tooltip>
-            <TooltipTrigger render={<span className="text-(--color-text-2)">{when}</span>} />
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    open()
+                  }}
+                  aria-label={`Open turn from ${when}${turn.error ? ', failed' : ''}`}
+                  className="rounded-xs text-left text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                >
+                  {when}
+                </button>
+              }
+            />
             <TooltipContent>{formatFullDateTime(new Date(turn.start_ms))}</TooltipContent>
           </Tooltip>
           {turn.error && (

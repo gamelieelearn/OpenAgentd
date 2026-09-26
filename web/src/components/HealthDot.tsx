@@ -38,10 +38,10 @@ export function HealthDot({
   }
 
   const label = health.isSuccess
-    ? 'Connected — change backend connection'
+    ? 'Connected. Change backend connection'
     : health.isError
-      ? 'Backend error — change backend connection'
-      : 'Connecting — change backend connection'
+      ? 'Backend error. Change backend connection'
+      : 'Connecting. Change backend connection'
 
   const defaultClasses = labeled
     ? 'flex h-5 items-center gap-1.5 rounded-sm px-1.5 font-mono text-xs md:text-[10px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'

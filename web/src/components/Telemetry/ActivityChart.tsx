@@ -3,7 +3,7 @@
  * Failed turns stack at the base of each turns bar in the error tone. Days
  * with no activity keep their slot so gaps read as gaps.
  */
-import { useState } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
 import { SectionCard, SectionCardHeader } from '@/components/ui/section-card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -31,6 +31,24 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
   const value = (p: DayPoint) => (metric === 'spend' ? p.cost : p.turns)
   const max = Math.max(0, ...points.map(value))
   const peak = metric === 'spend' ? formatSpend(max) : `${formatCompact(max)} turns`
+  // Roving tab stop: the chart is one Tab stop (a 90-day range would
+  // otherwise add 90); arrow keys walk the days and focus shows the tooltip.
+  const listRef = useRef<HTMLDivElement>(null)
+  const [focusDay, setFocusDay] = useState<string | null>(null)
+  const focusFound = focusDay === null ? -1 : points.findIndex((p) => p.day === focusDay)
+  const focusIndex = focusFound >= 0 ? focusFound : points.length - 1
+  const moveFocus = (index: number) => {
+    const next = Math.min(points.length - 1, Math.max(0, index))
+    if (!points[next]) return
+    setFocusDay(points[next].day)
+    listRef.current?.querySelectorAll<HTMLElement>('[role="listitem"]')[next]?.focus()
+  }
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const target = { ArrowLeft: focusIndex - 1, ArrowRight: focusIndex + 1, Home: 0, End: points.length - 1 }[event.key]
+    if (target === undefined) return
+    event.preventDefault()
+    moveFocus(target)
+  }
 
   return (
     <SectionCard>
@@ -71,11 +89,13 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
           )}
         </div>
         <div
+          ref={listRef}
           role="list"
           aria-label={metric === 'spend' ? 'Spend per day' : 'Turns per day'}
           className="flex h-28 items-end gap-px border-b border-(--color-border-subtle)"
+          onKeyDown={handleKeyDown}
         >
-          {points.map((point) => {
+          {points.map((point, index) => {
             const v = value(point)
             const height = max > 0 && v > 0 ? Math.max(2, (v / max) * 100) : 0
             const failedShare = metric === 'turns' && point.turns > 0 ? (point.failed / point.turns) * 100 : 0
@@ -84,9 +104,15 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
                 <TooltipTrigger
                   className="flex h-full min-w-0 flex-1 items-end"
                   render={
-                    <div role="listitem" aria-label={barLabel(point)} className="group flex h-full min-w-0 flex-1 items-end">
+                    <div
+                      role="listitem"
+                      aria-label={barLabel(point)}
+                      tabIndex={index === focusIndex ? 0 : -1}
+                      onFocus={() => setFocusDay(point.day)}
+                      className="group flex h-full min-w-0 flex-1 items-end rounded-t-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                    >
                       <div
-                        className="flex w-full flex-col-reverse overflow-hidden rounded-t-xs bg-(--color-text-subtle)/45 transition-colors duration-(--motion-instant) group-hover:bg-(--color-accent)/70"
+                        className="flex w-full flex-col-reverse overflow-hidden rounded-t-xs bg-(--color-text-subtle)/45 transition-colors duration-(--motion-instant) group-hover:bg-(--color-accent)/70 group-focus-visible:bg-(--color-accent)/70"
                         style={{ height: `${height}%` }}
                       >
                         {failedShare > 0 && <div className="w-full bg-(--color-error)/70" style={{ height: `${failedShare}%` }} />}

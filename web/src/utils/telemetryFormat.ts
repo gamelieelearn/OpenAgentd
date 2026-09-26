@@ -61,7 +61,7 @@ export function formatPercent(n: number): string {
  * to seconds with one decimal.
  */
 export function formatMs(n: number): string {
-  if (n === 0) return '-'
+  if (!Number.isFinite(n) || n <= 0) return '-'
   if (n < 1000) return `${n.toFixed(0)} ms`
   return `${(n / 1000).toFixed(1)} s`
 }

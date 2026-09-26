@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -372,6 +372,36 @@ describe('TelemetryView sessions', () => {
 })
 
 describe('TelemetryView trace', () => {
+  it('makes the daily chart one tab stop whose days are reachable with the arrow keys', async () => {
+    useHandlers()
+    renderView()
+
+    const chart = await screen.findByRole('list', { name: 'Spend per day' })
+    const days = within(chart).getAllByRole('listitem')
+    expect(days.filter((day) => day.tabIndex === 0)).toHaveLength(1)
+    const last = days[days.length - 1]
+    expect(last.tabIndex).toBe(0)
+
+    last.focus()
+    fireEvent.keyDown(chart, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(days[days.length - 2])
+    expect(days[days.length - 2].tabIndex).toBe(0)
+    fireEvent.keyDown(chart, { key: 'Home' })
+    expect(document.activeElement).toBe(days[0])
+    fireEvent.keyDown(chart, { key: 'End' })
+    expect(document.activeElement).toBe(last)
+  })
+
+  it('keeps recent turns as table rows, each opened by a real button in its first cell', async () => {
+    useHandlers()
+    renderView()
+
+    const [open] = await screen.findAllByRole('button', { name: /^Open turn from/ })
+    expect(open.tagName).toBe('BUTTON')
+    expect(open.closest('td')).not.toBeNull()
+    expect(document.querySelector('tr[role="button"]')).toBeNull()
+  })
+
   it('opens a turn with its facts and a way back to the session', async () => {
     useHandlers()
     const onOpenSession = mock(() => {})

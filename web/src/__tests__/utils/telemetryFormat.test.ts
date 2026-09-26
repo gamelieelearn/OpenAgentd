@@ -30,8 +30,14 @@ describe('formatCompact', () => {
 })
 
 describe('formatMs', () => {
-  it('returns an em-dash for zero', () => {
+  it('returns a dash for zero', () => {
     expect(formatMs(0)).toBe('-')
+  })
+
+  it('returns a dash for missing or impossible durations instead of "NaN s"', () => {
+    expect(formatMs(Number.NaN)).toBe('-')
+    expect(formatMs(Number.POSITIVE_INFINITY)).toBe('-')
+    expect(formatMs(-5)).toBe('-')
   })
 
   it('returns ms below 1000', () => {
