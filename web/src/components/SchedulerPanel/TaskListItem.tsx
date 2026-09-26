@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { AlertCircle, CalendarClock, Clock, Loader2, Pause, Play, Trash2, Zap } from 'lucide-react'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { CONTEXT_MENU_ITEM_CLASS, CONTEXT_MENU_ITEM_DANGER_CLASS, ContextMenu } from '@/components/ui/context-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useDeleteScheduledTaskMutation, usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
@@ -241,25 +242,17 @@ export function TaskListItem({
       </div>
     </div>
     {actionsPoint && (
-      <div
-        className="fixed inset-0 z-[70]"
-        onClick={() => setActionsPoint(null)}
-        onContextMenu={(event) => {
-          event.preventDefault()
-          setActionsPoint(null)
-        }}
+      <ContextMenu
+        at={actionsPoint}
+        label={`Actions for ${task.name}`}
+        onDismiss={() => setActionsPoint(null)}
+        className="min-w-44"
+        layerClassName="z-[70]"
       >
-        <div
-          role="menu"
-          aria-label={`Actions for ${task.name}`}
-          className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
-          style={{ left: actionsPoint.x, top: actionsPoint.y }}
-          onClick={(event) => event.stopPropagation()}
-        >
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+            className={CONTEXT_MENU_ITEM_CLASS}
             onClick={() => {
               setActionsPoint(null)
               triggerTask()
@@ -271,7 +264,7 @@ export function TaskListItem({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+            className={CONTEXT_MENU_ITEM_CLASS}
             onClick={() => {
               setActionsPoint(null)
               togglePaused()
@@ -283,7 +276,7 @@ export function TaskListItem({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+            className={CONTEXT_MENU_ITEM_DANGER_CLASS}
             onClick={() => {
               setActionsPoint(null)
               setDeleteConfirmationOpen(true)
@@ -292,8 +285,7 @@ export function TaskListItem({
             <Trash2 size={12} aria-hidden="true" />
             Delete task
           </button>
-        </div>
-      </div>
+      </ContextMenu>
     )}
     <Dialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
       <DialogContent showCloseButton={false}>

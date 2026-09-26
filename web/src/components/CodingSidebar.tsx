@@ -61,6 +61,7 @@ import { workspaceLabel } from '@/utils/workspace'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
+import { CONTEXT_MENU_ITEM_CLASS, CONTEXT_MENU_ITEM_DANGER_CLASS, ContextMenu } from '@/components/ui/context-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -1362,25 +1363,16 @@ export function CodingSidebar({
       </Dialog>
 
       {desktopWorkspaceActions && (
-        <div
-          className="fixed inset-0 z-50"
-          onClick={() => setDesktopWorkspaceActions(null)}
-          onContextMenu={(event) => {
-            event.preventDefault()
-            setDesktopWorkspaceActions(null)
-          }}
+        <ContextMenu
+          at={desktopWorkspaceActions}
+          label={`Actions for ${workspaceLabel(desktopWorkspaceActions.path)}`}
+          onDismiss={() => setDesktopWorkspaceActions(null)}
+          className="min-w-48"
         >
-          <div
-            role="menu"
-            aria-label={`Actions for ${workspaceLabel(desktopWorkspaceActions.path)}`}
-            className="fixed min-w-48 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
-            style={{ left: desktopWorkspaceActions.x, top: desktopWorkspaceActions.y }}
-            onClick={(event) => event.stopPropagation()}
-          >
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className={CONTEXT_MENU_ITEM_CLASS}
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
@@ -1393,7 +1385,7 @@ export function CodingSidebar({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className={CONTEXT_MENU_ITEM_CLASS}
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
@@ -1408,7 +1400,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                  className={CONTEXT_MENU_ITEM_CLASS}
                   onClick={() => {
                     const action = desktopWorkspaceActions
                     setDesktopWorkspaceActions(null)
@@ -1421,7 +1413,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                  className={CONTEXT_MENU_ITEM_DANGER_CLASS}
                   onClick={() => {
                     const action = desktopWorkspaceActions
                     setDesktopWorkspaceActions(null)
@@ -1437,7 +1429,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                  className={CONTEXT_MENU_ITEM_CLASS}
                   onClick={() => {
                     const item = desktopWorkspaceActions.worktree
                     setDesktopWorkspaceActions(null)
@@ -1451,7 +1443,7 @@ export function CodingSidebar({
                   <button
                     type="button"
                     role="menuitem"
-                    className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                    className={CONTEXT_MENU_ITEM_DANGER_CLASS}
                     onClick={() => {
                       const item = desktopWorkspaceActions.worktree
                       setDesktopWorkspaceActions(null)
@@ -1464,30 +1456,20 @@ export function CodingSidebar({
                 ) : null}
               </>
             ) : null}
-          </div>
-        </div>
+        </ContextMenu>
       )}
 
       {desktopSessionActions && (
-        <div
-          className="fixed inset-0 z-50"
-          onClick={() => setDesktopSessionActions(null)}
-          onContextMenu={(event) => {
-            event.preventDefault()
-            setDesktopSessionActions(null)
-          }}
+        <ContextMenu
+          at={desktopSessionActions}
+          label={`Actions for ${desktopSessionActions.session.title || 'Untitled'}`}
+          onDismiss={() => setDesktopSessionActions(null)}
+          className="min-w-44"
         >
-          <div
-            role="menu"
-            aria-label={`Actions for ${desktopSessionActions.session.title || 'Untitled'}`}
-            className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
-            style={{ left: desktopSessionActions.x, top: desktopSessionActions.y }}
-            onClick={(event) => event.stopPropagation()}
-          >
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className={CONTEXT_MENU_ITEM_CLASS}
               onClick={() => {
                 const { session } = desktopSessionActions
                 setDesktopSessionActions(null)
@@ -1500,7 +1482,7 @@ export function CodingSidebar({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+              className={CONTEXT_MENU_ITEM_DANGER_CLASS}
               onClick={() => {
                 const { session } = desktopSessionActions
                 setDesktopSessionActions(null)
@@ -1510,8 +1492,7 @@ export function CodingSidebar({
               <Trash2 size={12} aria-hidden="true" />
               Delete session
             </button>
-          </div>
-        </div>
+        </ContextMenu>
       )}
 
       <Dialog

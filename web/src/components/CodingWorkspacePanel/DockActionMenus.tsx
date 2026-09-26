@@ -16,6 +16,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import {
+  CONTEXT_MENU_ITEM_CLASS as MENU_ITEM_CLASS,
+  CONTEXT_MENU_ITEM_DANGER_CLASS as MENU_ITEM_DANGER_CLASS,
+  ContextMenu,
+  ContextMenuSeparator,
+} from '@/components/ui/context-menu'
 import { softHapticFeedback } from '@/lib/haptics'
 import type { ChangedFileInfo } from './diff-helpers'
 
@@ -51,42 +57,10 @@ export interface DockActionMenusProps {
   onConfirmDiscard: () => void
 }
 
-const MENU_CLASS = 'fixed z-50 min-w-40 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs shadow-md'
-const MENU_ITEM_CLASS = 'flex w-full cursor-pointer items-center gap-2 rounded-xs px-2 py-1.5 text-left text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:bg-(--bg-key) focus-visible:outline-none disabled:opacity-50'
-const MENU_ITEM_DANGER_CLASS = 'flex w-full cursor-pointer items-center gap-2 rounded-xs px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none disabled:opacity-50'
-const MENU_DIVIDER = <div role="separator" className="my-1 border-t border-(--color-border-subtle)" />
+const MENU_DIVIDER = <ContextMenuSeparator />
 
 function copy(text: string) {
   void navigator.clipboard?.writeText(text)
-}
-
-/** Keep a pointer-anchored menu inside the viewport. */
-function menuPosition(x: number, y: number, height: number) {
-  if (typeof window === 'undefined') return { top: y, left: x }
-  return {
-    top: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
-    left: Math.max(8, Math.min(x, window.innerWidth - 176)),
-  }
-}
-
-function ContextMenu({ onDismiss, style, label, children }: {
-  onDismiss: () => void
-  style: { top: number; left: number }
-  label: string
-  children: React.ReactNode
-}) {
-  return (
-    <div
-      role="presentation"
-      className="fixed inset-0 z-50 bg-transparent"
-      onClick={onDismiss}
-      onContextMenu={(e) => { e.preventDefault(); onDismiss() }}
-    >
-      <div role="menu" aria-label={label} className={MENU_CLASS} style={style} onClick={(e) => e.stopPropagation()}>
-        {children}
-      </div>
-    </div>
-  )
 }
 
 export function DockActionMenus({
@@ -238,7 +212,7 @@ export function DockActionMenus({
         <ContextMenu
           label={`Actions for commit ${desktopCommitActions.shortSha}`}
           onDismiss={() => setDesktopCommitActions(null)}
-          style={menuPosition(desktopCommitActions.x, desktopCommitActions.y, 190)}
+          at={desktopCommitActions}
         >
           <button
             type="button"
@@ -310,7 +284,7 @@ export function DockActionMenus({
         <ContextMenu
           label={`Actions for ${desktopFileActions.file.path}`}
           onDismiss={() => setDesktopFileActions(null)}
-          style={menuPosition(desktopFileActions.x, desktopFileActions.y, 150)}
+          at={desktopFileActions}
         >
           {hasWorkingDiff(desktopFileActions.file.path) && (
             <button
