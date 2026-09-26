@@ -20,8 +20,9 @@ import { cn } from '@/lib/utils'
 import { useTelemetryStore } from '@/stores/useTelemetryStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { TelemetrySkeleton } from './TelemetrySkeleton'
+import { loadTelemetryView } from './telemetry-loader'
 
-const TelemetryView = lazy(() => import('./TelemetryView').then((m) => ({ default: m.TelemetryView })))
+const TelemetryView = lazy(() => loadTelemetryView().then((m) => ({ default: m.TelemetryView })))
 
 /** Mirrors SettingsModal's panel motion; reduced motion keeps only the fade. */
 const PANEL_VARIANTS = {

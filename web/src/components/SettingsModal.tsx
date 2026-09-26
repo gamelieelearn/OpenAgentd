@@ -36,6 +36,7 @@ import {
 } from '@/components/settings/sections'
 import { useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
 import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
+import { settingsPageLoaders } from '@/components/settings/page-loaders'
 
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
@@ -43,53 +44,21 @@ import { DURATIONS_S, EASINGS } from '@/lib/motion'
 // on the tauri:// navigation path, so the Suspense-waterfall concern that
 // keeps route components eager (see web/vite.config.ts) does not apply here,
 // and the pages are ~3.6k LOC the first paint never needs.
-const SettingsHubPage = lazy(() =>
-  import('@/components/settings/pages/settings.index').then((m) => ({ default: m.SettingsHubPage })),
-)
-const AgentsListPage = lazy(() =>
-  import('@/components/settings/pages/settings.agents').then((m) => ({ default: m.AgentsListPage })),
-)
-const SkillsListPage = lazy(() =>
-  import('@/components/settings/pages/settings.skills').then((m) => ({ default: m.SkillsListPage })),
-)
-const NewSkillPage = lazy(() =>
-  import('@/components/settings/pages/settings.skills.new').then((m) => ({ default: m.NewSkillPage })),
-)
-const SkillEditorPage = lazy(() =>
-  import('@/components/settings/pages/settings.skills.$name').then((m) => ({ default: m.SkillEditorPage })),
-)
-const McpListPage = lazy(() =>
-  import('@/components/settings/pages/settings.mcp').then((m) => ({ default: m.McpListPage })),
-)
-const NewMcpServerPage = lazy(() =>
-  import('@/components/settings/pages/settings.mcp.new').then((m) => ({ default: m.NewMcpServerPage })),
-)
-const McpServerDetailPage = lazy(() =>
-  import('@/components/settings/pages/settings.mcp.$name').then((m) => ({ default: m.McpServerDetailPage })),
-)
-const MemorySettingsPage = lazy(() =>
-  import('@/components/settings/pages/settings.memory').then((m) => ({
-    default: m.MemorySettingsPage,
-  })),
-)
-const ProvidersSettingsPage = lazy(() =>
-  import('@/components/settings/pages/settings.providers').then((m) => ({ default: m.ProvidersSettingsPage })),
-)
-const DeniedPathsSettingsPage = lazy(() =>
-  import('@/components/settings/pages/settings.denied_paths').then((m) => ({
-    default: m.DeniedPathsSettingsPage,
-  })),
-)
-const AutomationSettingsPage = lazy(() =>
-  import('@/components/settings/pages/settings.automation').then((m) => ({
-    default: m.AutomationSettingsPage,
-  })),
-)
-const PluginsSettingsPage = lazy(() =>
-  import('@/components/settings/pages/settings.plugins').then((m) => ({
-    default: m.PluginsSettingsPage,
-  })),
-)
+// Loaders are shared with the hover/focus preload (settings/page-loaders).
+const pages = settingsPageLoaders
+const SettingsHubPage = lazy(() => pages.hub().then((m) => ({ default: m.SettingsHubPage })))
+const AgentsListPage = lazy(() => pages.agents().then((m) => ({ default: m.AgentsListPage })))
+const SkillsListPage = lazy(() => pages.skills().then((m) => ({ default: m.SkillsListPage })))
+const NewSkillPage = lazy(() => pages.skillsNew().then((m) => ({ default: m.NewSkillPage })))
+const SkillEditorPage = lazy(() => pages.skillsEdit().then((m) => ({ default: m.SkillEditorPage })))
+const McpListPage = lazy(() => pages.mcp().then((m) => ({ default: m.McpListPage })))
+const NewMcpServerPage = lazy(() => pages.mcpNew().then((m) => ({ default: m.NewMcpServerPage })))
+const McpServerDetailPage = lazy(() => pages.mcpEdit().then((m) => ({ default: m.McpServerDetailPage })))
+const MemorySettingsPage = lazy(() => pages.memory().then((m) => ({ default: m.MemorySettingsPage })))
+const ProvidersSettingsPage = lazy(() => pages.providers().then((m) => ({ default: m.ProvidersSettingsPage })))
+const DeniedPathsSettingsPage = lazy(() => pages.deniedPaths().then((m) => ({ default: m.DeniedPathsSettingsPage })))
+const AutomationSettingsPage = lazy(() => pages.automation().then((m) => ({ default: m.AutomationSettingsPage })))
+const PluginsSettingsPage = lazy(() => pages.plugins().then((m) => ({ default: m.PluginsSettingsPage })))
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 

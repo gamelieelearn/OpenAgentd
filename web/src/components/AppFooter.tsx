@@ -26,6 +26,8 @@ import { ThemeToggle } from './ThemeToggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { preloadSettings } from '@/components/settings/page-loaders'
+import { preloadTelemetryView } from '@/components/Telemetry/telemetry-loader'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 import { useUIStore } from '@/stores/useUIStore'
@@ -221,6 +223,8 @@ export const AppFooter = memo(function AppFooter({
                 className={cn(ICON_ITEM, telemetryOpen && 'bg-(--bg-key) text-(--color-text)')}
                 aria-label="Telemetry"
                 aria-pressed={telemetryOpen}
+                onPointerEnter={preloadTelemetryView}
+                onFocus={preloadTelemetryView}
                 onClick={() => {
                   if (telemetryOpen) closeTelemetry()
                   else openTelemetry()
@@ -239,6 +243,8 @@ export const AppFooter = memo(function AppFooter({
               <button
                 type="button"
                 onClick={() => openSettings()}
+                onPointerEnter={() => preloadSettings()}
+                onFocus={() => preloadSettings()}
                 className={ICON_ITEM}
                 aria-label="Settings"
               >

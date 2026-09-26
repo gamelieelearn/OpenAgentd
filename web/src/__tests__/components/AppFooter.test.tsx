@@ -9,6 +9,10 @@ import { useUIStore } from '@/stores/useUIStore'
 const navigate = mock(() => Promise.resolve())
 mock.module('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 const mockOpenSettings = mock(() => {})
+const mockPreloadSettings = mock(() => {})
+const mockPreloadTelemetry = mock(() => {})
+mock.module('@/components/settings/page-loaders', () => ({ preloadSettings: mockPreloadSettings }))
+mock.module('@/components/Telemetry/telemetry-loader', () => ({ preloadTelemetryView: mockPreloadTelemetry }))
 
 // ``getState`` too: opening telemetry closes Settings through the UI store,
 // which calls back into this module.
@@ -65,8 +69,19 @@ function renderWithQueryClient(ui: React.ReactElement) {
 describe('AppFooter', () => {
   beforeEach(() => {
     mockOpenSettings.mockClear()
+    mockPreloadSettings.mockClear()
+    mockPreloadTelemetry.mockClear()
     statusProbes.length = 0
     statusExtras = {}
+  })
+
+  it('starts loading the Settings and Telemetry chunks on pointer or focus intent', () => {
+    renderWithQueryClient(<AppFooter />)
+
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Settings' }))
+    expect(mockPreloadSettings).toHaveBeenCalledTimes(1)
+    fireEvent.focus(screen.getByRole('button', { name: 'Telemetry' }))
+    expect(mockPreloadTelemetry).toHaveBeenCalledTimes(1)
   })
 
   it('renders backend status indicator', () => {
