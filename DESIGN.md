@@ -175,6 +175,10 @@ spacing:
   gutter: 8px
   card-padding: 12px
   app-header: 36px
+  status-bar: 24px
+  tab-bar: 36px
+  toolbar: 32px
+  list-row: 28px
   mac-traffic-inset: 70px
   content-max: 768px
   overlay-max: 860px
@@ -481,6 +485,10 @@ desktop-first and walk styles back down.
 **Fixed geometry:**
 
 - `app-header` (36px) — the shared top bar across every platform shell.
+- `status-bar` (24px) — the desktop status footer.
+- `tab-bar` (36px) — the review dock's editor-tab strip.
+- `toolbar` (32px) — the single view toolbar under a tab bar.
+- `list-row` (28px) — sidebar and dock list rows.
 - `mac-traffic-inset` (70px) — left inset that clears the macOS traffic-light
   overlay (12px origin + ~58px button group).
 - `content-max` (768px) — reading measure for transcripts and prose.

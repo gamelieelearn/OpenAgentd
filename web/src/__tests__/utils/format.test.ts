@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatTokens, formatRelativeDate, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText } from "@/utils/format";
+import { formatTokens, formatRelativeDate, formatCompactRelative, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText } from "@/utils/format";
 
 // ---------------------------------------------------------------------------
 // formatTokens
@@ -374,5 +374,31 @@ describe("lastTurnText — only the final response after the last tool call", ()
       block("tool", ""),
     ];
     expect(lastTurnText(blocks)).toBe("");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// formatCompactRelative
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("formatCompactRelative", () => {
+  const now = new Date("2026-03-10T12:00:00Z");
+
+  it("returns an empty string for missing or invalid input", () => {
+    expect(formatCompactRelative(null, now)).toBe("");
+    expect(formatCompactRelative(undefined, now)).toBe("");
+    expect(formatCompactRelative("not-a-date", now)).toBe("");
+  });
+
+  it("steps through now / minutes / hours / days", () => {
+    expect(formatCompactRelative("2026-03-10T11:59:40Z", now)).toBe("now");
+    expect(formatCompactRelative("2026-03-10T12:05:00Z", now)).toBe("now");
+    expect(formatCompactRelative("2026-03-10T11:55:00Z", now)).toBe("5m");
+    expect(formatCompactRelative("2026-03-10T09:00:00Z", now)).toBe("3h");
+    expect(formatCompactRelative("2026-03-08T12:00:00Z", now)).toBe("2d");
+  });
+
+  it("falls back to day/month past a week", () => {
+    expect(formatCompactRelative("2026-02-20T12:00:00Z", now)).toMatch(/^\d{2}\/\d{2}$/);
   });
 });

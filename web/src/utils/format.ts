@@ -67,6 +67,25 @@ export function formatRelativeDate(dateStr: string | null): string {
   return `${format(date, 'dd/MM/yyyy')} ${time}`
 }
 
+/**
+ * Compact age for dense list meta slots: ``now``, ``5m``, ``3h``, ``2d``,
+ * then ``dd/MM`` past a week. Future timestamps (clock skew) read ``now``.
+ */
+export function formatCompactRelative(dateStr: string | null | undefined, now: Date = new Date()): string {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const elapsed = now.getTime() - date.getTime()
+  if (!Number.isFinite(elapsed)) return ''
+  const minutes = Math.floor(elapsed / 60_000)
+  if (minutes < 1) return 'now'
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d`
+  return format(date, 'dd/MM')
+}
+
 // ── IANA timezone helpers ────────────────────────────────────────────────────
 //
 // The browser's `Intl` API can both render a given UTC instant in any IANA

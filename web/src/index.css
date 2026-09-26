@@ -58,6 +58,12 @@
      * macOS traffic-light overlay (x=12 origin + ~58 button group). */
     --spacing-app-header: 2.25rem;
     --spacing-mac-traffic-inset: 70px;
+
+    /* Workbench chrome (see DESIGN.md → Workbench layout). */
+    --spacing-status-bar: 1.5rem;  /* 24px desktop status footer */
+    --spacing-tab-bar: 2.25rem;    /* 36px dock editor-tab strip */
+    --spacing-toolbar: 2rem;       /* 32px view toolbar under a tab bar */
+    --spacing-list-row: 1.75rem;   /* 28px sidebar / dock list row */
 }
 
 /* ─────────────────────────────────────────────────────────────
