@@ -11,7 +11,8 @@
 //! apply per turn — a span belongs to the workspace and model of the
 //! `agent_run` span in its trace — so every aggregate stays consistent.
 //! Also v3: a `session` filter and the `by_session` breakdown, under the
-//! same per-turn rule (spans outside a run use their own conversation id).
+//! same per-turn rule (spans outside a run use their own conversation id
+//! and their own `provider:model`).
 
 use appv3_agent::hooks::otel::WORKSPACE_ATTR;
 use appv3_core::pymath::py_round;
@@ -383,9 +384,19 @@ impl TurnIndex {
         }
     }
 
+    /// The turn's model, else the span's own `provider:model` (title
+    /// generation often runs on a different model, outside the turn), so a
+    /// `by_model` row filters to the spans it counted.
+    fn model_of(&self, s: &Map<String, Value>) -> String {
+        match self.turn(s) {
+            Some(t) => t.model.clone(),
+            None => turn_model(&attrs_of(s)),
+        }
+    }
+
     fn matches(&self, s: &Map<String, Value>, f: &Filters) -> bool {
         if let Some(model) = &f.model {
-            if self.turn(s).map(|t| &t.model) != Some(model) {
+            if self.model_of(s) != *model {
                 return false;
             }
         }
@@ -1043,6 +1054,29 @@ mod tests {
         assert_eq!(v["totals"]["turns"], 3);
         assert_eq!(v["by_model"].as_array().unwrap().len(), 1);
         assert_eq!(v["totals"]["errors"], 0);
+    }
+
+    #[test]
+    fn model_filter_keeps_spans_outside_a_turn_by_their_own_model() {
+        let mut spans = fixture();
+        let base = 1_700_000_000e9;
+        spans.push(span(
+            "title_generation",
+            "0xg",
+            "OK",
+            base,
+            json!({"gen_ai.conversation.id": "s-0xa", "gen_ai.provider.name": "openai", "gen_ai.request.model": "mini", "gen_ai.usage.input_tokens": 50, "gen_ai.usage.output_tokens": 5, "gen_ai.usage.estimated_cost_usd": 0.02}),
+        ));
+        let v = summary_for(&spans, &Filters { model: Some("openai:mini".into()), ..Default::default() });
+        assert_eq!(v["totals"]["turns"], 0);
+        assert_eq!(v["by_model"][0]["provider_model"], "openai:mini");
+        assert!((v["totals"]["estimated_cost_usd"].as_f64().unwrap() - 0.02).abs() < 1e-9);
+
+        // Inside a turn the turn's model still decides, and a span with no
+        // recorded model stays out of every real model filter.
+        let v = summary_for(&spans, &Filters { model: Some("openai:gpt".into()), ..Default::default() });
+        assert_eq!(v["totals"]["turns"], 3);
+        assert!((v["totals"]["estimated_cost_usd"].as_f64().unwrap() - 0.875).abs() < 1e-9);
     }
 
     #[test]
