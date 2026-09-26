@@ -392,6 +392,18 @@ html[data-mobile-shell] code {
   font-size: 11px;
 }
 
+/* Responsive variants compile to their own selectors inside a media query,
+   so ``text-xs md:text-[10px]`` escaped the floor above and rendered 10px on
+   desktop. Same floor, same breakpoint (Tailwind's md). */
+@media (width >= 48rem) {
+  .md\:text-\[8px\],
+  .md\:text-\[9px\],
+  .md\:text-\[10px\],
+  .md\:text-\[10\.5px\] {
+    font-size: 11px;
+  }
+}
+
 .mobile-safe-shell {
   padding-right: env(safe-area-inset-right, 0px);
   padding-left: env(safe-area-inset-left, 0px);
