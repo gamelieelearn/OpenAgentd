@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import type { ObservabilitySummary, SpanDetail } from '@/api/client'
-import { dailySeries, headline, modelName, sessionName, sharePct, traceSummary, workspaceName } from '@/components/Telemetry/model'
+import type { ObservabilitySummary, SessionUsage, SpanDetail } from '@/api/client'
+import { dailySeries, headline, modelName, nestSessions, sessionName, sharePct, traceSummary, workspaceName } from '@/components/Telemetry/model'
 import { setChatWorkspaceEntry } from '@/utils/workspace'
 
 afterEach(() => setChatWorkspaceEntry(null))
@@ -50,6 +50,24 @@ function span(overrides: Partial<SpanDetail>): SpanDetail {
   }
 }
 
+function usage(session_id: string, parent_session_id: string | null = null): SessionUsage {
+  return {
+    session_id,
+    workspace: null,
+    model: null,
+    agent_name: null,
+    turns: 1,
+    errors: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    cached_tokens: 0,
+    cache_percent: 0,
+    estimated_cost_usd: 0,
+    last_active_ms: 0,
+    parent_session_id,
+  }
+}
+
 describe('telemetry model', () => {
   it('labels workspaces: unrecorded, chat root, and project basename', () => {
     setChatWorkspaceEntry({ path: '/home/me/.openagentd/chat', name: 'Chat' })
@@ -69,6 +87,32 @@ describe('telemetry model', () => {
     expect(sessionName({ ...base, deleted: true })).toBe('Deleted session')
     expect(sessionName({ ...base, parent_session_id: 'p', agent_name: 'explorer' })).toBe('explorer sub-agent')
     expect(sessionName(base)).toBe('Untitled session')
+  })
+
+  it('nests sub-agent sessions under their parent across id forms, keeping rank among siblings', () => {
+    const lead = '0190a1b2-0000-7000-8000-00000000000a'
+    const leadHex = lead.replace(/-/g, '')
+    const rows = [
+      usage('other'),
+      usage('child-b', lead),
+      usage(leadHex),
+      usage('child-a', lead),
+      usage('grandchild', 'child-a'),
+      usage('orphan', 'missing-parent'),
+    ]
+    expect(nestSessions(rows).map(({ row, depth }) => [row.session_id, depth])).toEqual([
+      ['other', 0],
+      [leadHex, 0],
+      ['child-b', 1],
+      ['child-a', 1],
+      ['grandchild', 2],
+      ['orphan', 0],
+    ])
+  })
+
+  it('keeps sessions whose recorded parents form a cycle', () => {
+    const nested = nestSessions([usage('x', 'y'), usage('y', 'x')])
+    expect(nested.map(({ row }) => row.session_id).sort()).toEqual(['x', 'y'])
   })
 
   it('zero-fills every UTC day of the window', () => {

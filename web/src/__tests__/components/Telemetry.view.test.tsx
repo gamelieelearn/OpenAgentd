@@ -352,6 +352,52 @@ describe('TelemetryView sessions', () => {
     await screen.findByText('Sessions')
   })
 
+  it('lists a sub-agent session under the session that started it', async () => {
+    useHandlers({
+      summary: () => summaryFixture({
+        by_session: [
+          sessionRow({ session_id: 'sess-1', title: 'Fix login redirect', estimated_cost_usd: 0.3 }),
+          sessionRow({ session_id: 'sess-3', title: 'Write docs', estimated_cost_usd: 0.2 }),
+          sessionRow({ session_id: 'sess-1-explorer', title: null, parent_session_id: 'sess-1', agent_name: 'explorer', estimated_cost_usd: 0.1 }),
+        ],
+      }),
+    })
+    renderView()
+
+    const rows = await screen.findAllByRole('button', { name: /show only this session/ })
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining('Fix login redirect'),
+      expect.stringContaining('explorer sub-agent'),
+      expect.stringContaining('Write docs'),
+    ])
+  })
+
+  it('counts a session’s sub-agents in its view and says which agent ran each turn', async () => {
+    useTelemetryStore.setState({ session: 'sess-1' })
+    useHandlers({
+      summary: () => summaryFixture({
+        by_session: [
+          sessionRow({ session_id: 'sess-1', title: 'Fix login redirect', estimated_cost_usd: 0.3 }),
+          sessionRow({ session_id: 'sess-1-explorer', title: null, parent_session_id: 'sess-1', agent_name: 'explorer', estimated_cost_usd: 0.1 }),
+        ],
+      }),
+      turns: [turn(), turn({ trace_id: 'trace-2', span_id: 'span-2', session_id: 'sess-1-explorer', agent_name: 'explorer' })],
+    })
+    const user = userEvent.setup()
+    renderView()
+
+    expect(await screen.findByRole('heading', { name: 'Fix login redirect' })).toBeTruthy()
+    expect(screen.getByText('Totals include 1 sub-agent session.')).toBeTruthy()
+    // The session itself is listed for comparison, not as a shortcut to itself.
+    const shortcuts = screen.getAllByRole('button', { name: /show only this session/ })
+    expect(shortcuts.map((row) => row.textContent)).toEqual([expect.stringContaining('explorer sub-agent')])
+    expect(await screen.findByRole('columnheader', { name: 'Agent' })).toBeTruthy()
+    expect(screen.getByRole('cell', { name: 'explorer' })).toBeTruthy()
+
+    await user.click(shortcuts[0])
+    expect(useTelemetryStore.getState().session).toBe('sess-1-explorer')
+  })
+
   it('offers no way into a deleted session', async () => {
     useTelemetryStore.setState({ session: 'sess-2' })
     useHandlers({ summary: () => summaryFixture({ by_session: [sessionRow({ session_id: 'sess-2', title: null, deleted: true })] }) })

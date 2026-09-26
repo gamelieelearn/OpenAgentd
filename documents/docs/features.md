@@ -1275,6 +1275,10 @@ Everything stays local. No third-party telemetry SaaS.
   and a turn opens to its facts (workspace, model, duration, tokens, cost),
   **Copy trace ID**, **Open session**, and the span waterfall. Turns record their
   workspace from v3.0.0; older turns show as **Not recorded**.
+- **Sub-agents in session telemetry** `[v3.0.0]` — a session's telemetry view
+  counts the sub-agent sessions it started in its spend, turns, and tokens, and
+  says how many. The Sessions card lists each sub-agent under its session (in
+  the overview too), and recent turns name the agent that ran them.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
 - **Estimated model-call cost telemetry** `[v1.34.0]` — chat, title-generation,

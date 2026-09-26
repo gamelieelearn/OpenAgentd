@@ -14,7 +14,7 @@ export interface ObservabilityFilters {
   workspace?: string | null
   /** ``provider:model`` (see ``facets.models``). */
   model?: string | null
-  /** Session id (see ``by_session``). */
+  /** Session id (see ``by_session``); the backend adds its sub-agent sessions. */
   session?: string | null
 }
 

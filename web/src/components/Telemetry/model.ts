@@ -28,6 +28,53 @@ export function sessionName(row: Pick<SessionUsage, 'title' | 'deleted' | 'paren
   return 'Untitled session'
 }
 
+/**
+ * Session ids compare across the stored (hex) and API (hyphenated) forms:
+ * spans record the id as the runner held it, while ``parent_session_id``
+ * comes from the database in the API form.
+ */
+export function sessionKey(id: string): string {
+  return id.replace(/-/g, '').toLowerCase()
+}
+
+export interface NestedSession {
+  row: SessionUsage
+  /** 0 for a session that started on its own, 1 for its sub-agents, and so on. */
+  depth: number
+}
+
+/**
+ * ``by_session`` rows with each sub-agent session listed under the session
+ * that started it, keeping the backend's ranking among siblings. A
+ * sub-agent whose parent is not in the list stays where it ranked.
+ */
+export function nestSessions(rows: SessionUsage[]): NestedSession[] {
+  const present = new Set(rows.map((row) => sessionKey(row.session_id)))
+  const children = new Map<string, SessionUsage[]>()
+  const roots: SessionUsage[] = []
+  for (const row of rows) {
+    const parent = row.parent_session_id ? sessionKey(row.parent_session_id) : null
+    if (parent !== null && present.has(parent) && parent !== sessionKey(row.session_id)) {
+      children.set(parent, [...(children.get(parent) ?? []), row])
+    } else {
+      roots.push(row)
+    }
+  }
+  const nested: NestedSession[] = []
+  const seen = new Set<string>()
+  const visit = (row: SessionUsage, depth: number) => {
+    const key = sessionKey(row.session_id)
+    if (seen.has(key)) return
+    seen.add(key)
+    nested.push({ row, depth })
+    for (const child of children.get(key) ?? []) visit(child, depth + 1)
+  }
+  for (const row of roots) visit(row, 0)
+  // Rows whose recorded parents form a cycle never hang off a root; keep them.
+  for (const row of rows) visit(row, 0)
+  return nested
+}
+
 export interface DayPoint {
   /** ``YYYY-MM-DD`` (UTC, matching the backend buckets). */
   day: string

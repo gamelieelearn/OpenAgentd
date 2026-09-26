@@ -13,7 +13,7 @@ import { SectionCard, SectionCardHeader, SectionCardRows } from '@/components/ui
 import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { cn } from '@/lib/utils'
 import { formatCompact, formatMs, formatPercent, formatSpend, timeAgo } from '@/utils/telemetryFormat'
-import { modelName, sessionName, sharePct, workspaceName } from './model'
+import { modelName, nestSessions, sessionKey, sessionName, sharePct, workspaceName } from './model'
 
 type WorkspaceRow = NonNullable<ObservabilitySummary['by_workspace']>[number]
 type ModelRow = ObservabilitySummary['by_model'][number]
@@ -32,6 +32,7 @@ function BreakdownRow({
   detail,
   metrics,
   share,
+  depth = 0,
   onSelect,
   selectHint,
 }: {
@@ -39,6 +40,8 @@ function BreakdownRow({
   detail?: ReactNode
   metrics: Metric[]
   share: number
+  /** Nesting level: a sub-agent session sits one step in from its parent. */
+  depth?: number
   onSelect?: () => void
   /** Screen-reader suffix for clickable rows, e.g. "show only this workspace". */
   selectHint?: string
@@ -73,11 +76,13 @@ function BreakdownRow({
     </>
   )
   const className = 'flex w-full flex-col gap-1.5 px-3 py-2 text-left'
-  if (!onSelect) return <div className={className}>{body}</div>
+  const style = depth > 0 ? { paddingLeft: `${0.75 + depth}rem` } : undefined
+  if (!onSelect) return <div className={className} style={style}>{body}</div>
   return (
     <button
       type="button"
       onClick={onSelect}
+      style={style}
       className={cn(
         className,
         'transition-colors duration-(--motion-instant) hover:bg-(--bg-page) focus-visible:bg-(--bg-page) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40',
@@ -113,11 +118,14 @@ function ShowAllButton({ expanded, total, noun, onToggle }: { expanded: boolean;
 export function SessionsCard({
   rows,
   showWorkspace,
+  selected = null,
   onSelect,
 }: {
   rows: SessionUsage[]
   /** Off while a workspace filter makes it the same on every row. */
   showWorkspace: boolean
+  /** The session the view is narrowed to; its own row is not a shortcut. */
+  selected?: string | null
   onSelect: (sessionId: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -126,12 +134,14 @@ export function SessionsCard({
   const totalSpend = rows.reduce((sum, r) => sum + r.estimated_cost_usd, 0)
   const totalTurns = rows.reduce((sum, r) => sum + r.turns, 0)
   const byCost = totalSpend > 0
-  const visible = expanded ? rows : rows.slice(0, SESSION_PREVIEW)
+  const nested = nestSessions(rows)
+  const visible = expanded ? nested : nested.slice(0, SESSION_PREVIEW)
+  const selectedKey = selected === null ? null : sessionKey(selected)
   return (
     <SectionCard>
       <Header title="Sessions" aside={byCost ? 'By spend' : 'By turns'} />
       <SectionCardRows>
-        {visible.map((row) => {
+        {visible.map(({ row, depth }) => {
           const metrics: Metric[] = []
           if (row.errors > 0) metrics.push({ value: `${formatCompact(row.errors)} failed`, tone: 'error' })
           metrics.push({ value: `${formatPercent(row.cache_percent)} cached`, tone: 'muted' })
@@ -147,7 +157,8 @@ export function SessionsCard({
               detail={`${where}${timeAgo(row.last_active_ms, now)}`}
               metrics={metrics}
               share={byCost ? sharePct(row.estimated_cost_usd, totalSpend) : sharePct(row.turns, totalTurns)}
-              onSelect={() => onSelect(row.session_id)}
+              depth={depth}
+              onSelect={sessionKey(row.session_id) === selectedKey ? undefined : () => onSelect(row.session_id)}
               selectHint="show only this session"
             />
           )

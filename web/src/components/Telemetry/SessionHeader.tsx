@@ -1,6 +1,7 @@
 /**
  * Heading for the per-session view (session filter set): which session the
- * numbers below describe, where it ran, and a way back into it.
+ * numbers below describe, where it ran, and a way back into it. The numbers
+ * include the session's sub-agent sessions, so the heading says how many.
  */
 import { useState } from 'react'
 import { MessageSquare } from 'lucide-react'
@@ -11,11 +12,14 @@ import { modelName, sessionName, workspaceName } from './model'
 export function SessionHeader({
   sessionId,
   row,
+  subAgentCount = 0,
   onOpenSession,
 }: {
   sessionId: string
   /** ``null`` while loading, or when the session has no turns in the range. */
   row: SessionUsage | null
+  /** Sub-agent sessions with usage in the range, counted in the totals. */
+  subAgentCount?: number
   onOpenSession?: (sessionId: string) => void
 }) {
   const [now] = useState(() => Date.now())
@@ -36,6 +40,11 @@ export function SessionHeader({
           {row ? sessionName(row) : `Session ${formatShortId(sessionId)}`}
         </h3>
         {facts.length > 0 && <p className="truncate text-xs text-(--color-text-muted)">{facts.join(', ')}</p>}
+        {subAgentCount > 0 && (
+          <p className="text-xs text-(--color-text-muted)">
+            Totals include {subAgentCount} sub-agent {subAgentCount === 1 ? 'session' : 'sessions'}.
+          </p>
+        )}
         {row?.deleted && <p className="text-xs text-(--color-text-muted)">This session was deleted; its usage is still counted.</p>}
       </div>
       {canOpen && (

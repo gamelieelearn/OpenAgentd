@@ -28,6 +28,8 @@ export interface RecentTurnsProps {
   onErrorsOnlyChange: (value: boolean) => void
   showWorkspace: boolean
   showModel: boolean
+  /** On when the rows come from more than one agent (a lead and its sub-agents). */
+  showAgent?: boolean
 }
 
 const TH = 'px-3 py-1.5 text-[11px] font-medium text-(--color-text-muted) whitespace-nowrap'
@@ -46,6 +48,7 @@ export function RecentTurns({
   onErrorsOnlyChange,
   showWorkspace,
   showModel,
+  showAgent = false,
 }: RecentTurnsProps) {
   // Captured once per mount so relative times do not churn on every render.
   const [now] = useState(() => Date.now())
@@ -86,6 +89,7 @@ export function RecentTurns({
               <thead>
                 <tr className="border-b border-(--color-border)/60 text-left">
                   <th scope="col" className={TH}>When</th>
+                  {showAgent && <th scope="col" className={TH}>Agent</th>}
                   {showWorkspace && <th scope="col" className={TH}>Workspace</th>}
                   {showModel && <th scope="col" className={TH}>Model</th>}
                   <th scope="col" className={`${TH} text-right`}>Duration</th>
@@ -103,6 +107,7 @@ export function RecentTurns({
                     onOpen={onOpen}
                     showWorkspace={showWorkspace}
                     showModel={showModel}
+                    showAgent={showAgent}
                   />
                 ))}
               </tbody>
@@ -135,12 +140,14 @@ function TurnRow({
   onOpen,
   showWorkspace,
   showModel,
+  showAgent,
 }: {
   turn: TraceListItem
   now: number
   onOpen: (traceId: string) => void
   showWorkspace: boolean
   showModel: boolean
+  showAgent: boolean
 }) {
   const when = timeAgo(turn.start_ms, now)
   const model = turn.provider_model ?? turn.model
@@ -180,6 +187,7 @@ function TurnRow({
           )}
         </span>
       </td>
+      {showAgent && <td className={`${TD} max-w-36 truncate text-(--color-text-2)`}>{turn.agent_name ?? '-'}</td>}
       {showWorkspace && (
         <td className={`${TD} max-w-44 truncate text-(--color-text-2)`}>
           {turn.workspace === undefined ? '-' : workspaceName(turn.workspace)}

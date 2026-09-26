@@ -6,7 +6,8 @@
  * Overview order follows the questions a user asks: how much and how often
  * (stats, activity), where (workspaces, sessions), with what (models,
  * tools), and what just happened (recent turns). A session filter turns the
- * same cards into a per-session view under a session heading.
+ * same cards into a per-session view under a session heading; the backend
+ * counts the session's sub-agent sessions in it, listed in the Sessions card.
  */
 import { useMemo, type ReactNode } from 'react'
 import { Info } from 'lucide-react'
@@ -17,7 +18,7 @@ import { formatShortId } from '@/utils/telemetryFormat'
 import { ActivityChart } from './ActivityChart'
 import { ModelsCard, SessionsCard, ToolsCard, WorkspacesCard } from './Breakdowns'
 import { FilterBar } from './FilterBar'
-import { dailySeries, headline, sessionName } from './model'
+import { dailySeries, headline, sessionKey, sessionName } from './model'
 import { OverviewStats } from './OverviewStats'
 import { RecentTurns } from './RecentTurns'
 import { SessionHeader } from './SessionHeader'
@@ -71,6 +72,7 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
   const facets = data?.facets ?? null
   const filterableModels = useMemo(() => new Set(facets?.models ?? []), [facets])
   const turnRows = useMemo(() => turns.data?.pages.flatMap((page) => page.traces) ?? [], [turns.data])
+  const showAgent = useMemo(() => new Set(turnRows.map((turn) => turn.agent_name ?? '')).size > 1, [turnRows])
   const turnTotal = turns.data?.pages[0]?.total ?? turnRows.length
   const filtered = workspace !== null || model !== null || session !== null
   const sessionRow = session ? (data?.by_session?.find((row) => row.session_id === session) ?? null) : null
@@ -109,10 +111,14 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
     const workspaces = data.by_workspace ?? []
     const sessions = data.by_session ?? []
     const showWorkspaces = workspace === null && session === null && workspaces.length > 1
-    const showSessions = session === null && sessions.length > 1
+    // Under a session filter the rows are the session and its sub-agents.
+    const showSessions = sessions.length > 1
+    const subAgentCount = session === null ? 0 : sessions.filter((row) => sessionKey(row.session_id) !== sessionKey(session)).length
     body = (
       <div className="flex flex-col gap-4 p-3 sm:p-4">
-        {session !== null && <SessionHeader sessionId={session} row={sessionRow} onOpenSession={onOpenSession} />}
+        {session !== null && (
+          <SessionHeader sessionId={session} row={sessionRow} subAgentCount={subAgentCount} onOpenSession={onOpenSession} />
+        )}
         {data.sample_ratio < 1 && (
           <p className="flex items-start gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-2)">
             <Info size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-(--color-accent)" />
@@ -130,7 +136,9 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
         {(showWorkspaces || showSessions) && (
           <div className={cn('grid items-start gap-4', showWorkspaces && showSessions && 'lg:grid-cols-2')}>
             {showWorkspaces && <WorkspacesCard rows={workspaces} onSelect={setWorkspace} />}
-            {showSessions && <SessionsCard rows={sessions} showWorkspace={workspace === null} onSelect={setSession} />}
+            {showSessions && (
+              <SessionsCard rows={sessions} showWorkspace={workspace === null && session === null} selected={session} onSelect={setSession} />
+            )}
           </div>
         )}
         <div className="grid items-start gap-4 lg:grid-cols-2">
@@ -152,6 +160,7 @@ function OverviewPane({ onOpenSession }: TelemetryViewProps) {
           onErrorsOnlyChange={setErrorsOnly}
           showWorkspace={workspace === null && session === null && workspaces.length > 1}
           showModel={model === null}
+          showAgent={showAgent}
         />
       </div>
     )
