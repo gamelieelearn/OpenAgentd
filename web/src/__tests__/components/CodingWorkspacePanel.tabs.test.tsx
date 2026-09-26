@@ -94,7 +94,7 @@ async function renderPanel(onFileSelect = mock(() => {}), ready: RegExp | string
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open onFileSelect={onFileSelect} onClose={() => {}} />
+        <CodingWorkspacePanel workspace={WORKSPACE} open onFileSelect={onFileSelect} />
       </QueryClientProvider>,
     )
   })

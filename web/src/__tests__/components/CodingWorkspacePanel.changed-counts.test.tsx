@@ -76,7 +76,7 @@ describe('Changes tab counters', () => {
     await act(async () => {
       render(
         <QueryClientProvider client={queryClient}>
-          <CodingWorkspacePanel workspace={WORKSPACE} open onClose={() => {}} />
+          <CodingWorkspacePanel workspace={WORKSPACE} open />
         </QueryClientProvider>,
       )
     })

@@ -92,7 +92,6 @@ async function renderCommitsTab(mobile = false) {
         <CodingWorkspacePanel
           workspace={WORKSPACE}
           open
-          onClose={() => {}}
           onOpenPalette={() => {}}
           mobile={mobile}
         />
@@ -410,7 +409,6 @@ async function renderWithCommitsSubtab(ahead: number | null, behind: number | nu
         <CodingWorkspacePanel
           workspace={WORKSPACE}
           open
-          onClose={() => {}}
           onOpenPalette={() => {}}
           mobile={false}
         />
@@ -469,7 +467,6 @@ describe('CodingWorkspacePanel – commits_ahead badge', () => {
           <CodingWorkspacePanel
             workspace={WORKSPACE}
             open
-            onClose={() => {}}
             onOpenPalette={() => {}}
             mobile={false}
           />

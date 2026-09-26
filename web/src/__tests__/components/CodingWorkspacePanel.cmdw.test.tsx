@@ -91,7 +91,6 @@ async function renderWithOpenFileTab() {
           selectedFilePath={readme.path}
           selectedFileOpenKey={1}
           onFileSelect={() => {}}
-          onClose={() => {}}
         />
       </QueryClientProvider>,
     )
@@ -119,7 +118,6 @@ describe('CodingWorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () =>
             selectedFilePath={readme.path}
             selectedFileOpenKey={1}
             onFileSelect={onFileSelect}
-            onClose={() => {}}
           />
         </QueryClientProvider>,
       )
@@ -173,7 +171,6 @@ describe('CodingWorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () =>
           <CodingWorkspacePanel
             workspace={WORKSPACE}
             open
-            onClose={() => {}}
           />
         </QueryClientProvider>,
       )

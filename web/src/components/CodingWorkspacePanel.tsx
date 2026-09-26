@@ -150,8 +150,6 @@ export function CodingWorkspacePanel({
 }: {
   workspace: string
   open: boolean
-  initialTab?: 'files' | 'changed'
-  onClose?: () => void
   mobile?: boolean
   mobileDragOffset?: number | null
   /** Measured width of the chat + dock region. Falls back to the viewport. */

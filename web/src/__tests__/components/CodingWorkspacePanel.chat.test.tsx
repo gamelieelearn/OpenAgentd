@@ -60,7 +60,6 @@ async function renderPanel(chatWorkspace: boolean) {
           workspace={WORKSPACE}
           open
           chatWorkspace={chatWorkspace}
-          onClose={() => {}}
         />
       </QueryClientProvider>,
     )
@@ -97,7 +96,7 @@ describe('CodingWorkspacePanel chat workspace', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const panel = (workspace: string, chatWorkspace: boolean) => (
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={workspace} open chatWorkspace={chatWorkspace} onClose={() => {}} />
+        <CodingWorkspacePanel workspace={workspace} open chatWorkspace={chatWorkspace} />
       </QueryClientProvider>
     )
     let rerender: (ui: React.ReactElement) => void = () => {}

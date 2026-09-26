@@ -49,17 +49,17 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-async function renderPanel({ centerWidth = 1000, mobile = false, onClose = mock(() => {}) } = {}) {
+async function renderPanel({ centerWidth = 1000, mobile = false } = {}) {
   const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open centerWidth={centerWidth} mobile={mobile} onClose={onClose} />
+        <CodingWorkspacePanel workspace={WORKSPACE} open centerWidth={centerWidth} mobile={mobile} />
       </QueryClientProvider>,
     )
   })
-  return { onClose, dock: screen.getByRole('complementary', { name: 'Review dock' }) }
+  return { dock: screen.getByRole('complementary', { name: 'Review dock' }) }
 }
 
 describe('Review dock layout', () => {

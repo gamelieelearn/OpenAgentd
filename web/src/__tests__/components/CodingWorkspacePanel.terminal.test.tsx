@@ -67,7 +67,7 @@ async function renderPanel(terminalOpenKey = 0) {
   await act(async () => {
     result = render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open terminalOpenKey={terminalOpenKey} onClose={() => {}} />
+        <CodingWorkspacePanel workspace={WORKSPACE} open terminalOpenKey={terminalOpenKey} />
       </QueryClientProvider>,
     )
   })
@@ -134,7 +134,6 @@ describe('CodingWorkspacePanel terminal tabs', () => {
             open
             terminalOpenKey={1}
             handledTerminalOpenKeyRef={handledRef}
-            onClose={() => {}}
           />
         </QueryClientProvider>,
       )
@@ -160,7 +159,6 @@ describe('CodingWorkspacePanel terminal tabs', () => {
             open
             terminalOpenKey={1}
             handledTerminalOpenKeyRef={handledRef}
-            onClose={() => {}}
           />
         </QueryClientProvider>,
       )

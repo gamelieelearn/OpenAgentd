@@ -98,7 +98,7 @@ async function renderWorkspacePanel(onFileSelect = mock(() => {}), selectedFileP
   await act(async () => {
     renderResult = render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open initialTab="files" selectedFilePath={selectedFilePath} onFileSelect={onFileSelect} onClose={() => {}} mobile={mobile} onOpenPalette={onOpenPalette} />
+        <CodingWorkspacePanel workspace={WORKSPACE} open selectedFilePath={selectedFilePath} onFileSelect={onFileSelect} mobile={mobile} onOpenPalette={onOpenPalette} />
       </QueryClientProvider>,
     )
   })
@@ -138,7 +138,7 @@ describe('Coding workspace two-layer file preview', () => {
 
     renderResult.rerender(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open selectedFilePath={readmePath} selectedFileOpenKey={1} onFileSelect={onFileSelect} onClose={() => {}} />
+        <CodingWorkspacePanel workspace={WORKSPACE} open selectedFilePath={readmePath} selectedFileOpenKey={1} onFileSelect={onFileSelect} />
       </QueryClientProvider>,
     )
 

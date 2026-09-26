@@ -775,7 +775,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 workspace={workspace}
                 open
                 chatWorkspace={isChatWorkspace}
-                initialTab={codingPanel}
                 mobile={isMobile}
                 mobileDragOffset={codingPanelDragOffset}
                 centerWidth={centerWidth}
@@ -792,7 +791,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 onFileSelect={handleCodingFileSelect}
                 onAddComment={handleAddFileComment}
                 onOpenPalette={handleToggleQuickOpen}
-                onClose={() => setCodingPanel(null)}
               />
             </Suspense>
           )}

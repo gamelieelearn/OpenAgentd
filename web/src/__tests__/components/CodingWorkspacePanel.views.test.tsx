@@ -90,7 +90,6 @@ async function renderPanel(options: RenderOptions = {}) {
       <CodingWorkspacePanel
         workspace={WORKSPACE}
         open
-        onClose={() => {}}
         viewRequest={opts.request ?? null}
         handledViewRequestKeyRef={opts.handledRef}
         todos={opts.todos ?? TODOS}
