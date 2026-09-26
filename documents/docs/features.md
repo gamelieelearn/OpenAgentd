@@ -648,7 +648,10 @@ agent against it.
   without nested group labels; session context menu / action sheet options include editing title
   and deleting session `[v1.117.0]`; repository/worktree context menu / action sheet includes
   copying the repo or worktree's absolute path `[v1.120.0]`; scroll-triggered pagination replaces
-  the Load more button.
+  the Load more button. Since `[v3.0.0]` the sidebar has a **Workspaces** header with
+  collapse-all and **Open folder** actions, workspace rows with chevrons and indent guides,
+  a **…** actions menu on worktrees, 28px session rows showing a compact age that swaps to
+  edit/delete on hover, and a **Show more** button instead of scroll-triggered loading.
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0]` — lead sessions with
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0, updated v2.17.0]` — lead sessions with
   delegated subagents render an expandable accordion of child sessions that defaults to
@@ -685,8 +688,8 @@ agent against it.
   launcher or last-workspace restore. New empty sessions exist before the
   first message.
 - **Workspace sidebar pagination** `[v1.18.0]` — each main/worktree list shows
-  roughly 5 sessions and loads more when scrolled to the bottom, so one busy
-  workspace doesn't crowd the others.
+  roughly 5 sessions and loads more on request (**Show more** since `[v3.0.0]`,
+  previously on scroll), so one busy workspace doesn't crowd the others.
 - **`@file` / `@folder` auto-attach** `[v1.17.0]` — see [§1](#1-the-desktop-coding-workspace).
 - **Slash commands scoped to coding workspaces** `[v1.17.0]` — project-local
   commands in `.openagentd/commands/**/*.md`, universal `.agents/commands/**/*.md` `[v2.12.0]`, and `.opencode/commands/**/*.md`

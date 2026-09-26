@@ -3,12 +3,13 @@
  * route. Mirrors the wireframe sidebar ``Q4zeZN`` in
  * ``.diagrams/OpenAgentd-ui.pen``:
  *
- *   • Flat list of repositories, worktrees, and their coding sessions.
- *     Worktree/session grouping is shown with icons, counts, and spacing
- *     rather than file-tree indentation.
- *   • ``+ Open folder…`` row at the bottom of the workspace list
- *     surfaces the trusted-workspace dialog.
- *   • Footer trio: ⚙ Settings · ❔ Help (command palette) · 🌙 ThemeToggle.
+ *   • A "Workspaces" section header (VS Code view header) whose actions —
+ *     Open folder…, Collapse all — stay reachable however long the list is.
+ *   • Repositories, worktrees, and their sessions as 28 px rows. Sessions
+ *     nest under an indent guide and page in with an explicit "Show more"
+ *     row, so the sidebar has exactly one scroller.
+ *   • Mobile drawer footer: ⚙ Settings · ❔ Help (command palette) · 🌙
+ *     ThemeToggle. On desktop those live in the status bar.
  *
  * The 64 px icon rail from the previous design is gone — workspace
  * navigation now lives inline so the sidebar matches the coding workspace's
@@ -24,13 +25,22 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { formatShortcut } from '@/lib/keyboard-shortcut'
-import { useResizableWidth } from '@/hooks/use-resizable-width'
+import { panelResizeHandleClass, usePanelResize } from '@/hooks/use-panel-resize'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { useLayoutStore } from '@/stores/useLayoutStore'
+import {
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  clampSidebarWidth,
+  sidebarMaxWidth,
+} from '@/lib/workbench-layout'
 import {
   Activity,
   ChevronRight,
+  ChevronsDownUp,
   Copy,
   Folder,
+  FolderPlus,
   GitBranch,
   HelpCircle,
   Loader2,
@@ -53,6 +63,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { openTelemetry } from '@/stores/useTelemetryStore'
 import {
   Dialog,
   DialogContent,
@@ -505,24 +516,28 @@ export function CodingSidebar({
   ]
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
 
-  const rightPanelWidth = typeof document !== 'undefined'
-    ? (document.querySelector('aside.border-l')?.getBoundingClientRect().width ?? 0)
-    : 0
-
-  const resizable = useResizableWidth({
-    storageKey: 'oa.codingSidebar.width',
-    defaultWidth: 256,
-    minWidth: 220,
-    maxWidth: Math.min(
-      420,
-      Math.max(
-        220,
-        Math.floor((typeof window === 'undefined' ? 420 : window.innerWidth) - rightPanelWidth - 380)
-      )
-    ),
+  // Width is persisted in the layout store and clamped against the window so
+  // the chat and a side-by-side dock always keep their minimums.
+  const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth
+  const storedSidebarWidth = useLayoutStore((s) => s.sidebarWidth)
+  const setSidebarWidth = useLayoutStore((s) => s.setSidebarWidth)
+  const commitSidebarWidth = useCallback((width: number) => setSidebarWidth(width), [setSidebarWidth])
+  const resetSidebarWidth = useCallback(() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH), [setSidebarWidth])
+  const resizable = usePanelResize({
+    width: clampSidebarWidth(storedSidebarWidth, viewportWidth),
+    min: SIDEBAR_MIN_WIDTH,
+    max: sidebarMaxWidth(viewportWidth),
     edge: 'right',
+    onCommit: commitSidebarWidth,
+    onReset: resetSidebarWidth,
     disabled: isMobile || desktopCollapsed,
+    label: 'Resize coding sidebar',
   })
+
+  const collapseAllWorkspaces = () => {
+    // Keep the active workspace open so the current session stays visible.
+    setExpandedWorkspaces(new Set(activeWorkspace ? [activeWorkspace] : []))
+  }
 
   useEffect(() => {
     if (!activeWorkspace || !activeWorktreeSource) return
@@ -661,28 +676,66 @@ export function CodingSidebar({
       }
       className={
         isMobile
-          ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'
-          : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page)'
+          ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-sidebar) shadow-xl'
+          : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-sidebar)'
       }
     >
       {!isMobile && !desktopCollapsed && (
         <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize coding sidebar"
-          title="Drag to resize · double-click to reset"
-          className="absolute right-0 top-0 z-20 h-full w-1 cursor-col-resize transition-colors hover:bg-(--color-accent)/40"
-          onPointerDown={resizable.startResize}
-          onDoubleClick={resizable.resetWidth}
+          {...resizable.handleProps}
+          className={panelResizeHandleClass('right', resizable.isResizing)}
         />
       )}
 
+      {/* Section header — actions stay reachable however long the list is. */}
+      <div className="flex h-8 shrink-0 items-center justify-between gap-2 pl-3 pr-1.5">
+        <span className="truncate text-[11px] font-semibold uppercase leading-none tracking-[0.05em] text-(--color-text-subtle)">
+          Workspaces
+        </span>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={collapseAllWorkspaces}
+                  className="flex h-8 w-8 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6"
+                  aria-label="Collapse all workspaces"
+                >
+                  <ChevronsDownUp size={13} aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>Collapse all</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={() => { void openWorkspaceDialog() }}
+                  className="flex h-8 w-8 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6"
+                  aria-label="Open folder"
+                >
+                  <FolderPlus size={13} aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>Open folder…</TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+
       {/* Workspace + sessions tree */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-2">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-2">
         {visibleWorkspaces.length === 0 && (
-          <p className="px-3 py-4 text-xs text-(--color-text-subtle)">
-            No workspaces yet. Use “Open folder…” below to add one.
-          </p>
+          <div className="flex flex-col items-start gap-2 px-3 py-3">
+            <p className="text-xs text-(--color-text-subtle)">No workspaces yet.</p>
+            <Button type="button" size="sm" onClick={() => { void openWorkspaceDialog() }}>
+              <FolderPlus size={13} aria-hidden="true" />
+              Open folder…
+            </Button>
+          </div>
         )}
 
         {sourceWorkspaces.map((path) => {
@@ -701,7 +754,7 @@ export function CodingSidebar({
 
           return (
             <div key={path} className="relative">
-              <div className="group mx-2 flex h-7 items-center rounded-md border border-transparent">
+              <div className="group mx-1.5 flex h-(--spacing-list-row) items-center rounded-sm hover:bg-(--bg-key)/40">
                 <Tooltip className="min-w-0 flex-1">
                   <TooltipTrigger
                     className="min-w-0 flex-1"
@@ -719,10 +772,11 @@ export function CodingSidebar({
                           event.preventDefault()
                           setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
                         }}
-                        className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded-sm px-1.5 py-1 text-left text-xs"
+                        className="flex h-full min-w-0 flex-1 items-center gap-1.5 truncate rounded-sm px-1.5 text-left text-xs"
                         aria-expanded={sourceIsExpanded}
                         aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} ${sourceIsChat ? 'chat workspace' : 'repository'} ${sourceLabel}`}
                       >
+                        <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ${sourceIsExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
                         {sourceIsChat ? (
                           <MessageCircle size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
                         ) : (
@@ -776,7 +830,9 @@ export function CodingSidebar({
               </div>
 
               {(sourceIsExpanded || sourceHasRunningSession) && (
-                <div className="pb-1">
+                // Children (sessions, then worktrees) hang off an indent
+                // guide aligned with the repository chevron.
+                <div className="ml-[17px] mr-1.5 border-l border-(--color-border-subtle) pb-1 pl-1">
                   <WorkspaceSessionList
                     path={path}
                     currentSessionId={currentSessionId}
@@ -801,8 +857,8 @@ export function CodingSidebar({
                     const runningSessions = itemSessions.filter((s) => s.running === true)
                     const hasRunningSession = runningSessions.length > 0
                     return (
-                      <div key={directory} className="mt-1">
-                        <div className="group mx-2 flex h-7 items-center rounded-md">
+                      <div key={directory} className="mt-0.5">
+                        <div className="group flex h-(--spacing-list-row) items-center rounded-sm hover:bg-(--bg-key)/40">
                           <Tooltip className="min-w-0 flex-1">
                             <TooltipTrigger
                               className="min-w-0 flex-1"
@@ -817,14 +873,14 @@ export function CodingSidebar({
                                     event.preventDefault()
                                     setDesktopWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo, x: event.clientX, y: event.clientY })
                                   }}
-                                  className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-left text-xs transition-colors ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
+                                  className={`flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors ${isActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2)'}`}
                                   aria-expanded={isExpanded}
                                   aria-label={`${isExpanded ? 'Collapse' : 'Expand'} worktree ${item.name}`}
                                 >
-                                  <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+                                  <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
                                   <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
                                   <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
-                                  {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-[11px] md:text-[9px] text-(--color-text-subtle)">external</span>}
+                                  {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 text-[11px] leading-4 text-(--color-text-subtle)">external</span>}
                                   {isPending && (
                                     <span>
                                       <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
@@ -850,39 +906,27 @@ export function CodingSidebar({
                             />
                             <TooltipContent>{`New session in worktree ${item.name}`}</TooltipContent>
                           </Tooltip>
+                          {/* Rename / remove live in the worktree menu (same
+                              one right-click opens) so the row carries two
+                              hover actions, matching repository rows. */}
                           <Tooltip>
                             <TooltipTrigger
                               render={
                                 <button
                                   type="button"
-                                  onClick={() => handleWorktreeEdit(worktreeInfo)}
-                                  className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
-                                  aria-label={`Edit worktree title ${item.name}`}
+                                  onClick={(event) => setDesktopWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo, x: event.clientX, y: event.clientY })}
+                                  disabled={worktreeRemoving === directory}
+                                  className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:opacity-50 ${mobileLongPressActions ? 'hidden' : worktreeRemoving === directory ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                                  aria-label={`Actions for worktree ${item.name}`}
                                 >
-                                  <Pencil size={11} aria-hidden="true" />
+                                  {worktreeRemoving === directory
+                                    ? <Loader2 size={11} className="animate-spin" aria-hidden="true" />
+                                    : <MoreHorizontal size={12} aria-hidden="true" />}
                                 </button>
                               }
                             />
-                            <TooltipContent>Edit worktree title</TooltipContent>
+                            <TooltipContent>Worktree actions</TooltipContent>
                           </Tooltip>
-                          {item.managed ? (
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <button
-                                    type="button"
-                                    onClick={() => setRemoveWorktreeTarget(worktreeInfo)}
-                                    disabled={worktreeRemoving === directory}
-                                    className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
-                                    aria-label={`Remove worktree ${item.name}`}
-                                  >
-                                    {worktreeRemoving === directory ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : <Trash2 size={11} aria-hidden="true" />}
-                                  </button>
-                                }
-                              />
-                              <TooltipContent>Remove managed worktree</TooltipContent>
-                            </Tooltip>
-                          ) : null}
                         </div>
                         {(isExpanded || hasRunningSession) && (
                           <WorkspaceSessionList
@@ -890,7 +934,7 @@ export function CodingSidebar({
                             currentSessionId={currentSessionId}
                             runningSessions={runningSessions}
                             collapsed={!isExpanded}
-                            className="max-h-[7.75rem] space-y-0.5 overflow-y-auto py-0.5 pl-5 pr-2"
+                            className="ml-[15px] space-y-px border-l border-(--color-border-subtle) py-0.5 pl-1"
                             mobileLongPressActions={mobileLongPressActions}
                             onSessionSelect={handleSessionSelect}
                             onSessionDelete={handleSessionDelete}
@@ -909,24 +953,6 @@ export function CodingSidebar({
             </div>
           )
         })}
-
-        {/* + Open folder… */}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onClick={() => { void openWorkspaceDialog() }}
-                className="mx-2 flex h-8 items-center gap-2 rounded-md px-2.5 text-left text-xs font-medium text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-                aria-label="Open folder"
-              >
-                <Plus size={13} aria-hidden="true" />
-                <span>Open folder…</span>
-              </button>
-            }
-          />
-          <TooltipContent>Open a new workspace folder</TooltipContent>
-        </Tooltip>
       </div>
 
       {/* Mobile drawer footer — on desktop this lives in AppFooter status bar */}
@@ -952,7 +978,7 @@ export function CodingSidebar({
               render={
                 <button
                   type="button"
-                  onClick={() => { navigate({ to: '/telemetry' }); onMobileClose?.() }}
+                  onClick={() => { openTelemetry(); onMobileClose?.() }}
                   className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                   aria-label="Telemetry"
                 >

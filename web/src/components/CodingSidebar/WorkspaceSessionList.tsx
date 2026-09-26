@@ -1,15 +1,19 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import type React from 'react'
 import { ChevronRight, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { useCodingWorkspaceSessionsQuery, useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
-import { formatRelativeDate } from '@/utils/format'
+import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
   return event.button === 0 && (event.metaKey || event.ctrlKey)
 }
+
+/** Inline row action: in-flow (never overlays the title), 24px target. */
+const ROW_ACTION =
+  'flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)'
 
 function WorkspaceSessionRow({
   session,
@@ -38,6 +42,14 @@ function WorkspaceSessionRow({
   const isRunning = session.running === true && !needsInput
   const sessionTitle = session.title || 'Untitled'
   const sessionDate = formatRelativeDate(session.created_at)
+  const sessionAge = formatCompactRelative(session.updated_at ?? session.created_at)
+  // Touch without long-press sheets has no hover: keep actions visible there.
+  const actionsVisibility = mobileLongPressActions
+    ? 'hidden'
+    : 'hidden group-hover/row:flex group-focus-within/row:flex pointer-coarse:flex'
+  const ageVisibility = mobileLongPressActions
+    ? ''
+    : 'group-hover/row:hidden group-focus-within/row:hidden pointer-coarse:hidden'
 
   const isChildSessionCurrent = Boolean(
     currentSessionId && session.subagents?.some((s) => s.id === currentSessionId)
@@ -75,8 +87,12 @@ function WorkspaceSessionRow({
       : (isCurrent || hasActiveWork))
 
   return (
-    <div className="space-y-0.5">
-      <div className="group relative flex items-center">
+    <div className="space-y-px">
+      <div
+        className={`group/row flex h-(--spacing-list-row) items-center rounded-sm pr-1 transition-colors duration-(--motion-instant) ${
+          isCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'
+        }`}
+      >
         {hasSubagents ? (
           <button
             type="button"
@@ -85,7 +101,7 @@ function WorkspaceSessionRow({
               e.preventDefault()
               setExpandedOverride(!isExpanded)
             }}
-            className="flex h-6 w-4 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+            className="flex h-6 w-4 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:text-(--color-text)"
             aria-expanded={isExpanded}
             aria-label={isExpanded ? `Collapse ${subagents.length} subagents` : `Expand ${subagents.length} subagents`}
             title={isExpanded ? `Collapse ${subagents.length} subagents` : `Expand ${subagents.length} subagents`}
@@ -125,10 +141,10 @@ function WorkspaceSessionRow({
                   e.preventDefault()
                   onSessionContextActions(session, e)
                 }}
-                className={`flex min-h-6 w-full items-center gap-1.5 rounded-sm px-2 py-0.5 text-left text-xs transition-colors ${
+                className={`flex h-(--spacing-list-row) w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors ${
                   isCurrent
-                    ? 'bg-(--bg-key)/50 text-(--color-text)'
-                    : 'text-(--color-text-2) hover:bg-(--bg-key)/30 hover:text-(--color-text)'
+                    ? 'text-(--color-text)'
+                    : 'text-(--color-text-2) hover:text-(--color-text)'
                 }`}
               >
                 <span
@@ -145,7 +161,7 @@ function WorkspaceSessionRow({
                 <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${isRunning ? 'session-title-breathe text-(--color-text)' : ''}`}>{sessionTitle}</span>
                 {hasSubagents && (
                   <span
-                    className="ml-1 inline-flex shrink-0 items-center gap-1 rounded bg-(--bg-key)/70 px-1 py-0.2 font-mono text-[11px] md:text-[9px] text-(--color-text-subtle)"
+                    className="ml-1 inline-flex shrink-0 items-center gap-1 rounded-full bg-(--bg-key) px-1.5 font-mono text-[11px] leading-4 text-(--color-text-subtle)"
                     aria-label={`${subagents.length} subagent${subagents.length > 1 ? 's' : ''}`}
                   >
                     {!isExpanded && hasActiveWork && (
@@ -167,29 +183,38 @@ function WorkspaceSessionRow({
           <TooltipContent>{`${sessionTitle} · ${sessionDate}`}</TooltipContent>
         </Tooltip>
         </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onSessionEdit(session)
-          }}
-          className={`absolute right-6 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-xs p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 group-focus-within:opacity-100 ${mobileLongPressActions ? 'hidden' : 'pointer-coarse:opacity-100'}`}
-          aria-label={`Edit session ${session.title || 'Untitled'}`}
-        >
-          <Pencil size={11} />
-        </button>
-        <button
-          type="button"
-          onClick={(e) => onSessionDelete(e, session)}
-          className={`absolute right-1 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-xs p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 group-focus-within:opacity-100 ${mobileLongPressActions ? 'hidden' : 'pointer-coarse:opacity-100'}`}
-          aria-label={`Delete session ${session.title || 'Untitled'}`}
-        >
-          <Trash2 size={11} />
-        </button>
+        {/* Meta slot: the age reads at rest; hover/focus swaps it for the
+            row actions in the same place, so neither covers the title. */}
+        {sessionAge && (
+          <span className={`shrink-0 pl-1 pr-1 text-[11px] tabular-nums text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
+            {sessionAge}
+          </span>
+        )}
+        <div className={`shrink-0 items-center ${actionsVisibility}`}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onSessionEdit(session)
+            }}
+            className={ROW_ACTION}
+            aria-label={`Edit session ${session.title || 'Untitled'}`}
+          >
+            <Pencil size={11} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => onSessionDelete(e, session)}
+            className={`${ROW_ACTION} hover:bg-(--color-error-subtle) hover:text-(--color-error)`}
+            aria-label={`Delete session ${session.title || 'Untitled'}`}
+          >
+            <Trash2 size={11} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       {hasSubagents && isExpanded && (
-        <div className="ml-5 pl-2 border-l border-(--color-border-subtle) space-y-0.5 py-0.5">
+        <div className="ml-[21px] space-y-px border-l border-(--color-border-subtle) py-0.5 pl-1">
           {subagents.map((sub) => {
             const isSubCurrent = sub.session_id === currentSessionId
             const subTitle = sub.title ? sub.title.replace(/^[^:]+:\s*/, '') : sub.member_id
@@ -208,20 +233,20 @@ function WorkspaceSessionRow({
               updated_at: null,
             }
             return (
-              <div key={sub.session_id} className="group/sub relative">
-                <Tooltip className="w-full">
+              <div key={sub.session_id} className={`group/sub flex h-6 items-center rounded-sm pr-1 ${isSubCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'}`}>
+                <Tooltip className="min-w-0 flex-1">
                 <TooltipTrigger
-                  className="w-full"
+                  className="w-full min-w-0"
                   render={
                     <button
                       type="button"
                       onClick={(e) => {
                         onSessionSelect(subSessionPayload, path, e)
                       }}
-                      className={`flex min-h-5 w-full items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-left text-xs transition-colors ${
+                      className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors ${
                         isSubCurrent
-                          ? 'bg-(--bg-key)/50 text-(--color-text) font-semibold'
-                          : 'text-(--color-text-2) hover:bg-(--bg-key)/30 hover:text-(--color-text)'
+                          ? 'text-(--color-text) font-semibold'
+                          : 'text-(--color-text-2) hover:text-(--color-text)'
                       }`}
                     >
                       <span
@@ -234,7 +259,7 @@ function WorkspaceSessionRow({
                         }`}
                         aria-label={isSubWaiting ? 'Subagent waiting for lead' : isSubWorking ? 'Subagent working' : undefined}
                       />
-                      <span className="font-mono text-xs md:text-[10px] font-semibold text-(--color-text) shrink-0">
+                      <span className="shrink-0 font-mono text-[11px] font-semibold text-(--color-text)">
                         {sub.member_id}
                       </span>
                       <span className="min-w-0 flex-1 truncate text-[11px] text-(--color-text-muted)">
@@ -252,10 +277,10 @@ function WorkspaceSessionRow({
               <button
                 type="button"
                 onClick={(e) => onSessionDelete(e, subSessionPayload)}
-                className={`absolute right-1 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-xs p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover/sub:opacity-100 group-focus-within/sub:opacity-100 ${mobileLongPressActions ? 'hidden' : 'pointer-coarse:opacity-100'}`}
+                className={`${ROW_ACTION} h-5 w-5 hover:bg-(--color-error-subtle) hover:text-(--color-error) ${mobileLongPressActions ? 'hidden' : 'hidden group-hover/sub:flex group-focus-within/sub:flex pointer-coarse:flex'}`}
                 aria-label={`Delete subagent session ${sub.member_id}`}
               >
-                <Trash2 size={10} />
+                <Trash2 size={10} aria-hidden="true" />
               </button>
             </div>
             )
@@ -272,7 +297,7 @@ export function WorkspaceSessionList({
   runningSessions,
   collapsed = false,
   mobileLongPressActions = false,
-  className = 'max-h-[7.75rem] space-y-0.5 overflow-y-auto py-0.5 pl-5 pr-2',
+  className = 'space-y-px py-0.5',
   onSessionSelect,
   onSessionDelete,
   onSessionEdit,
@@ -296,28 +321,14 @@ export function WorkspaceSessionList({
   const workspaceSessions = collapsed
     ? (runningSessions ?? [])
     : (sessions.data?.pages.flatMap((page) => page.data) ?? [])
-  const listRef = useRef<HTMLDivElement>(null)
-  const loadMoreRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    const sentinel = loadMoreRef.current
-    if (!sentinel || collapsed) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
-          void fetchNextPage()
-        }
-      },
-      { root: listRef.current, threshold: 0.1 },
-    )
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage, collapsed])
-
+  // Paging is an explicit row rather than an IntersectionObserver inside a
+  // nested scroll box: the sidebar keeps a single scroller and every session
+  // page is one deliberate click (or Enter) away.
   return (
-    <div ref={listRef} className={className}>
+    <div className={className}>
       {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && (
-        <p className="px-2 py-1 text-xs text-(--color-text-subtle)">No sessions yet.</p>
+        <p className="flex h-6 items-center pl-[22px] text-[11px] text-(--color-text-subtle)">No sessions yet.</p>
       )}
       {workspaceSessions.map((session) => {
         const isCurrent = session.id === currentSessionId
@@ -337,11 +348,17 @@ export function WorkspaceSessionList({
           />
         )
       })}
-      {!collapsed && <div ref={loadMoreRef} className="h-1" aria-hidden />}
-      {!collapsed && isFetchingNextPage && (
-        <div className="flex items-center justify-center py-1 text-(--color-accent)" aria-label="Loading more sessions">
-          <Loader2 size={11} className="animate-spin" aria-hidden="true" />
-        </div>
+      {!collapsed && hasNextPage && (
+        <button
+          type="button"
+          onClick={() => { if (!isFetchingNextPage) void fetchNextPage() }}
+          disabled={isFetchingNextPage}
+          className="flex h-6 w-full items-center gap-1.5 rounded-sm pl-[22px] text-left text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text) disabled:cursor-default"
+          aria-label={isFetchingNextPage ? 'Loading more sessions' : 'Show more sessions'}
+        >
+          {isFetchingNextPage && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
+          {isFetchingNextPage ? 'Loading…' : 'Show more'}
+        </button>
       )}
     </div>
   )

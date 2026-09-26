@@ -166,12 +166,14 @@ mock.module('lucide-react', () => ({
   Check: Icon,
   ChevronDown: Icon,
   ChevronRight: Icon,
+  ChevronsDownUp: Icon,
   Copy: Icon,
   Download: Icon,
   ExternalLink: Icon,
   FileText: Icon,
   CircleHelp: Icon,
   Folder: Icon,
+  FolderPlus: Icon,
   GitBranch: Icon,
   GitCompare: Icon,
   Globe: Icon,
@@ -1157,8 +1159,8 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.queryByLabelText('Session running')).toBeNull()
   })
 
-  it('loads more sessions at the bottom of a workspace session list', async () => {
-    const _user = userEvent.setup()
+  it('loads more sessions from an explicit "Show more" row instead of a nested scroller', async () => {
+    const user = userEvent.setup()
     sessionsData = [
       {
         id: 'session-1',
@@ -1175,7 +1177,10 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await renderCodingSidebarForSessions('session-1')
 
-    await waitFor(() => expect(fetchWorkspaceNextPage).toHaveBeenCalled())
+    const showMore = await screen.findByRole('button', { name: 'Show more sessions' })
+    expect(fetchWorkspaceNextPage).not.toHaveBeenCalled()
+    await user.click(showMore)
+    expect(fetchWorkspaceNextPage).toHaveBeenCalledTimes(1)
   })
 
   it('keeps known worktree children under their source when probing the worktree itself returns none', async () => {
@@ -1321,7 +1326,8 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await renderCodingSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project' })
     await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
-    await user.click(screen.getByLabelText('Edit worktree title task-a'))
+    await user.click(screen.getByLabelText('Actions for worktree task-a'))
+    await user.click(screen.getByRole('menuitem', { name: 'Edit title' }))
     const input = screen.getByLabelText('Worktree title')
     await user.clear(input)
     await user.type(input, 'Review UI')
@@ -1367,7 +1373,8 @@ describe('CodingSidebar workspace trust flow', () => {
     })
 
     await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
-    await user.click(screen.getByLabelText('Remove worktree task-a'))
+    await user.click(screen.getByLabelText('Actions for worktree task-a'))
+    await user.click(screen.getByRole('menuitem', { name: 'Remove worktree' }))
 
     // Managed-worktree removal is destructive, so it now requires
     // confirmation before it commits (error prevention).
