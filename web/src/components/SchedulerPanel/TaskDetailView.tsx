@@ -9,18 +9,26 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useDeleteScheduledTaskMutation, usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
+import { SchedulerBackButton, useSchedulerPaneHeaderClass } from './chrome'
 
 export function TaskDetailView({
   task,
   onClose,
+  closeMode = 'close',
 }: {
   task: ScheduledTaskResponse
   onClose: () => void
+  /**
+   * ``back`` swaps the trailing close button for a leading back arrow, for
+   * stacked hosts (the dock) where the detail replaces the list.
+   */
+  closeMode?: 'close' | 'back'
 }) {
   const [editing, setEditing] = useState(false)
   const [copiedPrompt, setCopiedPrompt] = useState(false)
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
   const currentSessionId = useAgentStore((state) => state.sessionId)
+  const headerClass = useSchedulerPaneHeaderClass()
 
   const deleteMutation = useDeleteScheduledTaskMutation()
   const pauseMutation = usePauseScheduledTaskMutation()
@@ -80,12 +88,13 @@ export function TaskDetailView({
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-(--bg-page)">
       {/* Header */}
-      <div className="border-b border-(--color-border) bg-(--bg-sidebar) px-4 py-2.5 sm:px-5">
+      <div className={headerClass}>
         <div className="flex items-start justify-between gap-3">
+          {closeMode === 'back' && <SchedulerBackButton onClick={onClose} />}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="truncate text-sm font-bold text-(--color-text)">{task.name}</h2>
-              <span className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-subtle)">
+              <span className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-subtle)">
                 slug: <span className="text-(--color-text-2)">{slugify(task.name)}</span>
               </span>
             </div>
@@ -166,43 +175,45 @@ export function TaskDetailView({
               />
               <TooltipContent>Delete task</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={onClose}
-                    className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-                    aria-label="Close detail"
-                  >
-                    <X size={14} />
-                  </button>
-                }
-              />
-              <TooltipContent>Close</TooltipContent>
-            </Tooltip>
+            {closeMode === 'close' && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={onClose}
+                      className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                      aria-label="Close detail"
+                    >
+                      <X size={14} />
+                    </button>
+                  }
+                />
+                <TooltipContent>Close</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 @xl:p-5 space-y-3">
         {/* Status Metrics Strip */}
         <section className="grid grid-cols-3 gap-2">
           <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-2.5">
-            <span className="text-xs md:text-[10px] font-medium text-(--color-text-muted)">Status</span>
+            <span className="text-xs md:text-[11px] font-medium text-(--color-text-muted)">Status</span>
             <div className="mt-0.5 flex items-center gap-1.5">
               <span className={`h-1.5 w-1.5 rounded-full ${statusDotColor}`} aria-hidden="true" />
               <span className={`text-xs font-semibold capitalize ${statusColor}`}>{task.status}</span>
             </div>
           </div>
           <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-2.5">
-            <span className="text-xs md:text-[10px] font-medium text-(--color-text-muted)">Enabled</span>
+            <span className="text-xs md:text-[11px] font-medium text-(--color-text-muted)">Enabled</span>
             <div className="mt-0.5 text-xs font-semibold text-(--color-text)">
               {task.enabled ? 'Yes' : 'No'}
             </div>
           </div>
           <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-2.5">
-            <span className="text-xs md:text-[10px] font-medium text-(--color-text-muted)">Run Count</span>
+            <span className="text-xs md:text-[11px] font-medium text-(--color-text-muted)">Run Count</span>
             <div className="mt-0.5 text-xs font-semibold text-(--color-text)">
               {task.run_count}{task.max_runs ? ` / ${task.max_runs}` : ''}
             </div>
@@ -211,12 +222,12 @@ export function TaskDetailView({
 
         {/* Configuration Card */}
         <section className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
-          <h3 className="mb-2 text-xs md:text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+          <h3 className="mb-2 text-xs md:text-[11px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
             Routing & Target
           </h3>
-          <div className="grid gap-2.5 sm:grid-cols-2">
+          <div className="grid gap-2.5 @xl:grid-cols-2">
             <div className="rounded-xs border border-(--color-border-subtle) bg-(--bg-page) p-2.5">
-              <span className="text-xs md:text-[10px] font-medium text-(--color-text-muted)">Routing</span>
+              <span className="text-xs md:text-[11px] font-medium text-(--color-text-muted)">Routing</span>
               <p className="mt-0.5 text-xs font-medium text-(--color-text)">
                 {task.workspace ? (
                   <span className="inline-flex items-center gap-1.5">
@@ -242,7 +253,7 @@ export function TaskDetailView({
             </div>
 
             <div className="rounded-xs border border-(--color-border-subtle) bg-(--bg-page) p-2.5">
-              <span className="text-xs md:text-[10px] font-medium text-(--color-text-muted)">Session Target</span>
+              <span className="text-xs md:text-[11px] font-medium text-(--color-text-muted)">Session Target</span>
               <p className="mt-0.5 text-xs text-(--color-text)">
                 {!task.session_id && 'New Session (fresh thread each run)'}
                 {task.session_id === 'auto' && 'Persistent Session (reused dedicated thread)'}
@@ -266,7 +277,7 @@ export function TaskDetailView({
 
         {/* Schedule Timing Card */}
         <section className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
-          <h3 className="mb-2 text-xs md:text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+          <h3 className="mb-2 text-xs md:text-[11px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
             Schedule Details
           </h3>
           <div className="divide-y divide-(--color-border-subtle) rounded-xs border border-(--color-border-subtle) bg-(--bg-page) px-2.5">
@@ -301,7 +312,7 @@ export function TaskDetailView({
         {/* Prompt Card */}
         <section className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
           <div className="mb-1.5 flex items-center justify-between">
-            <h3 className="text-xs md:text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+            <h3 className="text-xs md:text-[11px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
               Prompt
             </h3>
             <Tooltip>
@@ -328,7 +339,7 @@ export function TaskDetailView({
 
         {/* Run History Card */}
         <section className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
-          <h3 className="mb-2 text-xs md:text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+          <h3 className="mb-2 text-xs md:text-[11px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
             Run History
           </h3>
           <div className="divide-y divide-(--color-border-subtle) rounded-xs border border-(--color-border-subtle) bg-(--bg-page) px-2.5">
@@ -368,7 +379,7 @@ export function TaskDetailView({
 
         {/* Metadata Footer */}
         <div className="px-1 py-1">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs md:text-[10px] text-(--color-text-subtle)">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs md:text-[11px] text-(--color-text-subtle)">
             <div>Created: {formatRelativeDate(task.created_at)}</div>
             <div>Updated: {formatRelativeDate(task.updated_at)}</div>
           </div>

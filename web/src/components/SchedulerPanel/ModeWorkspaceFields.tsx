@@ -23,7 +23,7 @@ export function ModeWorkspaceFields({
     <div>
       <label className="mb-1 block text-xs font-medium text-(--color-text-2)">Workspace</label>
       <div className="flex flex-wrap items-center gap-2">
-          <div className="w-full min-w-0 sm:w-72 sm:shrink-0">
+          <div className="w-full min-w-0 @xl:w-72 @xl:shrink-0">
             <Dropdown
               value={workspace ?? ''}
               onValueChange={(v) => onChange(v || null)}

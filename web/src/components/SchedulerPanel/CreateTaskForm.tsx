@@ -12,16 +12,21 @@ import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import { SchedulerBackButton, useSchedulerPaneHeaderClass } from './chrome'
 
 export function CreateTaskForm({
   contextWorkspace,
   onSuccess,
+  onBack,
 }: {
   contextWorkspace: string | null
   onSuccess: () => void
+  /** Stacked hosts (the dock) get a leading back arrow to the task list. */
+  onBack?: () => void
 }) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const defaults = createTaskDefaults(contextWorkspace, localTz)
+  const headerClass = useSchedulerPaneHeaderClass()
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<TaskFormErrors>({})
   const validationSummary = Object.values(fieldErrors)[0]
@@ -70,8 +75,9 @@ export function CreateTaskForm({
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-(--bg-page)">
       {/* Header */}
-      <div className="border-b border-(--color-border) bg-(--bg-sidebar) px-4 py-2.5 sm:px-5">
+      <div className={headerClass}>
         <div className="flex items-center gap-2">
+          {onBack && <SchedulerBackButton onClick={onBack} />}
           <div className="flex h-6 w-6 items-center justify-center rounded-sm border border-(--color-accent)/30 bg-(--color-accent)/10 text-(--color-accent)">
             <Plus size={13} />
           </div>
@@ -80,7 +86,7 @@ export function CreateTaskForm({
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-5">
+      <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto p-4 @xl:p-5">
         <div className="space-y-3.5">
           {/* Title */}
           <div>
@@ -99,7 +105,7 @@ export function CreateTaskForm({
             {values.title && (
               <div className="mt-1 flex items-center gap-1.5 text-xs text-(--color-text-muted)">
                 <span>Slug identifier:</span>
-                <code className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/80 px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-2)">
+                <code className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/80 px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-2)">
                   {slugify(values.title)}
                 </code>
               </div>
@@ -116,7 +122,7 @@ export function CreateTaskForm({
 
           {/* Schedule Type & Detail */}
           {values.schedule_type === 'every' ? (
-            <div className="grid gap-3 sm:grid-cols-2 sm:items-start">
+            <div className="grid gap-3 @xl:grid-cols-2 @xl:items-start">
               <div>
                 <label className="mb-1 block text-xs font-medium text-(--color-text-2)">Schedule Type</label>
                 <ScheduleTypeSegmented
@@ -151,7 +157,7 @@ export function CreateTaskForm({
               />
 
               {values.schedule_type === 'at' && (
-                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-start">
+                <div className="mt-3 grid gap-3 @xl:grid-cols-[minmax(0,1fr)_12rem] @xl:items-start">
                   <div>
                     <label htmlFor="task-at-datetime" className="mb-1 block text-xs font-medium text-(--color-text-2)">Date & Time</label>
                     <DateTimePicker
@@ -178,7 +184,7 @@ export function CreateTaskForm({
               )}
 
               {values.schedule_type === 'cron' && (
-                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-start">
+                <div className="mt-3 grid gap-3 @xl:grid-cols-[minmax(0,1fr)_12rem] @xl:items-start">
                   <div>
                     <label htmlFor="task-cron-expression" className="mb-1 block text-xs font-medium text-(--color-text-2)">Cron Expression</label>
                     <Input
@@ -225,7 +231,7 @@ export function CreateTaskForm({
           </div>
 
           {/* Session Target & Max Runs */}
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-start">
+          <div className="grid gap-3 @xl:grid-cols-[minmax(0,1fr)_9rem] @xl:items-start">
             <div>
               <label htmlFor="session-target" className="mb-1 block text-xs font-medium text-(--color-text-2)">Session Target</label>
               <Dropdown
