@@ -169,7 +169,7 @@ async fn real_v2_db_reads_existing_history() {
     std::fs::copy(&src, &copy).unwrap();
     let pool = create_pool(&copy).await.unwrap();
 
-    let (page, _cursor, _more) = list_sessions_page(&pool, None, 5, None).await.unwrap();
+    let (page, _cursor, _more) = list_sessions_page(&pool, None, 5, None, None).await.unwrap();
     assert!(!page.is_empty(), "expected sessions in the v2 database");
     for s in &page {
         let hy = api_uuid(&s.id);

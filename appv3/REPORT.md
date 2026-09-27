@@ -463,6 +463,12 @@ explicitly.
   sidebar's **Needs you** list uses it, whatever page the sessions are on. v2
   ignores the parameter and returns a normal page, which the web client
   filters to the same rows.
+- **Session title search:** `GET /api/agent/sessions?q=…` keeps sessions
+  whose title contains the text, ignoring ASCII case, with `%` and `_`
+  matched literally. It pages like the normal list
+  (`db/src/queries/sessions.rs`, tested in `api/tests/http_api.rs`) and
+  backs the sidebar's session search. v2 ignores `q`, and the web client then
+  filters the page it gets.
 
 ## 4. Layout
 

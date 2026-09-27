@@ -246,6 +246,15 @@ async fn http_api_end_to_end() {
     assert_eq!(v["data"][0]["needs_input"], json!(true));
     assert_eq!(v["has_more"], json!(false));
 
+    // `q` (v3 addition) matches titles case-insensitively; LIKE wildcards are literal
+    let (st, v) = c.json("GET", "/api/agent/sessions?q=HI", None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(v["data"][0]["id"], json!(sid), "{v}");
+    for miss in ["zzz", "%25", "h_"] {
+        let (_, v) = c.json("GET", &format!("/api/agent/sessions?q={miss}"), None).await;
+        assert_eq!(v["data"], json!([]), "q={miss}: {v}");
+    }
+
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
     assert!(!appv3_agent::snapshot::snapshot_dir(&sid).exists());

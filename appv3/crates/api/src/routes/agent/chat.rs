@@ -539,7 +539,11 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
         rows.sort_by(|a, b| (&b.created_at, &b.id).cmp(&(&a.created_at, &a.id)));
         (rows, None, false)
     } else {
-        db::list_sessions_page(&st.pool, before.as_deref(), limit, workspace.as_deref()).await.map_err(|_| ApiError::unprocessable("Invalid 'before' cursor."))?
+        // `q` is a v3 addition too (sidebar search); v2 ignores it.
+        let title_query = q.opt("q");
+        db::list_sessions_page(&st.pool, before.as_deref(), limit, workspace.as_deref(), title_query.as_deref().map(str::trim))
+            .await
+            .map_err(|_| ApiError::unprocessable("Invalid 'before' cursor."))?
     };
     let ids: Vec<String> = sessions.iter().map(|s| s.id.clone()).collect();
     let children = db::list_child_sessions(&st.pool, &ids).await?;

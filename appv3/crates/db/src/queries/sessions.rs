@@ -51,13 +51,25 @@ pub async fn get_session(pool: &DbPool, id: &str) -> Result<Option<ChatSession>>
 /// Cursor page of top-level sessions, newest first (v2 `list_sessions_page`).
 ///
 /// `before` is `"<iso created_at>|<uuid>"` or a legacy bare ISO timestamp.
+/// `title_query` (a v3 addition) keeps titles containing it, ignoring ASCII
+/// case, with `%` and `_` matched literally.
 /// Returns `(rows, next_cursor, has_more)`; errors on a malformed cursor.
-pub async fn list_sessions_page(pool: &DbPool, before: Option<&str>, limit: i64, workspace: Option<&str>) -> Result<(Vec<ChatSession>, Option<String>, bool)> {
+pub async fn list_sessions_page(
+    pool: &DbPool,
+    before: Option<&str>,
+    limit: i64,
+    workspace: Option<&str>,
+    title_query: Option<&str>,
+) -> Result<(Vec<ChatSession>, Option<String>, bool)> {
     let mut sql = String::from("SELECT * FROM chat_sessions WHERE parent_session_id IS NULL");
     let mut binds: Vec<String> = Vec::new();
     if let Some(ws) = workspace {
         sql.push_str(" AND workspace = ?");
         binds.push(ws.to_string());
+    }
+    if let Some(q) = title_query.filter(|q| !q.is_empty()) {
+        sql.push_str(" AND title LIKE ? ESCAPE '\\'");
+        binds.push(format!("%{}%", q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")));
     }
     if let Some(cursor) = before.filter(|c| !c.is_empty()) {
         let (raw_dt, raw_id) = match cursor.split_once('|') {
