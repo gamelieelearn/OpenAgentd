@@ -56,7 +56,6 @@ import { APP_EVENTS } from '@/lib/app-events'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { DockView, DockViewRequest } from '../CodingWorkspacePanel/dock-tabs'
 import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
-import { CHANGE_MODEL_COMMAND_ID } from './paletteSwitchCommands'
 
 export type { DockView, DockViewRequest }
 
@@ -108,7 +107,7 @@ export interface UseOverlayStateResult {
   handleToggleAgentCapabilities: () => void
   handleToggleScheduler: () => void
   handleTogglePalette: () => void
-  /** Open the palette on its Change Model… page. */
+  /** Open Session Settings to pick another model. */
   handleSwitchModel: () => void
   handleToggleQuickOpen: () => void
   handleSetShowTodos: Dispatch<SetStateAction<boolean>>
@@ -319,10 +318,10 @@ export function useOverlayState({
     togglePalette()
   }, [closeOtherMobileOverlays, togglePalette])
 
+  // Session Settings holds the model picker, focused when it opens.
   const handleSwitchModel = useCallback(() => {
-    closeOtherMobileOverlays('palette')
-    useUIStore.getState().openPalette(CHANGE_MODEL_COMMAND_ID)
-  }, [closeOtherMobileOverlays])
+    if (!useUIStore.getState().agentCapabilitiesOpen) handleToggleAgentCapabilities()
+  }, [handleToggleAgentCapabilities])
 
   const handleToggleQuickOpen = useCallback(() => {
     if (!useUIStore.getState().quickOpenOpen) closeOtherMobileOverlays('palette')
