@@ -15,6 +15,7 @@ import { dispatchShortcutKey, formatShortcut } from '@/lib/keyboard-shortcut'
 export interface AppShortcut {
   key: string
   shift?: boolean
+  alt?: boolean
 }
 
 export const APP_SHORTCUTS = {
@@ -33,6 +34,9 @@ export const APP_SHORTCUTS = {
   settings: { key: ',' },
   historyBack: { key: '[' },
   historyForward: { key: ']' },
+  // Alt keeps bare ⌘↑/⌘↓ for the caret and scroll-to-end they already mean.
+  previousPrompt: { key: 'ArrowUp', alt: true },
+  nextPrompt: { key: 'ArrowDown', alt: true },
   // Matched on the physical Backquote key by a custom listener: layouts report
   // Shift+` as `~`, `` ` `` or `Dead`, which a character hotkey cannot express.
   terminal: { key: '`', shift: true },
@@ -40,12 +44,14 @@ export const APP_SHORTCUTS = {
 
 /** Registerable form for ``useHotkey`` / ``useHotkeys``. */
 export function hotkeyOf(shortcut: AppShortcut): RawHotkey {
-  return { key: shortcut.key, mod: true, shift: shortcut.shift ?? false }
+  const hotkey: RawHotkey = { key: shortcut.key, mod: true, shift: shortcut.shift ?? false }
+  if (shortcut.alt) hotkey.alt = true
+  return hotkey
 }
 
 /** Human-readable label, e.g. ``⌘⇧D`` or ``Ctrl+Shift+D``. */
 export function shortcutLabel(shortcut: AppShortcut, os: OS): string {
-  return formatShortcut(shortcut.key, os, { shift: shortcut.shift })
+  return formatShortcut(shortcut.key, os, { shift: shortcut.shift, alt: shortcut.alt })
 }
 
 /** Fire the shortcut as a synthetic key press (palette items, native menus). */

@@ -34,13 +34,17 @@ export function isPrimaryShortcut(
     : e.ctrlKey && !e.metaKey
 }
 
+const KEY_GLYPHS: Record<string, string> = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' }
+
 /** Human-readable label, e.g. ``formatShortcut('B', 'macos') === '⌘B'``. */
-export function formatShortcut(key: string, os: OS, opts: { shift?: boolean } = {}): string {
+export function formatShortcut(key: string, os: OS, opts: { shift?: boolean; alt?: boolean } = {}): string {
   const shift = opts.shift ?? false
+  const alt = opts.alt ?? false
+  const glyph = KEY_GLYPHS[key] ?? key
   if (isPrimaryModifierOS(os)) {
-    return `⌘${shift ? '⇧' : ''}${key}`
+    return `${alt ? '⌥' : ''}⌘${shift ? '⇧' : ''}${glyph}`
   }
-  return `Ctrl+${shift ? 'Shift+' : ''}${key}`
+  return `Ctrl+${alt ? 'Alt+' : ''}${shift ? 'Shift+' : ''}${glyph}`
 }
 
 /**

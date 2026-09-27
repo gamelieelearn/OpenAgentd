@@ -11,7 +11,8 @@ const LITERAL_SHORTCUT = /['"`]Mod\+|formatShortcut\(\s*['"`]|dispatchShortcutKe
 
 describe('APP_SHORTCUTS', () => {
   it('assigns each key combination to exactly one command', () => {
-    const combos = Object.values(APP_SHORTCUTS).map((s) => `${'shift' in s && s.shift ? 'Shift+' : ''}${s.key.toUpperCase()}`)
+    const combos = Object.values(APP_SHORTCUTS).map((s) =>
+      `${'alt' in s && s.alt ? 'Alt+' : ''}${'shift' in s && s.shift ? 'Shift+' : ''}${s.key.toUpperCase()}`)
     expect(new Set(combos).size).toBe(combos.length)
   })
 
@@ -26,11 +27,14 @@ describe('APP_SHORTCUTS', () => {
   it('registers every shortcut on the platform primary modifier', () => {
     expect(hotkeyOf(APP_SHORTCUTS.maximizeDock)).toEqual({ key: 'D', mod: true, shift: true })
     expect(hotkeyOf(APP_SHORTCUTS.newSession)).toEqual({ key: 'N', mod: true, shift: false })
+    expect(hotkeyOf(APP_SHORTCUTS.previousPrompt)).toEqual({ key: 'ArrowUp', mod: true, shift: false, alt: true })
   })
 
   it('formats labels for each platform', () => {
     expect(shortcutLabel(APP_SHORTCUTS.maximizeDock, 'macos')).toBe('⌘⇧D')
     expect(shortcutLabel(APP_SHORTCUTS.settings, 'windows')).toBe('Ctrl+,')
+    expect(shortcutLabel(APP_SHORTCUTS.previousPrompt, 'macos')).toBe('⌥⌘↑')
+    expect(shortcutLabel(APP_SHORTCUTS.nextPrompt, 'windows')).toBe('Ctrl+Alt+↓')
   })
 
   it('is the only place a shortcut key is spelled out', () => {
