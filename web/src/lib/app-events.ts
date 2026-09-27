@@ -11,6 +11,8 @@ export const APP_EVENTS = {
   // The terminal key is matched on the physical Backquote code, which a
   // synthetic key press does not carry.
   openTerminal: 'oa:open-terminal',
+  // The transcript owns the document it builds, so the palette asks for it.
+  openSessionMarkdown: 'oa:open-session-markdown',
 } as const
 
 export type AppEvent = (typeof APP_EVENTS)[keyof typeof APP_EVENTS]

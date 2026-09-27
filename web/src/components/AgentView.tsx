@@ -31,9 +31,13 @@ import { hasPlanContent, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { APP_EVENTS } from '@/lib/app-events'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { ErrorCard } from './AgentView/ErrorCard'
+import { ReplyMenu } from './AgentView/ReplyMenu'
+import { loadSessionMarkdown, replyMarkdown, sessionFileName, shouldOpenReplyMenu } from './AgentView/message-menu'
+import { FileLightbox, type FileLightboxItem } from './FileLightbox'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { TranscriptFind } from './AgentView/TranscriptFind'
@@ -414,6 +418,50 @@ export function AgentView({
     if (next) void useAgentStore.getState().revertToMessage(next, { restoreDraft: false })
   }, [nextPromptIds])
 
+  const [replyMenu, setReplyMenu] = useState<{ at: { x: number; y: number }; markdown: string } | null>(null)
+  const handleReplyContextMenu = useCallback((event: React.MouseEvent, turnBlocks: ContentBlock[]) => {
+    if (event.defaultPrevented || !shouldOpenReplyMenu(event.target, window.getSelection()?.toString() ?? '')) return
+    event.preventDefault()
+    const blockId = event.target instanceof Element
+      ? event.target.closest('[data-find-block]')?.getAttribute('data-find-block') ?? null
+      : null
+    setReplyMenu({ at: { x: event.clientX, y: event.clientY }, markdown: replyMarkdown(turnBlocks, blockId) })
+  }, [])
+
+  // The document opens at once, "Loading…" until every earlier page is in.
+  const [sessionDoc, setSessionDoc] = useState<FileLightboxItem | null>(null)
+  const sessionDocRequest = useRef(0)
+  const sessionDocUrl = useRef<string | null>(null)
+  const releaseSessionDocUrl = useCallback(() => {
+    if (sessionDocUrl.current) URL.revokeObjectURL(sessionDocUrl.current)
+    sessionDocUrl.current = null
+  }, [])
+  useEffect(() => releaseSessionDocUrl, [releaseSessionDocUrl])
+  const openSessionDoc = useCallback(() => {
+    const request = ++sessionDocRequest.current
+    const name = sessionFileName(useAgentStore.getState().sessionTitle)
+    releaseSessionDocUrl()
+    setSessionDoc({ type: 'text', src: '', name })
+    void loadSessionMarkdown().then((markdown) => {
+      if (sessionDocRequest.current !== request) return
+      if (markdown === null) {
+        setSessionDoc(null)
+        return
+      }
+      sessionDocUrl.current = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown' }))
+      setSessionDoc({ type: 'text', src: sessionDocUrl.current, name, textContent: markdown })
+    })
+  }, [releaseSessionDocUrl])
+  const closeSessionDoc = useCallback(() => {
+    sessionDocRequest.current += 1
+    releaseSessionDocUrl()
+    setSessionDoc(null)
+  }, [releaseSessionDocUrl])
+  useEffect(() => {
+    window.addEventListener(APP_EVENTS.openSessionMarkdown, openSessionDoc)
+    return () => window.removeEventListener(APP_EVENTS.openSessionMarkdown, openSessionDoc)
+  }, [openSessionDoc])
+
   // Live blocks not yet folded into `blocks`, deduped against confirmed ids.
   // Both scroll bookkeeping and turn partitioning below read from this same
   // array, so they can never disagree about what actually renders (a merged
@@ -657,8 +705,11 @@ export function AgentView({
                     sessionInteractionMode === 'plan' &&
                     hasPlanContent(item.blocks)
                  return (
-                   <AssistantTurn
+                   <div
                      key={`turn-${item.startIndex}-${item.blocks[0]?.id ?? k}`}
+                     onContextMenu={(event) => handleReplyContextMenu(event, item.blocks)}
+                   >
+                   <AssistantTurn
                      blocks={item.blocks}
                      startIndex={item.startIndex}
                      finalizedCount={blocks.length}
@@ -689,6 +740,7 @@ export function AgentView({
                        </div>
                      )}
                    />
+                   </div>
                  )
                 })}
 
@@ -737,6 +789,15 @@ export function AgentView({
         </button>
 
     )}
+    {replyMenu && (
+      <ReplyMenu
+        at={replyMenu.at}
+        markdown={replyMenu.markdown}
+        onOpenSession={openSessionDoc}
+        onDismiss={() => setReplyMenu(null)}
+      />
+    )}
+    {sessionDoc && <FileLightbox items={[sessionDoc]} isOpen onClose={closeSessionDoc} />}
     </div>
   )
 }

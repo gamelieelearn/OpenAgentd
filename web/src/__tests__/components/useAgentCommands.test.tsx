@@ -24,6 +24,7 @@ import { renderHook, cleanup } from "@testing-library/react"
 import { useAgentCommands } from "@/components/AgentChatView/useAgentCommands"
 import { useSettingsStore } from "@/stores/useSettingsStore"
 import { useUIStore } from "@/stores/useUIStore"
+import { APP_EVENTS } from "@/lib/app-events"
 import type { Command } from "@/components/CommandPalette"
 
 afterEach(cleanup)
@@ -55,6 +56,18 @@ function byId(cmds: Command[], id: string): Command {
 //  Shortcut strings — platform-formatted labels
 // ════════════════════════════════════════════════════════════════════════════
 describe("useAgentCommands — shortcut labels", () => {
+  it("opens the session as Markdown through the transcript's app event", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    const heard = mock(() => {})
+    window.addEventListener(APP_EVENTS.openSessionMarkdown, heard)
+    try {
+      byId(result.current, "open-session-markdown").action()
+    } finally {
+      window.removeEventListener(APP_EVENTS.openSessionMarkdown, heard)
+    }
+    expect(heard).toHaveBeenCalledTimes(1)
+  })
+
   it("documented shortcuts are present with their platform-formatted labels", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
     expect(byId(result.current, "new-chat").shortcut).toBe("Ctrl+N")

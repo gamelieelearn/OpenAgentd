@@ -19,6 +19,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
+import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 
 interface UseAgentCommandsArgs {
   toggleAgentCapabilities: () => void
@@ -54,6 +55,7 @@ export function useAgentCommands({
   const { os, isTauri } = usePlatform()
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
+    { id: 'open-session-markdown', group: 'Session', label: 'Open Session as Markdown', description: 'The whole conversation as one document to read or download', action: () => dispatchAppEvent(APP_EVENTS.openSessionMarkdown) },
     { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleAgentCapabilities },
     { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: shortcutLabel(KEYS.tasks, os), action: toggleTasks },
     { id: 'find-transcript',  group: 'View',       label: 'Find in Transcript', description: 'Search user and assistant text in this session', shortcut: shortcutLabel(KEYS.findInTranscript, os), action: handleFindInTranscript },
