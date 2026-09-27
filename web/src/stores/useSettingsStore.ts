@@ -25,7 +25,6 @@ export type SettingsSection =
   | 'mcp-edit'
   | 'providers'
   | 'denied_paths'
-  | 'sandbox'
   | 'memory'
   | 'plugins'
   // Replaced the former 'multimodal' | 'summarization' | 'title-generation'
@@ -48,7 +47,7 @@ export function parentSection(section: SettingsSection): SettingsSection {
   // Settings state is persisted without schema validation. Treat sections
   // removed in older builds as About so an upgrade cannot reopen a dead page.
   const persistedSection = section as string
-  if (persistedSection === 'notifications' || persistedSection === 'terminal') {
+  if (persistedSection === 'notifications' || persistedSection === 'terminal' || persistedSection === 'sandbox') {
     return 'about'
   }
   return DRILL_DOWN_FAMILIES.find((f) => section.startsWith(f)) ?? section

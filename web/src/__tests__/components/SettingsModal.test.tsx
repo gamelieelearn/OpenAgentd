@@ -121,7 +121,7 @@ describe('SettingsModal — mobile edge-swipe exclusion', () => {
     })
     renderModal()
 
-    expect(screen.getByRole('button', { name: 'About openagentd' }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByRole('button', { name: 'About OpenAgentd' }).getAttribute('aria-current')).toBe('page')
   })
 })
 

@@ -38,7 +38,6 @@ const PAGE_FOR_SECTION: Record<SettingsSection, SettingsPage> = {
   'mcp-edit': 'mcpEdit',
   providers: 'providers',
   denied_paths: 'deniedPaths',
-  sandbox: 'deniedPaths',
   memory: 'memory',
   plugins: 'plugins',
   automation: 'automation',

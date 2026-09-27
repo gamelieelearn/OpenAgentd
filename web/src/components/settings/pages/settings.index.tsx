@@ -188,7 +188,7 @@ export function SettingsHubPage() {
             <Info size={15} />
           </span>
           <div>
-            <h1 className="text-xs font-semibold text-(--color-text)">About openagentd</h1>
+            <h1 className="text-xs font-semibold text-(--color-text)">About OpenAgentd</h1>
             <p className="text-xs md:text-[10px] font-mono text-(--color-text-subtle)">
               {version
                 ? `On-machine AI assistant · v${version}`

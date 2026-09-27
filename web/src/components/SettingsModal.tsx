@@ -140,7 +140,6 @@ function ModalSidebar({
     skills: skillsQ.data?.skills.length ?? null,
     mcp: mcpQ.data?.servers.length ?? null,
     denied_paths: deniedPathsQ.data?.denied_patterns.length ?? null,
-    sandbox: deniedPathsQ.data?.denied_patterns.length ?? null,
   }
 
   return (
@@ -268,8 +267,7 @@ function SectionContent({
     case 'memory':       return <MemorySettingsPage />
     case 'plugins':      return <PluginsSettingsPage />
     case 'providers':    return <ProvidersSettingsPage />
-    case 'denied_paths':
-    case 'sandbox':      return <DeniedPathsSettingsPage />
+    case 'denied_paths': return <DeniedPathsSettingsPage />
     case 'automation':   return <AutomationSettingsPage />
     case 'about':
     default:             return <SettingsHubPage />

@@ -21,6 +21,7 @@ import {
   Puzzle,
   Shield,
   Sparkles,
+  Workflow,
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
@@ -40,7 +41,6 @@ export type TopLevelSection = Extract<
   | 'plugins'
   | 'providers'
   | 'denied_paths'
-  | 'sandbox'
   | 'automation'
   | 'about'
 >
@@ -119,7 +119,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   {
     id: 'automation',
     label: 'Automation',
-    icon: Sparkles,
+    icon: Workflow,
     group: 'models',
   },
   {
@@ -130,7 +130,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   },
   {
     id: 'about',
-    label: 'About openagentd',
+    label: 'About OpenAgentd',
     icon: Info,
     group: 'about',
     mobileTab: true,
