@@ -17,13 +17,6 @@ import { useMemo } from 'react'
 import type { Command } from '../CommandPalette'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
-import {
-  DEFAULT_TRANSCRIPT_FONT_SIZE,
-  TRANSCRIPT_DENSITIES,
-  TRANSCRIPT_FONT_SIZES,
-  useTranscriptStore,
-  type TranscriptDensity,
-} from '@/stores/useTranscriptStore'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
 
@@ -46,41 +39,6 @@ interface UseAgentCommandsArgs {
   handleToggleDockMaximized?: () => void
 }
 
-/** Density and text size; each label follows the setting. */
-function transcriptViewCommands(density: TranscriptDensity, fontSize: number): Command[] {
-  const view = () => useTranscriptStore.getState()
-  const sizes = TRANSCRIPT_FONT_SIZES as readonly number[]
-  const densityLabel = TRANSCRIPT_DENSITIES.find((d) => d.value === density)?.label ?? density
-  const commands: Command[] = [
-    {
-      id: 'transcript-density',
-      group: 'View',
-      label: 'Transcript Density…',
-      description: `Currently ${densityLabel}`,
-      page: {
-        placeholder: 'Search densities…',
-        commands: TRANSCRIPT_DENSITIES.map((d) => ({
-          id: `transcript-density:${d.value}`,
-          label: d.label,
-          description: d.value === density ? 'Current' : undefined,
-          action: () => view().setDensity(d.value),
-        })),
-      },
-      action: () => {},
-    },
-  ]
-  if (fontSize < sizes[sizes.length - 1]) {
-    commands.push({ id: 'transcript-text-larger', group: 'View', label: 'Larger Transcript Text', description: `Now ${fontSize}px`, action: () => view().stepFontSize(1) })
-  }
-  if (fontSize > sizes[0]) {
-    commands.push({ id: 'transcript-text-smaller', group: 'View', label: 'Smaller Transcript Text', description: `Now ${fontSize}px`, action: () => view().stepFontSize(-1) })
-  }
-  if (fontSize !== DEFAULT_TRANSCRIPT_FONT_SIZE) {
-    commands.push({ id: 'transcript-text-reset', group: 'View', label: 'Reset Transcript Text Size', description: `Back to ${DEFAULT_TRANSCRIPT_FONT_SIZE}px`, action: () => view().resetFontSize() })
-  }
-  return commands
-}
-
 export function useAgentCommands({
   toggleAgentCapabilities,
   toggleTasks,
@@ -93,15 +51,12 @@ export function useAgentCommands({
   handleToggleDockMaximized,
 }: UseAgentCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const density = useTranscriptStore((s) => s.density)
-  const fontSize = useTranscriptStore((s) => s.fontSize)
   const { os, isTauri } = usePlatform()
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
     { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleAgentCapabilities },
     { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: shortcutLabel(KEYS.tasks, os), action: toggleTasks },
     { id: 'find-transcript',  group: 'View',       label: 'Find in Transcript', description: 'Search user and assistant text in this session', shortcut: shortcutLabel(KEYS.findInTranscript, os), action: handleFindInTranscript },
-    ...transcriptViewCommands(density, fontSize),
     { id: 'workspace-files',  group: 'View',       label: 'Open Changed & Files', description: 'Browse changed files and workspace files', shortcut: shortcutLabel(KEYS.workspaceFiles, os), action: handleWorkspaceFiles },
     ...(handleToggleDockMaximized
       ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Dock', description: 'Give the review dock the full width for diffs, files, and terminals', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
@@ -116,5 +71,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, density, fontSize, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleCodingSidebarToggle, handleNewSession, handleOpenTerminal, openSettings])
+  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleCodingSidebarToggle, handleNewSession, handleOpenTerminal, openSettings])
 }

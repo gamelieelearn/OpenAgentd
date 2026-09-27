@@ -34,7 +34,6 @@ import { hasPlanContent, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { transcriptStyle, useTranscriptStore } from '@/stores/useTranscriptStore'
 import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
 import { getPlatform } from '@/hooks/use-platform'
 import type { ContentBlock } from '@/api/types'
@@ -402,9 +401,6 @@ export function AgentView({
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
   const sessionInteractionMode = useAgentStore((s) => s.sessionInteractionMode)
-  const density = useTranscriptStore((s) => s.density)
-  const fontSize = useTranscriptStore((s) => s.fontSize)
-  const viewStyle = useMemo(() => transcriptStyle(density, fontSize), [density, fontSize])
   const prevScrollHeightRef = useRef<number | null>(null)
   const loadingOlderRef = useRef(false)
   const hiddenTurnCountRef = useRef(0)
@@ -755,7 +751,7 @@ export function AgentView({
     <div ref={scrollRef} className="oa-chat-scroll flex-1 overflow-y-auto">
       {/* The bottom padding includes ``--composer-clearance``, published by
           the floating composer, so the newest reply scrolls clear of it. */}
-      <div ref={contentRef} style={viewStyle} className="oa-transcript mx-auto max-w-3xl px-3 pt-5 pb-[calc(var(--composer-clearance,0px)+1.25rem)] sm:px-4 sm:pt-6 sm:pb-[calc(var(--composer-clearance,0px)+1.5rem)]">
+      <div ref={contentRef} className="mx-auto max-w-3xl px-3 pt-5 pb-[calc(var(--composer-clearance,0px)+1.25rem)] sm:px-4 sm:pt-6 sm:pb-[calc(var(--composer-clearance,0px)+1.5rem)]">
         {isEmpty && (
            emptyState ?? (
              // Same weight as every other blank state (see `EmptyState`); the
@@ -778,7 +774,7 @@ export function AgentView({
            )
          )}
 
-         <div className="space-y-(--transcript-turn-gap)">
+         <div className="space-y-3">
               {hiddenTurnCount > 0 && (
                 <div className="flex justify-center py-2">
                   <button

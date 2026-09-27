@@ -896,14 +896,6 @@ html[data-app-hidden="true"] *::after {
   overflow-wrap: anywhere;
 }
 .oa-prose p { margin-bottom: 0.75em; }
-
-/* The transcript's reading size and line height (``useTranscriptStore``).
-   Prompts and replies both render as .oa-prose; tool and metadata chrome
-   keep their own size. */
-.oa-transcript .oa-prose {
-  font-size: var(--transcript-font-size);
-  line-height: var(--transcript-line-height);
-}
 .oa-prose p:last-child { margin-bottom: 0; }
 .oa-prose h1, .oa-prose h2, .oa-prose h3 {
   font-weight: 600;
