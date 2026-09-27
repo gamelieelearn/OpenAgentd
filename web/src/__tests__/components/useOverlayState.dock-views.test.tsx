@@ -12,7 +12,6 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useOverlayState, type UseOverlayStateArgs } from '@/components/AgentChatView/useOverlayState'
 import { useUIStore } from '@/stores/useUIStore'
-import { useGitPanelStore } from '@/stores/useGitPanelStore'
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
@@ -109,19 +108,5 @@ describe('useOverlayState dock views', () => {
     act(() => result.current.handleToggleScheduler())
     expect(args.toggleScheduler).toHaveBeenCalledTimes(1)
     expect(result.current.codingPanel).toBeNull()
-  })
-
-  it('opens the Git changes for review, and never hides an open dock', () => {
-    useGitPanelStore.getState().setSubTab('/repo/project', 'commits')
-    const { result } = renderOverlay()
-
-    act(() => result.current.handleReviewChanges())
-    expect(result.current.codingPanel).toBe('changed')
-    expect(result.current.dockViewRequest).toEqual({ view: 'review', key: 1 })
-    expect(useGitPanelStore.getState().workspaces['/repo/project']?.subTab).toBe('changes')
-
-    act(() => result.current.handleReviewChanges())
-    expect(result.current.codingPanel).toBe('changed')
-    expect(result.current.dockViewRequest).toEqual({ view: 'review', key: 2 })
   })
 })

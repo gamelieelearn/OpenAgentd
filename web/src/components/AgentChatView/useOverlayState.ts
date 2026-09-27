@@ -47,7 +47,6 @@ import { queryKeys } from '@/queries'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
-import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { workspaceRelativePath, type FileRef } from '@/utils/file-refs'
 import { resolveSidebarCollapsed, SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT } from '@/lib/workbench-layout'
@@ -97,8 +96,6 @@ export interface UseOverlayStateResult {
 
   closeOtherMobileOverlays: (keep: MobileOverlay) => void
   handleWorkspaceFiles: () => void
-  /** Open the dock on the Git changes list; never hides it. */
-  handleReviewChanges: () => void
   handleCodingSidebarToggle: () => void
   handleOpenWorkspaceDialog: () => void
   handleCodingFileSelect: (file: WorkspaceFileInfo | null) => void
@@ -307,15 +304,6 @@ export function useOverlayState({
     setDockViewRequest((prev) => ({ view, key: (prev?.key ?? 0) + 1 }))
   }, [closeOtherMobileOverlays, codingPanel, dockActiveView])
 
-  const handleReviewChanges = useCallback(() => {
-    if (!workspace) return
-    if (isMobile) setMobileSidebarOpen(false)
-    closeOtherMobileOverlays('coding-panel')
-    useGitPanelStore.getState().setSubTab(workspace, 'changes')
-    setCodingPanel((value) => value ?? 'changed')
-    setDockViewRequest((prev) => ({ view: 'review', key: (prev?.key ?? 0) + 1 }))
-  }, [closeOtherMobileOverlays, isMobile, workspace])
-
   const handleToggleScheduler = useCallback(() => {
     if (schedulerInDock) {
       toggleDockView('schedule')
@@ -473,7 +461,6 @@ export function useOverlayState({
 
     closeOtherMobileOverlays,
     handleWorkspaceFiles,
-    handleReviewChanges,
     handleCodingSidebarToggle,
     handleOpenWorkspaceDialog,
     handleCodingFileSelect,
