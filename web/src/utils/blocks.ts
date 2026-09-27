@@ -121,6 +121,19 @@ function isReplaySnapshot(existing: string, incoming: string): boolean {
 }
 
 /**
+ * Freeze how long an open thinking trace ran, now that another block starts.
+ * Live traces have no server timing until the post-turn reconcile adopts the
+ * persisted ``thinking_duration_ms``; this keeps "Thought for Ns" meanwhile.
+ */
+function closeOpenThinking(blocks: ContentBlock[]): ContentBlock[] {
+  const last = blocks[blocks.length - 1]
+  if (last?.type !== 'thinking' || last.startedAt === undefined || last.durationMs !== undefined) return blocks
+  const next = [...blocks]
+  next[next.length - 1] = { ...last, durationMs: Math.max(0, Date.now() - last.startedAt) }
+  return next
+}
+
+/**
  * Merge a streamed `text`/`thinking` chunk into `blocks`.
  *
  * Shared by `appendText` and `appendThinking` — the two differ only in the
@@ -167,7 +180,7 @@ function appendStreamed(
     }
   }
 
-  return [...blocks, { id: generateBlockId(), type, content: text }]
+  return [...closeOpenThinking(blocks), { id: generateBlockId(), type, content: text, startedAt: Date.now() }]
 }
 
 export function appendThinking(
@@ -199,7 +212,7 @@ export function initTool(
     return blocks
   }
   return [
-    ...blocks,
+    ...closeOpenThinking(blocks),
     {
       // Use the server-issued toolCallId as the block id when known — it's
       // already the stable identifier every reconciliation path matches on,

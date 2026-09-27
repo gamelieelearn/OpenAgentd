@@ -235,7 +235,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} modelId={blockModel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
     }
     case 'thinking':
-      return <Thinking content={block.content} isStreaming={isStreaming} forceOpen={findHit} />
+      return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.durationMs} forceOpen={findHit} />
     case 'compaction': {
       const state = block.extra?.state === 'compacting' ? 'compacting' : 'compacted'
       const error = Boolean(block.extra?.error)
