@@ -36,6 +36,12 @@ export interface PatchFileStat {
   deletions: number
 }
 
+export interface TurnChangeSummary {
+  files: PatchFileStat[]
+  additions: number
+  deletions: number
+}
+
 function parseArgs(args: string | undefined): Record<string, unknown> | null {
   if (!args) return null
   try {
@@ -56,6 +62,32 @@ export function patchFileStats(args: string | undefined): PatchFileStat[] {
     additions: diff.lines.filter((line) => line.type === 'added').length,
     deletions: diff.lines.filter((line) => line.type === 'removed').length,
   }))
+}
+
+/** Every file the turn's successful ``patch`` calls touched, merged by path. */
+export function summarizeTurnChanges(blocks: ContentBlock[]): TurnChangeSummary {
+  const byPath = new Map<string, PatchFileStat>()
+  for (const block of blocks) {
+    if (block.type !== 'tool' || block.toolName !== 'patch') continue
+    if (!block.toolDone || isFailedResult(block.toolResult)) continue
+    for (const stat of patchFileStats(block.toolArgs)) {
+      const prev = byPath.get(stat.path)
+      if (!prev) {
+        byPath.set(stat.path, { ...stat })
+        continue
+      }
+      prev.additions += stat.additions
+      prev.deletions += stat.deletions
+      // A file created this turn stays "new" through later edits; a delete wins.
+      prev.kind = stat.kind === 'delete' ? 'delete' : prev.kind === 'add' ? 'add' : stat.kind
+    }
+  }
+  const files = [...byPath.values()]
+  return {
+    files,
+    additions: files.reduce((sum, f) => sum + f.additions, 0),
+    deletions: files.reduce((sum, f) => sum + f.deletions, 0),
+  }
 }
 
 function isGroupable(block: ContentBlock): boolean {

@@ -608,6 +608,7 @@ export function AgentView({
                       onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
                      findHitBlockIds={findOpen ? findHitBlockIds : undefined}
+                     onOpenFile={onMentionFileOpen}
                       renderBlock={({ block, isStreaming }) => (
                        <div
                          data-find-block={isTranscriptFindableBlock(block.type) ? block.id : undefined}

@@ -322,3 +322,44 @@ describe("AssistantTurn — folded tool runs", () => {
     expect(screen.getByTestId("row-th")).toBeTruthy()
   })
 })
+
+describe("AssistantTurn — files changed", () => {
+  const blocks: ContentBlock[] = [
+    {
+      id: "p1", type: "tool", content: "", toolName: "patch", toolDone: true, toolResult: "ok",
+      toolArgs: JSON.stringify({ patch_text: "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-x\n+y\n*** End Patch" }),
+    },
+    { id: "b1", type: "text", content: "Renamed it." },
+  ]
+
+  function renderTurn(isTurnOpen: boolean, onOpenFile?: (path: string) => void) {
+    return render(
+      <AssistantTurn
+        blocks={blocks}
+        startIndex={0}
+        finalizedCount={blocks.length}
+        isWorking={false}
+        isTurnOpen={isTurnOpen}
+        isTrailingTurn
+        totalBlocks={blocks.length}
+        onOpenFile={onOpenFile}
+        renderBlock={() => null}
+      />,
+    )
+  }
+
+  it("summarizes the edited files once the turn ends, and opens them", async () => {
+    const onOpenFile = mock(() => {})
+    renderTurn(false, onOpenFile)
+
+    expect(screen.getByRole("region", { name: "Files changed in this turn" })).toBeTruthy()
+    await userEvent.click(screen.getByRole("button", { name: "Open src/a.ts" }))
+    expect(onOpenFile).toHaveBeenCalledWith("src/a.ts")
+  })
+
+  it("waits for the turn to end", () => {
+    renderTurn(true)
+
+    expect(screen.queryByRole("region", { name: "Files changed in this turn" })).toBeNull()
+  })
+})
