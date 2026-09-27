@@ -1,7 +1,14 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
-import { InputComposer, type FileRef, type InputComposerHandle, type SlashCommand, type SnippetCommand } from './InputComposer'
+import {
+  InputComposer,
+  type FileRef,
+  type InputComposerHandle,
+  type SendDelivery,
+  type SlashCommand,
+  type SnippetCommand,
+} from './InputComposer'
 import { ComposerIsland } from './ComposerIsland'
 import { ComposerModelChip } from './ComposerModelChip'
 import { JumpToLatestChip } from './JumpToLatestChip'
@@ -133,7 +140,7 @@ export interface ComposerContext {
 
 interface FloatingInputComposerProps {
   boundsRef: React.RefObject<HTMLElement | null>
-  onSubmit: (message: string, files?: File[], mentions?: string[]) => void
+  onSubmit: (message: string, files?: File[], mentions?: string[], delivery?: SendDelivery) => void
   onStop?: () => void
   onSlashCommand?: (id: string) => void
   onSnippetCommand?: (id: string) => Promise<string | null> | string | null
@@ -317,8 +324,8 @@ export const FloatingInputComposer = memo(
 
     const onSubmitRef = useRef(inputProps.onSubmit)
     useEffect(() => { onSubmitRef.current = inputProps.onSubmit })
-    const handleSubmit = useCallback((message: string, files?: File[], mentions?: string[]) => {
-      onSubmitRef.current(message, files, mentions)
+    const handleSubmit = useCallback((message: string, files?: File[], mentions?: string[], delivery?: SendDelivery) => {
+      onSubmitRef.current(message, files, mentions, delivery)
       // Only collapse on desktop — on mobile the bar is always fully visible
       // and calling minimize() here drifts the `minimized` state flag to
       // `true`, which causes the bar to snap collapsed if the viewport later

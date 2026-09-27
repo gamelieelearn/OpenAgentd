@@ -2,10 +2,11 @@
  * ComposerIsland — the collapsed composer as a status line for the lead.
  *
  * At rest it names the mode, the model, and how full the context is. While a
- * turn runs it shows the current step and the elapsed time beside Stop; while
- * the lead waits on a question it offers the choices of a single-choice
- * question inline, or leads to the card; and once a turn that changed files
- * ends, it sums them up until the next turn starts or the composer opens.
+ * turn runs it shows the current step, the elapsed time and how many messages
+ * wait for the turn to end, beside Stop; while the lead waits on a question it
+ * offers the choices of a single-choice question inline, or leads to the card;
+ * and once a turn that changed files ends, it sums them up until the next turn
+ * starts or the composer opens.
  *
  * It subscribes to the store itself, so a streaming turn re-renders this line
  * rather than the composer around it.
@@ -17,6 +18,7 @@ import type { PendingQuestion, QuestionItem, SessionInteractionMode } from '@/ap
 import { ContextRing } from '@/components/ui/token-meter'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { AgentStore } from '@/stores/useAgentStore/types'
+import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 import { mergeBlocks } from '@/utils/blocks'
 import { shortModelName } from '@/utils/format'
 import { cn } from '@/lib/utils'
@@ -105,6 +107,7 @@ export function ComposerIsland({ mode, model, context, onExpand, onStop, onRevie
   const startedAt = useAgentStore((s) => leadStream(s)?._turnStartedAt ?? null)
   const elapsed = useElapsed(startedAt, running && !waiting)
   const changes = useFinishedTurnChanges(running, sessionId)
+  const heldCount = useHeldMessagesStore((s) => s.messages.filter((m) => m.sessionId === sessionId).length)
 
   const kind: IslandKind = waiting ? 'waiting' : running ? 'running' : changes ? 'done' : 'rest'
   const modeLabel = mode === 'plan' ? 'Plan' : 'Code'
@@ -133,9 +136,16 @@ export function ComposerIsland({ mode, model, context, onExpand, onStop, onRevie
         {elapsed !== null && (
           <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-muted)">{formatElapsed(elapsed)}</span>
         )}
+        {heldCount > 0 && (
+          <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] text-(--color-text-subtle)">
+            {heldCount} queued
+          </span>
+        )}
       </>
     )
-    description = `Working: ${step}`
+    description = heldCount > 0
+      ? `Working: ${step} · ${plural(heldCount, 'message')} queued until done`
+      : `Working: ${step}`
   } else if (kind === 'done' && changes) {
     const files = plural(changes.files.length, 'file')
     body = (

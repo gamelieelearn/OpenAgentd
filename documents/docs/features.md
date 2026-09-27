@@ -462,6 +462,14 @@ run from the terminal (the native Rust binary since v3.0.0).
   - The context meter moved from the header to the expanded composer. Its
     panel ends in Compact now, held while a turn runs. A subagent session,
     which has no composer, keeps the meter in its header.
+  - While a turn runs, Send splits in two. The pill steers: the agent reads
+    the message before its next step (`Enter`). The chevron adds Queue until
+    done, which holds the message in this window and sends it as a turn of
+    its own once the turn ends (`⌥Enter` / `Alt+Enter`), and Stop & send
+    (`⌘Enter` / `Ctrl+Enter`). In the transcript, steering messages read
+    "Read before the next step" and held ones "Sends when this turn ends";
+    the island counts the held ones. Stopping, or a turn that fails, returns
+    held messages to the composer. They are lost on reload.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits. Read
   results and file-change diffs keep line numbers visible while scrolling

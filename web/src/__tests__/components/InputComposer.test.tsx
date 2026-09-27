@@ -184,7 +184,7 @@ describe("InputComposer — placeholder and disabled state", () => {
 
   it("overrides placeholder when streaming", () => {
     render(<InputComposer onSubmit={() => {}} isStreaming={true} placeholder="Ask anything…" />)
-    expect((screen.getByLabelText("Message input") as HTMLTextAreaElement).placeholder).toMatch(/Queue a follow-up/)
+    expect((screen.getByLabelText("Message input") as HTMLTextAreaElement).placeholder).toBe("Steer or queue a follow-up…")
   })
 
   it("send button disabled with no text, enabled once text is typed", async () => {

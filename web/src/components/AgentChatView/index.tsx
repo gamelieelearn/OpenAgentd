@@ -64,7 +64,7 @@ import { useSessionBootstrap } from './useSessionBootstrap'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
 import { parseBuiltInSlashCommand } from './helpers'
-import { stopTurn, useReleaseHeldMessages } from './heldMessages'
+import { deliverFromComposer, stopTurn, useReleaseHeldMessages } from './heldMessages'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
@@ -715,7 +715,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           <FloatingInputComposer
             ref={inputRef}
             boundsRef={mainColumnRef}
-            onSubmit={async (content: string, files?: File[], mentions?: string[]) => {
+            onSubmit={async (content, files, mentions, delivery) => {
               if (!workspace) return
               if (!files || files.length === 0) {
                 const builtInCmd = parseBuiltInSlashCommand(content)
@@ -725,19 +725,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 }
               }
               const expanded = await expandUserCommand(content)
-              const current = useAgentStore.getState()
-              const delivered = await sendMessage(expanded, files, {
-                workspace,
-                model: current.sessionModel || null,
-                thinkingLevel: current.sessionThinkingLevel || null,
-                fastMode: current.sessionFastMode,
-                mentions,
-              })
-              // The composer cleared itself the moment this handler was
-              // called. If the send never landed, hand the draft and its
-              // attachments back instead of letting them disappear with an
-              // error banner as the only trace.
-              if (!delivered) inputRef.current?.restoreLastSubmission()
+              await deliverFromComposer(workspace, inputRef.current, { content: expanded, files, mentions }, delivery)
             }}
             onStop={() => { void stopTurn(inputRef.current) }}
             onSlashCommand={handleSlashCommand}

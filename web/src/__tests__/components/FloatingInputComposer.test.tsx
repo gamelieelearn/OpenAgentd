@@ -62,7 +62,7 @@ function nextFrame(): Promise<void> {
 
 // Test harness — provides a bounds container with a stable, measurable size.
 function Harness(props: {
-  onSubmit?: (message: string, files?: File[]) => void
+  onSubmit?: (message: string, files?: File[], mentions?: string[], delivery?: string) => void
   onStop?: () => void
   placeholder?: string
   exposeFocus?: boolean
@@ -406,6 +406,18 @@ describe('FloatingInputComposer', () => {
 
     expect(textarea.getAttribute('disabled')).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+  })
+
+  it('passes how a mid-turn message should be delivered on to its owner', async () => {
+    const user = userEvent.setup()
+    const onSubmit = mock((..._args: unknown[]) => {})
+    render(<Harness isStreaming onStop={() => {}} onSubmit={onSubmit} />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
+    await user.type(screen.getByRole('textbox', { name: 'Message input' }), 'then run the tests')
+    await user.keyboard('{Alt>}{Enter}{/Alt}')
+
+    expect(onSubmit.mock.calls[0]).toEqual(['then run the tests', undefined, undefined, 'after-turn'])
   })
 
 })

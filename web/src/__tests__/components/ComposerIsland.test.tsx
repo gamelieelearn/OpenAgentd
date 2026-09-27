@@ -18,6 +18,7 @@ mock.module('@/api/client', () => ({ answerQuestion, dismissQuestion, agentStrea
 import { ComposerIsland } from '@/components/ComposerIsland'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
+import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 import type { AgentStream } from '@/stores/useAgentStore/types'
 import type { ContentBlock, PendingQuestion } from '@/api/types'
 
@@ -81,6 +82,7 @@ beforeEach(() => {
   answerQuestion.mockImplementation(async () => ({ status: 'answered', resumed: true }))
   seedLead({})
   useAgentStore.setState({ resolvedQuestions: {} })
+  useHeldMessagesStore.setState({ messages: [] })
 })
 afterEach(cleanup)
 
@@ -150,6 +152,19 @@ describe('ComposerIsland — running', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop generation' }))
     expect(onStop).toHaveBeenCalledTimes(1)
     expect(onExpand).not.toHaveBeenCalled()
+  })
+
+  it('counts the messages waiting for this turn to end', () => {
+    seedLead({ status: 'working', currentBlocks: [user('go')] })
+    useHeldMessagesStore.getState().hold({ sessionId: 's-1', content: 'then this' })
+    useHeldMessagesStore.getState().hold({ sessionId: 's-1', content: 'and this' })
+    useHeldMessagesStore.getState().hold({ sessionId: 's-2', content: 'elsewhere' })
+    render(<ComposerIsland mode="code" onExpand={() => {}} onStop={() => {}} />)
+
+    const island = screen.getByRole('button', { name: 'Expand input bar' })
+    expect(island.textContent).toContain('2 queued')
+    const description = document.getElementById(island.getAttribute('aria-describedby') ?? '')
+    expect(description?.textContent).toBe('Working: Starting · 2 messages queued until done')
   })
 })
 

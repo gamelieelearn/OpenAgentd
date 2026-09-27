@@ -1,5 +1,5 @@
-import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
-import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
+import { Suspense, lazy, useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
+import { ArrowUp, ChevronDown, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer.mentions'
@@ -14,7 +14,9 @@ import { useInputComposerAttachments } from './InputComposer.attachments'
 import { cn } from '@/lib/utils'
 import { buildHistoryEntries } from './InputComposer.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { usePlatform } from '@/hooks/use-platform'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import { SessionModeToggle } from './SessionModeToggle'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
@@ -64,8 +66,31 @@ export interface SnippetCommand {
   category?: string
 }
 
+/**
+ * How a message sent during a turn is delivered: ``steer`` hands it to the
+ * running turn before the agent's next step, ``after-turn`` holds it until
+ * the turn ends, ``interrupt`` stops the turn and sends it in its place.
+ * Idle sends are always ``steer``, which simply starts a turn.
+ */
+export type SendDelivery = 'steer' | 'after-turn' | 'interrupt'
+
+/** Either primary modifier stops and sends, so a Mac user reaching for Ctrl is not surprised. */
+function deliveryForKey(e: { metaKey: boolean; ctrlKey: boolean; altKey: boolean }): SendDelivery {
+  if (e.metaKey || e.ctrlKey) return 'interrupt'
+  if (e.altKey) return 'after-turn'
+  return 'steer'
+}
+
+// Mid-turn only, so off the startup bundle; fetched as soon as a turn starts.
+const loadDeliveryMenu = () => import('./InputComposer.deliveryMenu')
+const DeliveryMenu = lazy(() => loadDeliveryMenu().then((module) => ({ default: module.DeliveryMenu })))
+
+/** The chevron half of the split Send pill. */
+const DELIVERY_TRIGGER_CLASS =
+  'flex h-8 w-5 shrink-0 items-center justify-center gap-0 rounded-l-none rounded-r-full border-0 border-l border-l-(--color-text-on-accent)/20 bg-(--bg-send) px-0 py-0 text-(--color-text-on-accent) hover:bg-(--bg-send) hover:opacity-90 hover:shadow-none active:bg-(--bg-send) md:h-7 [&>span]:hidden [&_svg]:text-(--color-text-on-accent)'
+
 export interface InputComposerProps {
-  onSubmit: (message: string, files?: File[], mentionedFiles?: string[]) => void
+  onSubmit: (message: string, files?: File[], mentionedFiles?: string[], delivery?: SendDelivery) => void
   onStop?: () => void
   onSlashCommand?: (id: string) => void
   onSnippetCommand?: (id: string) => Promise<string | null> | string | null
@@ -254,6 +279,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   }, [mentionRanges])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isMobile = useIsMobile()
+  const { os } = usePlatform()
   const prefersReducedMotion = useReducedMotion()
 
   const history = useMemo(
@@ -456,7 +482,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     textareaRef.current = node
   }, [])
 
-  const submit = useCallback(() => {
+  const submit = useCallback((delivery: SendDelivery = 'steer') => {
     if (disabled) return
     const trimmed = value.trim()
     if (trimmed.length === 0 && files.length === 0) return
@@ -469,7 +495,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     onSubmit(
       trimmed,
       files.length > 0 ? files : undefined,
-      mentions.length > 0 ? mentions : undefined
+      mentions.length > 0 ? mentions : undefined,
+      delivery,
     )
     setLocalHistory((prev) =>
       prev[0] === trimmed ? prev : [trimmed, ...prev].slice(0, 100),
@@ -588,7 +615,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
     if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
       e.preventDefault()
-      submit()
+      submit(isStreaming ? deliveryForKey(e) : 'steer')
     }
   }
 
@@ -692,7 +719,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const effectivePlaceholder = disabled
     ? 'Waiting for response…'
     : isStreaming
-      ? 'Queue a follow-up or /stop…'
+      ? 'Steer or queue a follow-up…'
       : placeholder
 
   const activePopupId = menu?.id
@@ -706,6 +733,13 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7'
   const sendPillClass = 'border-(--bg-send) bg-(--bg-send) text-(--color-text-on-accent) hover:opacity-90'
 
+  // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
+  const mac = isPrimaryModifierOS(os)
+  const splitSend = isStreaming && hasText && !disabled
+  useEffect(() => {
+    if (isStreaming) void loadDeliveryMenu()
+  }, [isStreaming])
+
   const sendOrStopEl = canStop && !hasText ? (
     <button
       type="button"
@@ -715,6 +749,27 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     >
       <Square size={10} fill="currentColor" aria-hidden="true" />
     </button>
+  ) : splitSend ? (
+    <div role="group" aria-label="Send" className="flex shrink-0">
+      <button
+        type="button"
+        onClick={(e) => { stopClick(e); submit('steer') }}
+        aria-label="Steer the running turn"
+        aria-keyshortcuts="Enter"
+        className={cn(sendSlotClass, sendPillClass, 'rounded-r-none')}
+      >
+        <ArrowUp size={14} aria-hidden="true" />
+      </button>
+      <Suspense
+        fallback={(
+          <span aria-hidden="true" className={DELIVERY_TRIGGER_CLASS}>
+            <ChevronDown size={11} />
+          </span>
+        )}
+      >
+        <DeliveryMenu className={DELIVERY_TRIGGER_CLASS} mac={mac} showShortcuts={!isMobile} onPick={submit} />
+      </Suspense>
+    </div>
   ) : (
     <button
       type="button"

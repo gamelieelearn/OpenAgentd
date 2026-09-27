@@ -8,7 +8,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
-import { stopTurn, useReleaseHeldMessages } from '@/components/AgentChatView/heldMessages'
+import { deliverFromComposer, stopTurn, useReleaseHeldMessages } from '@/components/AgentChatView/heldMessages'
 import type { InputComposerHandle } from '@/components/InputComposer'
 
 const INITIAL_AGENT_STATE = useAgentStore.getState()
@@ -152,5 +152,60 @@ describe('stopTurn', () => {
     expect(order).toEqual(['restore first', 'stop'])
     expect(composer.added).toEqual([notes])
     expect(held()).toEqual(['elsewhere'])
+  })
+})
+
+describe('deliverFromComposer', () => {
+  it('holds a message for the end of the running turn', async () => {
+    const sendMessage = sendThatStartsATurn()
+    useAgentStore.setState({ sendMessage })
+    const composer = fakeComposer()
+
+    await deliverFromComposer('/repo', composer.ref.current, { content: 'then run the tests', mentions: ['a.ts'] }, 'after-turn')
+
+    expect(sendMessage).not.toHaveBeenCalled()
+    const [message] = useHeldMessagesStore.getState().messages
+    expect([message.sessionId, message.content, message.mentions]).toEqual(['s1', 'then run the tests', ['a.ts']])
+  })
+
+  it('sends straight away when there is no turn to wait for', async () => {
+    const sendMessage = sendThatStartsATurn()
+    useAgentStore.setState({ sendMessage, isAgentWorking: false })
+    const composer = fakeComposer()
+
+    await deliverFromComposer('/repo', composer.ref.current, { content: 'hello' }, 'after-turn')
+
+    expect(sendMessage.mock.calls[0][0]).toBe('hello')
+    expect(held()).toEqual([])
+  })
+
+  it('stops the running turn before sending in its place', async () => {
+    const order: string[] = []
+    useAgentStore.setState({
+      stopAgent: mock(async () => { order.push('stop') }),
+      sendMessage: mock(async (...args: unknown[]) => { order.push(`send ${String(args[0])}`); return true }),
+    })
+    const composer = fakeComposer()
+
+    await deliverFromComposer('/repo', composer.ref.current, { content: 'do this instead' }, 'interrupt')
+
+    expect(order).toEqual(['stop', 'send do this instead'])
+  })
+
+  it('hands held messages back after the replacement, once a failed draft has restored itself', async () => {
+    const order: string[] = []
+    useAgentStore.setState({
+      stopAgent: mock(async () => { order.push('stop') }),
+      sendMessage: mock(async () => { order.push('send'); return false }),
+    })
+    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'later' })
+    const composer = fakeComposer()
+    composer.ref.current.restoreLastSubmission = () => { order.push('restore draft') }
+    composer.ref.current.appendValue = (text) => { order.push(`return ${text}`) }
+
+    await deliverFromComposer('/repo', composer.ref.current, { content: 'do this instead' }, 'interrupt')
+
+    expect(order).toEqual(['stop', 'send', 'restore draft', 'return later'])
+    expect(held()).toEqual([])
   })
 })
