@@ -1,0 +1,73 @@
+import { describe, expect, it } from 'bun:test'
+
+import { findFileRefs, parseFileHref, parseFileRef, workspaceRelativePath } from '@/utils/file-refs'
+
+describe('parseFileRef — a whole code span', () => {
+  it('reads a path with a line, a column, or a GitHub-style anchor', () => {
+    expect(parseFileRef('src/a.ts')).toEqual({ path: 'src/a.ts' })
+    expect(parseFileRef('src/a.ts:12')).toEqual({ path: 'src/a.ts', line: 12 })
+    expect(parseFileRef('src/a.ts:12:5')).toEqual({ path: 'src/a.ts', line: 12, column: 5 })
+    expect(parseFileRef('src/a.ts#L7-L9')).toEqual({ path: 'src/a.ts', line: 7 })
+    expect(parseFileRef('./web/src/App.tsx')).toEqual({ path: './web/src/App.tsx' })
+  })
+
+  it('takes a bare file name only with a known extension', () => {
+    expect(parseFileRef('package.json')).toEqual({ path: 'package.json' })
+    expect(parseFileRef('a.ts:3')).toEqual({ path: 'a.ts', line: 3 })
+    expect(parseFileRef('config.enabled')).toBeNull()
+    expect(parseFileRef('useAgentStore.getState')).toBeNull()
+  })
+
+  it('leaves code, versions, URLs, and packages alone', () => {
+    for (const text of ['v1.2.3', 'npm test', 'foo()', 'https://x.dev/a.ts', '@tanstack/react-query', 'a.ts:0', '']) {
+      expect(parseFileRef(text)).toBeNull()
+    }
+  })
+})
+
+describe('parseFileHref — a Markdown link target', () => {
+  it('reads relative targets, with anchors and escapes', () => {
+    expect(parseFileHref('src/a.ts#L3')).toEqual({ path: 'src/a.ts', line: 3 })
+    expect(parseFileHref('src/a.ts:4')).toEqual({ path: 'src/a.ts', line: 4 })
+    expect(parseFileHref('docs/my%20guide.md')).toEqual({ path: 'docs/my guide.md' })
+    expect(parseFileHref('Makefile')).toEqual({ path: 'Makefile' })
+  })
+
+  it('leaves URLs, page anchors, and other schemes to the browser', () => {
+    for (const href of ['https://x.dev/a.ts', '//x.dev/a.ts', '#usage', 'mailto:me@x.dev', 'file.ts?raw', '']) {
+      expect(parseFileHref(href)).toBeNull()
+    }
+  })
+})
+
+describe('findFileRefs — free text such as tool output', () => {
+  it('finds compiler, test-runner, and grep locations', () => {
+    const text = 'src/a.ts:12:5: error TS2322\n    at run (/repo/src/b.js:3:9)\nREADME.md:4:# Title'
+    expect(findFileRefs(text).map(({ start, end, ref }) => [text.slice(start, end), ref])).toEqual([
+      ['src/a.ts:12:5', { path: 'src/a.ts', line: 12, column: 5 }],
+      ['/repo/src/b.js:3:9', { path: '/repo/src/b.js', line: 3, column: 9 }],
+      ['README.md:4', { path: 'README.md', line: 4 }],
+    ])
+  })
+
+  it('wants a folder or a line before it calls a word a file', () => {
+    expect(findFileRefs('Wrote package.json, e.g. to x.dev')).toEqual([])
+    expect(findFileRefs('see https://x.dev/docs/a.js for more')).toEqual([])
+    expect(findFileRefs('moved to web/src/App.tsx.').map((match) => match.ref)).toEqual([{ path: 'web/src/App.tsx' }])
+  })
+})
+
+describe('workspaceRelativePath', () => {
+  it('resolves relative and in-workspace absolute paths', () => {
+    expect(workspaceRelativePath('./src/a.ts', '/repo')).toBe('src/a.ts')
+    expect(workspaceRelativePath('/repo/src/a.ts', '/repo/')).toBe('src/a.ts')
+    expect(workspaceRelativePath('src/a.ts', '/repo')).toBe('src/a.ts')
+  })
+
+  it('rejects paths outside the workspace', () => {
+    expect(workspaceRelativePath('/other/a.ts', '/repo')).toBeNull()
+    expect(workspaceRelativePath('/repository/a.ts', '/repo')).toBeNull()
+    expect(workspaceRelativePath('../a.ts', '/repo')).toBeNull()
+    expect(workspaceRelativePath('~/a.ts', '/repo')).toBeNull()
+  })
+})
