@@ -2,6 +2,7 @@ import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayou
 import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
 import { InputComposer, type FileRef, type InputComposerHandle, type SlashCommand, type SnippetCommand } from './InputComposer'
+import { ComposerIsland } from './ComposerIsland'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
@@ -131,6 +132,12 @@ interface FloatingInputComposerProps {
   historyPrompts?: string[]
   value?: string
   onValueChange?: (value: string) => void
+  /** Session model, shown by the collapsed bar's status island. */
+  model?: string | null
+  /** Input tokens against the auto-compact threshold. */
+  context?: { used: number; limit: number } | null
+  /** Opens the working-tree changes; offered after a turn edits files. */
+  onReviewChanges?: () => void
 }
 
 /**
@@ -145,7 +152,7 @@ interface FloatingInputComposerProps {
  */
 export const FloatingInputComposer = memo(
   forwardRef<InputComposerHandle, FloatingInputComposerProps>(
-    function FloatingInputComposer({ boundsRef, ...inputProps }, ref) {
+    function FloatingInputComposer({ boundsRef, model, context, onReviewChanges, ...inputProps }, ref) {
     const isMobile = useIsMobile()
     const dragControls = useDragControls()
     const panelRef = useRef<HTMLDivElement>(null)
@@ -610,6 +617,16 @@ export const FloatingInputComposer = memo(
             suggestionsBelow={renderSuggestionsBelow}
             minimized={effectiveMinimized}
             onUnminimize={expand}
+            minimizedContent={
+              <ComposerIsland
+                mode={inputProps.interactionMode ?? 'code'}
+                model={model}
+                context={context}
+                onExpand={expand}
+                onStop={inputProps.onStop}
+                onReviewChanges={onReviewChanges}
+              />
+            }
             onFocus={handleFocus}
             onBlur={handleBlur}
             onHasContentChange={handleHasContentChange}

@@ -1,0 +1,219 @@
+/**
+ * ComposerIsland — the collapsed composer as a status line for the lead.
+ *
+ * At rest it names the mode, the model, and how full the context is. While a
+ * turn runs it shows the current step and the elapsed time beside Stop; while
+ * the lead waits on a question it says so and leads to the card; and once a
+ * turn that changed files ends, it sums them up until the next turn starts or
+ * the composer opens.
+ *
+ * It subscribes to the store itself, so a streaming turn re-renders this line
+ * rather than the composer around it.
+ */
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { Check, Loader2, MessageCircleQuestion, Square } from 'lucide-react'
+
+import type { SessionInteractionMode } from '@/api/types'
+import { ContextRing } from '@/components/ui/token-meter'
+import { useAgentStore } from '@/stores/useAgentStore'
+import type { AgentStore } from '@/stores/useAgentStore/types'
+import { mergeBlocks } from '@/utils/blocks'
+import { shortModelName } from '@/utils/format'
+import { cn } from '@/lib/utils'
+import type { TurnChangeSummary } from './ToolCall/grouping'
+import { currentStep, formatElapsed, lastTurnChanges } from './ComposerIsland.status'
+
+export interface ComposerIslandProps {
+  mode: SessionInteractionMode
+  model?: string | null
+  /** Input tokens against the auto-compact threshold. */
+  context?: { used: number; limit: number } | null
+  onExpand: () => void
+  onStop?: () => void
+  onReviewChanges?: () => void
+}
+
+type IslandKind = 'rest' | 'running' | 'waiting' | 'done'
+
+const leadStream = (state: AgentStore) => (state.leadName ? state.agentStreams[state.leadName] : undefined)
+
+/** Changes of the turn that just ended here; a session switch is not one. */
+function useFinishedTurnChanges(running: boolean, sessionId: string | null): TurnChangeSummary | null {
+  const [changes, setChanges] = useState<TurnChangeSummary | null>(null)
+  const previous = useRef({ running, sessionId })
+  // Layout effect, so the summary replaces the running line in one paint.
+  useLayoutEffect(() => {
+    const was = previous.current
+    previous.current = { running, sessionId }
+    if (running || was.sessionId !== sessionId) {
+      setChanges(null)
+      return
+    }
+    if (!was.running) return
+    const stream = leadStream(useAgentStore.getState())
+    const summary = stream ? lastTurnChanges(mergeBlocks(stream.blocks, stream.currentBlocks)) : null
+    setChanges(summary && summary.files.length > 0 ? summary : null)
+  }, [running, sessionId])
+  return changes
+}
+
+function useElapsed(startedAt: number | null, active: boolean): number | null {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active || startedAt === null) return
+    setNow(Date.now())
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [active, startedAt])
+  return active && startedAt !== null ? now - startedAt : null
+}
+
+function goToQuestion() {
+  const card = document.querySelector<HTMLElement>('[data-question-waiting]')
+  if (!card) return
+  const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  card.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' })
+  card.querySelector<HTMLElement>('input, button, textarea')?.focus({ preventScroll: true })
+}
+
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
+
+const ACTION =
+  'flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-(--color-text) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) md:h-7'
+
+export function ComposerIsland({ mode, model, context, onExpand, onStop, onReviewChanges }: ComposerIslandProps) {
+  const descriptionId = useId()
+  const sessionId = useAgentStore((s) => s.sessionId)
+  const running = useAgentStore((s) => s.isAgentWorking)
+  const waiting = useAgentStore((s) => s.pendingQuestion !== null && s.pendingQuestion.sessionId === s.sessionId)
+  const step = useAgentStore((s) => (s.isAgentWorking ? currentStep(leadStream(s)?.currentBlocks ?? []) : null))
+  const startedAt = useAgentStore((s) => leadStream(s)?._turnStartedAt ?? null)
+  const elapsed = useElapsed(startedAt, running && !waiting)
+  const changes = useFinishedTurnChanges(running, sessionId)
+
+  const kind: IslandKind = waiting ? 'waiting' : running ? 'running' : changes ? 'done' : 'rest'
+  const modeLabel = mode === 'plan' ? 'Plan' : 'Code'
+  const modelName = shortModelName(model)
+  const percent = context && context.limit > 0 ? Math.min(100, Math.round((context.used / context.limit) * 100)) : null
+
+  let body: React.ReactNode
+  let description: string
+  if (kind === 'waiting') {
+    body = (
+      <>
+        <MessageCircleQuestion size={12} aria-hidden="true" className="shrink-0 text-(--color-info)" />
+        <span className="truncate">Waiting for your answer</span>
+      </>
+    )
+    description = 'Waiting for your answer'
+  } else if (kind === 'running') {
+    body = (
+      <>
+        <Loader2 size={12} aria-hidden="true" className="shrink-0 animate-spin text-(--color-text-muted) motion-reduce:animate-none" />
+        <span className="min-w-0 max-w-80 truncate">{step}</span>
+        {elapsed !== null && (
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-muted)">{formatElapsed(elapsed)}</span>
+        )}
+      </>
+    )
+    description = `Working: ${step}`
+  } else if (kind === 'done' && changes) {
+    const files = plural(changes.files.length, 'file')
+    body = (
+      <>
+        <Check size={12} aria-hidden="true" className="shrink-0 text-(--color-success)" />
+        <span className="truncate">{files} changed</span>
+        <span className="flex shrink-0 gap-1 font-mono text-[11px] font-semibold">
+          {changes.additions > 0 && <span className="text-(--color-diff-add-text)">+{changes.additions}</span>}
+          {changes.deletions > 0 && <span className="text-(--color-diff-del-text)">−{changes.deletions}</span>}
+        </span>
+      </>
+    )
+    description = `${files} changed, ${plural(changes.additions, 'line')} added, ${changes.deletions} removed`
+  } else {
+    body = (
+      <>
+        <span
+          aria-hidden="true"
+          className={cn('h-1.5 w-1.5 shrink-0 rounded-full', mode === 'plan' ? 'bg-(--color-info)' : 'bg-(--color-text-subtle)')}
+        />
+        <span className={cn('shrink-0 font-medium', mode === 'plan' && 'text-(--accent-blue-text)')}>{modeLabel}</span>
+        {modelName && (
+          <>
+            <span aria-hidden="true" className="text-(--color-text-subtle)">·</span>
+            <span className="min-w-0 max-w-48 truncate font-mono text-[11px]">{modelName}</span>
+          </>
+        )}
+        {percent !== null && (
+          <>
+            <span aria-hidden="true" className="text-(--color-text-subtle)">·</span>
+            <ContextRing progress={percent / 100} className="h-3 w-3 shrink-0" />
+            <span className="shrink-0 font-mono text-[11px] tabular-nums">{percent}%</span>
+          </>
+        )}
+      </>
+    )
+    description = [`${modeLabel} mode`, modelName, percent !== null ? `${percent}% of context used` : null]
+      .filter(Boolean)
+      .join(' · ')
+  }
+
+  const stop = (event: React.MouseEvent) => event.stopPropagation()
+
+  return (
+    <div data-island={kind} data-mode={mode} className="flex min-w-0 items-center gap-1">
+      <button
+        type="button"
+        aria-label="Expand input bar"
+        aria-describedby={descriptionId}
+        onClick={(event) => {
+          stop(event)
+          onExpand()
+        }}
+        className="flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 text-xs text-(--color-text-2) transition-colors duration-(--motion-instant) hover:text-(--color-text) md:h-7"
+      >
+        {body}
+      </button>
+      <span id={descriptionId} className="sr-only">{description}</span>
+      {kind === 'waiting' && (
+        <button
+          type="button"
+          aria-label="Go to the question"
+          onClick={(event) => {
+            stop(event)
+            goToQuestion()
+          }}
+          className={ACTION}
+        >
+          Answer
+        </button>
+      )}
+      {kind === 'done' && onReviewChanges && (
+        <button
+          type="button"
+          aria-label="Review changes"
+          onClick={(event) => {
+            stop(event)
+            onReviewChanges()
+          }}
+          className={ACTION}
+        >
+          Review
+        </button>
+      )}
+      {kind === 'running' && onStop && (
+        <button
+          type="button"
+          aria-label="Stop generation"
+          onClick={(event) => {
+            stop(event)
+            onStop()
+          }}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-(--bg-send) bg-(--bg-send) text-(--color-text-on-accent) transition duration-100 hover:opacity-90 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7"
+        >
+          <Square size={10} fill="currentColor" aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  )
+}

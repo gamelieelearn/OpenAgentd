@@ -118,6 +118,12 @@ export interface InputComposerProps {
   minimized?: boolean
   /** Called when the user clicks the collapsed bar to expand it. */
   onUnminimize?: () => void
+  /**
+   * What the collapsed bar shows in place of its expand button — the
+   * composer's status island. Clicks inside it still expand the bar unless
+   * a control stops them.
+   */
+  minimizedContent?: React.ReactNode
   /** Forwarded to the textarea so the parent can drive minimize-on-blur. */
   onFocus?: () => void
   /**
@@ -184,6 +190,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   renderDragHandle,
   minimized = false,
   onUnminimize,
+  minimizedContent,
   onFocus,
   onBlur,
   onHasContentChange,
@@ -717,7 +724,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
           : 'border-(--color-border) bg-(--bg-card) text-(--color-text-2)',
       )}
     >
-      {disabled && !minimized ? (
+      {disabled ? (
         <Loader2 size={14} className="animate-spin" aria-hidden="true" />
       ) : (
         <ArrowUp size={14} aria-hidden="true" />
@@ -826,11 +833,13 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     </div>
   )
 
-  const pillClassName = `relative block rounded-lg border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-200 ${
-    minimized
-      ? 'w-fit border-(--color-border) shadow-sm hover:bg-(--bg-key)'
-      : 'w-full border-(--color-border-strong) shadow-md focus-within:ring-1 focus-within:ring-(--color-accent)'
-  }`
+  // Plan mode tints the collapsed bar, so the mode reads at a glance.
+  const pillClassName = cn(
+    'relative block rounded-lg border transition-[border-color,box-shadow,background-color] duration-200',
+    !minimized && 'w-full border-(--color-border-strong) bg-(--color-surface) shadow-md focus-within:ring-1 focus-within:ring-(--color-accent)',
+    minimized && interactionMode === 'plan' && 'w-fit border-(--color-info)/50 bg-(--color-info-subtle) shadow-sm',
+    minimized && interactionMode !== 'plan' && 'w-fit border-(--color-border) bg-(--color-surface) shadow-sm hover:bg-(--bg-key)',
+  )
 
   const pillInner = (
     // Click-anywhere-to-expand on bare strip whitespace. Action buttons call
@@ -840,8 +849,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       onClick={minimized ? handleExpand : undefined}
       className={`flex w-full flex-wrap items-center gap-2 ${minimized ? 'cursor-text' : ''}`}
     >
-      {attachEl}
-      {chatEl}
+      {minimized ? minimizedContent ?? chatEl : attachEl}
       {!minimized && onInteractionModeChange && (
         <SessionModeToggle
           mode={interactionMode}
@@ -862,7 +870,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       </div>
       {/* Spacer pushes Send to the right edge of the action-button row. */}
       {!minimized && <div className="flex-1" />}
-      {sendOrStopEl}
+      {!minimized && sendOrStopEl}
     </div>
   )
 

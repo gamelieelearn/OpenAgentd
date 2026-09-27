@@ -50,7 +50,7 @@ const STORAGE_KEY = 'oa-input-position'
 afterEach(cleanup)
 beforeEach(() => {
   localStorage.clear()
-  useAgentStore.setState({ _pendingMessages: [] })
+  useAgentStore.setState({ _pendingMessages: [], isAgentWorking: false })
   mockIsMobile = false
 })
 
@@ -187,12 +187,13 @@ describe('FloatingInputComposer', () => {
     expect(textarea.getAttribute('placeholder')).toBe('Ask the team…')
   })
 
-  it('keeps the collapsed strip available while streaming', () => {
+  it('collapses to the status island, with Stop, while the agent works', () => {
+    useAgentStore.setState({ isAgentWorking: true, leadName: null, agentStreams: {} })
     render(<Harness isStreaming onStop={() => {}} />)
 
     const textarea = screen.getByLabelText('Message input')
     expect(textarea.getAttribute('disabled')).not.toBeNull()
-    expect(screen.getByRole('button', { name: 'Attach file' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Attach file' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Stop generation' })).toBeTruthy()
   })
