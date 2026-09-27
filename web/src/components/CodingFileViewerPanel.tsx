@@ -10,6 +10,7 @@ import { Check, Copy, Download, ExternalLink, FileText, Loader2, Plus } from 'lu
 import { codingWorkspaceFileUrl } from '@/api/client'
 import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
 import { cn } from '@/lib/utils'
+import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { formatBytes } from '@/utils/format'
 import { highlightLines } from '@/utils/code-highlight'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -265,6 +266,17 @@ function TextPreview({
     () => content !== null ? highlightLines(content, EXT_TO_LANG[ext]) : [],
     [content, ext],
   )
+
+  // A clicked ``path:line`` selects that line and centres it, once loaded.
+  const revealRequest = useFileRevealStore((s) => (s.request?.path === file.path ? s.request : null))
+  useEffect(() => {
+    if (!revealRequest || highlightedLines.length === 0) return
+    useFileRevealStore.getState().consume(revealRequest.key)
+    const line = Math.min(revealRequest.line, highlightedLines.length)
+    setSelection({ anchor: line, focus: line })
+    const row = containerRef.current?.querySelector<HTMLElement>(`[data-line="${line}"]`)
+    if (row) centerInScrollContainer(row)
+  }, [highlightedLines.length, revealRequest])
 
   if (deleted) {
     return <DeletedFilePreview />
