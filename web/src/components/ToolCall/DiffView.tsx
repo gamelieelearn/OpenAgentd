@@ -16,9 +16,8 @@ interface SingleFileDiffProps {
   onCollapse?: () => void
 }
 
-function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1, onCollapse }: SingleFileDiffProps) {
-  const [expanded, setExpanded] = useState(true)
-
+/** One file diff's numbered lines, or what the edit did when it has none. */
+export function FileDiffBody({ kind, moveTo, lines, oldStart = 1, newStart = 1 }: Omit<SingleFileDiffProps, 'path' | 'onCollapse'>) {
   const linesWithNumbers = useMemo(() => {
     let oldLineNum = oldStart
     let newLineNum = newStart
@@ -36,6 +35,74 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
     }
     return result
   }, [lines, oldStart, newStart])
+
+  if (linesWithNumbers.length === 0) {
+    if (kind === 'delete') {
+      return (
+        <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-[var(--color-diff-del-text)] bg-[var(--color-diff-del-bg)]/30 italic">
+          <Trash2 size={13} />
+          <span>File deleted</span>
+        </div>
+      )
+    }
+    if (moveTo) {
+      return (
+        <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-(--color-accent) bg-(--bg-key)/50 italic">
+          <ArrowRight size={13} />
+          <span>File moved to {moveTo} (no content changes)</span>
+        </div>
+      )
+    }
+    if (kind === 'add') {
+      return (
+        <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-[var(--color-diff-add-text)] bg-[var(--color-diff-add-bg)]/30 italic">
+          <PlusCircle size={13} />
+          <span>Empty file created</span>
+        </div>
+      )
+    }
+    return (
+      <div className="px-3 py-4 text-center text-(--color-text-muted) italic font-mono text-xs">
+        No content changes
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-w-0">
+      {linesWithNumbers.map((line, idx) => {
+        const isAdded = line.type === 'added'
+        const isRemoved = line.type === 'removed'
+
+        const lineBg = isAdded
+          ? 'bg-[var(--color-diff-add-bg)]'
+          : isRemoved
+            ? 'bg-[var(--color-diff-del-bg)]'
+            : 'bg-(--bg-input)'
+
+        const lineText = isAdded
+          ? 'text-[var(--color-diff-add-text)]'
+          : isRemoved
+            ? 'text-[var(--color-diff-del-text)]'
+            : 'text-(--color-text)'
+
+        return (
+          <div key={idx} className={`flex min-w-0 items-stretch ${lineBg} ${lineText}`}>
+            {/* Line Numbers */}
+            <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-[10px] text-(--color-text-subtle)">
+              <span className="w-9 py-0.5 pr-1.5">{line.num}</span>
+            </div>
+            {/* Code Line */}
+            <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{line.value}</pre>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1, onCollapse }: SingleFileDiffProps) {
+  const [expanded, setExpanded] = useState(true)
 
   const { additions, deletions } = useMemo(() => {
     let additions = 0
@@ -125,58 +192,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
       >
         <div className="min-h-0 overflow-hidden">
           <div className="h-full touch-pan-y overflow-y-auto bg-(--bg-input) font-mono text-xs leading-relaxed">
-              {linesWithNumbers.length === 0 ? (
-                kind === 'delete' ? (
-                  <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-[var(--color-diff-del-text)] bg-[var(--color-diff-del-bg)]/30 italic">
-                    <Trash2 size={13} />
-                    <span>File deleted</span>
-                  </div>
-                ) : moveTo ? (
-                  <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-(--color-accent) bg-(--bg-key)/50 italic">
-                    <ArrowRight size={13} />
-                    <span>File moved to {moveTo} (no content changes)</span>
-                  </div>
-                ) : kind === 'add' ? (
-                  <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-[var(--color-diff-add-text)] bg-[var(--color-diff-add-bg)]/30 italic">
-                    <PlusCircle size={13} />
-                    <span>Empty file created</span>
-                  </div>
-                ) : (
-                  <div className="px-3 py-4 text-center text-(--color-text-muted) italic font-mono text-xs">
-                    No content changes
-                  </div>
-                )
-              ) : (
-                <div className="min-w-0">
-                  {linesWithNumbers.map((line, idx) => {
-                    const isAdded = line.type === 'added'
-                    const isRemoved = line.type === 'removed'
-
-                    const lineBg = isAdded
-                      ? 'bg-[var(--color-diff-add-bg)]'
-                      : isRemoved
-                        ? 'bg-[var(--color-diff-del-bg)]'
-                        : 'bg-(--bg-input)'
-
-                    const lineText = isAdded
-                      ? 'text-[var(--color-diff-add-text)]'
-                      : isRemoved
-                        ? 'text-[var(--color-diff-del-text)]'
-                        : 'text-(--color-text)'
-
-                    return (
-                      <div key={idx} className={`flex min-w-0 items-stretch ${lineBg} ${lineText}`}>
-                        {/* Line Numbers */}
-                        <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-[10px] text-(--color-text-subtle)">
-                          <span className="w-9 py-0.5 pr-1.5">{line.num}</span>
-                        </div>
-                        {/* Code Line */}
-                        <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{line.value}</pre>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+            <FileDiffBody kind={kind} moveTo={moveTo} lines={lines} oldStart={oldStart} newStart={newStart} />
           </div>
         </div>
       </div>
