@@ -134,8 +134,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   Packaged desktop launches also canonicalise the `index.html` entrypoint to Home
   instead of showing the client-side 404 screen.
 - **Grouped settings navigation with one save contract** `[v1.128.0]` — the
-  settings sidebar is grouped into **Agents & tools**, **Models**, **System**,
-  and **About** instead of one flat list. **Title generation**, **Summarization**
+  settings sidebar is grouped into **Agents & tools**, **Models**, and
+  **About** instead of one flat list. **Title generation**, **Summarization**
   and **Multimodal** are consolidated into a single **Automation** section whose
   three groups can be collapsed independently. The shared save bar saves edited
   groups together; validation in an untouched group does not block saving,
@@ -174,11 +174,20 @@ run from the terminal (the native Rust binary since v3.0.0).
   footer and mobile sidebar name the connected backend (`builtin` or the saved
   server name/host) instead of a hardcoded local label. Mobile chat actions
   expose transcript find and terminal access without a hardware keyboard.
-  Empty coding sessions offer Ask about this repo, Generate AGENTS.md, and Open
-  terminal on desktop; those starter chips are omitted on mobile, where the
-  composer and chat actions drawer already cover them. Press and hold the
+  Empty coding sessions no longer show the Ask about this repo, Generate
+  AGENTS.md, and Open terminal starter chips *(deprecated)*; the composer,
+  palette, and chat actions drawer cover them. Press and hold the
   pinned Chat row in the mobile sidebar to start a new chat session, since the
   inline `+` is hidden on touch.
+- **Palette pages and switching** `[v3.0.0]` — the Command Palette gains
+  Switch Session… (recent sessions in every workspace, with running and
+  waiting-for-you status), Switch Workspace… (repositories, worktrees, and
+  Chat, most recently active first), Change Model… (applies from the next
+  message, keeping the thinking level when the model supports it), and a
+  Plan/Code mode switch. These open a nested list in place; Backspace on an
+  empty query or Escape steps back out. Typing `>` in Quick Open searches
+  commands instead of files. The desktop app adds Reload Window, since `⌘R`
+  no longer reloads.
 - **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
@@ -200,7 +209,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   Palette, and native Tauri menu accelerators. Session Settings moved to
   `⌘⇧A`/`Ctrl+Shift+A` to avoid clobbering Select All; view-mode cycling and
   session-list refresh lost their dedicated shortcuts (palette-only, low
-  frequency).
+  frequency). `⌘S`/`Ctrl+S` no longer opens Scheduled Tasks, so it only saves
+  in Settings `[v3.0.0]`.
 - **Smooth close animations on UI components** `[v1.77.0]` — dropdown, tooltip,
   and popover now play a 100–150 ms exit animation (fade-out + zoom-out) before
   unmounting, matching the open transitions. Dialog and sheet retain their
@@ -210,6 +220,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   for toast notifications now pauses while the pointer or keyboard focus is on
   the toast, resuming with the remaining time once it clears, so a toast can no
   longer disappear mid-read.
+- **Floating surfaces keep content visible** `[v3.0.0]` — the transcript leaves
+  room under the floating composer, so the latest reply is never hidden behind
+  it, and the jump-to-latest button sits just above the composer. On desktop,
+  toasts, the update card, and the language-tools prompt stack in one
+  bottom-right column above the status bar instead of overlapping each other.
 - **Categorized stream & execution error handling** `[v1.133.0]` — provider stream
   errors (rate limits, auth 401, connection drops) are now displayed directly within
   the chat transcript area as persistent error callout cards, while action validation
@@ -233,6 +248,15 @@ run from the terminal (the native Rust binary since v3.0.0).
   Command Palette, Scheduled Tasks, and Session Settings accelerators now use
   `CmdOrCtrl` (Session Settings requires Shift) to match the in-app
   platform-aware shortcuts `[v1.93.1]`.
+  - **Platform-standard menus** `[v3.0.0]` — File has New Session (`⌘N`), New
+    Window (`⌘⇧N`), Open Workspace… (`⌘O`), and Close Window (`⌘W`, which
+    closes an open dock tab first). Edit adds Find in Transcript (`⌘F`); View
+    adds Toggle Sidebar (`⌘B`) and Open Terminal (`⌘⇧` + backtick). A new Help menu
+    links GitHub, release notes, and issue reporting, and holds the config
+    folder and log shortcuts. The macOS app menu gains Services and
+    Hide/Hide Others/Show All. Reload and Force Reload no longer have
+    accelerators, the duplicate New Window, Quit, and Coding (`⌘⇧K`) items
+    are gone, and the Window menu no longer says "Hide to Tray".
   - **Tray "Usage Limits" submenu** `[v1.92.0]` — the macOS tray polls
     `GET /api/settings/providers/usage-summary` (stale-while-revalidate
     backend cache; per-provider last-known-good fallback on transient
@@ -293,7 +317,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   from the right edge goes forward, while editable fields and scroll-like
   vertical gestures are ignored.
 - **Multiple desktop windows** `[v1.41.0]` — open additional coding windows from
-  File → New Window, the tray menu, or `⌘/Ctrl+N`; windows share the bundled
+  File → New Window, the tray menu, or `⌘⇧N`/`Ctrl+Shift+N`; windows share the bundled
   sidecar and desktop auth token, while each window can independently switch to
   a saved external server `[v1.47.0]`. New windows now inherit the active
   window's current backend selection instead of failing when the bundled sidecar
@@ -801,6 +825,8 @@ agent against it.
   soft-keyboard focus preservation, quick symbol row).
   Terminal font defaults to a best-guess Nerd Font stack
   (MesloLGS NF and similar) for correct Powerlevel10k/Starship glyph rendering.
+  On macOS a focused terminal keeps `⌘K` (clears it, as in Terminal.app) and
+  `⌘F` instead of opening the palette or transcript find `[v3.0.0]`.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
   agent-selection fallback.
