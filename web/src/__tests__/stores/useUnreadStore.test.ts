@@ -9,7 +9,7 @@ function setVisibility(state: DocumentVisibilityState) {
 }
 
 beforeEach(() => {
-  useUnreadStore.setState({ ids: [] })
+  useUnreadStore.setState({ ids: [], lastSeen: {} })
   localStorage.removeItem(UNREAD_STORAGE_KEY)
   setVisibility('visible')
 })
@@ -29,7 +29,7 @@ describe('useUnreadStore', () => {
   it('persists the unread ids', () => {
     useUnreadStore.getState().markUnread('a')
     const saved = JSON.parse(localStorage.getItem(UNREAD_STORAGE_KEY) ?? '{}') as { state?: unknown }
-    expect(saved.state).toEqual({ ids: ['a'] })
+    expect(saved.state).toEqual({ ids: ['a'], lastSeen: {} })
   })
 
   it('keeps only the newest 200 sessions', () => {
@@ -48,6 +48,18 @@ describe('useUnreadStore', () => {
     await Promise.resolve()
 
     expect(useUnreadStore.getState().ids).toEqual(['theirs'])
+  })
+
+  it('remembers the last block seen per session, newest 200 sessions', () => {
+    useUnreadStore.getState().markSeen('a', 'a:1')
+    useUnreadStore.getState().markSeen('a', 'a:2')
+    expect(useUnreadStore.getState().lastSeen).toEqual({ a: 'a:2' })
+
+    for (let i = 0; i < 205; i += 1) useUnreadStore.getState().markSeen(`s${i}`, 'x')
+    const sessions = Object.keys(useUnreadStore.getState().lastSeen)
+    expect(sessions).toHaveLength(200)
+    expect(sessions).not.toContain('a')
+    expect(sessions.at(-1)).toBe('s204')
   })
 })
 

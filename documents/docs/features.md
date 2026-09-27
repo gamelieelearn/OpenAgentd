@@ -771,6 +771,11 @@ agent against it.
   session or the window was hidden. Opening the session clears the dot in every
   window. Unread state stays on this device, and sessions that finish while the
   app is closed are not marked.
+- **"New" line in the transcript** `[v3.0.0]` — reopening a session draws a
+  **New** line above the first turn you have not had on screen, and a **Jump to
+  new messages** button appears while that line is above the view. Content that
+  arrives while you watch gets no line, and nothing counts as seen while the
+  window is hidden.
 - **Needs you** `[v3.0.0]` — sessions stopped on a question are listed above
   the workspaces, from every workspace and however old, each with its
   workspace name and a count. The list updates as questions are asked and
