@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { AgentView } from '@/components/AgentView'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
-import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import type { ContentBlock } from '@/api/types'
 
 const writeText = mock(async (..._args: unknown[]) => {})
@@ -89,14 +88,5 @@ describe('AgentView — reply context menu', () => {
     await waitFor(() => expect(preview.textContent).toContain('# Bug hunt'))
     expect(preview.textContent).toContain('Earlier question')
     expect(preview.textContent).toContain('Use **bold** and [docs](https://x.dev)')
-  })
-
-  it('opens the same document from the palette command', async () => {
-    render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
-
-    act(() => dispatchAppEvent(APP_EVENTS.openSessionMarkdown))
-
-    const preview = await screen.findByRole('dialog', { name: 'File preview: Bug hunt.md' })
-    await waitFor(() => expect(preview.textContent).toContain('Earlier answer'))
   })
 })

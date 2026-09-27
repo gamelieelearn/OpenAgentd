@@ -35,7 +35,6 @@ import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { transcriptStyle, useTranscriptStore } from '@/stores/useTranscriptStore'
-import { APP_EVENTS } from '@/lib/app-events'
 import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
 import { getPlatform } from '@/hooks/use-platform'
 import type { ContentBlock } from '@/api/types'
@@ -474,10 +473,6 @@ export function AgentView({
     releaseSessionDocUrl()
     setSessionDoc(null)
   }, [releaseSessionDocUrl])
-  useEffect(() => {
-    window.addEventListener(APP_EVENTS.openSessionMarkdown, openSessionDoc)
-    return () => window.removeEventListener(APP_EVENTS.openSessionMarkdown, openSessionDoc)
-  }, [openSessionDoc])
 
   // Live blocks not yet folded into `blocks`, deduped against confirmed ids.
   // Both scroll bookkeeping and turn partitioning below read from this same

@@ -437,7 +437,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A turn that changed files ends with "Changed N files +x −y"; each file
     expands to the diff that turn made.
   - Right-click a reply for Copy, Copy as Markdown, and Open Session as
-    Markdown; the palette opens the session document too.
+    Markdown.
   - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your
     prompts, and a header pins the prompt whose answer is on screen.
   - `path:line` references in replies and tool output open the file at that
