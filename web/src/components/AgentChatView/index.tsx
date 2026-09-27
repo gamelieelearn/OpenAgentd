@@ -24,6 +24,7 @@ import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { CodingSidebar } from '../CodingSidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery } from '@/queries'
+import { renameSession } from '@/queries/session-rename'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -166,6 +167,9 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   const openSettings = useSettingsStore((s) => s.openSettings)
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
+  const handleRenameSession = useCallback((id: string, title: string) => {
+    renameSession(queryClient, id, title).catch(() => pushToast({ tone: 'error', title: 'Could not rename session' }))
+  }, [queryClient, pushToast])
   const isMobile = useIsMobile()
   const { isMacOverlay } = usePlatform()
   const storeWorkspace = useAgentStore((s) => s._workspace)
@@ -562,6 +566,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         onOpenTerminal={workspace && !isChatWorkspace ? handleOpenTerminal : undefined}
         onCloseMobileActionsMenu={closeMobileActionsMenu}
         onOpenPalette={handleTogglePalette}
+        onRenameSession={handleRenameSession}
       />
 
       {/* Body row — sidebar (or coding rail) + main content column. On

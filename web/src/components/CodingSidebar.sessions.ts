@@ -1,16 +1,6 @@
 import type { SessionResponse } from '@/api/types'
 import { saveLastCodingWorkspace } from '@/utils/workspace'
 
-export function prepareSessionTitleUpdate(
-  editTarget: SessionResponse | null,
-  editTitle: string,
-): { id: string; title: string } | null {
-  if (!editTarget) return null
-  const title = editTitle.trim()
-  if (!title) return null
-  return { id: editTarget.id, title }
-}
-
 export function getFallbackSessionAfterDelete(
   deleteTarget: SessionResponse,
   currentSessionId: string | undefined,

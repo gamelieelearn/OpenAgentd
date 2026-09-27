@@ -756,6 +756,10 @@ agent against it.
 - **New session button** `[v3.0.0]` — the top of the coding sidebar has a
   **New session** row with its shortcut (`⌘N` / `Ctrl+N`) that starts a
   session in the current workspace.
+- **Rename sessions in place** `[v3.0.0]` — the pencil, a double-click on a
+  sidebar row, **Edit title** in its menu, or a click on the session title in
+  the desktop header turns the title into a text field. Enter or clicking away
+  saves, Escape cancels, and the header and sidebar show the new title at once.
 - **Session status and unread marks in the sidebar** `[v3.0.0]` — each session
   row has one status slot: `!` while it waits for your answer, a spinner while
   it runs, and an accent dot when a turn ended while you were in another

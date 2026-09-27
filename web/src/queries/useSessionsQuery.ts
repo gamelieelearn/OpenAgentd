@@ -1,8 +1,8 @@
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { listSessions, deleteSession, updateSessionTitle, listSubagents } from '@/api/client'
-import type { SessionPageResponse, SessionResponse } from '@/api/types'
+import type { SessionPageResponse } from '@/api/types'
 import { queryKeys } from './keys'
-import { patchSessionInPageData } from './session-cache'
+import { applySessionRename } from './session-rename'
 import { removeSubagent } from '@/stores/cache-invalidation-bridge'
 
 const PAGE_SIZE = 20
@@ -53,10 +53,7 @@ export function useUpdateSessionTitleMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) => updateSessionTitle(id, title),
-    onSuccess: (updated) => {
-      queryClient.setQueriesData({ queryKey: queryKeys.session.sessions.all() }, (old) => patchSessionInPageData(old, updated))
-      queryClient.setQueryData(queryKeys.session.sessions.detail(updated.id), (old: SessionResponse | undefined) => old ? { ...old, ...updated } : old)
-    },
+    onSuccess: (updated) => applySessionRename(queryClient, updated),
   })
 }
 

@@ -3,7 +3,8 @@ import React from 'react'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
-import { useActiveSessionsQuery } from '@/queries/useSessionsQuery'
+import { useActiveSessionsQuery, useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
+import { useAgentStore } from '@/stores/useAgentStore'
 
 const originalFetch = globalThis.fetch
 
@@ -30,5 +31,25 @@ describe('useActiveSessionsQuery', () => {
     const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://x')
     expect(url.pathname).toBe('/api/agent/sessions')
     expect(url.searchParams.get('active')).toBe('true')
+  })
+})
+
+describe('useUpdateSessionTitleMutation', () => {
+  // The server does not broadcast a rename, and the header reads the title
+  // from the agent store rather than the session lists.
+  it('updates the title of the session on screen', async () => {
+    setApiBaseUrl('')
+    globalThis.fetch = mock(async (_input: unknown) => new Response(JSON.stringify({
+      id: 'current', title: 'Renamed', agent_name: 'lead', created_at: null, updated_at: null,
+    }))) as unknown as typeof fetch
+    useAgentStore.setState({ sessionId: 'current', sessionTitle: 'Old' })
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children)
+
+    const { result } = renderHook(() => useUpdateSessionTitleMutation(), { wrapper })
+    await result.current.mutateAsync({ id: 'current', title: 'Renamed' })
+
+    expect(useAgentStore.getState().sessionTitle).toBe('Renamed')
   })
 })

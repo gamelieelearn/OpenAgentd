@@ -25,7 +25,6 @@ import {
   applySessionDelete,
   applySessionSelection,
   getFallbackSessionAfterDelete,
-  prepareSessionTitleUpdate,
 } from '@/components/CodingSidebar.sessions'
 import {
   confirmWorkspaceRemoval,
@@ -383,13 +382,6 @@ describe('CodingSidebar helpers', () => {
       mode: 'coding',
       workspace: '/repo/project',
     }
-    expect(prepareSessionTitleUpdate(session, '  New title  ')).toEqual({
-      id: 'session-1',
-      title: 'New title',
-    })
-    expect(prepareSessionTitleUpdate(session, '   ')).toBeNull()
-    expect(prepareSessionTitleUpdate(null, 'New title')).toBeNull()
-
     const fallback = getFallbackSessionAfterDelete(
       session,
       'session-1',
@@ -1611,7 +1603,7 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.getAllByText('Worktree session').length).toBeGreaterThan(0)
   })
 
-  it('opens title editing from a coding session card', async () => {
+  it('renames a session in place from its row', async () => {
     const user = userEvent.setup()
     sessionsData = [
       {
@@ -1630,13 +1622,14 @@ describe('CodingSidebar workspace trust flow', () => {
     await user.click(screen.getByLabelText('Edit session Old title'))
     const input = screen.getByLabelText('Session title')
     await user.clear(input)
-    await user.type(input, 'New title')
-    await user.click(screen.getByRole('button', { name: /^save$/i }))
+    await user.type(input, 'New title{Enter}')
 
     expect(updateSessionTitleMutate).toHaveBeenCalledWith(
       { id: 'session-1', title: 'New title' },
-      expect.objectContaining({ onSuccess: expect.any(Function) }),
+      expect.objectContaining({ onError: expect.any(Function) }),
     )
+    expect(screen.queryByLabelText('Session title')).toBeNull()
+    expect(screen.queryByText('Edit session title')).toBeNull()
   })
 
   it('trims title edits before submitting', async () => {
@@ -1655,11 +1648,10 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
 
     await renderCodingSidebarForSessions('session-1')
-    await user.click(screen.getByLabelText('Edit session Old title'))
+    await user.dblClick(screen.getByText('Old title'))
     const input = screen.getByLabelText('Session title')
     await user.clear(input)
-    await user.type(input, '  New title  ')
-    await user.click(screen.getByRole('button', { name: /^save$/i }))
+    await user.type(input, '  New title  {Enter}')
 
     expect(updateSessionTitleMutate).toHaveBeenCalledWith(
       { id: 'session-1', title: 'New title' },
@@ -1667,7 +1659,7 @@ describe('CodingSidebar workspace trust flow', () => {
     )
   })
 
-  it('does not submit empty title edits', async () => {
+  it('does not submit empty or cancelled title edits', async () => {
     const user = userEvent.setup()
     sessionsData = [
       {
@@ -1684,12 +1676,15 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await renderCodingSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('Edit session Old title'))
-    const input = screen.getByLabelText('Session title')
-    await user.clear(input)
-    await user.type(input, '   ')
+    await user.clear(screen.getByLabelText('Session title'))
+    await user.type(screen.getByLabelText('Session title'), '   {Enter}')
+    expect(screen.queryByLabelText('Session title')).toBeNull()
 
-    expect(screen.getByRole('button', { name: /^save$/i }).hasAttribute('disabled')).toBe(true)
-    await user.keyboard('{Enter}')
+    await user.click(screen.getByLabelText('Edit session Old title'))
+    await user.type(screen.getByLabelText('Session title'), 'Other{Escape}')
+
+    expect(screen.queryByLabelText('Session title')).toBeNull()
+    expect(screen.getByText('Old title')).toBeTruthy()
     expect(updateSessionTitleMutate).not.toHaveBeenCalled()
   })
 

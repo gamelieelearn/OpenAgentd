@@ -6,6 +6,7 @@ import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
 import { LongPressButton } from '@/components/ui/long-press-button'
+import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SessionStatusMark } from './SessionStatusMark'
 
@@ -20,23 +21,29 @@ const ROW_ACTION =
 function WorkspaceSessionRowView({
   session,
   isCurrent,
+  isEditing,
   currentSessionId,
   path,
   mobileLongPressActions,
   onSessionSelect,
   onSessionDelete,
   onSessionEdit,
+  onSessionRename,
+  onSessionRenameCancel,
   onSessionLongPress,
   onSessionContextActions,
 }: {
   session: SessionResponse
   isCurrent: boolean
+  isEditing: boolean
   currentSessionId?: string
   path: string
   mobileLongPressActions: boolean
   onSessionSelect: (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => void
   onSessionDelete: (e: React.MouseEvent, session: SessionResponse) => void
   onSessionEdit: (session: SessionResponse) => void
+  onSessionRename: (session: SessionResponse, title: string) => void
+  onSessionRenameCancel: () => void
   onSessionLongPress: (session: SessionResponse) => void
   onSessionContextActions: (session: SessionResponse, event: React.MouseEvent) => void
 }) {
@@ -120,6 +127,18 @@ function WorkspaceSessionRowView({
           <span className="w-4 shrink-0 pointer-coarse:w-8" aria-hidden="true" />
         )}
         <div className="min-w-0 flex-1">
+        {isEditing ? (
+          <div className="flex h-(--spacing-list-row) min-w-0 items-center gap-1.5 px-1.5 text-xs">
+            <SessionStatusMark status={status} />
+            <InlineTitleInput
+              initial={session.title || ''}
+              label="Session title"
+              onSubmit={(title) => onSessionRename(session, title)}
+              onCancel={onSessionRenameCancel}
+              className="h-6 flex-1 font-medium"
+            />
+          </div>
+        ) : (
         <Tooltip className="w-full">
           <TooltipTrigger
             className="w-full"
@@ -172,15 +191,16 @@ function WorkspaceSessionRowView({
           />
           <TooltipContent>{`${sessionTitle} · ${sessionDate}`}</TooltipContent>
         </Tooltip>
+        )}
         </div>
         {/* Meta slot: the age reads at rest; hover/focus swaps it for the
             row actions in the same place, so neither covers the title. */}
-        {sessionAge && (
+        {sessionAge && !isEditing && (
           <span className={`shrink-0 pl-1 pr-1 text-[11px] tabular-nums text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
             {sessionAge}
           </span>
         )}
-        <div className={`shrink-0 items-center ${actionsVisibility}`}>
+        <div className={`shrink-0 items-center ${isEditing ? 'hidden' : actionsVisibility}`}>
           <button
             type="button"
             onClick={(e) => {
@@ -281,31 +301,41 @@ const WorkspaceSessionRow = memo(WorkspaceSessionRowView)
 
 type SessionHandlers = Pick<
   React.ComponentProps<typeof WorkspaceSessionRowView>,
-  'onSessionSelect' | 'onSessionDelete' | 'onSessionEdit' | 'onSessionLongPress' | 'onSessionContextActions'
+  | 'onSessionSelect' | 'onSessionDelete' | 'onSessionEdit' | 'onSessionRename' | 'onSessionRenameCancel'
+  | 'onSessionLongPress' | 'onSessionContextActions'
 >
+
+const noop = () => {}
 
 export function WorkspaceSessionList({
   path,
   currentSessionId,
   runningSessions,
+  editingSessionId = null,
   collapsed = false,
   mobileLongPressActions = false,
   className = 'space-y-px py-0.5',
   onSessionSelect,
   onSessionDelete,
   onSessionEdit,
+  onSessionRename = noop,
+  onSessionRenameCancel = noop,
   onSessionLongPress,
   onSessionContextActions,
 }: {
   path: string
   currentSessionId?: string
   runningSessions?: SessionResponse[]
+  /** The session whose title is being edited in place, if any. */
+  editingSessionId?: string | null
   collapsed?: boolean
   mobileLongPressActions?: boolean
   className?: string
   onSessionSelect: (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => void
   onSessionDelete: (e: React.MouseEvent, session: SessionResponse) => void
   onSessionEdit: (session: SessionResponse) => void
+  onSessionRename?: (session: SessionResponse, title: string) => void
+  onSessionRenameCancel?: () => void
   onSessionLongPress: (session: SessionResponse) => void
   onSessionContextActions: (session: SessionResponse, event: React.MouseEvent) => void
 }) {
@@ -317,14 +347,16 @@ export function WorkspaceSessionList({
 
   // The sidebar passes inline callbacks; rows get stable wrappers that call
   // the latest ones, so ``memo`` can skip rows whose session did not change.
-  const handlersRef = useRef<SessionHandlers>({ onSessionSelect, onSessionDelete, onSessionEdit, onSessionLongPress, onSessionContextActions })
+  const handlersRef = useRef<SessionHandlers>({ onSessionSelect, onSessionDelete, onSessionEdit, onSessionRename, onSessionRenameCancel, onSessionLongPress, onSessionContextActions })
   useEffect(() => {
-    handlersRef.current = { onSessionSelect, onSessionDelete, onSessionEdit, onSessionLongPress, onSessionContextActions }
+    handlersRef.current = { onSessionSelect, onSessionDelete, onSessionEdit, onSessionRename, onSessionRenameCancel, onSessionLongPress, onSessionContextActions }
   })
   const handlers = useMemo<SessionHandlers>(() => ({
     onSessionSelect: (session, workspacePath, event) => handlersRef.current.onSessionSelect(session, workspacePath, event),
     onSessionDelete: (event, session) => handlersRef.current.onSessionDelete(event, session),
     onSessionEdit: (session) => handlersRef.current.onSessionEdit(session),
+    onSessionRename: (session, title) => handlersRef.current.onSessionRename(session, title),
+    onSessionRenameCancel: () => handlersRef.current.onSessionRenameCancel(),
     onSessionLongPress: (session) => handlersRef.current.onSessionLongPress(session),
     onSessionContextActions: (session, event) => handlersRef.current.onSessionContextActions(session, event),
   }), [])
@@ -344,6 +376,7 @@ export function WorkspaceSessionList({
             key={session.id}
             session={session}
             isCurrent={isCurrent}
+            isEditing={session.id === editingSessionId}
             currentSessionId={currentSessionId}
             path={path}
             mobileLongPressActions={mobileLongPressActions}

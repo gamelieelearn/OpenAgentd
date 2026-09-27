@@ -103,7 +103,6 @@ import {
 import {
   applySessionDelete,
   applySessionSelection,
-  prepareSessionTitleUpdate,
 } from './CodingSidebar.sessions'
 import {
   confirmWorkspaceRemoval,
@@ -238,9 +237,7 @@ export function CodingSidebar({
   const [loading, setLoading] = useState(false)
   const [pendingWorkspace, setPendingWorkspace] = useState<string | null>(null)
   const [trustWorkspace, setTrustWorkspace] = useState<string | null>(null)
-  const [editTarget, setEditTarget] = useState<SessionResponse | null>(null)
-  const [editTitle, setEditTitle] = useState('')
-  const editTitleInputRef = useRef<HTMLInputElement>(null)
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [worktreeEditTarget, setWorktreeEditTarget] = useState<WorktreeInfo | null>(null)
   const [worktreeEditTitle, setWorktreeEditTitle] = useState('')
   const [worktreeEditLoading, setWorktreeEditLoading] = useState(false)
@@ -365,10 +362,6 @@ export function CodingSidebar({
   useEffect(() => {
     if (pendingWorkspace && workspace === pendingWorkspace) setPendingWorkspace(null)
   }, [pendingWorkspace, workspace])
-
-  useEffect(() => {
-    if (editTarget) editTitleInputRef.current?.focus()
-  }, [editTarget])
 
   useEffect(() => {
     if (worktreeEditTarget) worktreeEditInputRef.current?.focus()
@@ -614,24 +607,21 @@ export function CodingSidebar({
   }
 
   const handleSessionEdit = (session: SessionResponse) => {
-    setEditTarget(session)
-    setEditTitle(session.title || '')
+    setEditingSessionId(session.id)
+  }
+
+  const handleSessionRename = (session: SessionResponse, title: string) => {
+    setEditingSessionId(null)
+    updateSessionTitle.mutate(
+      { id: session.id, title },
+      { onError: () => pushToast({ tone: 'error', title: 'Could not rename session' }) },
+    )
   }
 
   const handleWorktreeEdit = (item: WorktreeInfo) => {
     const nextState = beginWorktreeTitleEdit(item)
     setWorktreeEditTarget(nextState.target)
     setWorktreeEditTitle(nextState.title)
-  }
-
-  const submitSessionTitle = (e: React.FormEvent) => {
-    e.preventDefault()
-    const update = prepareSessionTitleUpdate(editTarget, editTitle)
-    if (!update) return
-    updateSessionTitle.mutate(
-      update,
-      { onSuccess: () => setEditTarget(null) },
-    )
   }
 
   const submitWorktreeTitle = async (e: React.FormEvent) => {
@@ -874,6 +864,9 @@ export function CodingSidebar({
                     onSessionSelect={handleSessionSelect}
                     onSessionDelete={handleSessionDelete}
                     onSessionEdit={handleSessionEdit}
+                    editingSessionId={editingSessionId}
+                    onSessionRename={handleSessionRename}
+                    onSessionRenameCancel={() => setEditingSessionId(null)}
                     onSessionLongPress={(session) => setMobileSessionActions({ session, workspacePath: path })}
                     onSessionContextActions={(session, event) => {
                       setDesktopSessionActions({ session, workspacePath: path, x: event.clientX, y: event.clientY })
@@ -971,6 +964,9 @@ export function CodingSidebar({
                             onSessionSelect={handleSessionSelect}
                             onSessionDelete={handleSessionDelete}
                             onSessionEdit={handleSessionEdit}
+                            editingSessionId={editingSessionId}
+                            onSessionRename={handleSessionRename}
+                            onSessionRenameCancel={() => setEditingSessionId(null)}
                             onSessionLongPress={(session) => setMobileSessionActions({ session, workspacePath: directory })}
                             onSessionContextActions={(session, event) => {
                               setDesktopSessionActions({ session, workspacePath: directory, x: event.clientX, y: event.clientY })
@@ -1566,41 +1562,6 @@ export function CodingSidebar({
               Delete session
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={editTarget !== null}
-        onOpenChange={(open) => { if (!open) setEditTarget(null) }}
-      >
-        <DialogContent className="max-w-xs gap-3 p-3">
-          <form onSubmit={submitSessionTitle} className="space-y-3">
-            <DialogHeader className="gap-1 pr-8">
-              <DialogTitle className="text-sm leading-5">Edit session title</DialogTitle>
-              <DialogDescription className="text-xs leading-4">
-                Rename this sidebar item.
-              </DialogDescription>
-            </DialogHeader>
-            <div>
-              <input
-                ref={editTitleInputRef}
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus:outline-none focus-visible:outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
-                aria-label="Session title"
-                maxLength={255}
-              />
-              {updateSessionTitle.isError && (
-                <p className="mt-2 text-xs text-(--color-error)">Failed to update title.</p>
-              )}
-            </div>
-            <DialogFooter className="-mx-3 -mb-3 p-3">
-              <Button type="button" size="sm" variant="default" onClick={() => setEditTarget(null)}>Cancel</Button>
-              <Button type="submit" size="sm" disabled={!editTitle.trim() || updateSessionTitle.isPending}>
-                {updateSessionTitle.isPending ? 'Saving…' : 'Save'}
-              </Button>
-            </DialogFooter>
-          </form>
         </DialogContent>
       </Dialog>
 

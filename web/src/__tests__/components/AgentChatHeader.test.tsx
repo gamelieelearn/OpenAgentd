@@ -50,6 +50,20 @@ describe('AgentChatHeader', () => {
     expect(screen.getByText('Fix updater restart')).toBeInTheDocument()
   })
 
+  it('renames the session from its title on desktop', async () => {
+    const user = userEvent.setup()
+    const onRenameSession = mock((..._args: unknown[]) => {})
+    renderHeader({ isMobile: false, onRenameSession })
+
+    await user.click(screen.getByRole('button', { name: 'Rename session Fix updater restart' }))
+    const input = screen.getByLabelText('Session title')
+    await user.clear(input)
+    await user.type(input, 'Ship the updater{Enter}')
+
+    expect(onRenameSession.mock.calls).toEqual([['session-1', 'Ship the updater']])
+    expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+  })
+
   it('sizes every mobile header action to the full header height on touch', () => {
     renderHeader({ isMobile: true })
 
