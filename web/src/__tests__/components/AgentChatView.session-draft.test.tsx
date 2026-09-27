@@ -61,6 +61,7 @@ mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHeader: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentCommands: () => [] }))
+mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
 mock.module('@/components/FloatingInputComposer', () => ({
   FloatingInputComposer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },

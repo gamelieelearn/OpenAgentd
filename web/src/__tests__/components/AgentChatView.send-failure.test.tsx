@@ -70,6 +70,7 @@ mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHeader: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentCommands: () => [] }))
+mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
 
 // Stands in for the composer: a submit button that fires ``onSubmit`` exactly
 // as the real bar does, plus the restore entry point under test.

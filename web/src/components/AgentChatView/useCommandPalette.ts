@@ -8,7 +8,7 @@
  * hook avoids threading the same dozen callbacks through two separate
  * places in the shell.
  */
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useHotkeys } from '@tanstack/react-hotkeys'
 import { useQuery } from '@tanstack/react-query'
@@ -24,11 +24,14 @@ import { useLayoutStore } from '@/stores/useLayoutStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 import { useAgentCommands } from './useAgentCommands'
+import { usePaletteSwitchCommands } from './usePaletteSwitchCommands'
 
 export interface UseCommandPaletteArgs {
   workspace: string | null
   quickOpenOpen: boolean
   sessionIdState: string | null
+  /** Lead agent's configured model — Change Model… stores it as no override. */
+  defaultModel: string | null
   /** True while the review dock is mounted (``codingPanel !== null``). */
   codingPanelOpen: boolean
 
@@ -61,6 +64,7 @@ export function useCommandPalette({
   workspace,
   quickOpenOpen,
   sessionIdState,
+  defaultModel,
   codingPanelOpen,
   handleNewSession,
   handleWorkspaceFiles,
@@ -91,7 +95,7 @@ export function useCommandPalette({
     layout.toggleDockMaximized()
   }, [codingPanelOpen, isMobile, setCodingPanel, workspace])
 
-  const paletteCommands = useAgentCommands({
+  const agentCommands = useAgentCommands({
     toggleAgentCapabilities: handleToggleAgentCapabilities,
     toggleTasks: handleToggleTasks,
     toggleScheduler: handleToggleScheduler,
@@ -102,6 +106,8 @@ export function useCommandPalette({
     handleFindInTranscript,
     handleToggleDockMaximized: workspace && !isMobile ? handleToggleDockMaximized : undefined,
   })
+  const switchCommands = usePaletteSwitchCommands({ workspace, sessionId: sessionIdState, defaultModel })
+  const paletteCommands = useMemo(() => [...agentCommands, ...switchCommands], [agentCommands, switchCommands])
 
   // ── Quick Open workspace file search ───────────────────────────────────────
   //

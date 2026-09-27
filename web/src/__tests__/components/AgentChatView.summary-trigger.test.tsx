@@ -42,6 +42,7 @@ mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: 
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentCommands: () => [] }))
+mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
 mock.module('@/api/client', () => ({
   listCodingWorkspaceFiles: async () => [],
   renderCommand: async () => ({ content: '' }),

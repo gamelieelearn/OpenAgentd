@@ -423,6 +423,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     workspace,
     quickOpenOpen,
     sessionIdState,
+    defaultModel: leadAgent?.model ?? null,
     codingPanelOpen: codingPanel !== null,
     handleNewSession,
     handleWorkspaceFiles,
