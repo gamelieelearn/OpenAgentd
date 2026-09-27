@@ -48,6 +48,32 @@ export function partitionTurns(blocks: ContentBlock[]): TurnItem[] {
   return items
 }
 
+/** The model that produced a turn: the newest block that names one. */
+export function turnModelId(blocks: ContentBlock[]): string | undefined {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const model = blocks[i].extra?.model
+    if (typeof model === 'string') return model
+  }
+  return undefined
+}
+
+/**
+ * ``startIndex`` of every assistant turn whose model differs from the last
+ * model seen before it, so a footer names the model only when it changes.
+ */
+export function modelChangeTurnStarts(items: TurnItem[]): Set<number> {
+  const starts = new Set<number>()
+  let previous: string | undefined
+  for (const item of items) {
+    if (item.kind !== 'assistant') continue
+    const model = turnModelId(item.blocks)
+    if (model === undefined) continue
+    if (model !== previous) starts.add(item.startIndex)
+    previous = model
+  }
+  return starts
+}
+
 /**
  * Add a live suffix to already-partitioned, finalized history. Streaming
  * replaces `currentBlocks` on every delta, so re-partitioning the combined

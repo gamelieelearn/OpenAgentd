@@ -25,6 +25,8 @@ export interface AssistantTurnFooterProps {
   size?: 'compact' | 'roomy'
   /** Resend the prompt this turn answered; offered on the latest turn only. */
   onRetry?: () => void
+  /** Name the model; the transcript does so only when it changed. */
+  showModel?: boolean
 }
 
 function formatDuration(ms: number): string {
@@ -42,7 +44,7 @@ function shortModelName(modelId: string | null | undefined): string | null {
   return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
 }
 
-export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact', onRetry }: AssistantTurnFooterProps) {
+export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact', onRetry, showModel = true }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
   const footerData = useMemo(() => {
     // Me lastTurnText walks back to the previous user block; pass the turn directly
@@ -128,8 +130,8 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
           <TooltipContent>Retry — replaces this response</TooltipContent>
         </Tooltip>
       )}
-      {modelName && (
-        <span className="font-mono text-[11px] text-(--color-text-muted)">{modelName}</span>
+      {showModel && modelName && (
+        <span data-turn-model className="font-mono text-[11px] text-(--color-text-muted)">{modelName}</span>
       )}
       {timestamp && (
         <Tooltip className="text-[11px] text-(--color-text-muted)">
@@ -192,6 +194,8 @@ export interface AssistantTurnProps {
   onOpenFile?: (path: string) => void
   /** Passed to the footer; the caller offers it on the latest turn only. */
   onRetry?: () => void
+  /** Passed to the footer. */
+  showModel?: boolean
 }
 
 export const AssistantTurn = memo(function AssistantTurn({
@@ -208,6 +212,7 @@ export const AssistantTurn = memo(function AssistantTurn({
   isSwitchingInteractionMode = false,
   onOpenFile,
   onRetry,
+  showModel,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
   // rather than merely for the stream to stop.
@@ -261,7 +266,7 @@ export const AssistantTurn = memo(function AssistantTurn({
         )
       })}
       {changes && <TurnChanges changes={changes} onOpenFile={onOpenFile} />}
-      {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} onRetry={onRetry} />}
+      {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} onRetry={onRetry} showModel={showModel} />}
     </div>
     </PlanActionContext.Provider>
   )

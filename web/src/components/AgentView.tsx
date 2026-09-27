@@ -26,7 +26,7 @@ const MCPAppResult = lazy(() => import('./MCPAppResult').then((module) => ({ def
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
-import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
+import { appendCurrentTurns, getVisibleTurnWindow, modelChangeTurnStarts, partitionTurns } from '@/utils/turns'
 import { hasPlanContent, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
@@ -230,9 +230,8 @@ interface AgentViewProps {
 const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, latestMCPAppBlockIds, onMentionFileOpen, findHit = false }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; /** Rewind to a prompt the user wrote; ignored for agent reports. */ onEdit?: (blockId: string) => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void; /** Transcript find matched inside this block, so it must be visible. */ findHit?: boolean }) {
   switch (block.type) {
     case 'user': {
-      const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
       const fromAgent = typeof block.extra?.from_agent === 'string' ? block.extra.from_agent : null
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} modelId={blockModel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.durationMs} forceOpen={findHit} />
@@ -388,6 +387,7 @@ export function AgentView({
     () => appendCurrentTurns(finalizedTurnItems, blocks.length, liveTail),
     [blocks.length, liveTail, finalizedTurnItems],
   )
+  const modelChangeStarts = useMemo(() => modelChangeTurnStarts(turnItems), [turnItems])
   // Retry rewinds the latest prompt, so it is only honest under a finished
   // answer that directly follows a prompt the user wrote.
   const lastTurnItem = turnItems[turnItems.length - 1]
@@ -608,6 +608,7 @@ export function AgentView({
                       onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
                      onOpenFile={onMentionFileOpen}
+                     showModel={modelChangeStarts.has(item.startIndex)}
                      onRetry={canRetry && isTrailingTurn ? onRetry : undefined}
                       renderBlock={({ block, isStreaming }) => (
                        <div

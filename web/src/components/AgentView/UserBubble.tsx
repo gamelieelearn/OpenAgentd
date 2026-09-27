@@ -44,11 +44,6 @@ function renderUrlSegments(text: string, keyPrefix: string): React.ReactNode[] {
 const USER_COLLAPSE_LINES = 10
 const USER_COLLAPSE_CHARS = 700
 
-function shortModelName(modelId: string | null | undefined): string | null {
-  if (!modelId) return null
-  return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
-}
-
 /**
  * Render user prose with ``@mention`` tokens syntax-highlighted.
  *
@@ -194,13 +189,12 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, modelId, onMentionFileOpen, mentions, fromAgent }: {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, onMentionFileOpen, mentions, fromAgent }: {
   content: string
   timestamp?: Date
   attachments?: MessageAttachment[]
   /** Rewind to just before this prompt and put it back in the composer. */
   onEdit?: () => void
-  modelId?: string | null
   onMentionFileOpen?: (path: string) => void
   mentions?: string[]
   fromAgent?: string | null
@@ -209,7 +203,6 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [reportExpanded, setReportExpanded] = useState(false)
-  const modelName = shortModelName(modelId)
 
   const handleCopy = async () => {
     try {
@@ -342,9 +335,6 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
          {/* Actions + timestamp row. Always rendered: Copy and Edit do not
              depend on the metadata, and a pending prompt has neither yet. */}
             <div className={`flex items-center gap-1.5 transition-opacity duration-150 focus-within:opacity-100 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
-              {modelName && (
-                <span className="mr-1 font-mono text-[11px] text-(--color-text-subtle)">{modelName}</span>
-              )}
               {onEdit && (
                 <Tooltip>
                   <TooltipTrigger

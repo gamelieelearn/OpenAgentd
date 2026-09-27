@@ -674,3 +674,27 @@ describe("AgentView — AssistantFooter", () => {
     })
   })
 })
+
+describe("AgentView — footer model label", () => {
+  function answer(id: string, model: string): ContentBlock {
+    return { id, type: "text", content: `answer ${id}`, extra: { model } }
+  }
+
+  it("names the model on the first answer and again only when it changes", () => {
+    const { container } = renderStream({
+      blocks: [
+        makeUserBlock("u1", "one"),
+        answer("a1", "openai:gpt-5"),
+        makeUserBlock("u2", "two"),
+        answer("a2", "openai:gpt-5"),
+        makeUserBlock("u3", "three"),
+        answer("a3", "anthropic:claude-opus-4"),
+      ],
+      currentBlocks: [],
+      isWorking: false,
+    })
+
+    const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
+    expect(labels).toEqual(["gpt-5", "claude-opus-4"])
+  })
+})
