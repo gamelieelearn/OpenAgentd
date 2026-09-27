@@ -4,8 +4,6 @@ import { GripHorizontal } from 'lucide-react'
 import { InputComposer, type FileRef, type InputComposerHandle, type SlashCommand, type SnippetCommand } from './InputComposer'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { getPlatform } from '@/hooks/use-platform'
-import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 
 // ── Storage ──────────────────────────────────────────────────────────────────
@@ -279,38 +277,23 @@ export const FloatingInputComposer = memo(
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current)
     }, [])
 
-    // ── Global summon shortcut: ⌘I on macOS, Ctrl+I elsewhere ────────
-     // Brings the composer back to the foreground from any focus
-     // context. If the bar is collapsed it expands; either way the
-     // textarea takes focus so the user can immediately start typing.
-     // Mobile is excluded — the soft keyboard owns focus there and a
-     // window-level shortcut would never fire from a virtual keyboard.
-     useEffect(() => {
-       if (isMobile) return
-       const { os } = getPlatform()
-       const onKeyDown = (e: KeyboardEvent) => {
-         const target = e.target
-         const isComposerTarget = target instanceof Node && panelRef.current?.contains(target)
-         if (e.key === 'Escape' && isComposerTarget) {
-           e.preventDefault()
-           minimize()
-           return
-         }
-         // ``e.key`` is the printed character so the check is layout
-         // safe; we accept upper- and lower-case to cover Caps Lock.
-         if ((e.key === 'i' || e.key === 'I') && isPrimaryShortcut(e, os)) {
-           // Don't fight with browser-native Ctrl/⌘+I in editable
-           // surfaces *outside* our composer (e.g. a Markdown editor
-           // mounted somewhere on the page). The composer's textarea
-           // doesn't use italics so summoning while focus is already
-           // there is harmless and just refocuses.
-           e.preventDefault()
-           expand()
-         }
-       }
-       window.addEventListener('keydown', onKeyDown)
-       return () => window.removeEventListener('keydown', onKeyDown)
-     }, [isMobile, expand, minimize])
+    // ── Escape inside the composer collapses it ───────────────────────
+    // The ⌘I / Ctrl+I summon shortcut is owned by ``useCommandPalette``
+    // (focusChat), which reaches this component through the imperative
+    // ``focus()`` handle — so it also expands the bar.
+    useEffect(() => {
+      if (isMobile) return
+      const onKeyDown = (e: KeyboardEvent) => {
+        const target = e.target
+        const isComposerTarget = target instanceof Node && panelRef.current?.contains(target)
+        if (e.key === 'Escape' && isComposerTarget) {
+          e.preventDefault()
+          minimize()
+        }
+      }
+      window.addEventListener('keydown', onKeyDown)
+      return () => window.removeEventListener('keydown', onKeyDown)
+    }, [isMobile, minimize])
 
     // ── Global paste: expand + forward when bar is minimized ─────────────
     // When the floating bar is collapsed (minimized) and the user hits
