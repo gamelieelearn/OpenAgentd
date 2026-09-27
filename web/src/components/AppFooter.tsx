@@ -216,7 +216,7 @@ export const AppFooter = memo(function AppFooter({
 
         <ThemeToggle collapsed compact />
 
-        <TranscriptViewMenu className={cn(ICON_ITEM, 'data-active:bg-(--bg-key) data-active:text-(--color-text)')} />
+        <TranscriptViewMenu className={ICON_ITEM} />
 
         <Tooltip>
           <TooltipTrigger

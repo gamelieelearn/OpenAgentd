@@ -8,7 +8,7 @@ import { useTranscriptStore } from '@/stores/useTranscriptStore'
 
 afterEach(() => {
   cleanup()
-  useTranscriptStore.setState({ readerMode: false, density: 'comfortable', fontSize: 14 })
+  useTranscriptStore.setState({ density: 'comfortable', fontSize: 14 })
 })
 
 function openMenu() {
@@ -17,22 +17,6 @@ function openMenu() {
 }
 
 describe('TranscriptViewMenu', () => {
-  it('switches reader mode', () => {
-    openMenu()
-
-    fireEvent.click(screen.getByRole('switch', { name: 'Reader mode' }))
-
-    expect(useTranscriptStore.getState().readerMode).toBe(true)
-    expect(screen.getByRole('switch', { name: 'Reader mode' }).getAttribute('aria-checked')).toBe('true')
-  })
-
-  it('marks the trigger while reader mode is on', () => {
-    useTranscriptStore.setState({ readerMode: true })
-    render(<TranscriptViewMenu />)
-
-    expect(screen.getByRole('button', { name: 'Transcript view' }).hasAttribute('data-active')).toBe(true)
-  })
-
   it('picks a density', () => {
     openMenu()
     expect(screen.getByRole('radio', { name: 'Comfortable' }).getAttribute('aria-checked')).toBe('true')

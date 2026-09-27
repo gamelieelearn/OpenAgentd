@@ -9,7 +9,7 @@ import {
 } from '@/stores/useTranscriptStore'
 
 afterEach(() => {
-  useTranscriptStore.setState({ density: 'comfortable', fontSize: DEFAULT_TRANSCRIPT_FONT_SIZE, readerMode: false })
+  useTranscriptStore.setState({ density: 'comfortable', fontSize: DEFAULT_TRANSCRIPT_FONT_SIZE })
   localStorage.removeItem(TRANSCRIPT_STORAGE_KEY)
 })
 
@@ -30,10 +30,9 @@ describe('useTranscriptStore', () => {
     expect(Math.min(...TRANSCRIPT_FONT_SIZES)).toBeGreaterThanOrEqual(11)
   })
 
-  it('remembers density and size, but not reader mode', () => {
+  it('remembers density and size', () => {
     useTranscriptStore.getState().setDensity('compact')
     useTranscriptStore.getState().stepFontSize(1)
-    useTranscriptStore.getState().toggleReaderMode()
 
     const stored = JSON.parse(localStorage.getItem(TRANSCRIPT_STORAGE_KEY) ?? '{}')
     expect(stored.state).toEqual({ density: 'compact', fontSize: 15 })

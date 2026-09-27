@@ -1,12 +1,11 @@
 /**
  * TranscriptViewMenu — the footer's "Aa" control for how the transcript
- * reads: reader mode, density, and text size. The palette offers the same
- * settings, which is how they are reached below ``md``.
+ * reads: density and text size. The palette offers the same settings, which
+ * is how they are reached below ``md``.
  */
-import { useId, useState } from 'react'
+import { useState } from 'react'
 import { ALargeSmall, Minus, Plus } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   DEFAULT_TRANSCRIPT_FONT_SIZE,
@@ -20,15 +19,12 @@ const STEP =
   'inline-flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 disabled:pointer-events-none disabled:opacity-40'
 
 export function TranscriptViewMenu({ className }: {
-  /** Trigger styling; ``data-active`` is set while reader mode is on. */
+  /** Trigger styling. */
   className?: string
 }) {
   const [open, setOpen] = useState(false)
-  const readerId = useId()
-  const readerMode = useTranscriptStore((s) => s.readerMode)
   const density = useTranscriptStore((s) => s.density)
   const fontSize = useTranscriptStore((s) => s.fontSize)
-  const toggleReaderMode = useTranscriptStore((s) => s.toggleReaderMode)
   const setDensity = useTranscriptStore((s) => s.setDensity)
   const stepFontSize = useTranscriptStore((s) => s.stepFontSize)
   const resetFontSize = useTranscriptStore((s) => s.resetFontSize)
@@ -43,7 +39,6 @@ export function TranscriptViewMenu({ className }: {
               <button
                 type="button"
                 aria-label="Transcript view"
-                data-active={readerMode || undefined}
                 className={className}
               >
                 <ALargeSmall size={12} aria-hidden="true" />
@@ -51,17 +46,9 @@ export function TranscriptViewMenu({ className }: {
             }
           />
         </TooltipTrigger>
-        {!open && <TooltipContent>{readerMode ? 'Transcript view · Reader mode on' : 'Transcript view'}</TooltipContent>}
+        {!open && <TooltipContent>Transcript view</TooltipContent>}
       </Tooltip>
       <PopoverContent side="top" align="end" className="w-[min(16rem,calc(100vw-1rem))] gap-3 p-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p id={readerId} className="text-xs font-medium text-(--color-text)">Reader mode</p>
-            <p className="text-[11px] leading-snug text-(--color-text-muted)">Only your prompts and the final answers</p>
-          </div>
-          <Switch checked={readerMode} onCheckedChange={toggleReaderMode} aria-labelledby={readerId} />
-        </div>
-
         <div className="flex flex-col gap-1.5">
           <p className="text-[11px] font-medium text-(--color-text-muted)">Density</p>
           <div role="radiogroup" aria-label="Density" className="grid grid-cols-3 rounded-md border border-(--color-border-subtle) p-0.5">

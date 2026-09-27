@@ -9,7 +9,7 @@ import type { ContentBlock } from '@/api/types'
 
 afterEach(() => {
   cleanup()
-  useTranscriptStore.setState({ density: 'comfortable', fontSize: DEFAULT_TRANSCRIPT_FONT_SIZE, readerMode: false })
+  useTranscriptStore.setState({ density: 'comfortable', fontSize: DEFAULT_TRANSCRIPT_FONT_SIZE })
 })
 
 const BLOCKS: ContentBlock[] = [

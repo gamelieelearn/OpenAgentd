@@ -199,6 +199,6 @@ describe('AppFooter', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Transcript view' }))
 
-    expect(screen.getByRole('switch', { name: 'Reader mode' })).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: 'Density' })).toBeTruthy()
   })
 })

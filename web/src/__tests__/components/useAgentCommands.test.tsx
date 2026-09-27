@@ -30,7 +30,7 @@ import type { Command } from "@/components/CommandPalette"
 
 afterEach(() => {
   cleanup()
-  useTranscriptStore.setState({ readerMode: false, density: "comfortable", fontSize: 14 })
+  useTranscriptStore.setState({ density: "comfortable", fontSize: 14 })
 })
 
 /** Build a fully-populated args object with sensible defaults. */
@@ -203,17 +203,6 @@ describe("useAgentCommands — navigation", () => {
 //  Transcript view commands
 // ════════════════════════════════════════════════════════════════════════════
 describe("useAgentCommands — transcript view", () => {
-  it("turns reader mode on, then offers to turn it off", () => {
-    const { result, rerender } = renderHook(() => useAgentCommands(makeArgs()))
-    expect(byId(result.current, "toggle-reader-mode").label).toBe("Turn On Reader Mode")
-
-    byId(result.current, "toggle-reader-mode").action()
-    rerender()
-
-    expect(useTranscriptStore.getState().readerMode).toBe(true)
-    expect(byId(result.current, "toggle-reader-mode").label).toBe("Turn Off Reader Mode")
-  })
-
   it("lists the densities on a page, marks the current one, and applies a choice", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
     const page = byId(result.current, "transcript-density").page

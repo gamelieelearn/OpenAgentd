@@ -443,14 +443,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     prompts, and a header pins the prompt whose answer is on screen.
   - `path:line` references in replies and tool output open the file at that
     line in the review dock.
-  - Reader mode shows only your prompts and each final answer, plus an error
-    a turn ended on and a question waiting for you; find searches only what
-    it shows.
   - On desktop a timeline scrubber replaces the transcript's scrollbar and
     marks prompts, find matches, and a question waiting for you.
   - Density (Compact, Comfortable, Relaxed) and transcript text size are set
-    from the status bar's Aa menu or the palette, and persist. Reader mode
-    lasts until the app reloads.
+    from the status bar's Aa menu or the palette, and persist.
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show

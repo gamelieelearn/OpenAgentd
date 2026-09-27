@@ -1,10 +1,6 @@
 /**
- * useTranscriptStore — how the transcript reads: density, reading size, and
- * reader mode.
- *
- * Density and size persist. Reader mode is session-only: it hides every
- * tool call, and coming back to a transcript missing its work after a
- * reload would look like data loss.
+ * useTranscriptStore — how the transcript reads: density and reading size,
+ * both persisted.
  */
 import type { CSSProperties } from 'react'
 import { create } from 'zustand'
@@ -53,12 +49,10 @@ function isFontSize(value: unknown): value is number {
 interface TranscriptState {
   density: TranscriptDensity
   fontSize: number
-  readerMode: boolean
   setDensity: (density: TranscriptDensity) => void
   /** One step along ``TRANSCRIPT_FONT_SIZES``; stops at either end. */
   stepFontSize: (direction: -1 | 1) => void
   resetFontSize: () => void
-  toggleReaderMode: () => void
 }
 
 export const useTranscriptStore = create<TranscriptState>()(
@@ -66,7 +60,6 @@ export const useTranscriptStore = create<TranscriptState>()(
     (set) => ({
       density: DEFAULT_DENSITY,
       fontSize: DEFAULT_TRANSCRIPT_FONT_SIZE,
-      readerMode: false,
       setDensity: (density) => set({ density }),
       stepFontSize: (direction) => set((state) => {
         const sizes = TRANSCRIPT_FONT_SIZES as readonly number[]
@@ -75,7 +68,6 @@ export const useTranscriptStore = create<TranscriptState>()(
         return { fontSize: sizes[Math.max(0, Math.min(sizes.length - 1, from + direction))] }
       }),
       resetFontSize: () => set({ fontSize: DEFAULT_TRANSCRIPT_FONT_SIZE }),
-      toggleReaderMode: () => set((state) => ({ readerMode: !state.readerMode })),
     }),
     {
       name: TRANSCRIPT_STORAGE_KEY,

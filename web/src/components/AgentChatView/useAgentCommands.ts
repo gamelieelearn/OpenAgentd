@@ -47,19 +47,12 @@ interface UseAgentCommandsArgs {
   handleToggleDockMaximized?: () => void
 }
 
-/** Reader mode, density and text size; each label follows the setting. */
-function transcriptViewCommands(readerMode: boolean, density: TranscriptDensity, fontSize: number): Command[] {
+/** Density and text size; each label follows the setting. */
+function transcriptViewCommands(density: TranscriptDensity, fontSize: number): Command[] {
   const view = () => useTranscriptStore.getState()
   const sizes = TRANSCRIPT_FONT_SIZES as readonly number[]
   const densityLabel = TRANSCRIPT_DENSITIES.find((d) => d.value === density)?.label ?? density
   const commands: Command[] = [
-    {
-      id: 'toggle-reader-mode',
-      group: 'View',
-      label: readerMode ? 'Turn Off Reader Mode' : 'Turn On Reader Mode',
-      description: readerMode ? 'Bring back thinking, tool calls, and progress notes' : 'Show only your prompts and the final answers',
-      action: () => view().toggleReaderMode(),
-    },
     {
       id: 'transcript-density',
       group: 'View',
@@ -101,7 +94,6 @@ export function useAgentCommands({
   handleToggleDockMaximized,
 }: UseAgentCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const readerMode = useTranscriptStore((s) => s.readerMode)
   const density = useTranscriptStore((s) => s.density)
   const fontSize = useTranscriptStore((s) => s.fontSize)
   const { os, isTauri } = usePlatform()
@@ -111,7 +103,7 @@ export function useAgentCommands({
     { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleAgentCapabilities },
     { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: shortcutLabel(KEYS.tasks, os), action: toggleTasks },
     { id: 'find-transcript',  group: 'View',       label: 'Find in Transcript', description: 'Search user and assistant text in this session', shortcut: shortcutLabel(KEYS.findInTranscript, os), action: handleFindInTranscript },
-    ...transcriptViewCommands(readerMode, density, fontSize),
+    ...transcriptViewCommands(density, fontSize),
     { id: 'workspace-files',  group: 'View',       label: 'Open Changed & Files', description: 'Browse changed files and workspace files', shortcut: shortcutLabel(KEYS.workspaceFiles, os), action: handleWorkspaceFiles },
     ...(handleToggleDockMaximized
       ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Dock', description: 'Give the review dock the full width for diffs, files, and terminals', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
@@ -126,5 +118,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, readerMode, density, fontSize, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleCodingSidebarToggle, handleNewSession, handleOpenTerminal, openSettings])
+  ], [os, isTauri, density, fontSize, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleCodingSidebarToggle, handleNewSession, handleOpenTerminal, openSettings])
 }
