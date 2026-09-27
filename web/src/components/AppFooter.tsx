@@ -4,13 +4,13 @@
  * Left cluster is workspace-scoped, right cluster is session-scoped:
  *   • left:  backend health · git branch with ahead/behind + dirty count
  *   • right: active model (thinking level) · fast mode · scheduler · theme ·
- *            transcript view · telemetry · settings
+ *            telemetry · settings
  *
  * The command palette entry lives in the header's command center, so the
  * footer carries no help button. Hidden below ``md``; mobile surfaces these
  * in the sidebar drawer footer instead.
  */
-import { lazy, memo, Suspense } from 'react'
+import { memo } from 'react'
 import {
   Activity,
   CalendarClock,
@@ -34,9 +34,6 @@ import { useUIStore } from '@/stores/useUIStore'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
-
-// Off the startup bundle; a same-size placeholder holds its slot meanwhile.
-const TranscriptViewMenu = lazy(() => import('./TranscriptViewMenu').then((module) => ({ default: module.TranscriptViewMenu })))
 
 export interface AppFooterProps {
   workspace?: string | null
@@ -217,10 +214,6 @@ export const AppFooter = memo(function AppFooter({
         )}
 
         <ThemeToggle collapsed compact />
-
-        <Suspense fallback={<span className="h-5 w-5 shrink-0" aria-hidden="true" />}>
-          <TranscriptViewMenu className={ICON_ITEM} />
-        </Suspense>
 
         <Tooltip>
           <TooltipTrigger

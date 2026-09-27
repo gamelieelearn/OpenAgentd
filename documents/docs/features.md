@@ -446,7 +446,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   - On desktop a timeline scrubber replaces the transcript's scrollbar and
     marks prompts, find matches, and a question waiting for you.
   - Density (Compact, Comfortable, Relaxed) and transcript text size are set
-    from the status bar's Aa menu or the palette, and persist.
+    from the palette, and persist.
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
