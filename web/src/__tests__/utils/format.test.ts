@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatTokens, formatRelativeDate, formatCompactRelative, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText } from "@/utils/format";
+import { formatTokens, formatRelativeDate, formatCompactRelative, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks } from "@/utils/format";
 
 // ---------------------------------------------------------------------------
 // formatTokens
@@ -335,6 +335,20 @@ describe("lastTurnText", () => {
       block("thinking", "..."),
     ];
     expect(lastTurnText(blocks)).toBe("");
+  });
+});
+
+describe("finalAnswerBlocks", () => {
+  it("is the prose after the turn's last tool call, blank and sentinel-only blocks left out", () => {
+    const turn = [
+      { id: "t1", type: "text", content: "Let me look." },
+      { id: "x1", type: "tool", content: "" },
+      { id: "h1", type: "thinking", content: "hmm" },
+      { id: "t2", type: "text", content: "  " },
+      { id: "t3", type: "text", content: "<sleep>" },
+      { id: "t4", type: "text", content: "Found it." },
+    ] as import("@/api/types").ContentBlock[];
+    expect(finalAnswerBlocks(turn).map((b) => b.id)).toEqual(["t4"]);
   });
 });
 

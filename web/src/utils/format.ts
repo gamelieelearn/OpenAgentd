@@ -207,6 +207,26 @@ export function formatInTimezone(iso: string | null | undefined, timeZone: strin
 import type { ContentBlock } from '@/api/types'
 
 /**
+ * The text blocks that make up a turn's final answer: prose after the turn's
+ * last tool call. Earlier text is narration between tool calls. Blocks that
+ * are blank or hold nothing but a sleep sentinel are left out.
+ */
+export function finalAnswerBlocks(turn: ContentBlock[]): ContentBlock[] {
+  let start = 0
+  for (let i = turn.length - 1; i >= 0; i--) {
+    if (turn[i].type === 'tool') {
+      start = i + 1
+      break
+    }
+  }
+  return turn.slice(start).filter((block) => {
+    if (block.type !== 'text') return false
+    const content = extractSleepPrefix(block.content) ?? block.content
+    return content.trim().length > 0
+  })
+}
+
+/**
  * Extract copyable text from the last agent turn in a flat block list.
  *
  * A turn starts after the last `user` block. Within the turn, sleep-sentinel
@@ -230,29 +250,8 @@ export function lastTurnText(blocks: ContentBlock[]): string {
     }
   }
 
-  let turnBlocks = blocks.slice(startIdx)
-
-  // Keep only what follows the last tool call, if any.
-  for (let i = turnBlocks.length - 1; i >= 0; i--) {
-    if (turnBlocks[i].type === 'tool') {
-      turnBlocks = turnBlocks.slice(i + 1)
-      break
-    }
-  }
-
-  const parts: string[] = []
-
-  for (const block of turnBlocks) {
-    if (block.type !== 'text') continue
-    const sleepPrefix = extractSleepPrefix(block.content)
-    if (sleepPrefix !== null) {
-      // Block ends with a sentinel — keep any real content before it
-      if (sleepPrefix.length > 0) parts.push(sleepPrefix)
-      // Skip the sentinel itself — it's an internal signal
-    } else {
-      parts.push(block.content)
-    }
-  }
-
-  return parts.join('\n\n')
+  // A block ending in a sentinel keeps any real content before it.
+  return finalAnswerBlocks(blocks.slice(startIdx))
+    .map((block) => extractSleepPrefix(block.content) ?? block.content)
+    .join('\n\n')
 }
