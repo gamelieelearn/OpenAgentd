@@ -8,7 +8,7 @@
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
-import { Copy, Check, RotateCcw } from 'lucide-react'
+import { Copy, Check } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { groupToolRuns, summarizeTurnChanges } from '@/components/ToolCall/grouping'
 import { ToolRunGroup } from '@/components/ToolCall/ToolRunGroup'
@@ -23,8 +23,6 @@ export interface AssistantTurnFooterProps {
   turnBlocks: ContentBlock[]
   /** Visual density: 'compact' for narrow panes, 'roomy' for the wide view. */
   size?: 'compact' | 'roomy'
-  /** Resend the prompt this turn answered; offered on the latest turn only. */
-  onRetry?: () => void
   /** Name the model; the transcript does so only when it changed. */
   showModel?: boolean
 }
@@ -44,7 +42,7 @@ function shortModelName(modelId: string | null | undefined): string | null {
   return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
 }
 
-export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact', onRetry, showModel = true }: AssistantTurnFooterProps) {
+export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact', showModel = true }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
   const footerData = useMemo(() => {
     // Me lastTurnText walks back to the previous user block; pass the turn directly
@@ -114,22 +112,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
           <TooltipContent>Copy</TooltipContent>
         </Tooltip>
       )}
-      {onRetry && (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                onClick={onRetry}
-                className="rounded-sm p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:scale-90"
-                aria-label="Retry response"
-              >
-                <RotateCcw size={iconSize} />
-              </button>
-            }
-          />
-          <TooltipContent>Retry — replaces this response</TooltipContent>
-        </Tooltip>
-      )}
       {showModel && modelName && (
         <span data-turn-model className="font-mono text-[11px] text-(--color-text-muted)">{modelName}</span>
       )}
@@ -192,8 +174,6 @@ export interface AssistantTurnProps {
   isSwitchingInteractionMode?: boolean
   /** Open a workspace file listed in the turn's change summary. */
   onOpenFile?: (path: string) => void
-  /** Passed to the footer; the caller offers it on the latest turn only. */
-  onRetry?: () => void
   /** Passed to the footer. */
   showModel?: boolean
 }
@@ -211,7 +191,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   onStartImplementing,
   isSwitchingInteractionMode = false,
   onOpenFile,
-  onRetry,
   showModel,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
@@ -266,7 +245,7 @@ export const AssistantTurn = memo(function AssistantTurn({
         )
       })}
       {changes && <TurnChanges changes={changes} onOpenFile={onOpenFile} />}
-      {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} onRetry={onRetry} showModel={showModel} />}
+      {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} showModel={showModel} />}
     </div>
     </PlanActionContext.Provider>
   )

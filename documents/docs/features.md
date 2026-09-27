@@ -430,8 +430,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     rows, and the agent's own text is never folded.
   - Every prompt you wrote has Edit (rewind to it and put it back in the
     composer) and Restore to here (undo the turns after it; `/redo` brings
-    them back), both reachable from the keyboard. The latest answer offers
-    Retry.
+    them back), both reachable from the keyboard.
   - A failed turn ends in an error card with Retry and Switch model, which
     opens Session Settings.
   - A turn that changed files ends with "Changed N files +x −y"; each file

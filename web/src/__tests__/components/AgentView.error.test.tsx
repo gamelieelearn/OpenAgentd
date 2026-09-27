@@ -153,12 +153,10 @@ const ENDED_IN_ERROR: ContentBlock[] = [
 ]
 
 describe("AgentView — error card actions", () => {
-  it("offers Retry and Switch model on the error a turn ended with, instead of the footer Retry", () => {
+  it("offers Retry and Switch model on the error a turn ended with", () => {
     const onRetry = mock(() => {})
     const onSwitchModel = mock(() => {})
     render(<AgentView blocks={ENDED_IN_ERROR} currentBlocks={[]} isWorking={false} onRetry={onRetry} onSwitchModel={onSwitchModel} />)
-
-    expect(screen.queryByRole("button", { name: "Retry response" })).toBeNull()
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }))
     expect(onRetry).toHaveBeenCalledTimes(1)
@@ -177,7 +175,6 @@ describe("AgentView — error card actions", () => {
     expect(screen.getByText("Rate limit exceeded")).toBeTruthy()
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Switch model" })).toBeNull()
-    expect(screen.getByRole("button", { name: "Retry response" })).toBeTruthy()
   })
 
   it("leaves errors in earlier turns without actions", () => {

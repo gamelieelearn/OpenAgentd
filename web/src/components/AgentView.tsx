@@ -511,9 +511,6 @@ export function AgentView({
   const endingErrorId = isTurnOpen || showsLastError ? undefined : endingProviderError(trailingBlocks)?.id
   const errorRetry = canRetry ? onRetry : undefined
   const errorSwitchModel = isTurnOpen ? undefined : onSwitchModel
-  const footerRetry = canRetry && lastTurnItem?.kind === 'assistant' && !showsLastError && !endingErrorId
-    ? onRetry
-    : undefined
   const { hiddenTurnCount, visibleTurnItems } = useMemo(
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
     [renderedTurnCount, turnItems],
@@ -834,7 +831,6 @@ export function AgentView({
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
                      onOpenFile={onMentionFileOpen}
                      showModel={modelChangeStarts.has(item.startIndex)}
-                     onRetry={isTrailingTurn ? footerRetry : undefined}
                       renderBlock={({ block, isStreaming }) => (
                        <div
                          data-find-block={isTranscriptFindableBlock(block.type) ? block.id : undefined}
