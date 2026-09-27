@@ -24,12 +24,15 @@ interface UIStore {
   schedulerOpen: boolean
   agentCapabilitiesOpen: boolean
   paletteOpen: boolean
+  /** Command id whose page the palette opens on; ``null`` for the root list. */
+  palettePage: string | null
   quickOpenOpen: boolean
   /** Telemetry overlay (mounted at the app root, reachable from any route). */
   telemetryOpen: boolean
   toggleScheduler: () => void
   toggleAgentCapabilities: () => void
   togglePalette: () => void
+  openPalette: (page?: string | null) => void
   toggleQuickOpen: () => void
   openTelemetry: () => void
   toggleTelemetry: () => void
@@ -46,6 +49,7 @@ export const useUIStore = create<UIStore>()(
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
     paletteOpen: false,
+    palettePage: null,
     quickOpenOpen: false,
     telemetryOpen: false,
     toggleScheduler: () => {
@@ -78,6 +82,7 @@ export const useUIStore = create<UIStore>()(
       set((state) => {
         const nextOpen = !state.paletteOpen
         state.paletteOpen = nextOpen
+        state.palettePage = null
         if (nextOpen) {
           state.schedulerOpen = false
           state.agentCapabilitiesOpen = false
@@ -86,6 +91,17 @@ export const useUIStore = create<UIStore>()(
         }
       })
       if (useUIStore.getState().paletteOpen) _closeSettings?.()
+    },
+    openPalette: (page = null) => {
+      set((state) => {
+        state.paletteOpen = true
+        state.palettePage = page
+        state.schedulerOpen = false
+        state.agentCapabilitiesOpen = false
+        state.quickOpenOpen = false
+        state.telemetryOpen = false
+      })
+      _closeSettings?.()
     },
     toggleQuickOpen: () => {
       set((state) => {

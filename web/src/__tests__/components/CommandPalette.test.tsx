@@ -536,6 +536,25 @@ describe("CommandPalette — nested pages", () => {
 
     expect(screen.getByRole("button", { name: "Back to all commands" }).textContent).toBe("Switch Session")
   })
+
+  it("opens straight onto a page, and Escape then closes rather than stepping back", async () => {
+    const user = userEvent.setup()
+    let closed = false
+    render(<CommandPalette commands={pageCommands()} initialPage="switch-session" onClose={() => { closed = true }} />)
+
+    expect(screen.getByPlaceholderText("Search sessions…")).toBeTruthy()
+    expect(screen.queryByText("New Chat")).toBeNull()
+
+    await user.keyboard("{Escape}")
+    expect(closed).toBe(true)
+  })
+
+  it("falls back to the root list when the requested page is not offered", () => {
+    render(<CommandPalette commands={pageCommands()} initialPage="change-model" onClose={() => {}} />)
+
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+    expect(screen.getByText("New Chat")).toBeTruthy()
+  })
 })
 
 describe("QuickOpen — > command mode", () => {
