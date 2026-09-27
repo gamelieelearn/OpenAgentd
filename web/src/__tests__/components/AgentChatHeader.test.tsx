@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { AgentChatHeader } from '@/components/AgentChatView/AgentChatHeader'
 import { queryKeys } from '@/queries/keys'
-import type { SessionResponse } from '@/api/types'
+import type { SessionResponse, WorkspaceStatusResponse } from '@/api/types'
 
 function renderHeader(
   overrides: Partial<ComponentProps<typeof AgentChatHeader>> = {},
@@ -50,6 +50,14 @@ function withActiveSessions(rows: Partial<SessionResponse>[]) {
       has_more: false,
     }],
     pageParams: [null],
+  })
+  return ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+}
+
+function withGitStatus(workspace: string, status: Partial<WorkspaceStatusResponse>) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+  client.setQueryData(queryKeys.coding.status(workspace), {
+    workspace, name: 'Workspace A', is_git_repo: true, branch: 'main', ...status,
   })
   return ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }
@@ -250,6 +258,37 @@ describe('AgentChatHeader', () => {
   it('drops the zero half of the summary', () => {
     renderHeader({ isMobile: false, onOpenActiveSessions: () => {} }, withActiveSessions([{ running: true, needs_input: true }]))
     expect(screen.getByRole('button', { name: '1 needs you' })).toBeInTheDocument()
+  })
+
+  it('shows the branch between the workspace and the title, opening Git changes on click', async () => {
+    const user = userEvent.setup()
+    const onOpenGitChanges = mock(() => {})
+    renderHeader({ isMobile: false, onOpenGitChanges }, withGitStatus('/Users/name/Workspace A', {
+      branch: 'feature/header',
+      commits_ahead: 2,
+      commits_behind: 1,
+      dirty: { staged: 1, unstaged: 2, untracked: 0 },
+    }))
+
+    const branch = screen.getByRole('button', { name: /feature\/header/ })
+    expect(screen.getByLabelText('2 commits to push')).toBeInTheDocument()
+    expect(screen.getByLabelText('1 commits to pull')).toBeInTheDocument()
+    expect(branch).toHaveTextContent('*3')
+    expect(screen.getByRole('banner').textContent).toMatch(/Workspace A.*feature\/header.*Fix updater restart/)
+
+    await user.click(branch)
+    expect(onOpenGitChanges).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the branch out for the chat workspace', () => {
+    renderHeader({
+      isMobile: false,
+      workspace: '/Users/name',
+      chatWorkspace: { path: '/Users/name', name: 'Chat' },
+      onOpenGitChanges: () => {},
+    }, withGitStatus('/Users/name', { branch: 'main' }))
+
+    expect(screen.queryByText('main')).not.toBeInTheDocument()
   })
 
   it('disables the desktop Tasks button without a session', () => {

@@ -10,6 +10,7 @@ import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
 import { CommandCenterButton } from './CommandCenterButton'
 import { ActiveSessionsSummary } from './ActiveSessionsSummary'
+import { HeaderBranch } from './HeaderBranch'
 import { summarizeTodos } from '@/components/TaskChecklist'
 import { TokenMeter } from '@/components/ui/token-meter'
 import type { CodingWorkspaceTreeChat, TodoItem } from '@/api/types'
@@ -49,6 +50,8 @@ interface AgentChatHeaderProps {
   onRenameSession?: (sessionId: string, title: string) => void
   /** Desktop: shows the running / needs-you summary, which calls this on click. */
   onOpenActiveSessions?: () => void
+  /** Desktop: shows the repository branch after the workspace name, which calls this on click. */
+  onOpenGitChanges?: () => void
 }
 
 export const AgentChatHeader = memo(function AgentChatHeader({
@@ -78,6 +81,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   onOpenPalette,
   onRenameSession,
   onOpenActiveSessions,
+  onOpenGitChanges,
 }: AgentChatHeaderProps) {
   const { os } = usePlatform()
   // Keyed by session so a switch mid-edit drops the field instead of carrying
@@ -94,6 +98,9 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   // share one), so it keeps revealing the real path for coding workspaces —
   // but never the home path for chat, whose label is already unambiguous.
   const workspaceTooltip = isChatWorkspace ? workspaceName : workspace
+  const branch = workspace && !isChatWorkspace && onOpenGitChanges
+    ? <HeaderBranch workspace={workspace} onClick={onOpenGitChanges} />
+    : null
   const dockOpen = codingPanel !== null
   const sidebarShortcut = shortcutLabel(APP_SHORTCUTS.codingSidebar, os)
   const dockShortcut = shortcutLabel(APP_SHORTCUTS.workspaceFiles, os)
@@ -129,6 +136,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
           {workspace && !isMobile && renaming && onRenameSession ? (
             <span className="ml-1 flex min-w-0 max-w-xs items-center gap-1 text-sm lg:max-w-md xl:max-w-xl">
               <span className="shrink-0 font-semibold text-(--color-text)">{workspaceName}</span>
+              {branch}
               <span className="shrink-0 text-(--color-text-muted)">·</span>
               <InlineTitleInput
                 initial={sessionTitle ?? ''}
@@ -142,34 +150,38 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               />
             </span>
           ) : workspace && !isMobile ? (
-            <Tooltip className="ml-1 min-w-0 max-w-xs lg:max-w-md xl:max-w-xl">
-              <TooltipTrigger
-                className="min-w-0 max-w-xs lg:max-w-md xl:max-w-xl"
-                render={
-                  <span className="flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
-                    <span className="shrink-0 font-semibold text-(--color-text)">{workspaceName}</span>
-                    {sessionTitle && (
-                      <>
-                        <span className="shrink-0 text-(--color-text-muted)">·</span>
-                        {onRenameSession && sessionId ? (
-                          <button
-                            type="button"
-                            onClick={() => setRenamingSessionId(sessionId)}
-                            aria-label={`Rename session ${sessionTitle}`}
-                            className="min-w-0 truncate rounded-xs text-(--color-text-muted) transition-colors hover:text-(--color-text)"
-                          >
-                            {sessionTitle}
-                          </button>
-                        ) : (
-                          <span className="truncate text-(--color-text-muted)">{sessionTitle}</span>
-                        )}
-                      </>
-                    )}
-                  </span>
-                }
-              />
-              <TooltipContent>{sessionTitle ? `${workspaceName}: ${sessionTitle}` : workspaceTooltip}</TooltipContent>
-            </Tooltip>
+            <span className="ml-1 flex min-w-0 max-w-xs items-center gap-1 text-sm lg:max-w-md xl:max-w-xl">
+              <Tooltip className="shrink-0">
+                <TooltipTrigger
+                  render={<span className="font-semibold text-(--color-text)">{workspaceName}</span>}
+                />
+                <TooltipContent>{workspaceTooltip}</TooltipContent>
+              </Tooltip>
+              {branch}
+              {sessionTitle && (
+                <>
+                  <span className="shrink-0 text-(--color-text-muted)">·</span>
+                  <Tooltip className="min-w-0">
+                    <TooltipTrigger
+                      className="min-w-0"
+                      render={onRenameSession && sessionId ? (
+                        <button
+                          type="button"
+                          onClick={() => setRenamingSessionId(sessionId)}
+                          aria-label={`Rename session ${sessionTitle}`}
+                          className="block min-w-0 max-w-full truncate rounded-xs text-(--color-text-muted) transition-colors hover:text-(--color-text)"
+                        >
+                          {sessionTitle}
+                        </button>
+                      ) : (
+                        <span className="block truncate text-(--color-text-muted)">{sessionTitle}</span>
+                      )}
+                    />
+                    <TooltipContent>{sessionTitle}</TooltipContent>
+                  </Tooltip>
+                </>
+              )}
+            </span>
           ) : null}
         </div>
 

@@ -41,22 +41,6 @@ mock.module('@/queries/useHealthQuery', () => ({
   }),
 }))
 
-const statusProbes: string[] = []
-let statusExtras: Record<string, unknown> = {}
-mock.module('@/api/client', () => ({
-  getCodingWorkspaceStatus: async (workspace: string) => {
-    statusProbes.push(workspace)
-    return {
-      workspace: '/path/to/project',
-      name: 'project',
-      is_git_repo: true,
-      branch: 'main',
-      dirty: { staged: 1, unstaged: 2, untracked: 0 },
-      ...statusExtras,
-    }
-  },
-}))
-
 function renderWithQueryClient(ui: React.ReactElement) {
   const client = new QueryClient({
     defaultOptions: {
@@ -71,8 +55,6 @@ describe('AppFooter', () => {
     mockOpenSettings.mockClear()
     mockPreloadSettings.mockClear()
     mockPreloadTelemetry.mockClear()
-    statusProbes.length = 0
-    statusExtras = {}
   })
 
   it('starts loading the Settings and Telemetry chunks on pointer or focus intent', () => {
@@ -89,30 +71,6 @@ describe('AppFooter', () => {
     expect(screen.getByRole('status', { name: 'Application status' })).toBeTruthy()
     expect(screen.queryByText('local')).toBeNull()
     expect(screen.getByText('builtin')).toBeTruthy()
-  })
-
-  it('shows the git branch for a coding workspace', async () => {
-    renderWithQueryClient(<AppFooter workspace="/path/to/project" />)
-
-    expect(await screen.findByText('main')).toBeTruthy()
-    expect(statusProbes).toEqual(['/path/to/project'])
-  })
-
-  it('shows ahead/behind sync counts beside the branch', async () => {
-    statusExtras = { commits_ahead: 2, commits_behind: 1, upstream: 'origin/main' }
-    renderWithQueryClient(<AppFooter workspace="/path/to/project" />)
-
-    expect(await screen.findByLabelText('2 commits to push')).toBeTruthy()
-    expect(screen.getByLabelText('1 commits to pull')).toBeTruthy()
-    expect(screen.getByText('*3')).toBeTruthy()
-  })
-
-  it('skips the git branch and its probe for the chat workspace', () => {
-    renderWithQueryClient(<AppFooter workspace="/Users/name" chatWorkspace />)
-
-    expect(screen.getByRole('status', { name: 'Application status' })).toBeTruthy()
-    expect(screen.queryByText('main')).toBeNull()
-    expect(statusProbes).toEqual([])
   })
 
   it('renders model name and thinking level when provided and triggers session settings', async () => {
