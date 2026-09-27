@@ -40,7 +40,9 @@ if (import.meta.main) {
   const sizes = measureBundle(resolve(import.meta.dir, '../dist'))
   // eagerGzipBytes +1 kB for push-based refresh (config/MCP events) and
   // capability-gated settings; the plugin page and notice stay lazy.
-  const limits = { eagerBytes: 2_000_000, eagerGzipBytes: 591_000, largestChunkBytes: 1_500_000 }
+  // Lowered to 530 kB once the scheduler and Session Settings modals went
+  // lazy (~69 kB), so that saving is not quietly spent again.
+  const limits = { eagerBytes: 2_000_000, eagerGzipBytes: 530_000, largestChunkBytes: 1_500_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {
