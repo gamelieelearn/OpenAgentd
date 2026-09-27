@@ -87,6 +87,24 @@ function clampOffset(offset: StoredOffset, panel: Size, bounds: Size): StoredOff
   }
 }
 
+// ── Transcript clearance ─────────────────────────────────────────────────────
+
+const COMPOSER_BOTTOM_GAP = 16 // the wrapper's ``bottom-4``
+const DRAG_HANDLE_OVERHANG = 8 // the grip sits half above the panel
+
+/**
+ * Space the transcript keeps free at its bottom so the newest reply scrolls
+ * clear of the floating bar. Derived from the stored offset rather than a live
+ * rect, because framer is still springing towards a new offset when it
+ * changes. A bar dragged into the upper half no longer covers the newest
+ * reply, so it reserves nothing.
+ */
+function composerClearance(panelHeight: number, offsetY: number, boundsHeight: number): number {
+  if (panelHeight <= 0) return 0
+  const clearance = COMPOSER_BOTTOM_GAP + panelHeight - offsetY + DRAG_HANDLE_OVERHANG
+  return clearance > boundsHeight / 2 ? 0 : Math.round(clearance)
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 interface FloatingInputComposerProps {
@@ -465,6 +483,34 @@ export const FloatingInputComposer = memo(
         resizeObserver?.disconnect()
       }
     }, [isMobile, boundsRef, clampToVisibleBounds])
+
+    // Publish the clearance on the bounds element; the transcript inside it
+    // pads its bottom by ``--composer-clearance``.
+    useEffect(() => {
+      if (isMobile) return // the mobile bar sits in the layout flow
+      const bounds = boundsRef.current
+      const panel = panelRef.current
+      if (!bounds || !panel) return
+      const update = () => {
+        const px = composerClearance(
+          panel.getBoundingClientRect().height,
+          offset.y,
+          bounds.getBoundingClientRect().height,
+        )
+        bounds.style.setProperty('--composer-clearance', `${px}px`)
+      }
+      update()
+      let resizeObserver: ResizeObserver | null = null
+      if (typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver(update)
+        resizeObserver.observe(bounds)
+        resizeObserver.observe(panel)
+      }
+      return () => {
+        resizeObserver?.disconnect()
+        bounds.style.removeProperty('--composer-clearance')
+      }
+    }, [isMobile, boundsRef, offset.y])
 
     const handleDragEnd = useCallback(
       (_e: unknown, info: { offset: { x: number; y: number } }) => {

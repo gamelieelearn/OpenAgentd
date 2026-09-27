@@ -438,3 +438,40 @@ describe('FloatingInputComposer — orientation change: portrait-mobile → land
     expect(screen.getByRole('textbox', { name: 'Message input' })).toBeTruthy()
   })
 })
+
+describe('FloatingInputComposer — transcript clearance', () => {
+  const originalRect = HTMLElement.prototype.getBoundingClientRect
+
+  beforeEach(() => {
+    // Happy DOM has no layout: give the bounds and the floating panel sizes.
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const height = this.dataset.testid === 'bounds'
+        ? 800
+        : this.className.includes('pointer-events-auto') ? 100 : 0
+      return { x: 0, y: 0, top: 0, left: 0, right: 0, bottom: height, width: 0, height, toJSON: () => ({}) } as DOMRect
+    }
+  })
+  afterEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = originalRect
+  })
+
+  const clearance = () => screen.getByTestId('bounds').style.getPropertyValue('--composer-clearance')
+
+  it('reserves the bar height below the transcript at the docked position', () => {
+    render(<Harness />)
+    // 16px dock gap + 100px panel + 8px drag-handle overhang.
+    expect(clearance()).toBe('124px')
+  })
+
+  it('reserves nothing once the bar is dragged into the upper half', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: 0, y: -500 }))
+    render(<Harness />)
+    expect(clearance()).toBe('0px')
+  })
+
+  it('reserves nothing on mobile, where the bar sits in the layout flow', () => {
+    mockIsMobile = true
+    render(<Harness />)
+    expect(clearance()).toBe('')
+  })
+})
