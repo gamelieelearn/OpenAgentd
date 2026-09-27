@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp, RotateCcw } from 'lucide-react'
+import { ChevronDown, ChevronUp, Redo2 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface RevertNoticeProps {
@@ -53,12 +53,12 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
                   onClick={onRedo}
                   className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text)"
                 >
-                  <RotateCcw size={13} className="text-(--color-text-subtle) transition-colors group-hover:text-(--color-accent)" />
-                  <span>/redo to restore</span>
+                  <Redo2 size={13} aria-hidden="true" className="text-(--color-text-subtle) transition-colors group-hover:text-(--color-accent)" />
+                  <span>Redo</span>
                 </button>
               }
             />
-            <TooltipContent>Restore all undone messages and return the workspace to the live tip</TooltipContent>
+            <TooltipContent>Restore the next undone message (/redo)</TooltipContent>
           </Tooltip>
           {count > 1 && onRedoAll && (
             <Tooltip>
@@ -69,11 +69,11 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
                     onClick={onRedoAll}
                     className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text)"
                   >
-                    <span>/redo-all</span>
+                    <span>Redo all</span>
                   </button>
                 }
               />
-              <TooltipContent>Restore all undone messages back to the live tip</TooltipContent>
+              <TooltipContent>Restore every undone message and return the workspace to the live tip (/redo-all)</TooltipContent>
             </Tooltip>
           )}
         </div>

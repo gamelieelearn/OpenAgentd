@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react'
-import { ChevronDown, ChevronUp, Paperclip, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Paperclip, Pencil } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { MessageAttachment } from '@/api/types'
@@ -41,7 +41,7 @@ function QueuedMessageContent({ content, attachments }: { content: string; attac
     : content
 
   return (
-    <div className="relative overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-4 py-3 text-sm leading-relaxed text-(--color-text) opacity-75 shadow-sm">
+    <div className="relative overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-4 py-3 text-sm leading-relaxed text-(--color-text) opacity-75">
       {needsCollapse && (
         <Tooltip className="absolute top-1.5 right-1.5 z-10">
           <TooltipTrigger
@@ -130,7 +130,7 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
                       aria-label="Edit queued message"
                       className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-(--color-text-muted) opacity-100 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 md:opacity-70 md:group-hover:opacity-100"
                     >
-                      <X size={14} className="md:h-[13px] md:w-[13px]" />
+                      <Pencil size={13} aria-hidden="true" className="md:h-3 md:w-3" />
                     </button>
                   }
                 />

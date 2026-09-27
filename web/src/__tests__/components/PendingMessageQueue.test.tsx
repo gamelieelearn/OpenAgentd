@@ -154,6 +154,30 @@ describe('PendingMessageQueue', () => {
     window.removeEventListener('queue:restore-draft', restoreListener)
   })
 
+  it('draws the edit action as a pencil, not a delete cross', () => {
+    useAgentStore.setState({
+      sessionId: 'session-1',
+      _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Queued' }],
+    })
+
+    render(<PendingMessageQueue />)
+
+    const icon = screen.getByLabelText('Edit queued message').querySelector('svg')
+    expect(icon?.getAttribute('class')).toContain('lucide-pencil')
+  })
+
+  it('keeps the queued bubble flat: it sits in the transcript, it does not float', () => {
+    useAgentStore.setState({
+      sessionId: 'session-1',
+      _pendingMessages: [{ id: 'pending-1', sessionId: 'session-1', content: 'Queued' }],
+    })
+
+    render(<PendingMessageQueue />)
+
+    const bubble = screen.getByText('Queued', { selector: 'p' }).parentElement
+    expect(bubble?.className).not.toContain('shadow')
+  })
+
   it('shows attachment names on queued messages', () => {
     useAgentStore.setState({
       sessionId: 'session-1',
