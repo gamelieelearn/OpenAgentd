@@ -152,6 +152,14 @@ describe('Review dock Tasks tab', () => {
     view.unmount()
     expect(reported.at(-1)).toBeNull()
   })
+
+  it('returns to the Git tab for a review request', async () => {
+    const view = await renderPanel({ request: { view: 'tasks', key: 1 } })
+    await screen.findByRole('button', { name: 'Tasks' })
+
+    view.rerenderWith({ request: { view: 'review', key: 2 } })
+    expect((await screen.findByRole('button', { name: 'Git' })).getAttribute('aria-current')).toBe('true')
+  })
 })
 
 describe('Review dock Schedule tab', () => {

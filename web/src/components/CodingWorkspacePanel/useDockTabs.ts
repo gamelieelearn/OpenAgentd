@@ -168,7 +168,7 @@ export function useDockTabs({
   useEffect(() => {
     if (!viewRequest || viewRequest.key <= handledViewRequestKeyRef.current) return
     handledViewRequestKeyRef.current = viewRequest.key
-    openTab(viewRequest.view === 'tasks' ? TASKS_TAB : SCHEDULE_TAB)
+    openTab(viewRequest.view === 'review' ? REVIEW_TAB : viewRequest.view === 'tasks' ? TASKS_TAB : SCHEDULE_TAB)
   }, [viewRequest, openTab, handledViewRequestKeyRef])
 
   const activeView: DockView | null =

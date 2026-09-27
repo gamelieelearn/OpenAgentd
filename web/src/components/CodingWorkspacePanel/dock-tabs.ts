@@ -47,7 +47,8 @@ export function resolveFileTabInfo(
 }
 
 export interface DockViewRequest {
-  view: DockView
+  /** A singleton view, or ``review`` for the pinned Git tab. */
+  view: DockView | 'review'
   /** Monotonic; the dock handles each key once. */
   key: number
 }
