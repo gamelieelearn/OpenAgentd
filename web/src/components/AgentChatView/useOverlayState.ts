@@ -53,6 +53,7 @@ import { APP_EVENTS } from '@/lib/app-events'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { DockView, DockViewRequest } from '../CodingWorkspacePanel/dock-tabs'
 import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
+import { CHANGE_MODEL_COMMAND_ID } from './paletteSwitchCommands'
 
 export type { DockView, DockViewRequest }
 
@@ -102,6 +103,8 @@ export interface UseOverlayStateResult {
   handleToggleAgentCapabilities: () => void
   handleToggleScheduler: () => void
   handleTogglePalette: () => void
+  /** Open the palette on its Change Model… page. */
+  handleSwitchModel: () => void
   handleToggleQuickOpen: () => void
   handleSetShowTodos: Dispatch<SetStateAction<boolean>>
   /** ⌘T, the header Tasks button, and the palette's Task List command. */
@@ -296,6 +299,11 @@ export function useOverlayState({
     togglePalette()
   }, [closeOtherMobileOverlays, togglePalette])
 
+  const handleSwitchModel = useCallback(() => {
+    closeOtherMobileOverlays('palette')
+    useUIStore.getState().openPalette(CHANGE_MODEL_COMMAND_ID)
+  }, [closeOtherMobileOverlays])
+
   const handleToggleQuickOpen = useCallback(() => {
     if (!useUIStore.getState().quickOpenOpen) closeOtherMobileOverlays('palette')
     toggleQuickOpen()
@@ -443,6 +451,7 @@ export function useOverlayState({
     handleToggleAgentCapabilities,
     handleToggleScheduler,
     handleTogglePalette,
+    handleSwitchModel,
     handleToggleQuickOpen,
     handleSetShowTodos,
     handleToggleTasks,

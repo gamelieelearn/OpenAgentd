@@ -84,6 +84,7 @@ interface ActiveAgentViewProps {
   onMentionFileOpen?: (path: string) => void
   onStartImplementing?: () => void
   onRetry?: () => void
+  onSwitchModel?: () => void
   isSwitchingInteractionMode?: boolean
   findOpen?: boolean
   findQuery?: string
@@ -98,6 +99,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
   onMentionFileOpen,
   onStartImplementing,
   onRetry,
+  onSwitchModel,
   isSwitchingInteractionMode,
   findOpen,
   findQuery,
@@ -130,6 +132,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
       emptyState={emptyState}
       onStartImplementing={onStartImplementing}
       onRetry={onRetry}
+      onSwitchModel={onSwitchModel}
       isSwitchingInteractionMode={isSwitchingInteractionMode}
       findOpen={findOpen}
       findQuery={findQuery}
@@ -255,6 +258,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   const schedulerOpen = useUIStore((s) => s.schedulerOpen)
   const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
   const paletteOpen = useUIStore((s) => s.paletteOpen)
+  const palettePage = useUIStore((s) => s.palettePage)
   const quickOpenOpen = useUIStore((s) => s.quickOpenOpen)
   const toggleScheduler = useUIStore((s) => s.toggleScheduler)
   const toggleAgentCapabilities = useUIStore((s) => s.toggleAgentCapabilities)
@@ -297,6 +301,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     handleToggleAgentCapabilities,
     handleToggleScheduler,
     handleTogglePalette,
+    handleSwitchModel,
     handleToggleQuickOpen,
     handleSetShowTodos,
     handleToggleTasks,
@@ -629,6 +634,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
               onMentionFileOpen={handleMentionFileOpen}
               onStartImplementing={handleStartImplementing}
               onRetry={handleRetry}
+              onSwitchModel={handleSwitchModel}
               isSwitchingInteractionMode={isSwitchingInteractionMode}
               findOpen={findOpen}
               findQuery={findQuery}
@@ -802,6 +808,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         schedulerOpen={schedulerOpen}
         onCloseScheduler={closeScheduler}
         showPalette={paletteOpen}
+        palettePage={palettePage}
         paletteCommands={paletteCommands}
         quickOpenOpen={quickOpenOpen}
         quickOpenWorkspaceFiles={quickOpenWorkspaceFiles}

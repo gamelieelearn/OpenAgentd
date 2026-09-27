@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, mock } from "bun:test"
-import { render, screen, cleanup } from "@testing-library/react"
+import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import "@testing-library/jest-dom"
 import { AgentView } from "@/components/AgentView"
 import type { ContentBlock } from "@/api/types"
@@ -129,5 +129,115 @@ describe("AgentView — omitting isError/lastError props", () => {
     )
     const dots = container.querySelectorAll("[class*='animate-bounce']")
     expect(dots.length).toBe(3)
+  })
+})
+
+// ── the way forward from an error ─────────────────────────────────────────────
+
+function providerError(id: string, message: string): ContentBlock {
+  return {
+    id,
+    type: "provider_status",
+    content: message,
+    extra: { type: "provider_status", status: "error", title: "Provider Error", message, category: "provider" },
+    timestamp: new Date("2026-01-01T10:00:00Z"),
+  }
+}
+
+const ENDED_IN_ERROR: ContentBlock[] = [
+  { id: "m1", type: "user", content: "first prompt" },
+  { id: "a1", type: "text", content: "first answer" },
+  { id: "m2", type: "user", content: "second prompt" },
+  { id: "a2", type: "text", content: "partial answer" },
+  providerError("e2", "Rate limit exceeded"),
+]
+
+describe("AgentView — error card actions", () => {
+  it("offers Retry and Switch model on the error a turn ended with, instead of the footer Retry", () => {
+    const onRetry = mock(() => {})
+    const onSwitchModel = mock(() => {})
+    render(<AgentView blocks={ENDED_IN_ERROR} currentBlocks={[]} isWorking={false} onRetry={onRetry} onSwitchModel={onSwitchModel} />)
+
+    expect(screen.queryByRole("button", { name: "Retry response" })).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole("button", { name: "Switch model" }))
+    expect(onSwitchModel).toHaveBeenCalledTimes(1)
+  })
+
+  it("leaves an error the agent recovered from without actions", () => {
+    const blocks: ContentBlock[] = [
+      { id: "m1", type: "user", content: "prompt" },
+      providerError("e1", "Rate limit exceeded"),
+      { id: "a1", type: "text", content: "answer after the fallback model" },
+    ]
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} onRetry={() => {}} onSwitchModel={() => {}} />)
+
+    expect(screen.getByText("Rate limit exceeded")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Switch model" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Retry response" })).toBeTruthy()
+  })
+
+  it("leaves errors in earlier turns without actions", () => {
+    const blocks: ContentBlock[] = [
+      { id: "m1", type: "user", content: "prompt" },
+      providerError("e1", "Rate limit exceeded"),
+      { id: "m2", type: "user", content: "try again" },
+      { id: "a2", type: "text", content: "answer" },
+    ]
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} onRetry={() => {}} onSwitchModel={() => {}} />)
+
+    expect(screen.queryByRole("button", { name: "Switch model" })).toBeNull()
+  })
+
+  it("offers no actions while the turn is open", () => {
+    render(<AgentView blocks={ENDED_IN_ERROR} currentBlocks={[]} isWorking={false} isTurnOpen onRetry={() => {}} onSwitchModel={() => {}} />)
+
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Switch model" })).toBeNull()
+  })
+
+  it("shows a turn error once when the transcript already carries it", () => {
+    render(
+      <AgentView
+        blocks={ENDED_IN_ERROR}
+        currentBlocks={[]}
+        isWorking={false}
+        isError
+        lastError="Rate limit exceeded"
+        onRetry={() => {}}
+        onSwitchModel={() => {}}
+      />
+    )
+
+    expect(screen.getAllByText("Rate limit exceeded")).toHaveLength(1)
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1)
+  })
+
+  it("gives a failure the transcript does not show its own card, with the same actions", () => {
+    const blocks: ContentBlock[] = [
+      { id: "m1", type: "user", content: "first prompt" },
+      { id: "a1", type: "text", content: "first answer" },
+      { id: "m2", type: "user", content: "second prompt" },
+    ]
+    const onRetry = mock(() => {})
+    render(
+      <AgentView
+        blocks={blocks}
+        currentBlocks={[]}
+        isWorking={false}
+        isError
+        lastError="Agent crashed"
+        onRetry={onRetry}
+        onSwitchModel={() => {}}
+      />
+    )
+
+    expect(screen.getByText("Agent crashed")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: "Switch model" })).toBeTruthy()
   })
 })

@@ -43,6 +43,9 @@ export interface SwitchCommandHandlers {
 
 const MODE_LABEL: Record<SessionInteractionMode, string> = { code: 'Code', plan: 'Plan' }
 
+/** The Change Model… page, which Switch model on an error card opens directly. */
+export const CHANGE_MODEL_COMMAND_ID = 'change-model'
+
 function sessionStatus(session: SessionResponse, now: Date): string {
   // ``needs_input`` implies ``running``, so it is checked first.
   if (session.needs_input) return 'Needs you'
@@ -146,7 +149,7 @@ export function buildSwitchCommands(input: SwitchCommandsInput, handlers: Switch
   const models = modelCommands(input, handlers)
   if (models.length > 0) {
     commands.push({
-      id: 'change-model',
+      id: CHANGE_MODEL_COMMAND_ID,
       group: 'Session',
       label: 'Change Model…',
       description: 'Applies from your next message',

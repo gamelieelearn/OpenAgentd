@@ -19,7 +19,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, memo, lazy, Suspense
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
-import { ChevronDown, ChevronUp, AlertCircle, Clock } from 'lucide-react'
+import { ChevronDown, ChevronUp, Clock } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 const MCPAppResult = lazy(() => import('./MCPAppResult').then((module) => ({ default: module.MCPAppResult })))
@@ -33,6 +33,7 @@ import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppRes
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
+import { ErrorCard } from './AgentView/ErrorCard'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { TranscriptFind } from './AgentView/TranscriptFind'
@@ -44,6 +45,21 @@ const TURN_RENDER_STEP = 80
 
 function isDirectUserBlock(block: ContentBlock): boolean {
   return block.type === 'user' && !block.extra?.from_agent
+}
+
+function isProviderErrorBlock(block: ContentBlock): boolean {
+  if (block.type !== 'provider_status') return false
+  const status = block.extra?.status
+  return status === 'error' || status === 'exhausted' || block.extra?.category === 'provider'
+}
+
+/** The provider error a turn ended on, if it ended on one. */
+function endingProviderError(blocks: ContentBlock[]): ContentBlock | undefined {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (isBlankContentBlock(blocks[i])) continue
+    return isProviderErrorBlock(blocks[i]) ? blocks[i] : undefined
+  }
+  return undefined
 }
 
 /** True for a `thinking`/`text` block that has streamed in only whitespace
@@ -217,6 +233,8 @@ interface AgentViewProps {
   onStartImplementing?: () => void
   /** Resend the latest prompt; offered under the latest finished answer. */
   onRetry?: () => void
+  /** Pick another model; offered with Retry on the error a turn ended with. */
+  onSwitchModel?: () => void
   /** True when interaction mode is actively transitioning to Code mode. */
   isSwitchingInteractionMode?: boolean
   findOpen?: boolean
@@ -227,7 +245,7 @@ interface AgentViewProps {
   onFindActiveIndexChange?: (index: number) => void
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, onRestore, latestMCPAppBlockIds, onMentionFileOpen, findHit = false }: {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, onRestore, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, findHit = false }: {
   block: ContentBlock
   isStreaming: boolean
   sessionId?: string
@@ -235,6 +253,9 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   onEdit?: (blockId: string) => void
   /** Undo the turns after this prompt; the caller omits it for the latest. */
   onRestore?: (blockId: string) => void
+  /** Error actions; the caller passes them to the error a turn ended with only. */
+  onRetry?: () => void
+  onSwitchModel?: () => void
   latestMCPAppBlockIds?: Set<string>
   onMentionFileOpen?: (path: string) => void
   /** Transcript find matched inside this block, so it must be visible. */
@@ -262,18 +283,16 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
     }
     case 'provider_status': {
       const status = block.extra?.status
-      const title = (block.extra?.title as string) || (status === 'error' || status === 'exhausted' ? 'Provider Error' : undefined)
       const customMsg = block.extra?.message as string | undefined
 
-      if (status === 'error' || status === 'exhausted' || block.extra?.category === 'provider') {
+      if (isProviderErrorBlock(block)) {
         return (
-          <div className="my-2 rounded-md border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs">
-            <div className="flex items-center gap-1.5 font-medium text-(--color-error)">
-              <AlertCircle size={14} className="shrink-0" />
-              <span>{title || 'Provider Error'}</span>
-            </div>
-            <p className="mt-1 text-(--color-error)/90 leading-relaxed break-words">{customMsg || block.content}</p>
-          </div>
+          <ErrorCard
+            title={(block.extra?.title as string) || 'Provider Error'}
+            message={customMsg || block.content}
+            onRetry={onRetry}
+            onSwitchModel={onSwitchModel}
+          />
         )
       }
 
@@ -354,6 +373,7 @@ export function AgentView({
   onMentionFileOpen,
   onStartImplementing,
   onRetry,
+  onSwitchModel,
   isSwitchingInteractionMode = false,
   findOpen = false,
   findQuery = '',
@@ -416,13 +436,26 @@ export function AgentView({
     [blocks.length, liveTail, finalizedTurnItems],
   )
   const modelChangeStarts = useMemo(() => modelChangeTurnStarts(turnItems), [turnItems])
-  // Retry rewinds the latest prompt, so it is only honest under a finished
-  // answer that directly follows a prompt the user wrote.
+  // Retry rewinds the latest prompt, so it is only honest when nothing but
+  // that prompt's own answer, if any, follows a prompt the user wrote.
   const lastTurnItem = turnItems[turnItems.length - 1]
   const promptBeforeLastTurn = turnItems[turnItems.length - 2]
-  const canRetry = Boolean(onRetry) && !isTurnOpen &&
-    lastTurnItem?.kind === 'assistant' &&
-    promptBeforeLastTurn?.kind === 'user' && isDirectUserBlock(promptBeforeLastTurn.block)
+  const latestPrompt = lastTurnItem?.kind === 'user' ? lastTurnItem
+    : lastTurnItem?.kind === 'assistant' && promptBeforeLastTurn?.kind === 'user' ? promptBeforeLastTurn
+    : undefined
+  const canRetry = Boolean(onRetry) && !isTurnOpen && latestPrompt !== undefined && isDirectUserBlock(latestPrompt.block)
+  // A failed turn offers its way forward on the failure itself: the card for
+  // a failure the transcript does not show, else the error the turn ended on.
+  const trailingBlocks = lastTurnItem?.kind === 'assistant' ? lastTurnItem.blocks : []
+  const showsLastError = Boolean(isError && lastError) && !trailingBlocks.some(
+    (b) => isProviderErrorBlock(b) && (b.extra?.message === lastError || b.content === lastError),
+  )
+  const endingErrorId = isTurnOpen || showsLastError ? undefined : endingProviderError(trailingBlocks)?.id
+  const errorRetry = canRetry ? onRetry : undefined
+  const errorSwitchModel = isTurnOpen ? undefined : onSwitchModel
+  const footerRetry = canRetry && lastTurnItem?.kind === 'assistant' && !showsLastError && !endingErrorId
+    ? onRetry
+    : undefined
   const { hiddenTurnCount, visibleTurnItems } = useMemo(
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
     [renderedTurnCount, turnItems],
@@ -638,7 +671,7 @@ export function AgentView({
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
                      onOpenFile={onMentionFileOpen}
                      showModel={modelChangeStarts.has(item.startIndex)}
-                     onRetry={canRetry && isTrailingTurn ? onRetry : undefined}
+                     onRetry={isTrailingTurn ? footerRetry : undefined}
                       renderBlock={({ block, isStreaming }) => (
                        <div
                          data-find-block={isTranscriptFindableBlock(block.type) ? block.id : undefined}
@@ -647,6 +680,8 @@ export function AgentView({
                            block={block}
                            isStreaming={isStreaming}
                            sessionId={sessionId}
+                           onRetry={block.id === endingErrorId ? errorRetry : undefined}
+                           onSwitchModel={block.id === endingErrorId ? errorSwitchModel : undefined}
                            latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
                            onMentionFileOpen={onMentionFileOpen}
                            findHit={findHitBlockIds.has(block.id)}
@@ -681,11 +716,9 @@ export function AgentView({
 
             <PendingMessageQueue />
 
-            {isError && lastError && (
-             <div className="mt-3 rounded-sm border border-(--color-error) bg-(--color-error-subtle) px-3 py-2">
-               <p className="text-xs text-(--color-error)">{lastError}</p>
-             </div>
-           )}
+            {showsLastError && lastError && (
+              <ErrorCard message={lastError} onRetry={errorRetry} onSwitchModel={errorSwitchModel} />
+            )}
 
            <div ref={anchorRef} data-chat-scroll-anchor aria-hidden="true" />
          </div>
