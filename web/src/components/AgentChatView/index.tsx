@@ -43,7 +43,6 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import { DEFAULT_SUMMARY_TRIGGER_TOKENS } from '@/components/ui/token-meter'
 import { type InputComposerHandle } from '../InputComposer'
 import { FloatingInputComposer } from '../FloatingInputComposer'
 import { AppFooter } from '../AppFooter'
@@ -756,8 +755,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             revertedMessages={leadRevertedMessages}
             onRedo={() => { void handleSlashCommand('redo') }}
             onRedoAll={() => { void handleSlashCommand('redo-all') }}
-            model={sessionModel ?? leadAgent?.model ?? null}
-            context={{ used: leadPromptTokens, limit: summaryTriggerTokens ?? DEFAULT_SUMMARY_TRIGGER_TOKENS }}
             onReviewChanges={isChatWorkspace ? undefined : handleReviewChanges}
           />
         ) : null}

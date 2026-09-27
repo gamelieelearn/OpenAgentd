@@ -446,10 +446,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
 - **The composer as control center** `[v3.0.0]` — the floating composer
-  reports on the agent and carries the session's controls:
+  reports on the agent and steers the running turn:
   - Collapsed on desktop, it is a status island. At rest it shows the mode,
-    the model, and how full the context is, tinted blue in Plan mode. While a
-    turn runs it shows the current step and the elapsed time beside Stop.
+    tinted blue in Plan mode. While a turn runs it shows the current step
+    and the elapsed time beside Stop.
     When the agent asks a single-choice question with up to four options,
     the island offers them, so one click answers it; other questions get
     Answer, which jumps to the card. After a turn that changed files it

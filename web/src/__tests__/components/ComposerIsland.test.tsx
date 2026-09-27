@@ -87,22 +87,19 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('ComposerIsland — at rest', () => {
-  it('shows the mode, the model and how full the context is', () => {
-    render(<ComposerIsland mode="code" model="openai:gpt-5" context={{ used: 34_000, limit: 100_000 }} onExpand={() => {}} />)
+  it('shows only the mode', () => {
+    render(<ComposerIsland mode="code" onExpand={() => {}} />)
 
     const island = screen.getByRole('button', { name: 'Expand input bar' })
-    expect(island.textContent).toContain('Code')
-    expect(island.textContent).toContain('gpt-5')
-    expect(island.textContent).not.toContain('openai:')
-    expect(island.textContent).toContain('34%')
+    expect(island.textContent).toBe('Code')
   })
 
   it('describes its state to screen readers', () => {
-    render(<ComposerIsland mode="plan" model="gpt-5" context={{ used: 1, limit: 4 }} onExpand={() => {}} />)
+    render(<ComposerIsland mode="plan" onExpand={() => {}} />)
 
     const island = screen.getByRole('button', { name: 'Expand input bar' })
     const description = document.getElementById(island.getAttribute('aria-describedby') ?? '')
-    expect(description?.textContent).toBe('Plan mode · gpt-5 · 25% of context used')
+    expect(description?.textContent).toBe('Plan mode')
   })
 
   it('marks Plan mode so the pill can take its tint', () => {
@@ -123,12 +120,11 @@ describe('ComposerIsland — at rest', () => {
 describe('ComposerIsland — running', () => {
   it('shows the current step and how long the turn has run', () => {
     seedLead({ status: 'working', currentBlocks: [user('go'), read('src/main.tsx')], _turnStartedAt: Date.now() - 65_000 })
-    render(<ComposerIsland mode="code" model="gpt-5" onExpand={() => {}} onStop={() => {}} />)
+    render(<ComposerIsland mode="code" onExpand={() => {}} onStop={() => {}} />)
 
     const island = screen.getByRole('button', { name: 'Expand input bar' })
     expect(island.textContent).toContain('Reading main.tsx')
     expect(island.textContent).toContain('1:05')
-    expect(island.textContent).not.toContain('gpt-5')
   })
 
   it('follows the turn as it moves on', () => {

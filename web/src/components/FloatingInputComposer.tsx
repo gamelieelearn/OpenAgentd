@@ -140,10 +140,6 @@ interface FloatingInputComposerProps {
   historyPrompts?: string[]
   value?: string
   onValueChange?: (value: string) => void
-  /** Session model, shown by the collapsed bar's status island. */
-  model?: string | null
-  /** Input tokens against the auto-compact threshold. */
-  context?: { used: number; limit: number } | null
   /** Opens the working-tree changes; offered after a turn edits files. */
   onReviewChanges?: () => void
 }
@@ -160,7 +156,7 @@ interface FloatingInputComposerProps {
  */
 export const FloatingInputComposer = memo(
   forwardRef<InputComposerHandle, FloatingInputComposerProps>(
-    function FloatingInputComposer({ boundsRef, model, context, onReviewChanges, ...inputProps }, ref) {
+    function FloatingInputComposer({ boundsRef, onReviewChanges, ...inputProps }, ref) {
     const isMobile = useIsMobile()
     const dragControls = useDragControls()
     const panelRef = useRef<HTMLDivElement>(null)
@@ -630,8 +626,6 @@ export const FloatingInputComposer = memo(
             minimizedContent={
               <ComposerIsland
                 mode={inputProps.interactionMode ?? 'code'}
-                model={model}
-                context={context}
                 onExpand={expand}
                 onStop={inputProps.onStop}
                 onReviewChanges={onReviewChanges}

@@ -19,7 +19,7 @@ const RING_RADIUS = 7
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
 
 /** How far the context has filled towards auto-compact, as a ring. */
-export function ContextRing({ progress, className }: { progress: number; className?: string }) {
+function ContextRing({ progress, className }: { progress: number; className?: string }) {
   const clamped = Math.min(Math.max(progress, 0), 1)
   return (
     <svg className={cn('-rotate-90', className)} viewBox="0 0 18 18" aria-hidden="true">
