@@ -6,9 +6,14 @@
  * question, and just finished with files changed.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
+
+const answerQuestion = mock(async (..._args: unknown[]) => ({ status: 'answered', resumed: true }))
+const dismissQuestion = mock(async (..._args: unknown[]) => ({ status: 'dismissed', resumed: false }))
+const agentStream = mock(() => {})
+mock.module('@/api/client', () => ({ answerQuestion, dismissQuestion, agentStream }))
 
 import { ComposerIsland } from '@/components/ComposerIsland'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -20,7 +25,24 @@ const QUESTION: PendingQuestion = {
   id: 'q-1',
   sessionId: 's-1',
   toolCallId: 'call-1',
-  questions: [{ question: 'Which one?', header: 'Pick', multiple: false, custom: false, options: [{ label: 'A', recommended: false }] }],
+  // Several may be picked, so the island leaves it to the card.
+  questions: [{ question: 'Which ones?', header: 'Pick', multiple: true, custom: false, options: [{ label: 'A', recommended: false }] }],
+}
+
+const CHOICE: PendingQuestion = {
+  id: 'q-2',
+  sessionId: 's-1',
+  toolCallId: 'call-2',
+  questions: [{
+    question: 'Which package manager should the project use?',
+    header: 'Package manager',
+    multiple: false,
+    custom: false,
+    options: [
+      { label: 'pnpm', recommended: true },
+      { label: 'bun', recommended: false },
+    ],
+  }],
 }
 
 const user = (content: string): ContentBlock => ({ id: `u-${content}`, type: 'user', content })
@@ -54,7 +76,12 @@ function seedLead(stream: Partial<AgentStream>, state: Record<string, unknown> =
   })
 }
 
-beforeEach(() => seedLead({}))
+beforeEach(() => {
+  answerQuestion.mockClear()
+  answerQuestion.mockImplementation(async () => ({ status: 'answered', resumed: true }))
+  seedLead({})
+  useAgentStore.setState({ resolvedQuestions: {} })
+})
 afterEach(cleanup)
 
 describe('ComposerIsland — at rest', () => {
@@ -154,6 +181,65 @@ describe('ComposerIsland — waiting on a question', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Go to the question' }))
     expect(scrollIntoView).toHaveBeenCalledTimes(1)
     card.remove()
+  })
+})
+
+describe('ComposerIsland — answering from the island', () => {
+  it('offers the choices of a single-choice question, recommended one marked', () => {
+    seedLead({ status: 'waiting_input', currentBlocks: [user('go')] }, { pendingQuestion: CHOICE })
+    render(<ComposerIsland mode="code" onExpand={() => {}} />)
+
+    expect(screen.getByRole('button', { name: 'Expand input bar' }).textContent).toContain('Package manager')
+    expect(screen.getByRole('button', { name: 'Answer pnpm (recommended)' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Answer bun' })).toBeTruthy()
+  })
+
+  it('sends the picked choice as the answer', async () => {
+    seedLead({ status: 'waiting_input', currentBlocks: [user('go')] }, { pendingQuestion: CHOICE })
+    render(<ComposerIsland mode="code" onExpand={() => {}} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Answer bun' }))
+
+    await waitFor(() => expect(answerQuestion).toHaveBeenCalledTimes(1))
+    expect(answerQuestion.mock.calls[0]).toEqual(['s-1', 'q-2', [['bun']]])
+    await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
+    expect(useAgentStore.getState().resolvedQuestions['call-2']?.answers).toEqual([['bun']])
+  })
+
+  it('says why an answer did not send and keeps the choices', async () => {
+    answerQuestion.mockImplementation(async () => { throw new Error('Network unreachable') })
+    seedLead({ status: 'waiting_input', currentBlocks: [user('go')] }, { pendingQuestion: CHOICE })
+    render(<ComposerIsland mode="code" onExpand={() => {}} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Answer bun' }))
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Network unreachable'))
+    expect(screen.getByRole('button', { name: 'Answer bun' })).toBeTruthy()
+  })
+
+  it('still leads to the card when the answer may be typed', () => {
+    const custom = { ...CHOICE, questions: [{ ...CHOICE.questions[0], custom: true }] }
+    seedLead({ status: 'waiting_input', currentBlocks: [user('go')] }, { pendingQuestion: custom })
+    render(<ComposerIsland mode="code" onExpand={() => {}} />)
+
+    expect(screen.getByRole('button', { name: 'Answer bun' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Go to the question' }).textContent).toBe('Other…')
+  })
+
+  it('leaves questions the island cannot hold to the card', () => {
+    const many = { ...CHOICE, questions: [CHOICE.questions[0], { ...CHOICE.questions[0], header: 'Second' }] }
+    const multi = { ...CHOICE, questions: [{ ...CHOICE.questions[0], multiple: true }] }
+    const wide = {
+      ...CHOICE,
+      questions: [{ ...CHOICE.questions[0], options: ['a', 'b', 'c', 'd', 'e'].map((label) => ({ label, recommended: false })) }],
+    }
+    for (const question of [many, multi, wide]) {
+      seedLead({ status: 'waiting_input', currentBlocks: [user('go')] }, { pendingQuestion: question })
+      render(<ComposerIsland mode="code" onExpand={() => {}} />)
+      expect(screen.queryByRole('button', { name: /^Answer / })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Go to the question' }).textContent).toBe('Answer')
+      cleanup()
+    }
   })
 })
 

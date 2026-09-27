@@ -3,9 +3,9 @@
  *
  * At rest it names the mode, the model, and how full the context is. While a
  * turn runs it shows the current step and the elapsed time beside Stop; while
- * the lead waits on a question it says so and leads to the card; and once a
- * turn that changed files ends, it sums them up until the next turn starts or
- * the composer opens.
+ * the lead waits on a question it offers the choices of a single-choice
+ * question inline, or leads to the card; and once a turn that changed files
+ * ends, it sums them up until the next turn starts or the composer opens.
  *
  * It subscribes to the store itself, so a streaming turn re-renders this line
  * rather than the composer around it.
@@ -13,13 +13,14 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { Check, Loader2, MessageCircleQuestion, Square } from 'lucide-react'
 
-import type { SessionInteractionMode } from '@/api/types'
+import type { PendingQuestion, QuestionItem, SessionInteractionMode } from '@/api/types'
 import { ContextRing } from '@/components/ui/token-meter'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { AgentStore } from '@/stores/useAgentStore/types'
 import { mergeBlocks } from '@/utils/blocks'
 import { shortModelName } from '@/utils/format'
 import { cn } from '@/lib/utils'
+import { useQuestionResolver } from './AskUser/useQuestionResolver'
 import type { TurnChangeSummary } from './ToolCall/grouping'
 import { currentStep, formatElapsed, lastTurnChanges } from './ComposerIsland.status'
 
@@ -36,6 +37,15 @@ export interface ComposerIslandProps {
 type IslandKind = 'rest' | 'running' | 'waiting' | 'done'
 
 const leadStream = (state: AgentStore) => (state.leadName ? state.agentStreams[state.leadName] : undefined)
+
+/** More choices than this do not fit on one line; the card takes them. */
+const MAX_INLINE_CHOICES = 4
+
+/** The one question the island can answer in place, if that is what is asked. */
+function inlineChoice(question: PendingQuestion | null): QuestionItem | null {
+  const item = question?.questions.length === 1 ? question.questions[0] : null
+  return item && !item.multiple && item.options.length > 0 && item.options.length <= MAX_INLINE_CHOICES ? item : null
+}
 
 /** Changes of the turn that just ended here; a session switch is not one. */
 function useFinishedTurnChanges(running: boolean, sessionId: string | null): TurnChangeSummary | null {
@@ -80,12 +90,17 @@ const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 
 const ACTION =
   'flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-(--color-text) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) md:h-7'
+const CHOICE =
+  'flex h-7 shrink-0 items-center rounded-full border px-2.5 text-xs text-(--color-text) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) disabled:cursor-default disabled:opacity-50 md:h-6'
 
 export function ComposerIsland({ mode, model, context, onExpand, onStop, onReviewChanges }: ComposerIslandProps) {
   const descriptionId = useId()
   const sessionId = useAgentStore((s) => s.sessionId)
   const running = useAgentStore((s) => s.isAgentWorking)
-  const waiting = useAgentStore((s) => s.pendingQuestion !== null && s.pendingQuestion.sessionId === s.sessionId)
+  const question = useAgentStore((s) => (s.pendingQuestion?.sessionId === s.sessionId ? s.pendingQuestion : null))
+  const waiting = question !== null
+  const choice = inlineChoice(question)
+  const resolver = useQuestionResolver(question)
   const step = useAgentStore((s) => (s.isAgentWorking ? currentStep(leadStream(s)?.currentBlocks ?? []) : null))
   const startedAt = useAgentStore((s) => leadStream(s)?._turnStartedAt ?? null)
   const elapsed = useElapsed(startedAt, running && !waiting)
@@ -102,10 +117,14 @@ export function ComposerIsland({ mode, model, context, onExpand, onStop, onRevie
     body = (
       <>
         <MessageCircleQuestion size={12} aria-hidden="true" className="shrink-0 text-(--color-info)" />
-        <span className="truncate">Waiting for your answer</span>
+        {resolver.error ? (
+          <span className="min-w-0 max-w-60 truncate text-(--color-error)">{resolver.error}</span>
+        ) : (
+          <span className="min-w-0 max-w-60 truncate">{choice ? choice.header || choice.question : 'Waiting for your answer'}</span>
+        )}
       </>
     )
-    description = 'Waiting for your answer'
+    description = choice ? `Waiting for your answer: ${choice.question}` : 'Waiting for your answer'
   } else if (kind === 'running') {
     body = (
       <>
@@ -175,7 +194,29 @@ export function ComposerIsland({ mode, model, context, onExpand, onStop, onRevie
         {body}
       </button>
       <span id={descriptionId} className="sr-only">{description}</span>
-      {kind === 'waiting' && (
+      {kind === 'waiting' && resolver.error && (
+        <span role="alert" className="sr-only">{resolver.error}</span>
+      )}
+      {kind === 'waiting' && choice?.options.map((option) => (
+        <button
+          key={option.label}
+          type="button"
+          aria-label={`Answer ${option.label}${option.recommended ? ' (recommended)' : ''}`}
+          title={option.description ?? undefined}
+          disabled={resolver.submitting}
+          onClick={(event) => {
+            stop(event)
+            resolver.answer([[option.label]])
+          }}
+          className={cn(
+            CHOICE,
+            option.recommended ? 'border-(--color-border-strong) bg-(--bg-key) font-medium' : 'border-(--color-border) bg-(--bg-card)',
+          )}
+        >
+          <span className="max-w-40 truncate">{option.label}</span>
+        </button>
+      ))}
+      {kind === 'waiting' && (!choice || choice.custom) && (
         <button
           type="button"
           aria-label="Go to the question"
@@ -185,7 +226,7 @@ export function ComposerIsland({ mode, model, context, onExpand, onStop, onRevie
           }}
           className={ACTION}
         >
-          Answer
+          {choice ? 'Other…' : 'Answer'}
         </button>
       )}
       {kind === 'done' && onReviewChanges && (
