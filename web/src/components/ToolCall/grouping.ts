@@ -1,19 +1,31 @@
 /**
- * Folding runs of tool calls into one summary row.
+ * Folding runs of read-only tool calls into one "Explored" row, plus the
+ * per-file patch stats behind a turn's change summary.
  *
- * A *run* is a maximal stretch of work rows inside one assistant turn: tool
- * calls plus the folded thinking traces and blank text chunks between them.
- * Prose, questions, and interactive app results end a run; they are what the
- * reader is looking for, so they are never folded away.
+ * A *run* is a maximal stretch of successful read-only calls (and blank text
+ * chunks, which render nothing) inside one assistant turn. Anything the reader
+ * needs to see ends it and keeps its own row: the agent's prose and thinking,
+ * edits, shell commands, failures, questions, and interactive app results.
  */
 import type { ContentBlock } from '@/api/types'
 
 import { parsePatchText } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 
-/** Below this many rows a summary saves nothing over the rows themselves. */
-const MIN_GROUP_ROWS = 3
 const MIN_GROUP_TOOLS = 2
+
+type ExploreKind = 'read' | 'search' | 'fetch'
+
+/** Read-only tools that fold, and what the summary counts them as. */
+const EXPLORE_KIND: Record<string, ExploreKind> = {
+  read: 'read',
+  grep: 'search',
+  glob: 'search',
+  lsp: 'search',
+  recall: 'search',
+  web_search: 'search',
+  web_fetch: 'fetch',
+}
 
 export type TurnSegment =
   | { kind: 'block'; index: number }
@@ -21,12 +33,9 @@ export type TurnSegment =
   | { kind: 'group'; start: number; end: number; summary: ToolRunSummary }
 
 export interface ToolRunSummary {
-  /** e.g. "Edited 1 file, read 2 files, ran 3 commands". */
+  /** e.g. "Explored · 6 reads, 3 searches". */
   label: string
   toolCount: number
-  failed: number
-  additions: number
-  deletions: number
 }
 
 export interface PatchFileStat {
@@ -91,25 +100,19 @@ export function summarizeTurnChanges(blocks: ContentBlock[]): TurnChangeSummary 
 }
 
 function isGroupable(block: ContentBlock): boolean {
-  if (block.type === 'thinking') return true
   if (block.type === 'text') return block.content.trim().length === 0
-  if (block.type !== 'tool') return false
-  // ``ask_user`` owns an interactive card; an MCP app renders a live UI.
-  if (block.toolName === 'ask_user') return false
+  if (block.type !== 'tool' || !Object.hasOwn(EXPLORE_KIND, block.toolName ?? '')) return false
+  if (!block.toolDone || isFailedResult(block.toolResult)) return false
+  // An MCP app renders a live UI in place of its result.
   return !(block.extra as { mcp_app?: unknown } | null | undefined)?.mcp_app
-}
-
-function worthGrouping(blocks: ContentBlock[]): boolean {
-  return blocks.length >= MIN_GROUP_ROWS && blocks.filter((b) => b.type === 'tool').length >= MIN_GROUP_TOOLS
 }
 
 /**
  * Split a turn's blocks into rows and folded groups.
  *
- * While the turn is ``live``, the trailing run keeps its newest tool call (or
- * the first one still running, with parallel calls) and everything after it
- * outside the group, so progress stays visible and the group's count grows as
- * calls finish.
+ * While the turn is ``live`` and only running calls follow a run, the run
+ * keeps its newest call outside the group, so progress stays visible and the
+ * group's count grows as calls finish.
  */
 export function groupToolRuns(blocks: ContentBlock[], { live }: { live: boolean }): TurnSegment[] {
   const segments: TurnSegment[] = []
@@ -123,18 +126,13 @@ export function groupToolRuns(blocks: ContentBlock[], { live }: { live: boolean 
     const start = i
     while (i < blocks.length && isGroupable(blocks[i])) i += 1
     let end = i
-    if (live && end === blocks.length) {
-      let firstLive = end
-      for (let j = start; j < end; j += 1) {
-        if (blocks[j].type === 'tool' && !blocks[j].toolDone) { firstLive = j; break }
-      }
+    if (live && blocks.slice(i).every((b) => b.type === 'tool' && !b.toolDone)) {
       for (let j = end - 1; j >= start; j -= 1) {
-        if (blocks[j].type === 'tool') { firstLive = Math.min(firstLive, j); break }
+        if (blocks[j].type === 'tool') { end = j; break }
       }
-      end = firstLive
     }
     const run = blocks.slice(start, end)
-    if (worthGrouping(run)) {
+    if (run.filter((b) => b.type === 'tool').length >= MIN_GROUP_TOOLS) {
       segments.push({ kind: 'group', start, end, summary: summarizeToolRun(run) })
     } else {
       for (let j = start; j < end; j += 1) segments.push({ kind: 'block', index: j })
@@ -144,64 +142,21 @@ export function groupToolRuns(blocks: ContentBlock[], { live }: { live: boolean 
   return segments
 }
 
-type Category = 'edit' | 'read' | 'search' | 'command' | 'fetch' | 'other'
-
-const CATEGORY_BY_TOOL: Record<string, Category> = {
-  patch: 'edit',
-  read: 'read',
-  grep: 'search',
-  glob: 'search',
-  lsp: 'search',
-  web_search: 'search',
-  shell: 'command',
-  bg: 'command',
-  web_fetch: 'fetch',
-}
-
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 export function summarizeToolRun(blocks: ContentBlock[]): ToolRunSummary {
-  const edited = new Set<string>()
-  const read = new Set<string>()
-  const counts: Record<Category, number> = { edit: 0, read: 0, search: 0, command: 0, fetch: 0, other: 0 }
-  let toolCount = 0
-  let failed = 0
-  let additions = 0
-  let deletions = 0
-
+  const counts: Record<ExploreKind, number> = { read: 0, search: 0, fetch: 0 }
   for (const block of blocks) {
-    if (block.type !== 'tool') continue
-    toolCount += 1
-    if (isFailedResult(block.toolResult)) failed += 1
-    const category = CATEGORY_BY_TOOL[block.toolName ?? ''] ?? 'other'
-    counts[category] += 1
-    if (category === 'edit') {
-      for (const file of patchFileStats(block.toolArgs)) {
-        edited.add(file.path)
-        additions += file.additions
-        deletions += file.deletions
-      }
-    } else if (category === 'read') {
-      const path = parseArgs(block.toolArgs)?.path
-      // Unparsable args still count as a read, just not a distinct file.
-      read.add(typeof path === 'string' ? path : `#${block.id}`)
-    }
+    const kind = block.type === 'tool' ? EXPLORE_KIND[block.toolName ?? ''] : undefined
+    if (kind) counts[kind] += 1
   }
-
-  const parts: string[] = []
-  if (counts.edit) parts.push(`edited ${plural(edited.size || counts.edit, 'file')}`)
-  if (counts.read) parts.push(`read ${plural(read.size, 'file')}`)
-  if (counts.search) parts.push(`ran ${plural(counts.search, 'search', 'searches')}`)
-  if (counts.command) parts.push(`ran ${plural(counts.command, 'command')}`)
-  if (counts.fetch) parts.push(`fetched ${plural(counts.fetch, 'page')}`)
-  if (counts.other) parts.push(parts.length ? `used ${plural(counts.other, 'other tool')}` : `used ${plural(counts.other, 'tool')}`)
-  const label = parts.join(', ')
-
+  const parts = [
+    counts.read && plural(counts.read, 'read'),
+    counts.search && plural(counts.search, 'search', 'searches'),
+    counts.fetch && plural(counts.fetch, 'fetch', 'fetches'),
+  ].filter(Boolean)
   return {
-    label: label.charAt(0).toUpperCase() + label.slice(1),
-    toolCount,
-    failed,
-    additions,
-    deletions,
+    label: `Explored · ${parts.join(', ')}`,
+    toolCount: counts.read + counts.search + counts.fetch,
   }
 }

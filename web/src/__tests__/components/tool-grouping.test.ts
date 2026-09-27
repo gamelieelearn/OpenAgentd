@@ -11,60 +11,62 @@ const thinking = (id: string): ContentBlock => ({ id, type: 'thinking', content:
 const patch = (path: string, body: string) => ({ patch_text: `*** Begin Patch\n*** Update File: ${path}\n@@\n${body}\n*** End Patch` })
 
 describe('groupToolRuns', () => {
-  it('leaves short runs alone', () => {
-    const blocks = [tool('t1', 'read', { path: 'a.ts' }), tool('t2', 'read', { path: 'b.ts' }), text('x')]
-    expect(groupToolRuns(blocks, { live: false }).map((s) => s.kind)).toEqual(['block', 'block', 'block'])
+  it('leaves a single read-only call alone', () => {
+    const blocks = [tool('t1', 'read', { path: 'a.ts' }), text('x')]
+    expect(groupToolRuns(blocks, { live: false }).map((s) => s.kind)).toEqual(['block', 'block'])
   })
 
-  it('folds a finished run of three or more rows between prose', () => {
+  it('folds consecutive read-only calls between prose', () => {
     const blocks = [
       text('intro'),
       tool('t1', 'read', { path: 'a.ts' }),
-      thinking('th'),
       tool('t2', 'grep', { pattern: 'x' }),
+      tool('t3', 'glob', { pattern: '*.ts' }),
       text('answer'),
     ]
-    const segments = groupToolRuns(blocks, { live: false })
-    expect(segments).toEqual([
+    expect(groupToolRuns(blocks, { live: false })).toEqual([
       { kind: 'block', index: 0 },
       { kind: 'group', start: 1, end: 4, summary: expect.anything() },
       { kind: 'block', index: 4 },
     ])
   })
 
-  it('never folds a question or an interactive app result', () => {
-    const app = tool('t3', 'dashboard', {}, { extra: { mcp_app: { uri: 'ui://x' } } })
+  it('keeps edits, shell commands, failures, and thinking on their own rows', () => {
+    const failed = tool('t4', 'read', { path: 'gone.ts' }, { toolResult: 'Error: file not found' })
     const blocks = [
       tool('t1', 'read', { path: 'a.ts' }),
-      tool('t2', 'read', { path: 'b.ts' }),
-      tool('q', 'ask_user'),
-      tool('t4', 'read', { path: 'c.ts' }),
-      app,
-      tool('t5', 'read', { path: 'd.ts' }),
+      tool('t2', 'patch', { patch_text: '' }),
+      tool('t3', 'read', { path: 'b.ts' }),
+      tool('s', 'shell', { command: 'ls' }),
+      tool('t5', 'read', { path: 'c.ts' }),
+      failed,
+      tool('t6', 'read', { path: 'd.ts' }),
+      thinking('th'),
+      tool('t7', 'read', { path: 'e.ts' }),
     ]
     expect(groupToolRuns(blocks, { live: false }).every((s) => s.kind === 'block')).toBe(true)
   })
 
-  it('keeps the tool in flight, and anything after it, outside the group while the turn runs', () => {
-    const blocks = [
-      tool('t1', 'read', { path: 'a.ts' }),
-      tool('t2', 'read', { path: 'b.ts' }),
-      tool('t3', 'shell', { command: 'ls' }),
-      tool('t4', 'shell', { command: 'bun test' }, { toolDone: false }),
-      thinking('th'),
-    ]
-    expect(groupToolRuns(blocks, { live: true })).toEqual([
+  it('never folds a question or an interactive app result', () => {
+    const app = tool('t3', 'read', {}, { extra: { mcp_app: { uri: 'ui://x' } } })
+    const blocks = [tool('t1', 'read', { path: 'a.ts' }), tool('q', 'ask_user'), tool('t2', 'read', { path: 'b.ts' }), app]
+    expect(groupToolRuns(blocks, { live: false }).every((s) => s.kind === 'block')).toBe(true)
+  })
+
+  it('absorbs blank text chunks, which render nothing', () => {
+    const blocks = [tool('t1', 'read'), text('blank', '  \n'), tool('t2', 'read')]
+    expect(groupToolRuns(blocks, { live: false })).toEqual([
       { kind: 'group', start: 0, end: 3, summary: expect.anything() },
-      { kind: 'block', index: 3 },
-      { kind: 'block', index: 4 },
     ])
   })
 
-  it('keeps the newest tool visible while the turn runs, even once it has finished', () => {
-    const blocks = [tool('t1', 'read'), tool('t2', 'read'), tool('t3', 'read'), tool('t4', 'read')]
-    const segments = groupToolRuns(blocks, { live: true })
-    expect(segments.at(-1)).toEqual({ kind: 'block', index: 3 })
-    expect(segments[0]).toMatchObject({ kind: 'group', start: 0, end: 3 })
+  it('keeps the call in flight, and the newest finished one, visible while the turn runs', () => {
+    const blocks = [tool('t1', 'read'), tool('t2', 'grep'), tool('t3', 'read'), tool('t4', 'read', {}, { toolDone: false, toolResult: undefined })]
+    expect(groupToolRuns(blocks, { live: true })).toEqual([
+      { kind: 'group', start: 0, end: 2, summary: expect.anything() },
+      { kind: 'block', index: 2 },
+      { kind: 'block', index: 3 },
+    ])
   })
 
   it('folds the whole trailing run once the turn has closed', () => {
@@ -76,32 +78,20 @@ describe('groupToolRuns', () => {
 })
 
 describe('summarizeToolRun', () => {
-  it('counts distinct files read and edited, commands, and searches', () => {
+  it('reads as "Explored" with call counts per kind', () => {
     const summary = summarizeToolRun([
       tool('r1', 'read', { path: 'src/a.ts' }),
       tool('r2', 'read', { path: 'src/a.ts' }),
       tool('r3', 'read', { path: 'src/b.ts' }),
       tool('g', 'grep', { pattern: 'x' }),
-      tool('s', 'shell', { command: 'ls' }),
-      tool('p', 'patch', patch('src/a.ts', '-old\n+new\n+more')),
-      thinking('th'),
+      tool('w', 'web_search', { query: 'x' }),
+      tool('f', 'web_fetch', { url: 'https://x' }),
     ])
-    expect(summary.label).toBe('Edited 1 file, read 2 files, ran 1 search, ran 1 command')
-    expect(summary).toMatchObject({ toolCount: 6, failed: 0, additions: 2, deletions: 1 })
+    expect(summary).toEqual({ label: 'Explored · 3 reads, 2 searches, 1 fetch', toolCount: 6 })
   })
 
-  it('names tools outside the known categories generically', () => {
-    expect(summarizeToolRun([tool('a', 'note'), tool('b', 'todo_manage')]).label).toBe('Used 2 tools')
-    expect(summarizeToolRun([tool('a', 'read', { path: 'a' }), tool('b', 'note')]).label).toBe('Read 1 file, used 1 other tool')
-  })
-
-  it('counts failures', () => {
-    const summary = summarizeToolRun([
-      tool('a', 'shell', { command: 'x' }, { toolResult: '[Failed — exit code 1]\nboom' }),
-      tool('b', 'shell', { command: 'y' }),
-    ])
-    expect(summary.failed).toBe(1)
-    expect(summary.label).toBe('Ran 2 commands')
+  it('uses the singular for one call', () => {
+    expect(summarizeToolRun([tool('a', 'read'), tool('b', 'lsp')]).label).toBe('Explored · 1 read, 1 search')
   })
 })
 

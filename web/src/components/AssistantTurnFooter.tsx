@@ -188,8 +188,6 @@ export interface AssistantTurnProps {
   onStartImplementing?: () => void
   /** True when interaction mode is actively transitioning to Code mode. */
   isSwitchingInteractionMode?: boolean
-  /** Blocks holding a transcript-find match; a folded run containing one opens. */
-  findHitBlockIds?: ReadonlySet<string>
   /** Open a workspace file listed in the turn's change summary. */
   onOpenFile?: (path: string) => void
   /** Passed to the footer; the caller offers it on the latest turn only. */
@@ -208,7 +206,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   size = 'compact',
   onStartImplementing,
   isSwitchingInteractionMode = false,
-  findHitBlockIds,
   onOpenFile,
   onRetry,
 }: AssistantTurnProps) {
@@ -258,11 +255,7 @@ export const AssistantTurn = memo(function AssistantTurn({
         return (
           // Keyed by the first row, so a live group keeps its open state
           // while finished calls join it.
-          <ToolRunGroup
-            key={`group-${blocks[segment.start].id}`}
-            summary={segment.summary}
-            forceOpen={indices.some((j) => findHitBlockIds?.has(blocks[j].id) ?? false)}
-          >
+          <ToolRunGroup key={`group-${blocks[segment.start].id}`} summary={segment.summary}>
             {indices.map(renderAt)}
           </ToolRunGroup>
         )

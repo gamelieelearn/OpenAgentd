@@ -274,13 +274,12 @@ describe("AssistantTurn — folded tool runs", () => {
   const blocks: ContentBlock[] = [
     { id: "intro", type: "text", content: "Looking around." },
     read("r1", "a.ts"),
-    { id: "th", type: "thinking", content: "Hmm" },
     read("r2", "b.ts"),
-    read("r3", "c.ts"),
+    { id: "g1", type: "tool", content: "", toolName: "grep", toolArgs: "{}", toolDone: true, toolResult: "ok" },
     { id: "answer", type: "text", content: "Done." },
   ]
 
-  function renderTurn(turnBlocks: ContentBlock[], opts: { open?: boolean; findHitBlockIds?: Set<string> } = {}) {
+  function renderTurn(turnBlocks: ContentBlock[], opts: { open?: boolean } = {}) {
     return render(
       <AssistantTurn
         blocks={turnBlocks}
@@ -289,16 +288,15 @@ describe("AssistantTurn — folded tool runs", () => {
         isWorking={opts.open ?? false}
         isTrailingTurn
         totalBlocks={turnBlocks.length}
-        findHitBlockIds={opts.findHitBlockIds}
         renderBlock={({ block }) => <p data-testid={`row-${block.id}`}>{block.id}</p>}
       />,
     )
   }
 
-  it("folds a finished run into one summary row that opens on click", () => {
+  it("folds a finished run into one Explored row that opens on click", () => {
     renderTurn(blocks)
 
-    const toggle = screen.getByRole("button", { name: /Read 3 files/ })
+    const toggle = screen.getByRole("button", { name: "Explored · 2 reads, 1 search" })
     expect(toggle.getAttribute("aria-expanded")).toBe("false")
     expect(screen.queryByTestId("row-r1")).toBeNull()
     expect(screen.getByTestId("row-intro")).toBeTruthy()
@@ -306,20 +304,15 @@ describe("AssistantTurn — folded tool runs", () => {
 
     fireEvent.click(toggle)
     expect(screen.getByTestId("row-r1")).toBeTruthy()
-    expect(screen.getByTestId("row-th")).toBeTruthy()
+    expect(screen.getByTestId("row-g1")).toBeTruthy()
   })
 
-  it("keeps the call in flight visible below the group while the turn runs", () => {
+  it("keeps the call in flight and the newest finished one visible while the turn runs", () => {
     renderTurn([read("r1", "a.ts"), read("r2", "b.ts"), read("r3", "c.ts"), read("r4", "d.ts", false)], { open: true })
 
-    expect(screen.getByRole("button", { name: /Read 3 files/ })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Explored · 2 reads" })).toBeTruthy()
+    expect(screen.getByTestId("row-r3")).toBeTruthy()
     expect(screen.getByTestId("row-r4")).toBeTruthy()
-  })
-
-  it("opens a group that holds a transcript-find match", () => {
-    renderTurn(blocks, { findHitBlockIds: new Set(["th"]) })
-
-    expect(screen.getByTestId("row-th")).toBeTruthy()
   })
 })
 

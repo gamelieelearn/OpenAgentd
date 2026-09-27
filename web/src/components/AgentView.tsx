@@ -607,7 +607,6 @@ export function AgentView({
                       size="roomy"
                       onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
-                     findHitBlockIds={findOpen ? findHitBlockIds : undefined}
                      onOpenFile={onMentionFileOpen}
                      onRetry={canRetry && isTrailingTurn ? onRetry : undefined}
                       renderBlock={({ block, isStreaming }) => (
