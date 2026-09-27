@@ -10,8 +10,10 @@ import '@testing-library/jest-dom'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { queryKeys } from '@/queries'
+import { THEME_STORAGE_KEY } from '@/lib/theme'
 
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => () => {},
@@ -139,5 +141,24 @@ describe('SettingsHubPage — community links', () => {
     expect(screen.getByText(/community & support/i)).toBeInTheDocument()
     expect(screen.getByText(/discord server/i)).toBeInTheDocument()
     expect(screen.getByText(/facebook group/i)).toBeInTheDocument()
+  })
+})
+
+describe('SettingsHubPage — appearance', () => {
+  afterEach(() => localStorage.removeItem(THEME_STORAGE_KEY))
+
+  it('picks the theme from the Appearance section', async () => {
+    const user = userEvent.setup()
+    renderHub()
+
+    const theme = screen.getByRole('group', { name: 'Theme' })
+    expect(screen.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Dark' }))
+
+    expect(theme.contains(screen.getByRole('button', { name: 'Dark' }))).toBe(true)
+    expect(screen.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true')
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
 })

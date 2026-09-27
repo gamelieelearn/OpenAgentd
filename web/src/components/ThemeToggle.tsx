@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useThemePreference } from '@/hooks/useThemePreference'
 import type { ThemePreference } from '@/lib/theme'
 
-const OPTIONS: ReadonlyArray<{
+export const THEME_OPTIONS: ReadonlyArray<{
   value: ThemePreference
   label: string
   Icon: typeof Monitor
@@ -40,7 +40,7 @@ export function ThemeToggle({
   const { preference, setPreference } = useThemePreference()
 
   if (collapsed) {
-    const current = OPTIONS.find((o) => o.value === preference) ?? OPTIONS[0]
+    const current = THEME_OPTIONS.find((o) => o.value === preference) ?? THEME_OPTIONS[0]
     const Icon = current.Icon
     return (
       <Tooltip>
@@ -73,7 +73,7 @@ export function ThemeToggle({
       aria-label="Theme preference"
       className="inline-flex items-center overflow-hidden rounded-md border border-(--color-border-subtle) p-0.5"
     >
-      {OPTIONS.map(({ value, label, Icon }) => {
+      {THEME_OPTIONS.map(({ value, label, Icon }) => {
         const active = preference === value
         return (
           <Tooltip key={value}>

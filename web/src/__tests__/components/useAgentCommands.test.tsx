@@ -24,6 +24,7 @@ import { renderHook, cleanup } from "@testing-library/react"
 import { useAgentCommands } from "@/components/AgentChatView/useAgentCommands"
 import { useSettingsStore } from "@/stores/useSettingsStore"
 import { useUIStore } from "@/stores/useUIStore"
+import { THEME_STORAGE_KEY } from "@/lib/theme"
 import type { Command } from "@/components/CommandPalette"
 
 afterEach(cleanup)
@@ -179,5 +180,16 @@ describe("useAgentCommands — navigation", () => {
     byId(result.current, "go-telemetry").action()
     expect(useUIStore.getState().telemetryOpen).toBe(true)
     useUIStore.getState().closeTelemetry()
+  })
+
+  it("offers each theme and applies the one chosen", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    expect(["theme-system", "theme-light", "theme-dark"].map((id) => byId(result.current, id).label))
+      .toEqual(["Theme: System", "Theme: Light", "Theme: Dark"])
+
+    byId(result.current, "theme-dark").action()
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark")
+    expect(document.documentElement.classList.contains("dark")).toBe(true)
+    localStorage.removeItem(THEME_STORAGE_KEY)
   })
 })

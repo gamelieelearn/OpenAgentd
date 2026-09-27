@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
+import { THEME_OPTIONS } from '@/components/ThemeToggle'
 import { SettingsSection } from '@/components/settings/SettingsSection'
 import { useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
 import { ICON_SIZE } from '@/components/settings/tokens'
@@ -24,7 +25,39 @@ import { checkForUpdates, downloadUpdate, fetchReleaseNotes, installUpdate, type
 import { openExternalUrl } from '@/lib/open-external'
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 import { useHealthQuery } from '@/queries'
+import { useThemePreference } from '@/hooks/useThemePreference'
+import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+
+// ── Appearance ────────────────────────────────────────────────────────────
+
+function AppearanceSection() {
+  const { preference, setPreference } = useThemePreference()
+  return (
+    <SettingsSection title="Appearance">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-(--color-text-muted)">Theme</p>
+        <div role="group" aria-label="Theme" className="inline-flex rounded-md border border-(--color-border) bg-(--bg-key) p-0.5">
+          {THEME_OPTIONS.map(({ value, label, Icon }) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={preference === value}
+              onClick={() => setPreference(value)}
+              className={cn(
+                'flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 pointer-coarse:h-11',
+                preference === value ? 'bg-(--bg-card) text-(--color-text) shadow-sm' : 'text-(--color-text-muted) hover:text-(--color-text)',
+              )}
+            >
+              <Icon size={13} aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </SettingsSection>
+  )
+}
 
 // ── Updates card ──────────────────────────────────────────────────────────
 
@@ -225,6 +258,8 @@ export function SettingsHubPage() {
             </div>
           </SettingsSection>
         </div>
+
+        <AppearanceSection />
 
         <SettingsSection title="Backend connection">
           <div className="flex flex-wrap items-start gap-3">
