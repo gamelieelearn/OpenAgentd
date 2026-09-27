@@ -16,6 +16,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo, memo, lazy, Suspense } from 'react'
+import { useHotkeys } from '@tanstack/react-hotkeys'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
@@ -32,9 +33,13 @@ import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { APP_EVENTS } from '@/lib/app-events'
+import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
+import { getPlatform } from '@/hooks/use-platform'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { ErrorCard } from './AgentView/ErrorCard'
+import { PromptHeader } from './AgentView/PromptHeader'
+import { PROMPT_JUMP_MARGIN, currentPromptIndex, promptElements, promptJumpTarget } from './AgentView/prompt-nav'
 import { ReplyMenu } from './AgentView/ReplyMenu'
 import { loadSessionMarkdown, replyMarkdown, sessionFileName, shouldOpenReplyMenu } from './AgentView/message-menu'
 import { FileLightbox, type FileLightboxItem } from './FileLightbox'
@@ -46,6 +51,8 @@ import { applyTranscriptFindHighlight, clearTranscriptFindHighlight } from './Ag
 
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
+/** How long a smooth prompt jump is treated as still in flight. */
+const PROMPT_JUMP_MS = 700
 
 function isDirectUserBlock(block: ContentBlock): boolean {
   return block.type === 'user' && !block.extra?.from_agent
@@ -593,6 +600,97 @@ export function AgentView({
     prevScrollHeightRef.current = null
   }, [blocks.length, renderedTurnCount, scrollRef, attachedRef])
 
+  // ── Prompt navigation ──────────────────────────────────────────────────────
+  const [pinnedPromptId, setPinnedPromptId] = useState<string | null>(null)
+  // A smooth jump still scrolling; the next press steps on from its target.
+  const pendingJumpRef = useRef<{ id: string; until: number } | null>(null)
+
+  const updatePinnedPrompt = useCallback(() => {
+    const root = scrollRef.current
+    if (!root) return
+    const rootTop = root.getBoundingClientRect().top
+    const prompts = promptElements(root)
+    const rects = prompts.map((el) => el.getBoundingClientRect())
+    const index = currentPromptIndex(rects.map((rect) => rect.top - rootTop), PROMPT_JUMP_MARGIN)
+    // Pinned only once the prompt itself has left the view; a prompt with no
+    // height is not laid out (a hidden view), so nothing has scrolled.
+    const pinned = index >= 0 && rects[index].height > 0 && rects[index].bottom - rootTop < PROMPT_JUMP_MARGIN
+      ? prompts[index].dataset.promptId ?? null
+      : null
+    setPinnedPromptId(pinned)
+  }, [scrollRef])
+
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root) return
+    root.addEventListener('scroll', updatePinnedPrompt, { passive: true })
+    return () => root.removeEventListener('scroll', updatePinnedPrompt)
+  }, [scrollRef, updatePinnedPrompt])
+  // Streamed growth below the fold cannot change which prompt is current; a
+  // turn arriving or earlier turns appearing can.
+  useEffect(updatePinnedPrompt, [updatePinnedPrompt, visibleTurnItems.length])
+
+  const scrollPromptIntoView = useCallback((prompt: HTMLElement) => {
+    const root = scrollRef.current
+    if (!root) return
+    const top = prompt.getBoundingClientRect().top - root.getBoundingClientRect().top
+    const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    attachedRef.current = false
+    root.scrollTo({ top: root.scrollTop + top - PROMPT_JUMP_MARGIN, behavior: smooth ? 'smooth' : 'auto' })
+    pendingJumpRef.current = smooth && prompt.dataset.promptId
+      ? { id: prompt.dataset.promptId, until: performance.now() + PROMPT_JUMP_MS }
+      : null
+  }, [attachedRef, scrollRef])
+
+  const jumpToPrompt = useCallback((direction: -1 | 1) => {
+    const root = scrollRef.current
+    if (!root) return
+    const rootTop = root.getBoundingClientRect().top
+    const prompts = promptElements(root)
+    const pending = pendingJumpRef.current
+    const from = pending && performance.now() < pending.until
+      ? prompts.findIndex((el) => el.dataset.promptId === pending.id)
+      : -1
+    const index = from >= 0
+      ? from + direction
+      : promptJumpTarget(prompts.map((el) => el.getBoundingClientRect().top - rootTop), PROMPT_JUMP_MARGIN, direction)
+    if (index >= 0 && index < prompts.length) {
+      scrollPromptIntoView(prompts[index])
+      return
+    }
+    pendingJumpRef.current = null
+    // Past the newest prompt is the live end; before the oldest, earlier turns.
+    if (direction > 0) scrollToBottom('smooth')
+    else onLoadOlderTopRef.current()
+  }, [scrollPromptIntoView, scrollRef, scrollToBottom])
+
+  const jumpToPinnedPrompt = useCallback(() => {
+    const prompt = pinnedPromptId
+      ? promptElements(scrollRef.current ?? document.body).find((el) => el.dataset.promptId === pinnedPromptId)
+      : undefined
+    if (prompt) scrollPromptIntoView(prompt)
+  }, [pinnedPromptId, scrollPromptIntoView, scrollRef])
+
+  const { os } = getPlatform()
+  useHotkeys(
+    [
+      { hotkey: hotkeyOf(APP_SHORTCUTS.previousPrompt), callback: () => jumpToPrompt(-1), options: { meta: { name: 'Previous prompt' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.nextPrompt), callback: () => jumpToPrompt(1), options: { meta: { name: 'Next prompt' } } },
+    ],
+    {
+      target: typeof document === 'undefined' ? null : document,
+      platform: os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux',
+      preventDefault: true,
+      stopPropagation: false,
+      ignoreInputs: false,
+    },
+  )
+
+  const pinnedPrompt = useMemo(
+    () => (pinnedPromptId ? searchableBlocks.find((block) => block.id === pinnedPromptId)?.content ?? null : null),
+    [pinnedPromptId, searchableBlocks],
+  )
+
   const cycleFind = useCallback((delta: number) => {
     if (findMatches.length === 0) return
     const next = ((clampedFindIndex + delta) % findMatches.length + findMatches.length) % findMatches.length
@@ -635,6 +733,15 @@ export function AgentView({
         onNext={() => cycleFind(1)}
         onPrev={() => cycleFind(-1)}
         onClose={() => onFindClose?.()}
+      />
+    )}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+    {pinnedPrompt !== null && (
+      <PromptHeader
+        prompt={pinnedPrompt}
+        onJumpToPrompt={jumpToPinnedPrompt}
+        onPrevious={() => jumpToPrompt(-1)}
+        onNext={() => jumpToPrompt(1)}
       />
     )}
     <div ref={scrollRef} className="oa-chat-scroll flex-1 overflow-y-auto">
@@ -684,6 +791,7 @@ export function AgentView({
                      <div
                        key={item.block.id}
                        data-find-block={isTranscriptFindableBlock(item.block.type) ? item.block.id : undefined}
+                      data-prompt-id={isDirectUserBlock(item.block) ? item.block.id : undefined}
                      >
                        <BlockRenderer
                          block={item.block}
@@ -775,6 +883,7 @@ export function AgentView({
            <div ref={anchorRef} data-chat-scroll-anchor aria-hidden="true" />
          </div>
       </div>
+    </div>
     </div>
     {showScrollBtn && (
         <button
