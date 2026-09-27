@@ -11,13 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useHotkey } from '@tanstack/react-hotkeys'
 
 import { cn } from '@/lib/utils'
-
-const tokenMeterUsdFmt = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 4,
-  maximumFractionDigits: 4,
-})
+import { formatSpend } from '@/utils/telemetryFormat'
 
 export const DEFAULT_SUMMARY_TRIGGER_TOKENS = 250_000
 
@@ -66,7 +60,7 @@ export function TokenMeter({
   const cachePercentFormatted = cachePercentValue !== undefined ? `${cachePercentValue.toFixed(2)}%` : `${cached.toLocaleString()}%`
   const tooltip =
     title ??
-    `Input: ${input.toLocaleString()} / ${safeTrigger.toLocaleString()} (${percent}%) · Output: ${output.toLocaleString()}${
+    `Input: ${input.toLocaleString()} of ${safeTrigger.toLocaleString()} before auto-compact (${percent}%) · Output: ${output.toLocaleString()}${
       (cachePercentValue !== undefined && cachePercentValue > 0) || cached > 0 ? ` · Cache: ${cachePercentFormatted}` : ''
     }`
 
@@ -77,8 +71,11 @@ export function TokenMeter({
     if (!trigger) return
 
     const rect = trigger.getBoundingClientRect()
-    const tooltipWidth = 160
-    const tooltipHeight = 112
+    // Matches ``w-48`` below; wide enough for "auto-compact at" + a 7-digit count.
+    const tooltipWidth = 192
+    // Six ``leading-5`` rows + ``py-2`` + border; flipping above the status-bar
+    // meter uses this, so an undercount overlaps the trigger.
+    const tooltipHeight = 138
     const gap = 8
     const left = Math.max(8, Math.min(rect.right - tooltipWidth, window.innerWidth - tooltipWidth - 8))
     const preferredTop = rect.bottom + gap
@@ -206,14 +203,14 @@ export function TokenMeter({
       {open && tooltipPosition && createPortal(
         <div
           ref={tooltipRef}
-          className="fixed z-50 min-w-40 rounded-sm border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-lg"
+          className="fixed z-50 w-48 rounded-sm border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-lg"
           style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
           role="tooltip"
           onMouseEnter={openHoverTooltip}
           onMouseLeave={closeHoverTooltip}
         >
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">input</span><span>{input.toLocaleString()}</span></div>
-          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">trigger</span><span>{safeTrigger.toLocaleString()}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">auto-compact at</span><span>{safeTrigger.toLocaleString()}</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">used</span><span>{percent}%</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">output</span><span>{output.toLocaleString()}</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cache</span><span>{cachePercentFormatted}</span></div>
@@ -221,7 +218,7 @@ export function TokenMeter({
               agent, while cost is summed across every agent in the session.
               Labelled so the two are not read as the same scope. */}
           {sessionCostUsd !== undefined && sessionCostUsd > 0 && (
-            <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">session cost</span><span>{tokenMeterUsdFmt.format(sessionCostUsd)}</span></div>
+            <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">session cost</span><span>{formatSpend(sessionCostUsd)}</span></div>
           )}
         </div>,
         document.body,
