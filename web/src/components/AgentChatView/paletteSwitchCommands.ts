@@ -1,14 +1,13 @@
 /**
  * Command palette entries that switch what the chat is pointed at: another
- * session, another workspace, or the other interaction mode.
+ * session or another workspace.
  *
  * Pure so the list is testable from plain query data; ``usePaletteSwitchCommands``
  * gathers the inputs and wires the handlers to the same code paths the
- * sidebar and the composer's mode toggle use.
+ * sidebar uses.
  */
 import type {
   CodingWorkspaceTreeResponse,
-  SessionInteractionMode,
   SessionResponse,
 } from '@/api/types'
 import type { Command } from '../CommandPalette'
@@ -22,18 +21,13 @@ export interface SwitchCommandsInput {
   sessions: SessionResponse[]
   /** ``null`` until the workspace tree has loaded. */
   tree: CodingWorkspaceTreeResponse | null
-  /** Effective mode: a queued switch counts as already chosen. */
-  interactionMode: SessionInteractionMode
   now?: Date
 }
 
 export interface SwitchCommandHandlers {
   openSession: (session: SessionResponse) => void
   openWorkspace: (path: string) => void
-  setInteractionMode: (mode: SessionInteractionMode) => void
 }
-
-const MODE_LABEL: Record<SessionInteractionMode, string> = { code: 'Code', plan: 'Plan' }
 
 function sessionStatus(session: SessionResponse, now: Date): string {
   // ``needs_input`` implies ``running``, so it is checked first.
@@ -114,17 +108,6 @@ export function buildSwitchCommands(input: SwitchCommandsInput, handlers: Switch
       description: 'Continue in another repository, worktree, or Chat',
       page: { placeholder: 'Search workspaces…', commands: workspaces },
       action: noop,
-    })
-  }
-
-  if (input.currentSessionId) {
-    const next: SessionInteractionMode = input.interactionMode === 'plan' ? 'code' : 'plan'
-    commands.push({
-      id: 'toggle-interaction-mode',
-      group: 'Session',
-      label: `Switch to ${MODE_LABEL[next]} Mode`,
-      description: `Currently ${MODE_LABEL[input.interactionMode]}; a running turn finishes first`,
-      action: () => handlers.setInteractionMode(next),
     })
   }
 

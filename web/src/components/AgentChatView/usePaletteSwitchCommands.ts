@@ -1,7 +1,7 @@
 /**
  * Wires ``buildSwitchCommands`` to live data and to the code paths the
- * sidebar (session / workspace switch) and the composer's mode toggle
- * already use. The session and workspace-tree queries
+ * sidebar's session and workspace switch already use. The session and
+ * workspace-tree queries
  * share their keys with the sidebar, so this adds no requests on desktop.
  */
 import { useMemo } from 'react'
@@ -10,7 +10,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { getCodingWorkspaceTree } from '@/api/client'
 import { queryKeys } from '@/queries'
 import { useSessionsQuery } from '@/queries/useSessionsQuery'
-import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { applySessionSelection } from '../CodingSidebar.sessions'
 import { selectCodingWorkspace } from '../CodingSidebar.workspace'
@@ -34,7 +33,6 @@ export function usePaletteSwitchCommands({
     queryFn: getCodingWorkspaceTree,
     staleTime: WORKSPACE_TREE_STALE_MS,
   })
-  const interactionMode = useAgentStore((s) => s.sessionPendingInteractionMode ?? s.sessionInteractionMode)
 
   return useMemo(() => buildSwitchCommands(
     {
@@ -42,7 +40,6 @@ export function usePaletteSwitchCommands({
       currentWorkspace: workspace,
       sessions: sessionPages?.pages.flatMap((page) => page.data) ?? [],
       tree,
-      interactionMode,
     },
     {
       openSession: (session) => applySessionSelection({ session, workspacePath: session.workspace ?? '', navigate }),
@@ -63,7 +60,6 @@ export function usePaletteSwitchCommands({
           })
         })
       },
-      setInteractionMode: (mode) => { void useAgentStore.getState().setSessionInteractionMode(mode) },
     },
-  ), [interactionMode, navigate, queryClient, sessionId, sessionPages, tree, workspace])
+  ), [navigate, queryClient, sessionId, sessionPages, tree, workspace])
 }

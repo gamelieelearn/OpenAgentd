@@ -181,10 +181,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   inline `+` is hidden on touch.
 - **Palette pages and switching** `[v3.0.0]` — the Command Palette gains
   Switch Session… (recent sessions in every workspace, with running and
-  waiting-for-you status), Switch Workspace… (repositories, worktrees, and
-  Chat, most recently active first), and a Plan/Code mode switch. The
-  switchers open a nested list in place; Backspace on an
-  empty query or Escape steps back out. Typing `>` in Quick Open searches
+  waiting-for-you status) and Switch Workspace… (repositories, worktrees,
+  and Chat, most recently active first). Each opens a nested list in place;
+  Backspace on an empty query or Escape steps back out. Typing `>` in Quick
+  Open searches
   commands instead of files. The desktop app adds Reload Window, since `⌘R`
   no longer reloads.
 - **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0]` — the expanded composer switches an

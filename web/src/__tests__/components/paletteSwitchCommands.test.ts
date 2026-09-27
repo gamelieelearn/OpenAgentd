@@ -1,6 +1,6 @@
 /**
- * Palette "switch" commands — Switch Session…, Switch Workspace…,
- * and the Plan/Code toggle — built from query data.
+ * Palette "switch" commands — Switch Session… and Switch Workspace… —
+ * built from query data.
  */
 import { describe, expect, it, mock } from 'bun:test'
 import type { CodingWorkspaceTreeResponse, SessionResponse } from '@/api/types'
@@ -29,14 +29,12 @@ function build(overrides: Partial<SwitchCommandsInput> = {}) {
   const handlers: SwitchCommandHandlers = {
     openSession: mock(() => {}),
     openWorkspace: mock(() => {}),
-    setInteractionMode: mock(() => {}),
   }
   const input: SwitchCommandsInput = {
     currentSessionId: 'current',
     currentWorkspace: '/repo/app',
     sessions: [],
     tree,
-    interactionMode: 'code',
     now: NOW,
     ...overrides,
   }
@@ -101,23 +99,5 @@ describe('Switch Workspace…', () => {
   it('is omitted before the workspace tree has loaded', () => {
     const { commands } = build({ tree: null })
     expect(commands.find((c) => c.id === 'switch-workspace')).toBeUndefined()
-  })
-})
-
-describe('Plan / Code toggle', () => {
-  it('offers the other mode and switches to it', () => {
-    const { commands, handlers } = build({ interactionMode: 'code' })
-
-    const cmd = byId(commands, 'toggle-interaction-mode')
-    expect(cmd.label).toBe('Switch to Plan Mode')
-    cmd.action()
-    expect(handlers.setInteractionMode).toHaveBeenCalledWith('plan')
-
-    expect(byId(build({ interactionMode: 'plan' }).commands, 'toggle-interaction-mode').label).toBe('Switch to Code Mode')
-  })
-
-  it('needs a session to switch', () => {
-    const { commands } = build({ currentSessionId: null })
-    expect(commands.find((c) => c.id === 'toggle-interaction-mode')).toBeUndefined()
   })
 })
