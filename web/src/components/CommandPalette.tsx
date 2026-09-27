@@ -1,17 +1,25 @@
 /**
- * CommandPalette — ⌘⇧P / Ctrl+Shift+P action search overlay.
+ * CommandPalette — ⌘K / Ctrl+K action search overlay.
  *
  * QuickOpen, exported below, owns the file-only ⌘P / Ctrl+P workflow. Both
  * surfaces reuse the same searchable overlay and keyboard navigation.
+ * Typing ``>`` in Quick Open searches commands instead (VS Code habit), and a
+ * command with a ``page`` opens a nested list in place (Switch Session…).
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useDebouncedCallback } from '@tanstack/react-pacer'
 import fuzzysort from 'fuzzysort'
-import { Search, CornerDownLeft } from 'lucide-react'
+import { Search, CornerDownLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import { AppOverlay } from '@/components/ui/app-overlay'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { WorkspaceFileInfo } from '@/api/types'
+
+/** Nested list a command opens in place of running. */
+export interface CommandPage {
+  placeholder: string
+  commands: Command[]
+}
 
 export interface Command {
   id: string
@@ -20,6 +28,8 @@ export interface Command {
   shortcut?: string
   /** Optional category for grouping */
   group?: string
+  /** Opens this list inside the palette; ``action`` is not run. */
+  page?: CommandPage
   action: () => void
 }
 
@@ -56,14 +66,16 @@ interface PaletteOverlayProps {
 interface QuickOpenProps {
   workspaceFiles: WorkspaceFileInfo[]
   filesTruncated?: boolean
+  /** Searched instead of files while the query starts with ``>``. */
+  commands?: Command[]
   onFileOpen: (file: WorkspaceFileInfo) => void
   onClose: () => void
 }
 
-export function QuickOpen({ workspaceFiles, filesTruncated = false, onFileOpen, onClose }: QuickOpenProps) {
+export function QuickOpen({ workspaceFiles, filesTruncated = false, commands = [], onFileOpen, onClose }: QuickOpenProps) {
   return (
     <PaletteOverlay
-      commands={[]}
+      commands={commands}
       workspaceFiles={workspaceFiles}
       filesTruncated={filesTruncated}
       onFileOpen={onFileOpen}
@@ -79,6 +91,7 @@ export function CommandPalette({ commands, onClose, workspaceFiles, filesTruncat
 function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated = false, onFileOpen }: PaletteOverlayProps) {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [page, setPage] = useState<{ title: string; page: CommandPage } | null>(null)
   const updateDebouncedQuery = useDebouncedCallback(
     (val: string) => setDebouncedQuery(val),
     { wait: 60, key: 'command-palette-query' },
@@ -112,17 +125,20 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
   // Quick Open remains a file-search surface even before an empty workspace
   // returns its first file; presence of the file callback identifies it.
   const hasFiles = Boolean(onFileOpen)
+  const commandMode = page !== null || !hasFiles || query.startsWith('>')
 
   type FileRow = { type: 'file'; file: WorkspaceFileInfo; idx: number }
   type CmdRow  = { type: 'header'; label: string } | { type: 'cmd'; cmd: Command; idx: number }
   type Row = FileRow | CmdRow
 
   const { rows, totalCount, byIdx } = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const prefixed = page === null && hasFiles && query.startsWith('>')
+    const q = (prefixed ? query.slice(1) : query).trim().toLowerCase()
     const fileQ = (debouncedQuery || query).trim().toLowerCase()
 
     // ── Commands ──────────────────────────────────────────────────────────────
-    const filteredCmds = commands.filter((cmd) =>
+    const listCommands = page ? page.page.commands : commandMode ? commands : []
+    const filteredCmds = listCommands.filter((cmd) =>
       !q ||
       cmd.label.toLowerCase().includes(q) ||
       cmd.description?.toLowerCase().includes(q) ||
@@ -131,7 +147,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
 
     // ── Files (ranked + capped) ───────────────────────────────────────────────
     let filteredFiles: WorkspaceFileInfo[] = []
-    if (hasFiles) {
+    if (hasFiles && !commandMode) {
       filteredFiles = fileQ
         ? fuzzysort
             .go(fileQ, workspaceFiles, {
@@ -173,7 +189,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
     }
 
     return { rows: out, totalCount: absIdx, byIdx }
-  }, [commands, workspaceFiles, hasFiles, query, debouncedQuery])
+  }, [commands, page, commandMode, workspaceFiles, hasFiles, query, debouncedQuery])
 
   // Reset active index whenever query changes.
   const [prevQuery, setPrevQuery] = useState(query)
@@ -188,9 +204,24 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
     el?.scrollIntoView({ block: 'nearest' })
   }, [activeIdx])
 
+  const showPage = useCallback((next: { title: string; page: CommandPage } | null) => {
+    setPage(next)
+    setQuery('')
+    setDebouncedQuery('')
+    setActiveIdx(0)
+    inputRef.current?.focus()
+  }, [])
+
   const runCmd = useCallback(
-    (cmd: Command) => { onClose(); cmd.action() },
-    [onClose],
+    (cmd: Command) => {
+      if (cmd.page) {
+        showPage({ title: cmd.label.replace(/…$/, ''), page: cmd.page })
+        return
+      }
+      onClose()
+      cmd.action()
+    },
+    [onClose, showPage],
   )
 
   const runFile = useCallback(
@@ -199,6 +230,12 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
   )
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (page && (e.key === 'Escape' || (e.key === 'Backspace' && query === ''))) {
+      // Claims the key from the overlay's own Escape-to-close listener.
+      e.preventDefault()
+      showPage(null)
+      return
+    }
     if (e.key === 'Escape') { onClose(); return }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -219,6 +256,11 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
     }
   }
 
+  const searchLabel = page ? page.title : commandMode ? 'Search commands' : 'Search files'
+  const emptyLabel = !query.trim() && page
+    ? 'Nothing here yet'
+    : `No ${page ? 'results' : commandMode ? 'commands' : 'files'} match "${query}"`
+
   return (
     <AppOverlay
       open={true}
@@ -230,13 +272,24 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
           {/* Search input */}
           <div className="flex items-center gap-2.5 border-b border-(--color-border) bg-(--bg-sidebar) px-3.5 py-2.5 md:py-3">
             <Search size={14} className="shrink-0 text-(--color-text-muted)" />
+            {page && (
+              <button
+                type="button"
+                onClick={() => showPage(null)}
+                aria-label="Back to all commands"
+                className="inline-flex shrink-0 items-center gap-0.5 rounded-xs bg-(--bg-key) py-0.5 pl-0.5 pr-1.5 text-[11px] font-medium text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+              >
+                <ChevronLeft size={12} aria-hidden="true" />
+                {page.title}
+              </button>
+            )}
             <input
               ref={inputRef}
               value={query}
               onChange={(e) => handleQueryChange(e.target.value)}
-              placeholder={hasFiles ? 'Search files…' : 'Search commands…'}
+              placeholder={page ? page.page.placeholder : hasFiles ? 'Search files…' : 'Search commands…'}
               className="min-w-0 flex-1 border-none bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted)/60 outline-none ring-0 focus:border-none focus:outline-none focus:ring-0 focus-visible:border-none focus-visible:outline-none focus-visible:ring-0 md:text-sm"
-              aria-label={hasFiles ? 'Search files' : 'Search commands'}
+              aria-label={searchLabel}
             />
             {query && (
               <button
@@ -252,10 +305,10 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
           <div ref={listRef} className="max-h-80 overflow-y-auto overscroll-contain p-1.5 md:max-h-[28rem]">
             {totalCount === 0 ? (
               <div className="flex flex-col items-center justify-center gap-1 px-4 py-8 text-center" role="status">
-                <p className="text-xs text-(--color-text-muted)">
-                  No {hasFiles ? 'files' : 'commands'} match "{query}"
-                </p>
-                <p className="text-[11px] text-(--color-text-subtle)">Try searching for another keyword or path</p>
+                <p className="text-xs text-(--color-text-muted)">{emptyLabel}</p>
+                {query.trim() && (
+                  <p className="text-[11px] text-(--color-text-subtle)">Try searching for another keyword or path</p>
+                )}
               </div>
             ) : (
               rows.map((row, i) => {
@@ -301,8 +354,14 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
             <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-muted)">↵</kbd>
             <span className="text-xs text-(--color-text-muted)">run</span>
             <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-muted)">Esc</kbd>
-            <span className="text-xs text-(--color-text-muted)">close</span>
-            {hasFiles && filesTruncated && (
+            <span className="text-xs text-(--color-text-muted)">{page ? 'back' : 'close'}</span>
+            {hasFiles && !commandMode && (
+              <>
+                <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-muted)">&gt;</kbd>
+                <span className="text-xs text-(--color-text-muted)">commands</span>
+              </>
+            )}
+            {hasFiles && !commandMode && filesTruncated && (
               <Tooltip className="ml-auto min-w-0">
                 <TooltipTrigger
                   className="min-w-0"
@@ -391,7 +450,9 @@ function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) 
             {cmd.shortcut}
           </kbd>
         )}
-        {isActive && (
+        {cmd.page ? (
+          <ChevronRight size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+        ) : isActive && (
           <CornerDownLeft size={12} className="shrink-0 text-(--color-text-muted)" />
         )}
       </div>

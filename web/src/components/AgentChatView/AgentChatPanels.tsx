@@ -73,7 +73,7 @@ export function AgentChatPanels({
         <CommandPalette commands={paletteCommands} onClose={onClosePalette} />
       )}
       {quickOpenOpen && (
-        <QuickOpen workspaceFiles={quickOpenWorkspaceFiles} filesTruncated={quickOpenFilesTruncated} onFileOpen={onQuickOpenFileOpen} onClose={onCloseQuickOpen} />
+        <QuickOpen workspaceFiles={quickOpenWorkspaceFiles} filesTruncated={quickOpenFilesTruncated} commands={paletteCommands} onFileOpen={onQuickOpenFileOpen} onClose={onCloseQuickOpen} />
       )}
     </>
   )

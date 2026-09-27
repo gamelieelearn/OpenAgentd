@@ -456,3 +456,121 @@ describe("CommandPalette", () => {
     expect(screen.queryByText("file list truncated")).toBeNull()
   })
 })
+
+describe("CommandPalette — nested pages", () => {
+  function pageCommands(onPick: (id: string) => void = () => {}): Command[] {
+    return [
+      { id: "new-chat", label: "New Chat", action: () => {} },
+      {
+        id: "switch-session",
+        label: "Switch Session…",
+        action: () => {},
+        page: {
+          placeholder: "Search sessions…",
+          commands: [
+            { id: "s1", label: "Fix login bug", action: () => onPick("s1") },
+            { id: "s2", label: "Refactor store", action: () => onPick("s2") },
+          ],
+        },
+      },
+    ]
+  }
+
+  it("opens a page in place instead of running and closing", async () => {
+    const user = userEvent.setup()
+    let closed = false
+    render(<CommandPalette commands={pageCommands()} onClose={() => { closed = true }} />)
+
+    await user.click(screen.getByText("Switch Session…"))
+
+    expect(closed).toBe(false)
+    expect(screen.getByPlaceholderText("Search sessions…")).toBeTruthy()
+    expect(screen.getByText("Fix login bug")).toBeTruthy()
+    expect(screen.queryByText("New Chat")).toBeNull()
+  })
+
+  it("filters and runs a page item, then closes", async () => {
+    const user = userEvent.setup()
+    const picked: string[] = []
+    let closed = false
+    render(<CommandPalette commands={pageCommands((id) => picked.push(id))} onClose={() => { closed = true }} />)
+
+    await user.click(screen.getByText("Switch Session…"))
+    await user.type(screen.getByPlaceholderText("Search sessions…"), "refac")
+    await user.keyboard("{Enter}")
+
+    expect(picked).toEqual(["s2"])
+    expect(closed).toBe(true)
+  })
+
+  it("returns to the root list on Backspace in an empty query", async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette commands={pageCommands()} onClose={() => {}} />)
+
+    await user.click(screen.getByText("Switch Session…"))
+    await user.keyboard("{Backspace}")
+
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+    expect(screen.getByText("New Chat")).toBeTruthy()
+  })
+
+  it("steps back out of a page on Escape before closing", async () => {
+    const user = userEvent.setup()
+    let closed = false
+    render(<CommandPalette commands={pageCommands()} onClose={() => { closed = true }} />)
+
+    await user.click(screen.getByText("Switch Session…"))
+    await user.keyboard("{Escape}")
+    expect(closed).toBe(false)
+    expect(screen.getByText("New Chat")).toBeTruthy()
+
+    await user.keyboard("{Escape}")
+    expect(closed).toBe(true)
+  })
+
+  it("names the open page next to the search field", async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette commands={pageCommands()} onClose={() => {}} />)
+
+    await user.click(screen.getByText("Switch Session…"))
+
+    expect(screen.getByRole("button", { name: "Back to all commands" }).textContent).toBe("Switch Session")
+  })
+})
+
+describe("QuickOpen — > command mode", () => {
+  const files: WorkspaceFileInfo[] = [
+    { path: 'src/App.tsx', name: 'App.tsx', size: 0, mtime: 0, mime: 'text/plain' },
+  ]
+
+  it("searches commands instead of files when the query starts with >", async () => {
+    const user = userEvent.setup()
+    render(<QuickOpen workspaceFiles={files} commands={makeCommands()} onFileOpen={() => {}} onClose={() => {}} />)
+
+    expect(screen.queryByText("New Chat")).toBeNull()
+    await user.type(screen.getByPlaceholderText("Search files…"), ">side")
+
+    expect(screen.getByText("Toggle Sidebar")).toBeTruthy()
+    expect(screen.queryByText("New Chat")).toBeNull()
+    expect(screen.queryByText("App.tsx")).toBeNull()
+  })
+
+  it("runs the command on Enter", async () => {
+    const user = userEvent.setup()
+    let ran = false
+    let opened = false
+    const commands: Command[] = [{ id: "c1", label: "Run Me", action: () => { ran = true } }]
+    render(<QuickOpen workspaceFiles={files} commands={commands} onFileOpen={() => { opened = true }} onClose={() => {}} />)
+
+    await user.type(screen.getByPlaceholderText("Search files…"), ">")
+    await user.keyboard("{Enter}")
+
+    expect(ran).toBe(true)
+    expect(opened).toBe(false)
+  })
+
+  it("hints the > prefix while searching files", () => {
+    render(<QuickOpen workspaceFiles={files} commands={makeCommands()} onFileOpen={() => {}} onClose={() => {}} />)
+    expect(screen.getByText(">").closest("kbd")).toBeTruthy()
+  })
+})
