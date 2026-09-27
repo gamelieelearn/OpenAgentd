@@ -25,7 +25,11 @@ use crate::AppState;
 
 pub const MENU_SHOW: &str = "show";
 pub const MENU_NEW_WINDOW: &str = "new_window";
-pub const MENU_CODING: &str = "coding";
+pub const MENU_NEW_SESSION: &str = "new_session";
+pub const MENU_OPEN_WORKSPACE: &str = "open_workspace";
+pub const MENU_FIND: &str = "find";
+pub const MENU_TOGGLE_SIDEBAR: &str = "toggle_sidebar";
+pub const MENU_TERMINAL: &str = "terminal";
 pub const MENU_QUICK_OPEN: &str = "quick_open";
 pub const MENU_COMMAND_PALETTE: &str = "command_palette";
 pub const MENU_SCHEDULER: &str = "scheduler";
@@ -44,9 +48,16 @@ pub const MENU_CHECK_UPDATES: &str = "check_updates";
 pub const MENU_OPEN_CONFIG_DIR: &str = "open_config_dir";
 pub const MENU_REVEAL_DESKTOP_LOG: &str = "reveal_desktop_log";
 pub const MENU_REVEAL_BACKEND_LOG: &str = "reveal_backend_log";
+pub const MENU_HELP_GITHUB: &str = "help_github";
+pub const MENU_HELP_RELEASE_NOTES: &str = "help_release_notes";
+pub const MENU_HELP_REPORT_ISSUE: &str = "help_report_issue";
 pub const MENU_QUIT: &str = "quit";
 pub const MENU_USAGE_REFRESH: &str = "usage_refresh";
 pub const MENU_USAGE_MANAGE: &str = "usage_manage";
+
+const REPO_URL: &str = "https://github.com/lthoangg/openagentd";
+const RELEASE_NOTES_URL: &str = "https://github.com/lthoangg/openagentd/releases";
+const REPORT_ISSUE_URL: &str = "https://github.com/lthoangg/openagentd/issues/new";
 /// Prefix for informational (disabled) usage rows. Never actually
 /// dispatched — they exist purely so every dynamically inserted
 /// `MenuItem` has a stable, unique id.
@@ -90,7 +101,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
             .name(Some("OpenAgentd"))
             .version(Some(env!("CARGO_PKG_VERSION")))
             .copyright(Some("Copyright (c) 2026 OpenAgentd contributors"))
-            .website(Some("https://github.com/lthoangg/openagentd"))
+            .website(Some(REPO_URL))
             .website_label(Some("openagentd on GitHub"));
         if let Some(icon) = app.default_window_icon() {
             builder = builder.icon(Some(icon.clone()));
@@ -107,37 +118,21 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         None::<&str>,
     )?;
-    let app_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
-    let app_new_window = MenuItem::with_id(
-        app,
-        MENU_NEW_WINDOW,
-        "New Window",
-        true,
-        Some("CmdOrCtrl+Shift+N"),
-    )?;
-    let app_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, Some("CmdOrCtrl+,"))?;
-    let app_open_config_dir = MenuItem::with_id(
-        app,
-        MENU_OPEN_CONFIG_DIR,
-        "View Config Folder",
-        true,
-        None::<&str>,
-    )?;
-    let app_reveal_desktop_log = MenuItem::with_id(
-        app,
-        MENU_REVEAL_DESKTOP_LOG,
-        "View Desktop Log",
-        true,
-        None::<&str>,
-    )?;
-    let app_reveal_backend_log = MenuItem::with_id(
-        app,
-        MENU_REVEAL_BACKEND_LOG,
-        "View Backend Log",
-        true,
-        None::<&str>,
-    )?;
+    let app_settings =
+        MenuItem::with_id(app, MENU_SETTINGS, "Settings…", true, Some("CmdOrCtrl+,"))?;
     let app_quit = MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, Some("CmdOrCtrl+Q"))?;
+
+    // In-app shortcuts are listed here too. The webview sees a key press
+    // first and its handler calls `preventDefault`, which stops the native
+    // accelerator; the menu item only fires when clicked or when no web
+    // handler claimed the key.
+    let file_new_session = MenuItem::with_id(
+        app,
+        MENU_NEW_SESSION,
+        "New Session",
+        true,
+        Some("CmdOrCtrl+N"),
+    )?;
     let file_new_window = MenuItem::with_id(
         app,
         MENU_NEW_WINDOW,
@@ -145,10 +140,20 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         Some("CmdOrCtrl+Shift+N"),
     )?;
-    let file_coding =
-        MenuItem::with_id(app, MENU_CODING, "Coding", true, Some("CmdOrCtrl+Shift+K"))?;
-    let file_quit =
-        MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, Some("CmdOrCtrl+Q"))?;
+    let file_open_workspace = MenuItem::with_id(
+        app,
+        MENU_OPEN_WORKSPACE,
+        "Open Workspace…",
+        true,
+        Some("CmdOrCtrl+O"),
+    )?;
+    let edit_find = MenuItem::with_id(
+        app,
+        MENU_FIND,
+        "Find in Transcript…",
+        true,
+        Some("CmdOrCtrl+F"),
+    )?;
     let view_quick_open = MenuItem::with_id(
         app,
         MENU_QUICK_OPEN,
@@ -168,7 +173,21 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         MENU_SCHEDULER,
         "Scheduled Tasks",
         true,
-        Some("CmdOrCtrl+S"),
+        None::<&str>,
+    )?;
+    let view_toggle_sidebar = MenuItem::with_id(
+        app,
+        MENU_TOGGLE_SIDEBAR,
+        "Toggle Sidebar",
+        true,
+        Some("CmdOrCtrl+B"),
+    )?;
+    let view_terminal = MenuItem::with_id(
+        app,
+        MENU_TERMINAL,
+        "Open Terminal",
+        true,
+        Some("CmdOrCtrl+Shift+`"),
     )?;
     // Bare CmdOrCtrl+A is "Select All" on macOS, so Session Settings
     // requires Shift to avoid clobbering it — matches the in-app
@@ -180,13 +199,16 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         Some("CmdOrCtrl+Shift+A"),
     )?;
-    let view_reload = MenuItem::with_id(app, MENU_RELOAD, "Reload", true, Some("CmdOrCtrl+R"))?;
+    // No accelerators: a stray ⌘R would drop the UI state of a live turn and
+    // Force Reload restarts the app. Both stay reachable from here and the
+    // command palette.
+    let view_reload = MenuItem::with_id(app, MENU_RELOAD, "Reload", true, None::<&str>)?;
     let view_force_reload = MenuItem::with_id(
         app,
         MENU_FORCE_RELOAD,
         "Force Reload",
         true,
-        Some("CmdOrCtrl+Shift+R"),
+        None::<&str>,
     )?;
     // ``CmdOrCtrl+=`` (not ``CmdOrCtrl++``) so the shortcut fires from the
     // bare ``=`` key — matches Chrome/Safari/VS Code and avoids requiring
@@ -210,27 +232,63 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let edit_paste = PredefinedMenuItem::paste(app, None)?;
     let edit_select_all = PredefinedMenuItem::select_all(app, None)?;
 
+    let window_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
+
+    let help_github =
+        MenuItem::with_id(app, MENU_HELP_GITHUB, "OpenAgentd on GitHub", true, None::<&str>)?;
+    let help_release_notes =
+        MenuItem::with_id(app, MENU_HELP_RELEASE_NOTES, "Release Notes", true, None::<&str>)?;
+    let help_report_issue =
+        MenuItem::with_id(app, MENU_HELP_REPORT_ISSUE, "Report an Issue…", true, None::<&str>)?;
+    let help_open_config_dir = MenuItem::with_id(
+        app,
+        MENU_OPEN_CONFIG_DIR,
+        "View Config Folder",
+        true,
+        None::<&str>,
+    )?;
+    let help_reveal_desktop_log = MenuItem::with_id(
+        app,
+        MENU_REVEAL_DESKTOP_LOG,
+        "View Desktop Log",
+        true,
+        None::<&str>,
+    )?;
+    let help_reveal_backend_log = MenuItem::with_id(
+        app,
+        MENU_REVEAL_BACKEND_LOG,
+        "View Backend Log",
+        true,
+        None::<&str>,
+    )?;
+
     let app_menu = SubmenuBuilder::new(app, "OpenAgentd")
         .item(&app_about)
         .item(&app_check_updates)
         .separator()
-        .item(&app_show)
-        .item(&app_new_window)
-        .separator()
         .item(&app_settings)
+        .separator();
+    // Services / Hide / Hide Others / Show All only work on macOS; elsewhere
+    // they would render as inert rows.
+    #[cfg(target_os = "macos")]
+    let app_menu = app_menu
+        .services()
         .separator()
-        .item(&app_open_config_dir)
-        .item(&app_reveal_desktop_log)
-        .item(&app_reveal_backend_log)
-        .separator()
-        .item(&app_quit)
-        .build()?;
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator();
+    let app_menu = app_menu.item(&app_quit).build()?;
     let file_menu = SubmenuBuilder::new(app, "File")
+        .item(&file_new_session)
         .item(&file_new_window)
         .separator()
-        .item(&file_coding)
+        .item(&file_open_workspace)
         .separator()
-        .item(&file_quit)
+        // Predefined ⌘W: an open dock tab claims the key first, so ⌘W closes
+        // the tab and falls back to the window when none is open. The app
+        // keeps running in the menu bar / tray either way.
+        .close_window()
         .build()?;
     let edit_menu = SubmenuBuilder::new(app, "Edit")
         .item(&edit_undo)
@@ -240,29 +298,51 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&edit_copy)
         .item(&edit_paste)
         .item(&edit_select_all)
+        .separator()
+        .item(&edit_find)
         .build()?;
     let view_menu = SubmenuBuilder::new(app, "View")
-        .item(&view_reload)
-        .item(&view_force_reload)
+        .item(&view_command_palette)
+        .item(&view_quick_open)
+        .separator()
+        .item(&view_toggle_sidebar)
+        .item(&view_terminal)
+        .item(&view_agent_capabilities)
+        .item(&view_scheduler)
         .separator()
         .item(&view_zoom_in)
         .item(&view_zoom_out)
         .item(&view_zoom_reset)
         .separator()
-        .item(&view_quick_open)
-        .item(&view_command_palette)
-        .item(&view_scheduler)
-        .item(&view_agent_capabilities)
+        .item(&view_reload)
+        .item(&view_force_reload)
         .build()?;
     let window_menu = SubmenuBuilder::new(app, "Window")
         .minimize()
-        .close_window_with_text("Hide to Tray")
+        .maximize()
+        .separator()
+        .item(&window_show);
+    #[cfg(target_os = "macos")]
+    let window_menu = window_menu.bring_all_to_front();
+    let window_menu = window_menu.build()?;
+    // Help is recognised by its title on macOS, which adds the search field.
+    let help_menu = SubmenuBuilder::new(app, "Help")
+        .item(&help_github)
+        .item(&help_release_notes)
+        .item(&help_report_issue)
+        .separator()
+        .item(&help_open_config_dir)
+        .item(&help_reveal_desktop_log)
+        .item(&help_reveal_backend_log)
         .build()?;
     let menu = Menu::with_items(
         app,
-        &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu],
+        &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu, &help_menu],
     )?;
     app.set_menu(menu)?;
+    // macOS lists open windows in the Window menu.
+    #[cfg(target_os = "macos")]
+    window_menu.set_as_windows_menu_for_nsapp()?;
 
     #[cfg(target_os = "macos")]
     {
@@ -497,7 +577,11 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
                 }
             });
         }
-        MENU_CODING => emit_frontend_command(app, "coding"),
+        MENU_NEW_SESSION => emit_frontend_command(app, "new_session"),
+        MENU_OPEN_WORKSPACE => emit_frontend_command(app, "open_workspace"),
+        MENU_FIND => emit_frontend_command(app, "find"),
+        MENU_TOGGLE_SIDEBAR => emit_frontend_command(app, "toggle_sidebar"),
+        MENU_TERMINAL => emit_frontend_command(app, "terminal"),
         MENU_QUICK_OPEN => emit_frontend_command(app, "quick_open"),
         MENU_COMMAND_PALETTE => emit_frontend_command(app, "command_palette"),
         MENU_SCHEDULER => emit_frontend_command(app, "scheduler"),
@@ -512,6 +596,9 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_OPEN_CONFIG_DIR => open_config_dir(app),
         MENU_REVEAL_DESKTOP_LOG => reveal_desktop_log(app),
         MENU_REVEAL_BACKEND_LOG => reveal_backend_log(app),
+        MENU_HELP_GITHUB => open_help_url(app, REPO_URL),
+        MENU_HELP_RELEASE_NOTES => open_help_url(app, RELEASE_NOTES_URL),
+        MENU_HELP_REPORT_ISSUE => open_help_url(app, REPORT_ISSUE_URL),
         MENU_USAGE_REFRESH => {
             let handle = app.clone();
             tauri::async_runtime::spawn(async move {
@@ -565,6 +652,12 @@ pub fn reveal_backend_log(app: &AppHandle) {
             }
         }
         Err(e) => log::warn!("backend log path unavailable: {e:#}"),
+    }
+}
+
+fn open_help_url(app: &AppHandle, url: &str) {
+    if let Err(e) = app.opener().open_url(url, None::<&str>) {
+        log::warn!("failed to open {url}: {e}");
     }
 }
 
@@ -869,12 +962,21 @@ pub async fn run_usage_poll_loop(app: AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::{external_usage_access_key, macos_tray_icon, MENU_CODING, MENU_NEW_WINDOW};
+    use super::{
+        external_usage_access_key, macos_tray_icon, MENU_FIND, MENU_NEW_SESSION,
+        MENU_NEW_WINDOW, MENU_OPEN_WORKSPACE, MENU_TERMINAL, MENU_TOGGLE_SIDEBAR,
+    };
 
     #[test]
-    fn session_navigation_menu_keeps_coding_and_new_window_entries_only() {
-        assert_eq!(MENU_CODING, "coding");
+    fn menu_command_ids_match_the_frontend_bridge() {
+        // `emit_frontend_command` payloads are matched by string in
+        // web/src/lib/desktop-commands.ts.
+        assert_eq!(MENU_NEW_SESSION, "new_session");
         assert_eq!(MENU_NEW_WINDOW, "new_window");
+        assert_eq!(MENU_OPEN_WORKSPACE, "open_workspace");
+        assert_eq!(MENU_FIND, "find");
+        assert_eq!(MENU_TOGGLE_SIDEBAR, "toggle_sidebar");
+        assert_eq!(MENU_TERMINAL, "terminal");
     }
 
     #[test]

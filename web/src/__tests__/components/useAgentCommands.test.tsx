@@ -14,13 +14,10 @@
  * Invariants we verify:
  *
  *   - Shortcut strings match the platform's primary-modifier label.
- *   - ``dispatchShortcutKey(key, os)``-style commands actually dispatch
- *     a keydown event with ``ctrlKey: true`` and ``metaKey: false`` on
- *     this non-mac test platform, so the global shortcut handler (which
- *     uses ``isPrimaryShortcut``) fires.
+ *   - Commands call their shell handler directly rather than
+ *     synthesizing a keydown.
  *   - The list is *built each render* — re-running the hook with new
  *     inputs returns the new commands (no stale closures).
-   *   - The view-cycle command carries the ⌘⇧V / Ctrl+Shift+V shortcut.
  */
 import { describe, it, expect, afterEach, mock } from "bun:test"
 import { renderHook, cleanup } from "@testing-library/react"
@@ -37,6 +34,7 @@ function makeArgs(overrides: Partial<Parameters<typeof useAgentCommands>[0]> = {
   return {
     toggleAgentCapabilities: noop,
     toggleTasks: noop,
+    toggleScheduler: noop,
     handleWorkspaceFiles: noop,
     handleCodingSidebarToggle: noop,
     handleOpenTerminal: noop,
@@ -63,7 +61,7 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(byId(result.current, "agent-info").shortcut).toBe("Ctrl+Shift+A")
     expect(byId(result.current, "todos").shortcut).toBe("Ctrl+T")
     expect(byId(result.current, "workspace-files").shortcut).toBe("Ctrl+D")
-    expect(byId(result.current, "scheduled-tasks").shortcut).toBe("Ctrl+S")
+    expect(byId(result.current, "scheduled-tasks").shortcut).toBeUndefined()
     expect(byId(result.current, "collapse-sidebar").shortcut).toBe("Ctrl+B")
     expect(byId(result.current, "go-settings").shortcut).toBe("Ctrl+,")
     expect(byId(result.current, "new-chat").label).toBe("New Session")
@@ -93,53 +91,22 @@ describe("useAgentCommands — shortcut labels", () => {
 })
 
 // ════════════════════════════════════════════════════════════════════════════
-//  dispatchShortcutKey — synthetic event shape
+//  Direct handlers — no synthetic key events
 // ════════════════════════════════════════════════════════════════════════════
-describe("useAgentCommands — dispatchShortcutKey synthetic events", () => {
-  it("collapse-sidebar invokes its direct toggle handler", () => {
-    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+describe("useAgentCommands — direct handlers", () => {
+  it("scheduled-tasks runs the shell's scheduler toggle without a key event", () => {
+    const toggleScheduler = mock(() => {})
+    const { result } = renderHook(() => useAgentCommands(makeArgs({ toggleScheduler })))
     const captured: KeyboardEvent[] = []
-    const listener = (e: Event) => captured.push(e as KeyboardEvent)
-    window.addEventListener("keydown", listener)
-    try {
-      byId(result.current, "collapse-sidebar").action()
-    } finally {
-      window.removeEventListener("keydown", listener)
-    }
-  })
-
-  it("scheduled-tasks dispatches a primary-modifier 's' keydown", () => {
-    const { result } = renderHook(() => useAgentCommands(makeArgs()))
-    const captured: KeyboardEvent[] = []
-    const listener = (e: Event) => captured.push(e as KeyboardEvent)
-    window.addEventListener("keydown", listener)
+    const handler = (e: Event) => captured.push(e as KeyboardEvent)
+    document.addEventListener("keydown", handler)
     try {
       byId(result.current, "scheduled-tasks").action()
     } finally {
-      window.removeEventListener("keydown", listener)
+      document.removeEventListener("keydown", handler)
     }
-    expect(captured.length).toBe(1)
-    expect(captured[0].key).toBe("s")
-    expect(captured[0].ctrlKey).toBe(true)
-    expect(captured[0].metaKey).toBe(false)
-  })
-
-  it("dispatched events would trigger a Ctrl-only useKeyboardShortcuts handler", () => {
-    // Integration smoke check: on this non-mac test platform the global
-    // handler expects ``e.ctrlKey && !e.metaKey`` so our synthetic events
-    // must satisfy exactly that predicate.
-    const { result } = renderHook(() => useAgentCommands(makeArgs()))
-    const captured: KeyboardEvent[] = []
-    const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && !e.metaKey) captured.push(e)
-    }
-    window.addEventListener("keydown", handler)
-    try {
-      byId(result.current, "scheduled-tasks").action()
-    } finally {
-      window.removeEventListener("keydown", handler)
-    }
-    expect(captured.map((e) => e.key)).toEqual(["s"])
+    expect(toggleScheduler).toHaveBeenCalledTimes(1)
+    expect(captured).toHaveLength(0)
   })
 
   it("collapse-sidebar does not dispatch a synthetic event", () => {
@@ -156,6 +123,26 @@ describe("useAgentCommands — dispatchShortcutKey synthetic events", () => {
   })
 })
 
+// ════════════════════════════════════════════════════════════════════════════
+//  Reload Window — desktop only (⌘R has no accelerator there)
+// ════════════════════════════════════════════════════════════════════════════
+describe("useAgentCommands — reload-window", () => {
+  const tauriWindow = window as unknown as { __TAURI_INTERNALS__?: unknown }
+  afterEach(() => { delete tauriWindow.__TAURI_INTERNALS__ })
+
+  it("is absent in the browser, which has its own reload", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    expect(result.current.find((c) => c.id === "reload-window")).toBeUndefined()
+  })
+
+  it("is listed inside the desktop app", () => {
+    tauriWindow.__TAURI_INTERNALS__ = {}
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    const cmd = byId(result.current, "reload-window")
+    expect(cmd.label).toBe("Reload Window")
+    expect(cmd.shortcut).toBeUndefined()
+  })
+})
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Open Terminal command

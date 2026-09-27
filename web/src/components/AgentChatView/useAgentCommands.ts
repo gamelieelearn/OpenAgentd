@@ -18,12 +18,14 @@ import type { Command } from '../CommandPalette'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 import { usePlatform } from '@/hooks/use-platform'
-import { APP_SHORTCUTS as KEYS, dispatchAppShortcut, shortcutLabel } from '@/lib/app-shortcuts'
+import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
 
 interface UseAgentCommandsArgs {
   toggleAgentCapabilities: () => void
   /** Opens the task list (dock Tasks tab on desktop, popover otherwise). */
   toggleTasks: () => void
+  /** Opens scheduled tasks (dock Schedule tab with a workspace, overlay otherwise). */
+  toggleScheduler: () => void
   handleWorkspaceFiles: () => void
   handleCodingSidebarToggle: () => void
 
@@ -40,6 +42,7 @@ interface UseAgentCommandsArgs {
 export function useAgentCommands({
   toggleAgentCapabilities,
   toggleTasks,
+  toggleScheduler,
   handleWorkspaceFiles,
   handleCodingSidebarToggle,
   handleNewSession,
@@ -48,7 +51,7 @@ export function useAgentCommands({
   handleToggleDockMaximized,
 }: UseAgentCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const { os } = usePlatform()
+  const { os, isTauri } = usePlatform()
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
     { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleAgentCapabilities },
@@ -59,9 +62,14 @@ export function useAgentCommands({
       ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Dock', description: 'Give the review dock the full width for diffs, files, and terminals', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
       : []),
     { id: 'collapse-sidebar', group: 'View', label: 'Toggle Coding Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: shortcutLabel(KEYS.codingSidebar, os), action: handleCodingSidebarToggle },
-    { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: shortcutLabel(KEYS.scheduler, os), action: () => dispatchAppShortcut(KEYS.scheduler, os) },
+    { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', action: toggleScheduler },
     { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'Interactive shell in the workspace (runs on the connected server)', shortcut: shortcutLabel(KEYS.terminal, os), action: handleOpenTerminal },
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
     { id: 'go-telemetry', group: 'Navigation', label: 'Open Telemetry', description: 'Spend, turns, and traces by workspace and model', action: () => openTelemetry() },
-  ], [os, toggleAgentCapabilities, toggleTasks, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleCodingSidebarToggle, handleNewSession, handleOpenTerminal, openSettings])
+    // Desktop only: the native ⌘R accelerator was dropped so a stray key
+    // press cannot wipe a live turn's UI state; browsers keep their own reload.
+    ...(isTauri
+      ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
+      : []),
+  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleCodingSidebarToggle, handleNewSession, handleOpenTerminal, openSettings])
 }

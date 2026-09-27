@@ -79,7 +79,7 @@ import {
 
 export type { ChangedFileStatus, ChangedFileInfo, DiffFileSection }
 
-// On-demand views (⌘T / ⌘S) load with their first open rather than with
+// On-demand views (Tasks / Schedule) load with their first open rather than with
 // every dock mount.
 const TasksTabView = lazy(() =>
   import('./CodingWorkspacePanel/TasksTabView').then((m) => ({ default: m.TasksTabView })),

@@ -49,6 +49,7 @@ import { useLayoutStore } from '@/stores/useLayoutStore'
 import { resolveSidebarCollapsed, SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT } from '@/lib/workbench-layout'
 import { useViewportAtLeast } from '@/hooks/use-viewport-width'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
+import { APP_EVENTS } from '@/lib/app-events'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { DockView, DockViewRequest } from '../CodingWorkspacePanel/dock-tabs'
 import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
@@ -330,6 +331,19 @@ export function useOverlayState({
     setCodingPanel((prev) => prev ?? 'files')
     setTerminalOpenKey((k) => k + 1)
   }, [workspace])
+
+  // Native menu items for actions without a keyboard shortcut.
+  useEffect(() => {
+    const routes: [string, () => void][] = [
+      [APP_EVENTS.toggleScheduler, handleToggleScheduler],
+      [APP_EVENTS.openWorkspace, handleOpenWorkspaceDialog],
+      [APP_EVENTS.openTerminal, handleOpenTerminal],
+    ]
+    for (const [event, handler] of routes) window.addEventListener(event, handler)
+    return () => {
+      for (const [event, handler] of routes) window.removeEventListener(event, handler)
+    }
+  }, [handleOpenTerminal, handleOpenWorkspaceDialog, handleToggleScheduler])
 
   // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
   //

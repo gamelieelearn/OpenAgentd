@@ -1,5 +1,5 @@
 /**
- * Review dock view tabs — the desktop Tasks (⌘T) and Schedule (⌘S) tabs.
+ * Review dock view tabs — the desktop Tasks (⌘T) and Schedule tabs.
  *
  * The shell asks the dock to open a view through a keyed request plus a
  * parent-owned "handled" ref (same contract as terminals), and the dock

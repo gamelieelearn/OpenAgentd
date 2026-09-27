@@ -1,7 +1,7 @@
 /**
  * useOverlayState — dock views (Tasks / Schedule).
  *
- * On desktop with a workspace, ⌘T / ⌘S open review-dock tabs; a second press
+ * On desktop with a workspace, Tasks / Scheduled Tasks open review-dock tabs; a second press
  * while that tab is focused hides the dock. Phones with a workspace open the
  * scheduler in the dock sheet too but keep the Tasks popover; without a
  * workspace both fall back to the popover / overlay.

@@ -157,7 +157,7 @@ describe('AppFooter', () => {
       />
     )
 
-    const schedulerBtn = screen.getByLabelText('Scheduler')
+    const schedulerBtn = screen.getByLabelText('Scheduled tasks')
     fireEvent.click(schedulerBtn)
     expect(onToggleScheduler).toHaveBeenCalledTimes(1)
 
@@ -170,14 +170,14 @@ describe('AppFooter', () => {
 
   it('marks the scheduler pressed while its dock tab or overlay is showing', () => {
     const { rerender } = renderWithQueryClient(<AppFooter onToggleScheduler={() => {}} />)
-    expect(screen.getByLabelText('Scheduler').getAttribute('aria-pressed')).toBe('false')
+    expect(screen.getByLabelText('Scheduled tasks').getAttribute('aria-pressed')).toBe('false')
 
     rerender(
       <QueryClientProvider client={new QueryClient()}>
         <AppFooter onToggleScheduler={() => {}} schedulerActive />
       </QueryClientProvider>,
     )
-    expect(screen.getByLabelText('Scheduler').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByLabelText('Scheduled tasks').getAttribute('aria-pressed')).toBe('true')
   })
 
   it('opens the telemetry overlay from the utility cluster', () => {

@@ -4,7 +4,7 @@
  * The dock is an editor-style strip: one pinned Git review tab plus any
  * number of file previews, full-height diffs, commit views, and terminals.
  * The agent task list and the scheduler are singleton tabs opened on demand
- * (⌘T / ⌘S on desktop).
+ * (⌘T and the Scheduled Tasks command on desktop).
  * Tab ids are stable per target so re-opening a file, diff, or commit
  * focuses the existing tab instead of stacking duplicates.
  */
@@ -26,7 +26,7 @@ export type DockTab =
 
 export type DockTabOf<T extends DockTab['type']> = Extract<DockTab, { type: T }>
 
-/** Singleton view tabs the shell can ask the dock to open (⌘T / ⌘S). */
+/** Singleton view tabs the shell can ask the dock to open (Tasks / Scheduled Tasks). */
 export type DockView = 'tasks' | 'schedule'
 
 /**

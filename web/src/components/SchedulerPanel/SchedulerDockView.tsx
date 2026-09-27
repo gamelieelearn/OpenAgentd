@@ -1,6 +1,6 @@
 /**
- * SchedulerDockView — scheduled tasks as a review-dock tab (⌘S, and the
- * scheduler entry on phones with a workspace, where the dock is a sheet).
+ * SchedulerDockView — scheduled tasks as a review-dock tab (desktop, and
+ * phones with a workspace, where the dock is a sheet).
  *
  * The dock is too narrow for the overlay's list + detail split, so panes
  * stack: list → detail or create, with a back arrow in each pane header.

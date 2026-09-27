@@ -202,14 +202,14 @@ export const AppFooter = memo(function AppFooter({
                   type="button"
                   onClick={onToggleScheduler}
                   className={cn(ICON_ITEM, schedulerActive && 'bg-(--bg-key) text-(--color-text)')}
-                  aria-label="Scheduler"
+                  aria-label="Scheduled tasks"
                   aria-pressed={schedulerActive}
                 >
                   <CalendarClock size={12} aria-hidden="true" />
                 </button>
               }
             />
-            <TooltipContent>{`Scheduler (${shortcutLabel(APP_SHORTCUTS.scheduler, os)})`}</TooltipContent>
+            <TooltipContent>Scheduled tasks</TooltipContent>
           </Tooltip>
         )}
 

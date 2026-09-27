@@ -58,7 +58,7 @@ export interface AgentTopbarProps {
   /** Force the mobile/desktop layout. Defaults to desktop. */
   isMobile?: boolean
   todosAction?: AgentTopbarActionDescriptor
-  /** Scheduler action — opens the scheduled-tasks drawer (⌘S / Ctrl+S). */
+  /** Scheduler action — opens the scheduled-tasks drawer. */
   schedulerAction?: AgentTopbarActionDescriptor
   /** Files action — typically toggles the workspace files panel. */
   filesAction?: AgentTopbarActionDescriptor

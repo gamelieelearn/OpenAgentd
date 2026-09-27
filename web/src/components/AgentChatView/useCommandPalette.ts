@@ -94,6 +94,7 @@ export function useCommandPalette({
   const paletteCommands = useAgentCommands({
     toggleAgentCapabilities: handleToggleAgentCapabilities,
     toggleTasks: handleToggleTasks,
+    toggleScheduler: handleToggleScheduler,
     handleWorkspaceFiles,
     handleCodingSidebarToggle,
     handleNewSession,
@@ -145,7 +146,6 @@ export function useCommandPalette({
       // Mod+B belongs to the general sidebar. Only the coding sidebar owns this
       // registration when coding mode is active, preventing duplicate handlers.
       { hotkey: hotkeyOf(APP_SHORTCUTS.codingSidebar), callback: handleCodingSidebarToggle, options: { meta: { name: 'Coding sidebar' } } },
-      { hotkey: hotkeyOf(APP_SHORTCUTS.scheduler), callback: handleToggleScheduler, options: { meta: { name: 'Scheduler' } } },
       {
         hotkey: hotkeyOf(APP_SHORTCUTS.focusChat),
         callback: () => {

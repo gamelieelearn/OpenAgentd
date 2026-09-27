@@ -7,6 +7,7 @@ const navigate = mock(async () => {})
 mock.module('@tanstack/react-router', () => ({ useRouter: () => ({ navigate }) }))
 
 import { useDesktopCommands } from '@/lib/desktop-commands'
+import { APP_EVENTS } from '@/lib/app-events'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
@@ -64,16 +65,59 @@ async function captureKeys(run: () => Promise<void>): Promise<KeyboardEvent[]> {
   return events
 }
 
+/** Collect app events (shell actions without a shortcut) while ``run`` executes. */
+async function captureAppEvents(run: () => Promise<void>): Promise<string[]> {
+  const events: string[] = []
+  const names = Object.values(APP_EVENTS)
+  const onEvent = (event: Event) => events.push(event.type)
+  names.forEach((name) => window.addEventListener(name, onEvent))
+  try {
+    await run()
+  } finally {
+    names.forEach((name) => window.removeEventListener(name, onEvent))
+  }
+  return events
+}
+
 describe('useDesktopCommands', () => {
-  it('routes the scheduler through the in-app Ctrl+S shortcut so the shell picks dock tab or overlay', async () => {
-    const events = await captureKeys(async () => {
-      await renderBridge()
-      listener?.({ payload: 'scheduler' })
+  it('asks the shell to toggle the scheduler without a keyboard shortcut', async () => {
+    let keys: KeyboardEvent[] = []
+    const appEvents = await captureAppEvents(async () => {
+      keys = await captureKeys(async () => {
+        await renderBridge()
+        listener?.({ payload: 'scheduler' })
+      })
     })
 
-    expect(events.map((e) => [e.key, e.ctrlKey, e.metaKey])).toEqual([['s', true, false]])
-    // The store flag is left to the shell's handler, not flipped directly.
+    expect(appEvents).toEqual([APP_EVENTS.toggleScheduler])
+    expect(keys).toHaveLength(0)
+    // The store flag is left to the shell's handler, which picks dock tab or overlay.
     expect(useUIStore.getState().schedulerOpen).toBe(false)
+  })
+
+  it.each([
+    ['new_session', 'n'],
+    ['toggle_sidebar', 'b'],
+    ['find', 'f'],
+  ])('routes %s through its in-app shortcut', async (command, key) => {
+    const events = await captureKeys(async () => {
+      await renderBridge()
+      listener?.({ payload: command })
+    })
+
+    expect(events.map((e) => [e.key, e.ctrlKey, e.metaKey, e.shiftKey])).toEqual([[key, true, false, false]])
+  })
+
+  it.each([
+    ['open_workspace', APP_EVENTS.openWorkspace],
+    ['terminal', APP_EVENTS.openTerminal],
+  ])('routes %s to the shell as an app event', async (command, event) => {
+    const appEvents = await captureAppEvents(async () => {
+      await renderBridge()
+      listener?.({ payload: command })
+    })
+
+    expect(appEvents).toEqual([event])
   })
 
   it('toggles session settings through the shared UI store', async () => {
@@ -110,10 +154,10 @@ describe('useDesktopCommands', () => {
     try {
       const events = await captureKeys(async () => {
         await renderBridge()
-        listener?.({ payload: 'scheduler' })
-        listener?.({ payload: 'scheduler' })
+        listener?.({ payload: 'quick_open' })
+        listener?.({ payload: 'quick_open' })
       })
-      expect(events.map((e) => e.key)).toEqual(['s'])
+      expect(events.map((e) => e.key)).toEqual(['p'])
 
       listener?.({ payload: 'agent_capabilities' })
       expect(useUIStore.getState().agentCapabilitiesOpen).toBe(true)
@@ -129,10 +173,10 @@ describe('useDesktopCommands', () => {
     try {
       const events = await captureKeys(async () => {
         await renderBridge()
-        listener?.({ payload: 'scheduler' })
-        listener?.({ payload: 'scheduler' })
+        listener?.({ payload: 'quick_open' })
+        listener?.({ payload: 'quick_open' })
       })
-      expect(events.map((e) => e.key)).toEqual(['s', 's'])
+      expect(events.map((e) => e.key)).toEqual(['p', 'p'])
     } finally {
       Date.now = originalNow
     }
@@ -171,14 +215,6 @@ describe('useDesktopCommands', () => {
     } finally {
       useSettingsStore.setState({ openSettings: originalOpenSettings })
     }
-  })
-
-  it('navigates to /coding when the coding command is emitted', async () => {
-    await renderBridge()
-
-    listener?.({ payload: 'coding' })
-
-    expect(navigate).toHaveBeenCalledWith({ to: '/coding' })
   })
 
   it('unsubscribes from the Tauri event bus when the root unmounts', async () => {

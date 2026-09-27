@@ -15,6 +15,14 @@ describe('APP_SHORTCUTS', () => {
     expect(new Set(combos).size).toBe(combos.length)
   })
 
+  it('leaves bare ⌘S / Ctrl+S to the surface that saves', () => {
+    // Settings pages and editors bind Save; an app-wide ⌘S would fire too.
+    const bareS = Object.entries(APP_SHORTCUTS)
+      .filter(([, s]) => s.key.toUpperCase() === 'S' && !('shift' in s && s.shift))
+      .map(([name]) => name)
+    expect(bareS).toEqual([])
+  })
+
   it('registers every shortcut on the platform primary modifier', () => {
     expect(hotkeyOf(APP_SHORTCUTS.maximizeDock)).toEqual({ key: 'D', mod: true, shift: true })
     expect(hotkeyOf(APP_SHORTCUTS.newSession)).toEqual({ key: 'N', mod: true, shift: false })
