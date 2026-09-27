@@ -27,6 +27,9 @@ interface UIStore {
   quickOpenOpen: boolean
   /** Telemetry overlay (mounted at the app root, reachable from any route). */
   telemetryOpen: boolean
+  /** Task the scheduler should open on next (a sidebar click); taken once. */
+  scheduledTaskFocus: string | null
+  focusScheduledTask: (taskId: string | null) => void
   toggleScheduler: () => void
   toggleAgentCapabilities: () => void
   togglePalette: () => void
@@ -48,6 +51,8 @@ export const useUIStore = create<UIStore>()(
     paletteOpen: false,
     quickOpenOpen: false,
     telemetryOpen: false,
+    scheduledTaskFocus: null,
+    focusScheduledTask: (taskId) => set((state) => { state.scheduledTaskFocus = taskId }),
     toggleScheduler: () => {
       set((state) => {
         const nextOpen = !state.schedulerOpen

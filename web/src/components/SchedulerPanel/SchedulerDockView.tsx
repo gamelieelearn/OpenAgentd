@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { useScheduledTasksQuery } from '@/queries'
+import { useUIStore } from '@/stores/useUIStore'
 import { CreateTaskForm } from './CreateTaskForm'
 import { TaskDetailView } from './TaskDetailView'
 import { TaskListPane } from './TaskListPane'
@@ -22,11 +23,19 @@ export function SchedulerDockView({ contextWorkspace }: { contextWorkspace: stri
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const tasksQuery = useScheduledTasksQuery()
   const { refetch } = tasksQuery
+  const focusTaskId = useUIStore((s) => s.scheduledTaskFocus)
 
   // Same freshness rule as the overlay: opening the view re-reads the list.
   useEffect(() => {
     void refetch()
   }, [refetch])
+
+  useEffect(() => {
+    if (!focusTaskId) return
+    setSelectedTaskId(focusTaskId)
+    setPane('detail')
+    useUIStore.getState().focusScheduledTask(null)
+  }, [focusTaskId])
 
   const tasks = tasksQuery.data?.tasks ?? []
   const selectedTask = selectedTaskId ? tasks.find((task) => task.id === selectedTaskId) ?? null : null

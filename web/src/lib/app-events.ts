@@ -7,6 +7,8 @@
  */
 export const APP_EVENTS = {
   toggleScheduler: 'oa:toggle-scheduler',
+  // Opens without toggling, e.g. on the task ``useUIStore.focusScheduledTask`` named.
+  openScheduler: 'oa:open-scheduler',
   openWorkspace: 'oa:open-workspace',
   // The terminal key is matched on the physical Backquote code, which a
   // synthetic key press does not carry.

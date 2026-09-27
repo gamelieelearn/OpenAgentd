@@ -83,6 +83,7 @@ import type { CodingWorkspaceTreeRepository, SessionResponse, WorktreeInfo } fro
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { WorkspaceSessionList } from './CodingSidebar/WorkspaceSessionList'
 import { NeedsYouSection } from './CodingSidebar/NeedsYouSection'
+import { ScheduledSection } from './CodingSidebar/ScheduledSection'
 import { CodingSidebarConfirmDialogs } from './CodingSidebar/ConfirmDialogs'
 import {
   addExpandedPaths,
@@ -1039,6 +1040,8 @@ export function CodingSidebar({
         })}
       </div>
       )}
+
+      <ScheduledSection onMobileClose={onMobileClose} />
 
       {/* Mobile drawer footer — on desktop this lives in AppFooter status bar */}
       <div className="flex md:hidden items-center justify-between gap-2 border-t border-(--color-border) px-3 py-2 pb-safe">

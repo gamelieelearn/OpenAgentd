@@ -61,7 +61,7 @@ export function formatDate(dateStr: string | null): Date {
   return new Date(dateStr)
 }
 
-import { isToday, isYesterday, format } from 'date-fns'
+import { isToday, isYesterday, isSameDay, format } from 'date-fns'
 
 // Me format date+time: "Today 14:32", "Yesterday 09:01", or "DD/MM/YYYY 14:32"
 export function formatRelativeDate(dateStr: string | null): string {
@@ -89,6 +89,21 @@ export function formatCompactRelative(dateStr: string | null | undefined, now: D
   if (hours < 24) return `${hours}h`
   const days = Math.floor(hours / 24)
   if (days < 7) return `${days}d`
+  return format(date, 'dd/MM')
+}
+
+/**
+ * Compact next-fire time for dense list meta slots: ``HH:mm`` later today,
+ * ``EEE HH:mm`` within a week, then ``dd/MM``. Past times read ``due``.
+ */
+export function formatCompactUpcoming(dateStr: string | null | undefined, now: Date = new Date()): string {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const ahead = date.getTime() - now.getTime()
+  if (!Number.isFinite(ahead)) return ''
+  if (ahead <= 0) return 'due'
+  if (isSameDay(date, now)) return format(date, 'HH:mm')
+  if (ahead < 7 * 24 * 60 * 60_000) return format(date, 'EEE HH:mm')
   return format(date, 'dd/MM')
 }
 

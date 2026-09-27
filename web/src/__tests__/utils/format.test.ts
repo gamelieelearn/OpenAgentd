@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatTokens, formatRelativeDate, formatCompactRelative, formatDate, isSleepMessage, extractSleepPrefix, shortId, shortModelName, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks } from "@/utils/format";
+import { formatTokens, formatRelativeDate, formatCompactRelative, formatCompactUpcoming, formatDate, isSleepMessage, extractSleepPrefix, shortId, shortModelName, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks } from "@/utils/format";
 
 // ---------------------------------------------------------------------------
 // formatTokens
@@ -401,6 +401,27 @@ describe("lastTurnText — only the final response after the last tool call", ()
       block("tool", ""),
     ];
     expect(lastTurnText(blocks)).toBe("");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// formatCompactUpcoming
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("formatCompactUpcoming", () => {
+  // Local times, so the expectations hold in any test timezone.
+  const now = new Date(2026, 2, 10, 12, 0);
+  const at = (day: number, hour: number, minute = 0) => new Date(2026, 2, day, hour, minute).toISOString();
+
+  it("shows the time for later today, the weekday within a week, then the date", () => {
+    expect(formatCompactUpcoming(at(10, 18, 5), now)).toBe("18:05");
+    expect(formatCompactUpcoming(at(11, 9), now)).toBe("Wed 09:00");
+    expect(formatCompactUpcoming(at(20, 9), now)).toBe("20/03");
+  });
+
+  it("reads due once the time has passed, and empty for missing input", () => {
+    expect(formatCompactUpcoming(at(10, 11), now)).toBe("due");
+    expect(formatCompactUpcoming(null, now)).toBe("");
   });
 });
 

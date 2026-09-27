@@ -313,6 +313,18 @@ export function useOverlayState({
     toggleScheduler()
   }, [closeOtherMobileOverlays, schedulerInDock, toggleDockView, toggleScheduler])
 
+  const handleOpenScheduler = useCallback(() => {
+    if (schedulerInDock) {
+      closeOtherMobileOverlays('coding-panel')
+      setCodingPanel((value) => value ?? 'changed')
+      setDockViewRequest((prev) => ({ view: 'schedule', key: (prev?.key ?? 0) + 1 }))
+      return
+    }
+    if (useUIStore.getState().schedulerOpen) return
+    closeOtherMobileOverlays('scheduler')
+    toggleScheduler()
+  }, [closeOtherMobileOverlays, schedulerInDock, toggleScheduler])
+
   const handleTogglePalette = useCallback(() => {
     if (!useUIStore.getState().paletteOpen) closeOtherMobileOverlays('palette')
     togglePalette()
@@ -363,6 +375,7 @@ export function useOverlayState({
   useEffect(() => {
     const routes: [string, () => void][] = [
       [APP_EVENTS.toggleScheduler, handleToggleScheduler],
+      [APP_EVENTS.openScheduler, handleOpenScheduler],
       [APP_EVENTS.openWorkspace, handleOpenWorkspaceDialog],
       [APP_EVENTS.openTerminal, handleOpenTerminal],
     ]
@@ -370,7 +383,7 @@ export function useOverlayState({
     return () => {
       for (const [event, handler] of routes) window.removeEventListener(event, handler)
     }
-  }, [handleOpenTerminal, handleOpenWorkspaceDialog, handleToggleScheduler])
+  }, [handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleToggleScheduler])
 
   // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
   //

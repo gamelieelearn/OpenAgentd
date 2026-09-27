@@ -782,6 +782,11 @@ agent against it.
   answered, and a click opens the session. The same count badges the app icon
   in the dock (macOS and Linux) and prefixes the browser tab title, e.g.
   `(2) Fix updater restart`.
+- **Scheduled in the sidebar** `[v3.0.0]` — the bottom of the coding sidebar
+  lists the next five enabled scheduled tasks, soonest first, each with its next
+  run time (`18:05`, `Wed 09:00`, or `20/03`). Clicking a task opens the
+  scheduler on that task, and clicking the **Scheduled** header opens the full
+  list. The section is hidden when nothing is scheduled.
 - **Anchored & regex-optimized filesystem search** `[v2.0.0]` — `glob` pattern matching
   anchors walks at the literal prefix (up to 50x faster), `grep` pre-filters files using
   literal scanning and streams matches asynchronously off the main loop, and non-ignored

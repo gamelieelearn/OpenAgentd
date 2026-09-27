@@ -54,6 +54,23 @@ describe('useOverlayState app events', () => {
     expect(useUIStore.getState().schedulerOpen).toBe(true)
   })
 
+  // A sidebar task opens the scheduler on it; asking again must not close it.
+  it('opens the scheduler and keeps it open on openScheduler', () => {
+    const { result } = renderOverlay()
+
+    act(() => dispatchAppEvent(APP_EVENTS.openScheduler))
+    act(() => dispatchAppEvent(APP_EVENTS.openScheduler))
+
+    expect(result.current.codingPanel).toBe('changed')
+    expect(result.current.dockViewRequest).toEqual({ view: 'schedule', key: 2 })
+
+    cleanup()
+    renderOverlay({ workspace: null })
+    act(() => dispatchAppEvent(APP_EVENTS.openScheduler))
+    act(() => dispatchAppEvent(APP_EVENTS.openScheduler))
+    expect(useUIStore.getState().schedulerOpen).toBe(true)
+  })
+
   it('expands the sidebar and requests the folder picker on openWorkspace', () => {
     useLayoutStore.getState().setSidebarCollapsed(true, false)
     const { result } = renderOverlay()

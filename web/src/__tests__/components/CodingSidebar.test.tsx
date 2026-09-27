@@ -8,6 +8,7 @@ import { loadLastCodingWorkspace } from '@/utils/workspace'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useUnreadStore } from '@/stores/useUnreadStore'
+import { useUIStore } from '@/stores/useUIStore'
 import { APP_EVENTS } from '@/lib/app-events'
 import {
   addExpandedPaths,
@@ -171,6 +172,7 @@ mock.module('lucide-react', () => ({
   ChevronDown: Icon,
   ChevronRight: Icon,
   ChevronsDownUp: Icon,
+  Clock: Icon,
   Copy: Icon,
   Download: Icon,
   ExternalLink: Icon,
@@ -1292,6 +1294,46 @@ describe('CodingSidebar workspace trust flow', () => {
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('searchbox')).toBeNull()
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Search sessions' }))
+  })
+
+  it('lists upcoming scheduled tasks soonest first and opens the scheduler on one', async () => {
+    const user = userEvent.setup()
+    const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString()
+    const task = (id: string, name: string, next: string | null, enabled = true) => ({
+      id, slug: id, name, workspace: '/repo/project', schedule_type: 'every', at_datetime: null, every_seconds: 3600,
+      cron_expression: null, timezone: 'UTC', prompt: 'p', session_id: null, max_runs: null, enabled,
+      status: enabled ? 'pending' : 'paused', run_count: 0, last_run_at: null, last_error: null, next_fire_at: next,
+      created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+    })
+    const baseFetch = globalThis.fetch
+    globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+      if (String(input).includes('/api/scheduler/tasks')) {
+        return new Response(JSON.stringify({ tasks: [
+          task('later', 'Weekly report', inMinutes(120)),
+          task('soon', 'Nightly build', inMinutes(30)),
+          task('paused', 'Paused digest', inMinutes(10), false),
+          task('done', 'One-off reminder', null),
+        ] }))
+      }
+      return baseFetch(input as RequestInfo, init as RequestInit | undefined)
+    }) as typeof fetch
+    const opened = mock(() => {})
+    window.addEventListener(APP_EVENTS.openScheduler, opened)
+
+    await renderCodingSidebarForSessions(undefined)
+    const section = await screen.findByRole('region', { name: 'Scheduled' })
+    await waitFor(() => expect(section.textContent).toContain('Nightly build'))
+    const names = Array.from(section.querySelectorAll('li')).map((row) => row.textContent ?? '')
+    expect(names[0]).toContain('Nightly build')
+    expect(names[1]).toContain('Weekly report')
+    expect(section.textContent).not.toContain('Paused digest')
+    expect(section.textContent).not.toContain('One-off reminder')
+
+    await user.click(screen.getByRole('button', { name: /Nightly build/ }))
+    window.removeEventListener(APP_EVENTS.openScheduler, opened)
+
+    expect(useUIStore.getState().scheduledTaskFocus).toBe('soon')
+    expect(opened).toHaveBeenCalledTimes(1)
   })
 
   it('lists sessions that need you from every workspace above the workspaces', async () => {
