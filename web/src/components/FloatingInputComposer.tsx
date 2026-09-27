@@ -9,7 +9,6 @@ import {
   type SlashCommand,
   type SnippetCommand,
 } from './InputComposer'
-import { ComposerIsland } from './ComposerIsland'
 import { JumpToLatestChip } from './JumpToLatestChip'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -140,8 +139,6 @@ interface FloatingInputComposerProps {
   historyPrompts?: string[]
   value?: string
   onValueChange?: (value: string) => void
-  /** Opens the working-tree changes; offered after a turn edits files. */
-  onReviewChanges?: () => void
 }
 
 /**
@@ -156,7 +153,7 @@ interface FloatingInputComposerProps {
  */
 export const FloatingInputComposer = memo(
   forwardRef<InputComposerHandle, FloatingInputComposerProps>(
-    function FloatingInputComposer({ boundsRef, onReviewChanges, ...inputProps }, ref) {
+    function FloatingInputComposer({ boundsRef, ...inputProps }, ref) {
     const isMobile = useIsMobile()
     const dragControls = useDragControls()
     const panelRef = useRef<HTMLDivElement>(null)
@@ -623,14 +620,6 @@ export const FloatingInputComposer = memo(
             suggestionsBelow={renderSuggestionsBelow}
             minimized={effectiveMinimized}
             onUnminimize={expand}
-            minimizedContent={
-              <ComposerIsland
-                mode={inputProps.interactionMode ?? 'code'}
-                onExpand={expand}
-                onStop={inputProps.onStop}
-                onReviewChanges={onReviewChanges}
-              />
-            }
             onFocus={handleFocus}
             onBlur={handleBlur}
             onHasContentChange={handleHasContentChange}

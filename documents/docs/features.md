@@ -445,15 +445,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     marks prompts, find matches, and a question waiting for you.
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
-- **The composer as control center** `[v3.0.0]` — the floating composer
-  reports on the agent and steers the running turn:
-  - Collapsed on desktop, it is a status island. At rest it shows the mode,
-    tinted blue in Plan mode. While a turn runs it shows the current step
-    and the elapsed time beside Stop.
-    When the agent asks a single-choice question with up to four options,
-    the island offers them, so one click answers it; other questions get
-    Answer, which jumps to the card. After a turn that changed files it
-    reads "N files changed" with Review, which opens the Git changes.
+- **The composer while the agent works** `[v3.0.0]`:
   - Scrolled away from the live end, a "↓ N new" chip rides on the
     composer, wherever it is dragged, and counts what arrived since.
   - While a turn runs, Send splits in two. The pill steers: the agent reads
@@ -461,9 +453,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     done, which holds the message in this window and sends it as a turn of
     its own once the turn ends (`⌥Enter` / `Alt+Enter`), and Stop & send
     (`⌘Enter` / `Ctrl+Enter`). In the transcript, steering messages read
-    "Read before the next step" and held ones "Sends when this turn ends";
-    the island counts the held ones. Stopping, or a turn that fails, returns
-    held messages to the composer. They are lost on reload.
+    "Read before the next step" and held ones "Sends when this turn ends".
+    Stopping, or a turn that fails, returns held messages to the composer.
+    They are lost on reload.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits. Read
   results and file-change diffs keep line numbers visible while scrolling

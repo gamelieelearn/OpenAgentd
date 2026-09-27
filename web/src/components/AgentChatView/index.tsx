@@ -301,7 +301,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     showTodos,
     showMobileActions,
     handleWorkspaceFiles,
-    handleReviewChanges,
     handleCodingSidebarToggle,
     handleOpenWorkspaceDialog,
     handleCodingFileSelect,
@@ -755,7 +754,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             revertedMessages={leadRevertedMessages}
             onRedo={() => { void handleSlashCommand('redo') }}
             onRedoAll={() => { void handleSlashCommand('redo-all') }}
-            onReviewChanges={isChatWorkspace ? undefined : handleReviewChanges}
           />
         ) : null}
         </main>

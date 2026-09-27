@@ -51,7 +51,7 @@ const STORAGE_KEY = 'oa-input-position'
 afterEach(cleanup)
 beforeEach(() => {
   localStorage.clear()
-  useAgentStore.setState({ _pendingMessages: [], isAgentWorking: false })
+  useAgentStore.setState({ _pendingMessages: [] })
   useTranscriptFollowStore.setState({ unseen: null, jumpToLatest: null })
   mockIsMobile = false
 })
@@ -189,13 +189,21 @@ describe('FloatingInputComposer', () => {
     expect(textarea.getAttribute('placeholder')).toBe('Ask the team…')
   })
 
-  it('collapses to the status island, with Stop, while the agent works', () => {
-    useAgentStore.setState({ isAgentWorking: true, leadName: null, agentStreams: {} })
+  it('collapses to Attach, Expand and Send', () => {
+    render(<Harness />)
+
+    expect(screen.getByRole('button', { name: 'Attach file' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeTruthy()
+    expect(screen.queryByText('Code')).toBeNull()
+  })
+
+  it('keeps the collapsed strip available while streaming', () => {
     render(<Harness isStreaming onStop={() => {}} />)
 
     const textarea = screen.getByLabelText('Message input')
     expect(textarea.getAttribute('disabled')).not.toBeNull()
-    expect(screen.queryByRole('button', { name: 'Attach file' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Attach file' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Stop generation' })).toBeTruthy()
   })
