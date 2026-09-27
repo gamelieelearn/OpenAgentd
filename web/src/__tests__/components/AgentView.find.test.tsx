@@ -38,4 +38,30 @@ describe('AgentView — transcript find', () => {
     expect(container.querySelector('[class*="ring-1"]')).toBeNull()
     expect(marks.some((mark) => mark.closest('[data-find-block="tool1"]'))).toBe(false)
   })
+
+  it('reaches a match inside a folded tool run', () => {
+    const read = (id: string, path: string): ContentBlock => ({
+      id, type: 'tool', content: '', toolName: 'read', toolArgs: JSON.stringify({ path }), toolDone: true, toolResult: 'ok',
+    })
+    const { container } = render(
+      <AgentView
+        blocks={[
+          { id: 'u1', type: 'user', content: 'Check it' },
+          read('r1', 'a.ts'),
+          { id: 'th1', type: 'thinking', content: 'The needle is here' },
+          read('r2', 'b.ts'),
+          { id: 'a1', type: 'text', content: 'All good' },
+        ]}
+        currentBlocks={[]}
+        isWorking={false}
+        findOpen
+        findQuery="needle"
+        findActiveIndex={0}
+      />,
+    )
+
+    const marks = [...container.querySelectorAll('mark[data-transcript-find]')]
+    expect(marks).toHaveLength(1)
+    expect(marks[0]?.closest('[data-find-block="th1"]')).not.toBeNull()
+  })
 })

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { useContext } from "react"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AssistantTurn, AssistantTurnFooter } from "@/components/AssistantTurnFooter"
 import { PlanActionContext } from "@/utils/markdown-plan"
@@ -242,5 +242,61 @@ describe("AssistantTurn — onStartImplementing CTA", () => {
     )
 
     expect(screen.queryByTestId("plan-action-btn")).toBeNull()
+  })
+})
+
+describe("AssistantTurn — folded tool runs", () => {
+  const read = (id: string, path: string, done = true): ContentBlock => ({
+    id, type: "tool", content: "", toolName: "read", toolArgs: JSON.stringify({ path }), toolDone: done, toolResult: done ? "ok" : undefined,
+  })
+  const blocks: ContentBlock[] = [
+    { id: "intro", type: "text", content: "Looking around." },
+    read("r1", "a.ts"),
+    { id: "th", type: "thinking", content: "Hmm" },
+    read("r2", "b.ts"),
+    read("r3", "c.ts"),
+    { id: "answer", type: "text", content: "Done." },
+  ]
+
+  function renderTurn(turnBlocks: ContentBlock[], opts: { open?: boolean; findHitBlockIds?: Set<string> } = {}) {
+    return render(
+      <AssistantTurn
+        blocks={turnBlocks}
+        startIndex={0}
+        finalizedCount={turnBlocks.length}
+        isWorking={opts.open ?? false}
+        isTrailingTurn
+        totalBlocks={turnBlocks.length}
+        findHitBlockIds={opts.findHitBlockIds}
+        renderBlock={({ block }) => <p data-testid={`row-${block.id}`}>{block.id}</p>}
+      />,
+    )
+  }
+
+  it("folds a finished run into one summary row that opens on click", () => {
+    renderTurn(blocks)
+
+    const toggle = screen.getByRole("button", { name: /Read 3 files/ })
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+    expect(screen.queryByTestId("row-r1")).toBeNull()
+    expect(screen.getByTestId("row-intro")).toBeTruthy()
+    expect(screen.getByTestId("row-answer")).toBeTruthy()
+
+    fireEvent.click(toggle)
+    expect(screen.getByTestId("row-r1")).toBeTruthy()
+    expect(screen.getByTestId("row-th")).toBeTruthy()
+  })
+
+  it("keeps the call in flight visible below the group while the turn runs", () => {
+    renderTurn([read("r1", "a.ts"), read("r2", "b.ts"), read("r3", "c.ts"), read("r4", "d.ts", false)], { open: true })
+
+    expect(screen.getByRole("button", { name: /Read 3 files/ })).toBeTruthy()
+    expect(screen.getByTestId("row-r4")).toBeTruthy()
+  })
+
+  it("opens a group that holds a transcript-find match", () => {
+    renderTurn(blocks, { findHitBlockIds: new Set(["th"]) })
+
+    expect(screen.getByTestId("row-th")).toBeTruthy()
   })
 })

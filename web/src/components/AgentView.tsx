@@ -607,6 +607,7 @@ export function AgentView({
                       size="roomy"
                       onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
+                     findHitBlockIds={findOpen ? findHitBlockIds : undefined}
                       renderBlock={({ block, isStreaming }) => (
                        <div
                          data-find-block={isTranscriptFindableBlock(block.type) ? block.id : undefined}
