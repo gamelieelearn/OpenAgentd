@@ -9,7 +9,7 @@
  */
 import type { ContentBlock } from '@/api/types'
 
-import { parsePatchText } from './diffUtils'
+import { parseDiffMeta, parsePatchText, type FileDiff } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 
 const MIN_GROUP_TOOLS = 2
@@ -45,8 +45,13 @@ export interface PatchFileStat {
   deletions: number
 }
 
+export interface TurnFileChange extends PatchFileStat {
+  /** The turn's edits to this file, oldest first, as its tool rows show them. */
+  diffs: FileDiff[]
+}
+
 export interface TurnChangeSummary {
-  files: PatchFileStat[]
+  files: TurnFileChange[]
   additions: number
   deletions: number
 }
@@ -61,32 +66,45 @@ function parseArgs(args: string | undefined): Record<string, unknown> | null {
   }
 }
 
-/** Files a ``patch`` call touches, each with its own line counts. */
-export function patchFileStats(args: string | undefined): PatchFileStat[] {
+function patchText(args: string | undefined): string | null {
   const patchText = parseArgs(args)?.patch_text
-  if (typeof patchText !== 'string') return []
-  return parsePatchText(patchText).map((diff) => ({
+  return typeof patchText === 'string' ? patchText : null
+}
+
+function diffStat(diff: FileDiff): PatchFileStat {
+  return {
     path: diff.moveTo ?? diff.path,
     kind: diff.kind,
     additions: diff.lines.filter((line) => line.type === 'added').length,
     deletions: diff.lines.filter((line) => line.type === 'removed').length,
-  }))
+  }
+}
+
+/** Files a ``patch`` call touches, each with its own line counts. */
+export function patchFileStats(args: string | undefined): PatchFileStat[] {
+  const text = patchText(args)
+  return text === null ? [] : parsePatchText(text).map(diffStat)
 }
 
 /** Every file the turn's successful ``patch`` calls touched, merged by path. */
 export function summarizeTurnChanges(blocks: ContentBlock[]): TurnChangeSummary {
-  const byPath = new Map<string, PatchFileStat>()
+  const byPath = new Map<string, TurnFileChange>()
   for (const block of blocks) {
     if (block.type !== 'tool' || block.toolName !== 'patch') continue
     if (!block.toolDone || isFailedResult(block.toolResult)) continue
-    for (const stat of patchFileStats(block.toolArgs)) {
+    const text = patchText(block.toolArgs)
+    if (text === null) continue
+    // The result's meta carries each hunk's real line numbers.
+    for (const diff of parsePatchText(text, parseDiffMeta(block.toolResult))) {
+      const stat = diffStat(diff)
       const prev = byPath.get(stat.path)
       if (!prev) {
-        byPath.set(stat.path, { ...stat })
+        byPath.set(stat.path, { ...stat, diffs: [diff] })
         continue
       }
       prev.additions += stat.additions
       prev.deletions += stat.deletions
+      prev.diffs.push(diff)
       // A file created this turn stays "new" through later edits; a delete wins.
       prev.kind = stat.kind === 'delete' ? 'delete' : prev.kind === 'add' ? 'add' : stat.kind
     }

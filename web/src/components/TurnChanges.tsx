@@ -2,11 +2,16 @@
  * TurnChanges — the files a finished turn edited, as a section card.
  *
  * The edits are spread across folded tool rows by the time the turn ends, so
- * this is the one place to see what changed and open it. Deleted files are
- * listed but not openable.
+ * this is the one place to review them: a row opens that file's diffs from
+ * this turn (not the working tree's, which later turns may have moved on),
+ * and the header opens them all. Deleted files are listed but not openable.
  */
 import { useState } from 'react'
+import { ChevronRight, FileText } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { FileDiffBody } from '@/components/ToolCall/DiffView'
 import type { TurnChangeSummary } from '@/components/ToolCall/grouping'
 
 const VISIBLE_FILES = 5
@@ -30,26 +35,50 @@ export function TurnChanges({ changes, onOpenFile }: {
   onOpenFile?: (path: string) => void
 }) {
   const [showAll, setShowAll] = useState(false)
+  const [openPaths, setOpenPaths] = useState<ReadonlySet<string>>(() => new Set())
   if (changes.files.length === 0) return null
 
   const files = showAll ? changes.files : changes.files.slice(0, VISIBLE_FILES)
   const hidden = changes.files.length - files.length
   const count = changes.files.length
+  const reviewable = changes.files.filter((file) => file.kind !== 'delete')
+  const allOpen = reviewable.length > 0 && reviewable.every((file) => openPaths.has(file.path))
+
+  const toggleFile = (path: string) => setOpenPaths((prev) => {
+    const next = new Set(prev)
+    if (!next.delete(path)) next.add(path)
+    return next
+  })
+  const toggleAll = () => {
+    if (allOpen) {
+      setOpenPaths(new Set())
+      return
+    }
+    setShowAll(true)
+    setOpenPaths(new Set(reviewable.map((file) => file.path)))
+  }
 
   return (
     <section
       aria-label="Files changed in this turn"
       className="my-2 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)"
     >
-      <header className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-key) px-3 py-1">
+      <button
+        type="button"
+        onClick={toggleAll}
+        disabled={reviewable.length === 0}
+        aria-expanded={allOpen}
+        className="flex w-full items-center gap-2 border-b border-(--color-border) bg-(--bg-key) px-3 py-1 text-left transition-colors duration-(--motion-instant) enabled:hover:bg-(--bg-key)/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)"
+      >
         <span className="text-[11px] font-semibold tracking-wider text-(--color-text-muted) uppercase">
           Changed {count} {count === 1 ? 'file' : 'files'}
         </span>
         <LineStats additions={changes.additions} deletions={changes.deletions} />
-      </header>
+      </button>
       <ul className="divide-y divide-(--color-border-subtle)">
         {files.map((file) => {
           const { dir, name } = splitPath(file.path)
+          const open = openPaths.has(file.path)
           const body = (
             <>
               <span className="flex min-w-0 font-mono">
@@ -65,19 +94,53 @@ export function TurnChanges({ changes, onOpenFile }: {
             </>
           )
           const rowClass = 'flex h-(--spacing-list-row) w-full min-w-0 items-center gap-2 px-3 text-left text-xs'
+          if (file.kind === 'delete') {
+            return <li key={file.path}><div className={rowClass}>{body}</div></li>
+          }
           return (
             <li key={file.path}>
-              {onOpenFile && file.kind !== 'delete' ? (
+              <div className="flex min-w-0 items-center pr-1">
                 <button
                   type="button"
-                  onClick={() => onOpenFile(file.path)}
-                  aria-label={`Open ${file.path}`}
-                  className={`${rowClass} transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)`}
+                  onClick={() => toggleFile(file.path)}
+                  aria-expanded={open}
+                  aria-label={`Changes to ${file.path}`}
+                  className={`${rowClass} min-w-0 flex-1 transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--focus-ring)`}
                 >
                   {body}
+                  <ChevronRight
+                    size={12}
+                    aria-hidden="true"
+                    className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ${open ? 'rotate-90' : ''}`}
+                  />
                 </button>
-              ) : (
-                <div className={rowClass}>{body}</div>
+                {onOpenFile && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button variant="ghost" size="icon-xs" onClick={() => onOpenFile(file.path)} aria-label={`Open ${file.path}`}>
+                          <FileText aria-hidden="true" />
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>Open file</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+              {open && (
+                <div className="max-h-80 touch-pan-y overflow-y-auto overscroll-contain border-t border-(--color-border-subtle) bg-(--bg-input) font-mono text-xs leading-relaxed">
+                  {file.diffs.map((diff, index) => (
+                    <div key={index} className={index > 0 ? 'border-t border-dashed border-(--color-border)' : undefined}>
+                      <FileDiffBody
+                        kind={diff.kind}
+                        moveTo={diff.moveTo}
+                        lines={diff.lines}
+                        oldStart={diff.hunkStarts?.[0]?.oldStart ?? 1}
+                        newStart={diff.hunkStarts?.[0]?.newStart ?? 1}
+                      />
+                    </div>
+                  ))}
+                </div>
               )}
             </li>
           )

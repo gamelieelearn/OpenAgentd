@@ -4,10 +4,16 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { TurnChanges } from '@/components/TurnChanges'
+import type { FileDiff } from '@/components/ToolCall/diffUtils'
 
 afterEach(cleanup)
 
-const file = (path: string, kind: 'add' | 'update' | 'delete' = 'update', additions = 1, deletions = 0) => ({ path, kind, additions, deletions })
+const file = (path: string, kind: 'add' | 'update' | 'delete' = 'update', additions = 1, deletions = 0, diffs: FileDiff[] = []) => ({ path, kind, additions, deletions, diffs })
+const edit = (path: string, removed: string, added: string): FileDiff => ({
+  path,
+  kind: 'update',
+  lines: [{ type: 'removed', value: removed }, { type: 'added', value: added }],
+})
 
 describe('TurnChanges', () => {
   it('titles the card with the file count and line totals', () => {
@@ -19,7 +25,44 @@ describe('TurnChanges', () => {
     expect(card.textContent).toContain('-3')
   })
 
-  it('opens a changed file, but not a deleted one', () => {
+  it("shows a file's diff from this turn when its row is opened", () => {
+    render(
+      <TurnChanges
+        changes={{ files: [file('src/a.ts', 'update', 2, 2, [edit('src/a.ts', 'old one', 'new one'), edit('src/a.ts', 'old two', 'new two')])], additions: 2, deletions: 2 }}
+      />,
+    )
+
+    const row = screen.getByRole('button', { name: 'Changes to src/a.ts' })
+    expect(row.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText('new one')).toBeNull()
+
+    fireEvent.click(row)
+    expect(row.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByText('old one')).toBeTruthy()
+    expect(screen.getByText('new two')).toBeTruthy()
+
+    fireEvent.click(row)
+    expect(screen.queryByText('new one')).toBeNull()
+  })
+
+  it('opens every diff from the card header', () => {
+    render(
+      <TurnChanges
+        changes={{ files: [file('a.ts', 'update', 1, 1, [edit('a.ts', 'a-', 'a+')]), file('b.ts', 'update', 1, 1, [edit('b.ts', 'b-', 'b+')])], additions: 2, deletions: 2 }}
+      />,
+    )
+
+    const header = screen.getByRole('button', { name: /Changed 2 files/ })
+    fireEvent.click(header)
+    expect(header.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByText('a+')).toBeTruthy()
+    expect(screen.getByText('b+')).toBeTruthy()
+
+    fireEvent.click(header)
+    expect(screen.queryByText('a+')).toBeNull()
+  })
+
+  it('opens a changed file from its own button, but not a deleted one', () => {
     const onOpenFile = mock(() => {})
     render(
       <TurnChanges
@@ -28,7 +71,7 @@ describe('TurnChanges', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /Open src\/a\.ts/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open src/a.ts' }))
     expect(onOpenFile).toHaveBeenCalledWith('src/a.ts')
     expect(screen.queryByRole('button', { name: /gone\.ts/ })).toBeNull()
     expect(screen.getByText('deleted')).toBeTruthy()
