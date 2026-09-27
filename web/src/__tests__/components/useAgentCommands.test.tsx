@@ -24,10 +24,14 @@ import { renderHook, cleanup } from "@testing-library/react"
 import { useAgentCommands } from "@/components/AgentChatView/useAgentCommands"
 import { useSettingsStore } from "@/stores/useSettingsStore"
 import { useUIStore } from "@/stores/useUIStore"
+import { useTranscriptStore } from "@/stores/useTranscriptStore"
 import { APP_EVENTS } from "@/lib/app-events"
 import type { Command } from "@/components/CommandPalette"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  useTranscriptStore.setState({ readerMode: false, density: "comfortable", fontSize: 14 })
+})
 
 /** Build a fully-populated args object with sensible defaults. */
 function makeArgs(overrides: Partial<Parameters<typeof useAgentCommands>[0]> = {}) {
@@ -192,5 +196,51 @@ describe("useAgentCommands — navigation", () => {
     byId(result.current, "go-telemetry").action()
     expect(useUIStore.getState().telemetryOpen).toBe(true)
     useUIStore.getState().closeTelemetry()
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Transcript view commands
+// ════════════════════════════════════════════════════════════════════════════
+describe("useAgentCommands — transcript view", () => {
+  it("turns reader mode on, then offers to turn it off", () => {
+    const { result, rerender } = renderHook(() => useAgentCommands(makeArgs()))
+    expect(byId(result.current, "toggle-reader-mode").label).toBe("Turn On Reader Mode")
+
+    byId(result.current, "toggle-reader-mode").action()
+    rerender()
+
+    expect(useTranscriptStore.getState().readerMode).toBe(true)
+    expect(byId(result.current, "toggle-reader-mode").label).toBe("Turn Off Reader Mode")
+  })
+
+  it("lists the densities on a page, marks the current one, and applies a choice", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    const page = byId(result.current, "transcript-density").page
+
+    expect(page?.commands.map((c) => c.label)).toEqual(["Compact", "Comfortable", "Relaxed"])
+    expect(page?.commands.map((c) => c.description)).toEqual([undefined, "Current", undefined])
+    page?.commands[0].action()
+    expect(useTranscriptStore.getState().density).toBe("compact")
+  })
+
+  it("steps the text size, and offers a reset only once it has changed", () => {
+    const { result, rerender } = renderHook(() => useAgentCommands(makeArgs()))
+    expect(result.current.some((c) => c.id === "transcript-text-reset")).toBe(false)
+
+    byId(result.current, "transcript-text-larger").action()
+    rerender()
+
+    expect(useTranscriptStore.getState().fontSize).toBe(15)
+    byId(result.current, "transcript-text-reset").action()
+    expect(useTranscriptStore.getState().fontSize).toBe(14)
+  })
+
+  it("leaves out the step that would go past the largest size", () => {
+    useTranscriptStore.setState({ fontSize: 20 })
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+
+    expect(result.current.some((c) => c.id === "transcript-text-larger")).toBe(false)
+    expect(byId(result.current, "transcript-text-smaller").description).toBe("Now 20px")
   })
 })
