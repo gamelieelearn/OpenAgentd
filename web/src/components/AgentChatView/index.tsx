@@ -745,11 +745,8 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             isStreaming={isAgentWorking}
             disabled={isCodingSessionLoading}
             placeholder={
-              isAgentWorking
-                ? 'Agent working… type to interrupt'
-                : isChatWorkspace
-                  ? 'Ask anything…'
-                  : `Coding in ${workspaceName}`
+              // While a turn runs the composer shows its own queue/stop hint.
+              isChatWorkspace ? 'Ask anything…' : `Coding in ${workspaceName}`
             }
             capabilities={leadCapabilities}
             // A switch requested mid-turn is queued server-side, so the toggle

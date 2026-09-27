@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer.mentions'
 import { MentionOverlay } from './InputComposer.overlay'
-import { CHAR_WARN_THRESHOLD, findActiveSnippet } from './InputComposer.helpers'
+import { findActiveSnippet } from './InputComposer.helpers'
 import { InputComposerSuggestions } from './InputComposer.suggestions'
 import { useInputComposerSuggestionEngine } from './InputComposer.suggestionEngine'
 import { MAX_TEXTAREA_HEIGHT, useTextareaAutosize } from './InputComposer.autosize'
@@ -607,8 +607,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
   const canSend = hasText && !disabled
   const canStop = isStreaming && !disabled && onStop != null
-  const charCount = value.length
-  const showCharCount = charCount > CHAR_WARN_THRESHOLD
 
   // Surface "has uncommitted content" to the parent so a minimized bar
   // can re-expand when the user attaches a file via the slim strip.
@@ -687,14 +685,20 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
 
 
+  // DESIGN.md `button-send`: the one inverted surface, a full pill. Stop takes
+  // the same slot and shape while a turn runs — neutral ink, not an error red.
+  const sendSlotClass =
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7'
+  const sendPillClass = 'border-(--bg-send) bg-(--bg-send) text-(--color-text-on-accent) hover:opacity-90'
+
   const sendOrStopEl = canStop && !hasText ? (
     <button
       type="button"
       onClick={(e) => { stopClick(e); onStop?.() }}
       aria-label="Stop generation"
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-error) bg-(--color-error) text-(--bg-page) transition duration-100 hover:opacity-90 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7"
+      className={cn(sendSlotClass, sendPillClass)}
     >
-      <Square size={12} fill="currentColor" />
+      <Square size={10} fill="currentColor" aria-hidden="true" />
     </button>
   ) : (
     <button
@@ -705,14 +709,13 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       }}
       disabled={!canSend}
       aria-label="Send message"
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7 ${
+      className={cn(
+        sendSlotClass,
+        'disabled:cursor-not-allowed disabled:opacity-50',
         canSend
-          // When there's something to send, promote the button to an accent
-          // fill so the primary action reads clearly — a small but meaningful
-          // clarity win over the flat grey it always was.
-          ? 'border-(--color-accent) bg-(--color-accent) text-(--bg-page) hover:opacity-90'
-          : 'border-(--color-border) bg-(--bg-card) text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)'
-      }`}
+          ? sendPillClass
+          : 'border-(--color-border) bg-(--bg-card) text-(--color-text-2)',
+      )}
     >
       {disabled && !minimized ? (
         <Loader2 size={14} className="animate-spin" aria-hidden="true" />
@@ -857,15 +860,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       >
         {messageSlot}
       </div>
-      {!minimized && showCharCount && (
-        <span
-          className={`shrink-0 font-mono text-xs ${
-            charCount > 2000 ? 'text-(--color-error)' : 'text-(--color-text-muted)'
-          }`}
-        >
-          {charCount}
-        </span>
-      )}
       {/* Spacer pushes Send to the right edge of the action-button row. */}
       {!minimized && <div className="flex-1" />}
       {sendOrStopEl}
