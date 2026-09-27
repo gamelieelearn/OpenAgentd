@@ -578,6 +578,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             mobileOpen={mobileSidebarOpen}
             mobileDragOffset={sidebarDragOffset}
             onMobileClose={() => setMobileSidebarOpen(false)}
+            onNewSession={handleNewSession}
         />
 
         <div ref={centerRef} className="relative flex min-w-0 flex-1 overflow-hidden">

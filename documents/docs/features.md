@@ -753,6 +753,9 @@ agent against it.
   can be deleted from the sidebar with instant cache pruning `[v2.17.0]`, falling back cleanly to the
   parent lead session, and opening one shows a read-only banner with a
   **Return to Lead** action.
+- **New session button** `[v3.0.0]` — the top of the coding sidebar has a
+  **New session** row with its shortcut (`⌘N` / `Ctrl+N`) that starts a
+  session in the current workspace.
 - **Session status and unread marks in the sidebar** `[v3.0.0]` — each session
   row has one status slot: `!` while it waits for your answer, a spinner while
   it runs, and an accent dot when a turn ended while you were in another

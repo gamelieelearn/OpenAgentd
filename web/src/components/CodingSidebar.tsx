@@ -142,6 +142,8 @@ interface CodingSidebarProps {
   mobileDragOffset?: number | null
   /** Mobile only: called when the drawer should close (backdrop tap, navigation). */
   onMobileClose?: () => void
+  /** Start a session in the current workspace (the same action as ⌘N). */
+  onNewSession?: () => void
 }
 
 async function pickWorkspaceDirectory(): Promise<string | null> {
@@ -164,6 +166,7 @@ export function CodingSidebar({
   mobileOpen = false,
   mobileDragOffset = null,
   onMobileClose,
+  onNewSession,
 }: CodingSidebarProps) {
   const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
@@ -691,6 +694,24 @@ export function CodingSidebar({
       }
     >
       {!isMobile && !desktopCollapsed && <PanelResizeHandle edge="right" />}
+
+      {onNewSession && workspace && (
+        <button
+          type="button"
+          onClick={() => {
+            onNewSession()
+            onMobileClose?.()
+          }}
+          aria-label="New session"
+          className="mx-1.5 mt-1.5 flex h-(--spacing-list-row) shrink-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs font-medium text-(--color-text-2) transition-colors hover:bg-(--bg-key)/40 hover:text-(--color-text)"
+        >
+          <Plus size={12} className="shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">New session</span>
+          <kbd className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 font-mono text-[11px] leading-4 text-(--color-text-subtle) pointer-coarse:hidden">
+            {shortcutLabel(APP_SHORTCUTS.newSession, os)}
+          </kbd>
+        </button>
+      )}
 
       <NeedsYouSection
         currentSessionId={currentSessionId}
