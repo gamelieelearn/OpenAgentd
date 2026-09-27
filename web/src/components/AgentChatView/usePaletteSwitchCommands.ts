@@ -1,7 +1,7 @@
 /**
  * Wires ``buildSwitchCommands`` to live data and to the code paths the
- * sidebar (session / workspace switch), Session Settings (model), and the
- * composer's mode toggle already use. The session and workspace-tree queries
+ * sidebar (session / workspace switch) and the composer's mode toggle
+ * already use. The session and workspace-tree queries
  * share their keys with the sidebar, so this adds no requests on desktop.
  */
 import { useMemo } from 'react'
@@ -10,7 +10,6 @@ import { useNavigate } from '@tanstack/react-router'
 import { getCodingWorkspaceTree } from '@/api/client'
 import { queryKeys } from '@/queries'
 import { useSessionsQuery } from '@/queries/useSessionsQuery'
-import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { applySessionSelection } from '../CodingSidebar.sessions'
@@ -23,11 +22,9 @@ const WORKSPACE_TREE_STALE_MS = 30_000
 export function usePaletteSwitchCommands({
   workspace,
   sessionId,
-  defaultModel,
 }: {
   workspace: string | null
   sessionId: string | null
-  defaultModel: string | null
 }): Command[] {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -37,9 +34,6 @@ export function usePaletteSwitchCommands({
     queryFn: getCodingWorkspaceTree,
     staleTime: WORKSPACE_TREE_STALE_MS,
   })
-  const { data: registry } = useRegistryQuery()
-  const sessionModel = useAgentStore((s) => s.sessionModel)
-  const sessionThinkingLevel = useAgentStore((s) => s.sessionThinkingLevel)
   const interactionMode = useAgentStore((s) => s.sessionPendingInteractionMode ?? s.sessionInteractionMode)
 
   return useMemo(() => buildSwitchCommands(
@@ -48,10 +42,6 @@ export function usePaletteSwitchCommands({
       currentWorkspace: workspace,
       sessions: sessionPages?.pages.flatMap((page) => page.data) ?? [],
       tree,
-      models: registry?.models ?? [],
-      defaultModel,
-      sessionModel,
-      sessionThinkingLevel,
       interactionMode,
     },
     {
@@ -73,8 +63,7 @@ export function usePaletteSwitchCommands({
           })
         })
       },
-      setModel: (model, thinkingLevel) => useAgentStore.getState().setSessionModelSettings(model, thinkingLevel),
       setInteractionMode: (mode) => { void useAgentStore.getState().setSessionInteractionMode(mode) },
     },
-  ), [defaultModel, interactionMode, navigate, queryClient, registry?.models, sessionId, sessionModel, sessionPages, sessionThinkingLevel, tree, workspace])
+  ), [interactionMode, navigate, queryClient, sessionId, sessionPages, tree, workspace])
 }

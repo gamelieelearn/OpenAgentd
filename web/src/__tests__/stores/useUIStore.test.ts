@@ -7,7 +7,6 @@ function resetUIStore(): void {
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
     paletteOpen: false,
-    palettePage: null,
     quickOpenOpen: false,
     telemetryOpen: false,
   })
@@ -80,15 +79,5 @@ describe('useUIStore utility modals', () => {
     expect(useUIStore.getState().telemetryOpen).toBe(true)
     useUIStore.getState().toggleTelemetry()
     expect(useUIStore.getState().telemetryOpen).toBe(false)
-  })
-
-  it('openPalette can land on one of its pages, and the next toggle starts at the root', () => {
-    useUIStore.getState().toggleScheduler()
-    useUIStore.getState().openPalette('change-model')
-    expect(useUIStore.getState()).toMatchObject({ paletteOpen: true, palettePage: 'change-model', schedulerOpen: false })
-
-    useUIStore.getState().closePalette()
-    useUIStore.getState().togglePalette()
-    expect(useUIStore.getState()).toMatchObject({ paletteOpen: true, palettePage: null })
   })
 })

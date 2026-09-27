@@ -1,19 +1,17 @@
 /**
  * Command palette entries that switch what the chat is pointed at: another
- * session, another workspace, another model, or the other interaction mode.
+ * session, another workspace, or the other interaction mode.
  *
  * Pure so the list is testable from plain query data; ``usePaletteSwitchCommands``
  * gathers the inputs and wires the handlers to the same code paths the
- * sidebar, Session Settings, and the composer's mode toggle use.
+ * sidebar and the composer's mode toggle use.
  */
 import type {
   CodingWorkspaceTreeResponse,
-  ModelCatalogEntry,
   SessionInteractionMode,
   SessionResponse,
 } from '@/api/types'
 import type { Command } from '../CommandPalette'
-import { modelOverrideFor } from '@/lib/thinking-levels'
 import { formatCompactRelative } from '@/utils/format'
 import { sameWorkspacePath, workspaceLabel } from '@/utils/workspace'
 
@@ -24,11 +22,6 @@ export interface SwitchCommandsInput {
   sessions: SessionResponse[]
   /** ``null`` until the workspace tree has loaded. */
   tree: CodingWorkspaceTreeResponse | null
-  models: ModelCatalogEntry[]
-  /** The lead agent's configured model. */
-  defaultModel: string | null
-  sessionModel: string | null
-  sessionThinkingLevel: string | null
   /** Effective mode: a queued switch counts as already chosen. */
   interactionMode: SessionInteractionMode
   now?: Date
@@ -37,14 +30,10 @@ export interface SwitchCommandsInput {
 export interface SwitchCommandHandlers {
   openSession: (session: SessionResponse) => void
   openWorkspace: (path: string) => void
-  setModel: (model: string | null, thinkingLevel: string | null) => void
   setInteractionMode: (mode: SessionInteractionMode) => void
 }
 
 const MODE_LABEL: Record<SessionInteractionMode, string> = { code: 'Code', plan: 'Plan' }
-
-/** The Change Model… page, which Switch model on an error card opens directly. */
-export const CHANGE_MODEL_COMMAND_ID = 'change-model'
 
 function sessionStatus(session: SessionResponse, now: Date): string {
   // ``needs_input`` implies ``running``, so it is checked first.
@@ -99,24 +88,6 @@ function workspaceCommands(input: SwitchCommandsInput, handlers: SwitchCommandHa
     }))
 }
 
-function modelCommands(input: SwitchCommandsInput, handlers: SwitchCommandHandlers): Command[] {
-  const current = input.sessionModel ?? input.defaultModel
-  // Same filter as Session Settings: image/video generators cannot chat.
-  const chatModels = input.models.filter((m) => !m.output_image && !m.output_video)
-  return chatModels.map((m) => ({
-    id: `model:${m.id}`,
-    group: m.provider,
-    label: m.model,
-    description: [m.id === input.defaultModel && 'Agent default', m.id === current && 'Current']
-      .filter(Boolean)
-      .join(' · ') || undefined,
-    action: () => {
-      const next = modelOverrideFor(m.id, chatModels, input.defaultModel, input.sessionThinkingLevel)
-      handlers.setModel(next.model, next.thinkingLevel)
-    },
-  }))
-}
-
 export function buildSwitchCommands(input: SwitchCommandsInput, handlers: SwitchCommandHandlers): Command[] {
   const now = input.now ?? new Date()
   const commands: Command[] = []
@@ -142,18 +113,6 @@ export function buildSwitchCommands(input: SwitchCommandsInput, handlers: Switch
       label: 'Switch Workspace…',
       description: 'Continue in another repository, worktree, or Chat',
       page: { placeholder: 'Search workspaces…', commands: workspaces },
-      action: noop,
-    })
-  }
-
-  const models = modelCommands(input, handlers)
-  if (models.length > 0) {
-    commands.push({
-      id: CHANGE_MODEL_COMMAND_ID,
-      group: 'Session',
-      label: 'Change Model…',
-      description: 'Applies from your next message',
-      page: { placeholder: 'Search models…', commands: models },
       action: noop,
     })
   }

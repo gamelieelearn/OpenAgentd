@@ -40,8 +40,6 @@ const MAX_FILE_ROWS = 30
 interface CommandPaletteProps {
   commands: Command[]
   onClose: () => void
-  /** Id of a command whose page to open on; the root list when it is absent. */
-  initialPage?: string | null
   /** @deprecated Use QuickOpen for file search. */
   workspaceFiles?: WorkspaceFileInfo[]
   /** @deprecated Use QuickOpen for file search. */
@@ -53,7 +51,6 @@ interface CommandPaletteProps {
 interface PaletteOverlayProps {
   commands: Command[]
   onClose: () => void
-  initialPage?: string | null
   /** Raw workspace files (coding mode only). Filtered + capped inside. */
   workspaceFiles?: WorkspaceFileInfo[]
   /**
@@ -87,24 +84,14 @@ export function QuickOpen({ workspaceFiles, filesTruncated = false, commands = [
   )
 }
 
-export function CommandPalette({ commands, onClose, initialPage, workspaceFiles, filesTruncated, onFileOpen }: CommandPaletteProps) {
-  return <PaletteOverlay commands={commands} initialPage={initialPage} workspaceFiles={workspaceFiles} filesTruncated={filesTruncated} onFileOpen={onFileOpen} onClose={onClose} />
+export function CommandPalette({ commands, onClose, workspaceFiles, filesTruncated, onFileOpen }: CommandPaletteProps) {
+  return <PaletteOverlay commands={commands} workspaceFiles={workspaceFiles} filesTruncated={filesTruncated} onFileOpen={onFileOpen} onClose={onClose} />
 }
 
-/** An open page; ``direct`` when the palette opened onto it, so Escape leaves. */
-type OpenPage = { title: string; page: CommandPage; direct?: boolean }
-
-function pageTitle(cmd: Command): string {
-  return cmd.label.replace(/…$/, '')
-}
-
-function PaletteOverlay({ commands, onClose, initialPage = null, workspaceFiles = [], filesTruncated = false, onFileOpen }: PaletteOverlayProps) {
+function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated = false, onFileOpen }: PaletteOverlayProps) {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [page, setPage] = useState<OpenPage | null>(() => {
-    const cmd = initialPage ? commands.find((c) => c.id === initialPage) : undefined
-    return cmd?.page ? { title: pageTitle(cmd), page: cmd.page, direct: true } : null
-  })
+  const [page, setPage] = useState<{ title: string; page: CommandPage } | null>(null)
   const updateDebouncedQuery = useDebouncedCallback(
     (val: string) => setDebouncedQuery(val),
     { wait: 60, key: 'command-palette-query' },
@@ -217,7 +204,7 @@ function PaletteOverlay({ commands, onClose, initialPage = null, workspaceFiles 
     el?.scrollIntoView({ block: 'nearest' })
   }, [activeIdx])
 
-  const showPage = useCallback((next: OpenPage | null) => {
+  const showPage = useCallback((next: { title: string; page: CommandPage } | null) => {
     setPage(next)
     setQuery('')
     setDebouncedQuery('')
@@ -228,7 +215,7 @@ function PaletteOverlay({ commands, onClose, initialPage = null, workspaceFiles 
   const runCmd = useCallback(
     (cmd: Command) => {
       if (cmd.page) {
-        showPage({ title: pageTitle(cmd), page: cmd.page })
+        showPage({ title: cmd.label.replace(/…$/, ''), page: cmd.page })
         return
       }
       onClose()
@@ -243,7 +230,7 @@ function PaletteOverlay({ commands, onClose, initialPage = null, workspaceFiles 
   )
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (page && ((e.key === 'Escape' && !page.direct) || (e.key === 'Backspace' && query === ''))) {
+    if (page && (e.key === 'Escape' || (e.key === 'Backspace' && query === ''))) {
       // Claims the key from the overlay's own Escape-to-close listener.
       e.preventDefault()
       showPage(null)

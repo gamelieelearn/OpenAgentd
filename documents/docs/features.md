@@ -182,9 +182,8 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Palette pages and switching** `[v3.0.0]` — the Command Palette gains
   Switch Session… (recent sessions in every workspace, with running and
   waiting-for-you status), Switch Workspace… (repositories, worktrees, and
-  Chat, most recently active first), Change Model… (applies from the next
-  message, keeping the thinking level when the model supports it), and a
-  Plan/Code mode switch. These open a nested list in place; Backspace on an
+  Chat, most recently active first), and a Plan/Code mode switch. The
+  switchers open a nested list in place; Backspace on an
   empty query or Escape steps back out. Typing `>` in Quick Open searches
   commands instead of files. The desktop app adds Reload Window, since `⌘R`
   no longer reloads.
@@ -434,7 +433,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     them back), both reachable from the keyboard. The latest answer offers
     Retry.
   - A failed turn ends in an error card with Retry and Switch model, which
-    opens Change Model… in the palette.
+    opens Session Settings.
   - A turn that changed files ends with "Changed N files +x −y"; each file
     expands to the diff that turn made.
   - Right-click a reply for Copy, Copy as Markdown, and Open Session as

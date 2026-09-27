@@ -19,8 +19,6 @@ interface AgentChatPanelsProps {
   schedulerOpen: boolean
   onCloseScheduler: () => void
   showPalette: boolean
-  /** Command id whose page the palette opens on. */
-  palettePage?: string | null
   paletteCommands: Command[]
   quickOpenOpen: boolean
   quickOpenWorkspaceFiles: WorkspaceFileInfo[]
@@ -44,7 +42,6 @@ export function AgentChatPanels({
   schedulerOpen,
   onCloseScheduler,
   showPalette,
-  palettePage,
   paletteCommands,
   quickOpenOpen,
   quickOpenWorkspaceFiles,
@@ -73,7 +70,7 @@ export function AgentChatPanels({
         onClose={onCloseScheduler}
       />
       {showPalette && (
-        <CommandPalette commands={paletteCommands} initialPage={palettePage} onClose={onClosePalette} />
+        <CommandPalette commands={paletteCommands} onClose={onClosePalette} />
       )}
       {quickOpenOpen && (
         <QuickOpen workspaceFiles={quickOpenWorkspaceFiles} filesTruncated={quickOpenFilesTruncated} commands={paletteCommands} onFileOpen={onQuickOpenFileOpen} onClose={onCloseQuickOpen} />

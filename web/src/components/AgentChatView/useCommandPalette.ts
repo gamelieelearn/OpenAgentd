@@ -30,8 +30,6 @@ export interface UseCommandPaletteArgs {
   workspace: string | null
   quickOpenOpen: boolean
   sessionIdState: string | null
-  /** Lead agent's configured model — Change Model… stores it as no override. */
-  defaultModel: string | null
   /** True while the review dock is mounted (``codingPanel !== null``). */
   codingPanelOpen: boolean
 
@@ -64,7 +62,6 @@ export function useCommandPalette({
   workspace,
   quickOpenOpen,
   sessionIdState,
-  defaultModel,
   codingPanelOpen,
   handleNewSession,
   handleWorkspaceFiles,
@@ -106,7 +103,7 @@ export function useCommandPalette({
     handleFindInTranscript,
     handleToggleDockMaximized: workspace && !isMobile ? handleToggleDockMaximized : undefined,
   })
-  const switchCommands = usePaletteSwitchCommands({ workspace, sessionId: sessionIdState, defaultModel })
+  const switchCommands = usePaletteSwitchCommands({ workspace, sessionId: sessionIdState })
   const paletteCommands = useMemo(() => [...agentCommands, ...switchCommands], [agentCommands, switchCommands])
 
   // ── Quick Open workspace file search ───────────────────────────────────────

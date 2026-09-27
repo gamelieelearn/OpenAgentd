@@ -263,7 +263,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   const schedulerOpen = useUIStore((s) => s.schedulerOpen)
   const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
   const paletteOpen = useUIStore((s) => s.paletteOpen)
-  const palettePage = useUIStore((s) => s.palettePage)
   const quickOpenOpen = useUIStore((s) => s.quickOpenOpen)
   const toggleScheduler = useUIStore((s) => s.toggleScheduler)
   const toggleAgentCapabilities = useUIStore((s) => s.toggleAgentCapabilities)
@@ -439,7 +438,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     workspace,
     quickOpenOpen,
     sessionIdState,
-    defaultModel: leadAgent?.model ?? null,
     codingPanelOpen: codingPanel !== null,
     handleNewSession,
     handleWorkspaceFiles,
@@ -822,7 +820,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         schedulerOpen={schedulerOpen}
         onCloseScheduler={closeScheduler}
         showPalette={paletteOpen}
-        palettePage={palettePage}
         paletteCommands={paletteCommands}
         quickOpenOpen={quickOpenOpen}
         quickOpenWorkspaceFiles={quickOpenWorkspaceFiles}

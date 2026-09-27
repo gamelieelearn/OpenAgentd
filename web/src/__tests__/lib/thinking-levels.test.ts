@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { ModelCatalogEntry } from '@/api/types'
-import { modelOverrideFor, supportedThinkingLevels } from '@/lib/thinking-levels'
+import { supportedThinkingLevels } from '@/lib/thinking-levels'
 
 function model(id: string, thinking_levels: string[]): ModelCatalogEntry {
   const [provider, name] = id.split(':')
@@ -17,19 +17,5 @@ describe('supportedThinkingLevels', () => {
   it('falls back to none when a model declares nothing', () => {
     expect(supportedThinkingLevels(models[1])).toEqual(['none'])
     expect(supportedThinkingLevels(undefined)).toEqual(['none'])
-  })
-})
-
-describe('modelOverrideFor', () => {
-  it('keeps the thinking level when the new model supports it', () => {
-    expect(modelOverrideFor('openai:gpt-5', models, null, 'high')).toEqual({ model: 'openai:gpt-5', thinkingLevel: 'high' })
-  })
-
-  it('drops a thinking level the new model cannot serve', () => {
-    expect(modelOverrideFor('zai:glm-4.6', models, null, 'high')).toEqual({ model: 'zai:glm-4.6', thinkingLevel: null })
-  })
-
-  it('stores the agent default as no override', () => {
-    expect(modelOverrideFor('openai:gpt-5', models, 'openai:gpt-5', null)).toEqual({ model: null, thinkingLevel: null })
   })
 })

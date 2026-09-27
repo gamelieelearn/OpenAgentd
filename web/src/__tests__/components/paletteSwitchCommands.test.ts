@@ -1,9 +1,9 @@
 /**
  * Palette "switch" commands — Switch Session…, Switch Workspace…,
- * Change Model…, and the Plan/Code toggle — built from query data.
+ * and the Plan/Code toggle — built from query data.
  */
 import { describe, expect, it, mock } from 'bun:test'
-import type { CodingWorkspaceTreeResponse, ModelCatalogEntry, SessionResponse } from '@/api/types'
+import type { CodingWorkspaceTreeResponse, SessionResponse } from '@/api/types'
 import type { Command } from '@/components/CommandPalette'
 import {
   buildSwitchCommands,
@@ -15,11 +15,6 @@ const NOW = new Date('2026-05-01T12:00:00Z')
 
 function session(id: string, overrides: Partial<SessionResponse> = {}): SessionResponse {
   return { id, title: id, agent_name: null, created_at: null, updated_at: '2026-05-01T11:00:00Z', workspace: '/repo/app', ...overrides }
-}
-
-function model(id: string, thinking_levels: string[] = []): ModelCatalogEntry {
-  const [provider, name] = id.split(':')
-  return { id, provider, model: name, vision: false, output_image: false, output_video: false, thinking_levels, summary_trigger_tokens: 0, fast_mode: false }
 }
 
 const tree: CodingWorkspaceTreeResponse = {
@@ -34,7 +29,6 @@ function build(overrides: Partial<SwitchCommandsInput> = {}) {
   const handlers: SwitchCommandHandlers = {
     openSession: mock(() => {}),
     openWorkspace: mock(() => {}),
-    setModel: mock(() => {}),
     setInteractionMode: mock(() => {}),
   }
   const input: SwitchCommandsInput = {
@@ -42,10 +36,6 @@ function build(overrides: Partial<SwitchCommandsInput> = {}) {
     currentWorkspace: '/repo/app',
     sessions: [],
     tree,
-    models: [],
-    defaultModel: null,
-    sessionModel: null,
-    sessionThinkingLevel: null,
     interactionMode: 'code',
     now: NOW,
     ...overrides,
@@ -111,34 +101,6 @@ describe('Switch Workspace…', () => {
   it('is omitted before the workspace tree has loaded', () => {
     const { commands } = build({ tree: null })
     expect(commands.find((c) => c.id === 'switch-workspace')).toBeUndefined()
-  })
-})
-
-describe('Change Model…', () => {
-  const models = [
-    model('openai:gpt-5', ['low', 'high']),
-    model('zai:glm-4.6'),
-    { ...model('openai:gpt-image'), output_image: true },
-  ]
-
-  it('lists chat models by provider and marks the default and current ones', () => {
-    const { commands } = build({ models, defaultModel: 'openai:gpt-5', sessionModel: 'zai:glm-4.6' })
-
-    const page = byId(commands, 'change-model').page!
-    expect(page.commands.map((c) => [c.group, c.label, c.description])).toEqual([
-      ['openai', 'gpt-5', 'Agent default'],
-      ['zai', 'glm-4.6', 'Current'],
-    ])
-  })
-
-  it('applies the same override rules as Session Settings', () => {
-    const { commands, handlers } = build({ models, defaultModel: 'openai:gpt-5', sessionModel: 'zai:glm-4.6', sessionThinkingLevel: 'high' })
-
-    const [gpt5] = byId(commands, 'change-model').page!.commands
-    gpt5.action()
-
-    // Back to the agent default: no model override; `high` is supported.
-    expect(handlers.setModel).toHaveBeenCalledWith(null, 'high')
   })
 })
 
