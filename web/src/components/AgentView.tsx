@@ -41,6 +41,7 @@ import { ErrorCard } from './AgentView/ErrorCard'
 import { PromptHeader } from './AgentView/PromptHeader'
 import { PROMPT_JUMP_MARGIN, currentPromptIndex, promptElements, promptJumpTarget } from './AgentView/prompt-nav'
 import { ReplyMenu } from './AgentView/ReplyMenu'
+import { FileRefContext, type FileRefOpener } from './FileRefLink'
 import { loadSessionMarkdown, replyMarkdown, sessionFileName, shouldOpenReplyMenu } from './AgentView/message-menu'
 import { FileLightbox, type FileLightboxItem } from './FileLightbox'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -240,6 +241,8 @@ interface AgentViewProps {
   emptyState?: React.ReactNode
   /** Open a mentioned workspace file in the coding workspace sidebar. */
   onMentionFileOpen?: (path: string) => void
+  /** Opens ``path:line`` references in replies and tool output. */
+  fileRefOpener?: FileRefOpener
   /** Callback to switch to Code mode and start implementation of a proposed plan. */
   onStartImplementing?: () => void
   /** Resend the latest prompt; offered under the latest finished answer. */
@@ -382,6 +385,7 @@ export function AgentView({
   lastError,
   emptyState,
   onMentionFileOpen,
+  fileRefOpener,
   onStartImplementing,
   onRetry,
   onSwitchModel,
@@ -723,6 +727,7 @@ export function AgentView({
   }, [attachedRef, clampedFindIndex, findOpen, findQuery, scrollRef])
 
   return (
+    <FileRefContext.Provider value={fileRefOpener ?? null}>
     <div className="relative flex min-h-0 flex-1 flex-col">
     {findOpen && (
       <TranscriptFind
@@ -908,5 +913,6 @@ export function AgentView({
     )}
     {sessionDoc && <FileLightbox items={[sessionDoc]} isOpen onClose={closeSessionDoc} />}
     </div>
+    </FileRefContext.Provider>
   )
 }

@@ -16,6 +16,7 @@ import { apiUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
 import { ImageLightbox } from '@/components/ImageLightbox'
 import { CodeBlock } from '@/components/CodeBlock'
+import { FileRefCode, MarkdownLink } from '@/components/FileRefLink'
 import { tokenizeCode } from '@/utils/code-highlight'
 import { MermaidBlock } from '@/utils/MermaidBlock'
 import { isVideoSrc } from '@/utils/workspace'
@@ -651,6 +652,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
           if (children.startsWith(MATH_BLOCK_SENTINEL)) {
             return <MathBlock math={children.slice(MATH_BLOCK_SENTINEL.length)} />
           }
+          return <FileRefCode {...props}>{children}</FileRefCode>
         }
         return <code {...props}>{children}</code>
       },
@@ -661,9 +663,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
       th: ({ children, ...props }: React.HTMLAttributes<HTMLTableCellElement>) => (
         <th {...props}>{renderCellWithBr(children)}</th>
       ),
-      a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-        <a {...props} target="_blank" rel="noopener noreferrer" />
-      ),
+      a: MarkdownLink,
       img: ({ src, alt, title }: React.ImgHTMLAttributes<HTMLImageElement>) => (
         <MarkdownImage
           rawSrc={typeof src === 'string' ? src : undefined}

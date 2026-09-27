@@ -19,6 +19,7 @@ import { AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AgentView } from '../AgentView'
+import type { FileRefOpener } from '../FileRefLink'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { CodingSidebar } from '../CodingSidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
@@ -46,6 +47,7 @@ import { type InputComposerHandle } from '../InputComposer'
 import { FloatingInputComposer } from '../FloatingInputComposer'
 import { AppFooter } from '../AppFooter'
 import { workspaceLabel } from '@/utils/workspace'
+import { workspaceRelativePath } from '@/utils/file-refs'
 import type {
   AgentCapabilities as AgentCapabilitiesType,
   ContentBlock,
@@ -82,6 +84,7 @@ const CodingWorkspacePanel = lazy(() =>
 interface ActiveAgentViewProps {
   emptyState?: React.ReactNode
   onMentionFileOpen?: (path: string) => void
+  fileRefOpener?: FileRefOpener
   onStartImplementing?: () => void
   onRetry?: () => void
   onSwitchModel?: () => void
@@ -97,6 +100,7 @@ interface ActiveAgentViewProps {
 const ActiveAgentView = memo(function ActiveAgentView({
   emptyState,
   onMentionFileOpen,
+  fileRefOpener,
   onStartImplementing,
   onRetry,
   onSwitchModel,
@@ -129,6 +133,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
       isError={activeStatus === 'error'}
       lastError={activeLastError}
       onMentionFileOpen={onMentionFileOpen}
+      fileRefOpener={fileRefOpener}
       emptyState={emptyState}
       onStartImplementing={onStartImplementing}
       onRetry={onRetry}
@@ -296,6 +301,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     handleOpenWorkspaceDialog,
     handleCodingFileSelect,
     handleMentionFileOpen,
+    handleFileRefOpen,
     closeMobileActionsMenu,
     handleSetShowMobileActions,
     handleToggleAgentCapabilities,
@@ -505,6 +511,13 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     if (effectiveWorkspace) void retryLatestPrompt(effectiveWorkspace)
   }, [effectiveWorkspace])
 
+  const fileRefOpener = useMemo<FileRefOpener | undefined>(() => (workspace
+    ? {
+        canOpen: (ref) => workspaceRelativePath(ref.path, workspace) !== null,
+        open: (ref) => void handleFileRefOpen(ref),
+      }
+    : undefined), [handleFileRefOpen, workspace])
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -632,6 +645,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           <div className="flex flex-1 flex-col min-h-0">
             <ActiveAgentView
               onMentionFileOpen={handleMentionFileOpen}
+              fileRefOpener={fileRefOpener}
               onStartImplementing={handleStartImplementing}
               onRetry={handleRetry}
               onSwitchModel={handleSwitchModel}
