@@ -3,6 +3,7 @@ import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
 import { InputComposer, type FileRef, type InputComposerHandle, type SlashCommand, type SnippetCommand } from './InputComposer'
 import { ComposerIsland } from './ComposerIsland'
+import { ComposerModelChip } from './ComposerModelChip'
 import { JumpToLatestChip } from './JumpToLatestChip'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -135,6 +136,10 @@ interface FloatingInputComposerProps {
   onValueChange?: (value: string) => void
   /** Session model, shown by the collapsed bar's status island. */
   model?: string | null
+  thinkingLevel?: string | null
+  fastMode?: boolean
+  /** Opens Session Settings from the model chip. */
+  onOpenSessionSettings?: () => void
   /** Input tokens against the auto-compact threshold. */
   context?: { used: number; limit: number } | null
   /** Opens the working-tree changes; offered after a turn edits files. */
@@ -153,7 +158,16 @@ interface FloatingInputComposerProps {
  */
 export const FloatingInputComposer = memo(
   forwardRef<InputComposerHandle, FloatingInputComposerProps>(
-    function FloatingInputComposer({ boundsRef, model, context, onReviewChanges, ...inputProps }, ref) {
+    function FloatingInputComposer({
+      boundsRef,
+      model,
+      thinkingLevel,
+      fastMode,
+      onOpenSessionSettings,
+      context,
+      onReviewChanges,
+      ...inputProps
+    }, ref) {
     const isMobile = useIsMobile()
     const dragControls = useDragControls()
     const panelRef = useRef<HTMLDivElement>(null)
@@ -529,6 +543,10 @@ export const FloatingInputComposer = memo(
       requestAnimationFrame(recomputeSuggestionPlacement)
     }, [recomputeSuggestionPlacement])
 
+    const modelChip = onOpenSessionSettings ? (
+      <ComposerModelChip model={model} thinkingLevel={thinkingLevel} fastMode={fastMode} onOpen={onOpenSessionSettings} />
+    ) : null
+
     // ── Mobile: static docked bar ────────────────────────────────────────────
     if (isMobile) {
       return (
@@ -556,6 +574,7 @@ export const FloatingInputComposer = memo(
             filesBelow={false}
             suggestionsBelow={false}
             {...inputProps}
+            leadingControls={modelChip}
             onValueChange={inputProps.onValueChange}
             onSuggestionsMenuChange={setSuggestionsOpen}
             onSubmit={handleSubmit}
@@ -620,6 +639,7 @@ export const FloatingInputComposer = memo(
             suggestionsBelow={renderSuggestionsBelow}
             minimized={effectiveMinimized}
             onUnminimize={expand}
+            leadingControls={modelChip}
             minimizedContent={
               <ComposerIsland
                 mode={inputProps.interactionMode ?? 'code'}
