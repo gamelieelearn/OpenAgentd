@@ -49,6 +49,23 @@ export function useActiveSessionsQuery() {
   })
 }
 
+const SEARCH_PAGE_SIZE = 30
+
+/**
+ * Sessions whose title contains ``query``, newest first (first page only).
+ * An older server ignores ``q`` and sends a normal page, so callers filter
+ * the rows they show.
+ */
+export function useSessionSearchQuery(query: string) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.session.sessions.search(query),
+    queryFn: ({ signal }) => listSessions(null, SEARCH_PAGE_SIZE, { query }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: () => undefined,
+    enabled: query.length > 0,
+  })
+}
+
 export function useUpdateSessionTitleMutation() {
   const queryClient = useQueryClient()
   return useMutation({

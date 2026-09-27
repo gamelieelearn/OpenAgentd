@@ -760,6 +760,11 @@ agent against it.
   sidebar row, **Edit title** in its menu, or a click on the session title in
   the desktop header turns the title into a text field. Enter or clicking away
   saves, Escape cancels, and the header and sidebar show the new title at once.
+- **Session search** `[v3.0.0]` — the search button in the Workspaces header,
+  or `⌘F` / `Ctrl+F` while focus is in the sidebar, swaps the tree for a search
+  field that matches session titles across every workspace, however old. Enter
+  opens the first match and Escape returns to the tree. `⌘F` anywhere else
+  still finds text in the transcript.
 - **Session status and unread marks in the sidebar** `[v3.0.0]` — each session
   row has one status slot: `!` while it waits for your answer, a spinner while
   it runs, and an accent dot when a turn ended while you were in another

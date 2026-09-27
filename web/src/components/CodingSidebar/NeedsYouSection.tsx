@@ -2,7 +2,7 @@ import type React from 'react'
 import type { SessionResponse } from '@/api/types'
 import { needsYouSessions } from '@/lib/active-sessions'
 import { useActiveSessionsQuery } from '@/queries/useSessionsQuery'
-import { SessionStatusMark } from './SessionStatusMark'
+import { CompactSessionRow } from './CompactSessionRow'
 
 /** Sessions stopped on a question, from every workspace, above the tree. */
 export function NeedsYouSection({
@@ -25,30 +25,17 @@ export function NeedsYouSection({
         <span className="tabular-nums text-(--color-warning)">{sessions.length}</span>
       </div>
       <ul className="max-h-48 space-y-px overflow-y-auto px-1.5">
-        {sessions.map((session) => {
-          const isCurrent = session.id === currentSessionId
-          const workspace = session.workspace ?? ''
-          return (
-            <li key={session.id}>
-              <button
-                type="button"
-                onClick={(event) => onSessionSelect(session, workspace, event)}
-                aria-current={isCurrent ? 'page' : undefined}
-                className={`flex h-(--spacing-list-row) w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs text-(--color-text) transition-colors ${
-                  isCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'
-                }`}
-              >
-                <SessionStatusMark status="needs_input" />
-                <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold' : 'font-medium'}`}>
-                  {session.title || 'Untitled'}
-                </span>
-                <span className="max-w-[40%] shrink-0 truncate font-mono text-[11px] text-(--color-text-subtle)">
-                  {workspaceName(workspace)}
-                </span>
-              </button>
-            </li>
-          )
-        })}
+        {sessions.map((session) => (
+          <li key={session.id}>
+            <CompactSessionRow
+              session={session}
+              status="needs_input"
+              isCurrent={session.id === currentSessionId}
+              workspaceName={workspaceName(session.workspace ?? '')}
+              onSelect={(event) => onSessionSelect(session, session.workspace ?? '', event)}
+            />
+          </li>
+        ))}
       </ul>
     </section>
   )

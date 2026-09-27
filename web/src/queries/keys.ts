@@ -14,6 +14,7 @@ export const queryKeys = {
       infinite: () => ['session', 'sessions', 'infinite'] as const,
       /** Running or waiting sessions across every workspace (one page). */
       active: () => ['session', 'sessions', 'active'] as const,
+      search: (query: string) => ['session', 'sessions', 'search', query] as const,
       workspace: (workspace: string) => ['session', 'sessions', 'workspace', workspace] as const,
       list: (offset: number, limit: number) =>
         ['session', 'sessions', 'list', offset, limit] as const,

@@ -3,7 +3,7 @@ import React from 'react'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
-import { useActiveSessionsQuery, useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
+import { useActiveSessionsQuery, useSessionSearchQuery, useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
 import { useAgentStore } from '@/stores/useAgentStore'
 
 const originalFetch = globalThis.fetch
@@ -31,6 +31,30 @@ describe('useActiveSessionsQuery', () => {
     const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://x')
     expect(url.pathname).toBe('/api/agent/sessions')
     expect(url.searchParams.get('active')).toBe('true')
+  })
+})
+
+describe('useSessionSearchQuery', () => {
+  it('searches titles on the server and stays idle without a query', async () => {
+    setApiBaseUrl('')
+    const fetchMock = mock(async (_input: unknown) => new Response(JSON.stringify({
+      data: [{ id: 'm1', title: 'Migration plan', agent_name: 'lead', created_at: null, updated_at: null }],
+      next_cursor: null,
+      has_more: false,
+    })))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children)
+
+    const idle = renderHook(() => useSessionSearchQuery(''), { wrapper })
+    expect(idle.result.current.fetchStatus).toBe('idle')
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    const { result } = renderHook(() => useSessionSearchQuery('migr'), { wrapper })
+    await waitFor(() => expect(result.current.data?.pages[0].data[0].id).toBe('m1'))
+    const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://x')
+    expect(url.searchParams.get('q')).toBe('migr')
   })
 })
 

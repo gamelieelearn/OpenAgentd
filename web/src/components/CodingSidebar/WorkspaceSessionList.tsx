@@ -8,7 +8,7 @@ import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { SessionStatusMark } from './SessionStatusMark'
+import { SessionStatusMark, sessionStatus } from './SessionStatusMark'
 
 function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
   return event.button === 0 && (event.metaKey || event.ctrlKey)
@@ -47,10 +47,8 @@ function WorkspaceSessionRowView({
   onSessionLongPress: (session: SessionResponse) => void
   onSessionContextActions: (session: SessionResponse, event: React.MouseEvent) => void
 }) {
-  const needsInput = session.needs_input === true
-  const isRunning = session.running === true && !needsInput
   const unread = useUnreadStore((state) => state.ids.includes(session.id))
-  const status = needsInput ? 'needs_input' : isRunning ? 'running' : unread ? 'unread' : 'idle'
+  const status = sessionStatus(session, unread)
   const sessionTitle = session.title || 'Untitled'
   const sessionDate = formatRelativeDate(session.created_at)
   const sessionAge = formatCompactRelative(session.updated_at ?? session.created_at)

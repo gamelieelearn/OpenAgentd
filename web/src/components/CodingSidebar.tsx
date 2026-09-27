@@ -18,7 +18,7 @@
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -51,10 +51,13 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Search,
   Settings,
   Trash2,
   X,
 } from 'lucide-react'
+import { APP_EVENTS } from '@/lib/app-events'
+import { SIDEBAR_FIND_SCOPE } from '@/lib/find-shortcut'
 import { useDeleteSessionMutation, useSessionsQuery, useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
@@ -123,6 +126,9 @@ import {
   shouldOpenSessionInNewWindow,
 } from './CodingSidebar.window'
 import { EASINGS } from '@/lib/motion'
+
+// Opened on demand; keeps the search and its debouncer out of the eager bundle.
+const SessionSearch = lazy(() => import('./CodingSidebar/SessionSearch').then((m) => ({ default: m.SessionSearch })))
 
 interface CodingSidebarProps {
   currentSessionId?: string
@@ -238,6 +244,9 @@ export function CodingSidebar({
   const [pendingWorkspace, setPendingWorkspace] = useState<string | null>(null)
   const [trustWorkspace, setTrustWorkspace] = useState<string | null>(null)
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchFocusKey, setSearchFocusKey] = useState(0)
+  const searchButtonRef = useRef<HTMLButtonElement>(null)
   const [worktreeEditTarget, setWorktreeEditTarget] = useState<WorktreeInfo | null>(null)
   const [worktreeEditTitle, setWorktreeEditTitle] = useState('')
   const [worktreeEditLoading, setWorktreeEditLoading] = useState(false)
@@ -366,6 +375,19 @@ export function CodingSidebar({
   useEffect(() => {
     if (worktreeEditTarget) worktreeEditInputRef.current?.focus()
   }, [worktreeEditTarget])
+
+  const openSessionSearch = useCallback(() => {
+    setSearchOpen(true)
+    setSearchFocusKey((key) => key + 1)
+  }, [])
+  const closeSessionSearch = () => {
+    setSearchOpen(false)
+    searchButtonRef.current?.focus()
+  }
+  useEffect(() => {
+    window.addEventListener(APP_EVENTS.searchSessions, openSessionSearch)
+    return () => window.removeEventListener(APP_EVENTS.searchSessions, openSessionSearch)
+  }, [openSessionSearch])
 
   const selectWorkspace = async (path: string, opts: { create?: boolean } = {}) => {
     const requestedCreate = opts.create === true
@@ -674,6 +696,7 @@ export function CodingSidebar({
       </AnimatePresence>
 
     <ResizableAside
+      {...SIDEBAR_FIND_SCOPE}
       initial={false}
       resize={sidebarResize}
       getMotion={sidebarMotion}
@@ -719,6 +742,25 @@ export function CodingSidebar({
             <TooltipTrigger
               render={
                 <button
+                  ref={searchButtonRef}
+                  type="button"
+                  onClick={() => { if (searchOpen) closeSessionSearch(); else openSessionSearch() }}
+                  className={`flex h-8 w-8 items-center justify-center rounded-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 ${
+                    searchOpen ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted)'
+                  }`}
+                  aria-label="Search sessions"
+                  aria-pressed={searchOpen}
+                >
+                  <Search size={13} aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>{`Search sessions (${shortcutLabel(APP_SHORTCUTS.findInTranscript, os)} in the sidebar)`}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
                   type="button"
                   onClick={collapseAllWorkspaces}
                   className="flex h-8 w-8 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6"
@@ -748,7 +790,21 @@ export function CodingSidebar({
         </div>
       </div>
 
-      {/* Workspace + sessions tree */}
+      {searchOpen ? (
+        <Suspense fallback={<div className="min-h-0 flex-1" />}>
+        <SessionSearch
+          currentSessionId={currentSessionId}
+          focusKey={searchFocusKey}
+          workspaceName={(path) => (isChatPath(path) ? (chatWorkspace?.name ?? path) : workspaceLabel(path))}
+          onSessionSelect={(session, workspacePath, event) => {
+            setSearchOpen(false)
+            handleSessionSelect(session, workspacePath, event)
+          }}
+          onClose={closeSessionSearch}
+        />
+        </Suspense>
+      ) : (
+      /* Workspace + sessions tree */
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-2">
         {visibleWorkspaces.length === 0 && (
           <div className="flex flex-col items-start gap-2 px-3 py-3">
@@ -982,6 +1038,7 @@ export function CodingSidebar({
           )
         })}
       </div>
+      )}
 
       {/* Mobile drawer footer — on desktop this lives in AppFooter status bar */}
       <div className="flex md:hidden items-center justify-between gap-2 border-t border-(--color-border) px-3 py-2 pb-safe">

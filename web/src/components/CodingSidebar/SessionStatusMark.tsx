@@ -1,6 +1,14 @@
 import { Loader2 } from 'lucide-react'
+import type { SessionResponse } from '@/api/types'
 
 export type SessionStatus = 'needs_input' | 'running' | 'unread' | 'idle'
+
+/** Waiting on you outranks running, which outranks unread. */
+export function sessionStatus(session: SessionResponse, unread: boolean): SessionStatus {
+  if (session.needs_input === true) return 'needs_input'
+  if (session.running === true) return 'running'
+  return unread ? 'unread' : 'idle'
+}
 
 const DEFAULT_LABELS: Record<Exclude<SessionStatus, 'idle'>, string> = {
   needs_input: 'Session needs your input',

@@ -19,6 +19,7 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getPlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
+import { routeFindShortcut } from '@/lib/find-shortcut'
 import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -140,7 +141,7 @@ export function useCommandPalette({
     [
       { hotkey: hotkeyOf(APP_SHORTCUTS.newSession), callback: handleNewSession, options: { meta: { name: 'New session' } } },
       { hotkey: hotkeyOf(APP_SHORTCUTS.sessionSettings), callback: handleToggleAgentCapabilities, options: { meta: { name: 'Agent capabilities' } } },
-      { hotkey: hotkeyOf(APP_SHORTCUTS.findInTranscript), callback: handleFindInTranscript, options: { meta: { name: 'Find in transcript' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.findInTranscript), callback: () => routeFindShortcut(handleFindInTranscript), options: { meta: { name: 'Find in transcript or sessions' } } },
       { hotkey: hotkeyOf(APP_SHORTCUTS.workspaceFiles), callback: handleWorkspaceFiles, options: { meta: { name: 'Workspace files' } } },
       { hotkey: hotkeyOf(APP_SHORTCUTS.maximizeDock), callback: handleToggleDockMaximized, options: { enabled: !isMobile && Boolean(workspace), meta: { name: 'Maximize review dock' } } },
       { hotkey: hotkeyOf(APP_SHORTCUTS.tasks), callback: handleToggleTasks, options: { enabled: Boolean(sessionIdState), meta: { name: 'Todos' } } },

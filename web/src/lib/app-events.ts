@@ -11,6 +11,8 @@ export const APP_EVENTS = {
   // The terminal key is matched on the physical Backquote code, which a
   // synthetic key press does not carry.
   openTerminal: 'oa:open-terminal',
+  // ⌘F while focus is in the sidebar (see ``routeFindShortcut``).
+  searchSessions: 'oa:search-sessions',
 } as const
 
 export type AppEvent = (typeof APP_EVENTS)[keyof typeof APP_EVENTS]

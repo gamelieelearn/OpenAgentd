@@ -8,6 +8,7 @@ import { loadLastCodingWorkspace } from '@/utils/workspace'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useUnreadStore } from '@/stores/useUnreadStore'
+import { APP_EVENTS } from '@/lib/app-events'
 import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
@@ -88,6 +89,8 @@ type TestSession = {
 let sessionsData: TestSession[] = []
 let workspaceSessionsData: TestSession[] = []
 let activeSessionsData: TestSession[] = []
+let searchResultsData: TestSession[] = []
+let searchQueries: string[] = []
 let workspaceHasNextPage = false
 let workspaceIsFetchingNextPage = false
 const fetchWorkspaceNextPage = mock(() => {})
@@ -242,6 +245,10 @@ mock.module('@/queries/useSessionsQuery', () => ({
   useActiveSessionsQuery: () => ({
     data: { pages: [{ data: activeSessionsData }] },
   }),
+  useSessionSearchQuery: (query: string) => {
+    searchQueries.push(query)
+    return { data: query ? { pages: [{ data: searchResultsData, has_more: false }] } : undefined, isFetching: false }
+  },
   useDeleteSessionMutation: () => ({ mutate: deleteSessionMutate }),
   useUpdateSessionTitleMutation: () => ({
     mutate: updateSessionTitleMutate,
@@ -628,6 +635,8 @@ describe('CodingSidebar workspace trust flow', () => {
     sessionsData = []
     workspaceSessionsData = []
     activeSessionsData = []
+    searchResultsData = []
+    searchQueries = []
     chatWorkspaceEntry = null
     workspaceHasNextPage = false
     workspaceIsFetchingNextPage = false
@@ -1215,6 +1224,74 @@ describe('CodingSidebar workspace trust flow', () => {
     await renderCodingSidebarWithProps({ workspace: null, onNewSession: mock(() => {}) })
 
     expect(screen.queryByRole('button', { name: 'New session' })).toBeNull()
+  })
+
+  it('searches session titles across workspaces in place of the tree', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Current session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+    searchResultsData = [
+      {
+        id: 'm1',
+        title: 'Migration plan',
+        agent_name: 'lead',
+        created_at: '2026-01-02T00:00:00Z',
+        updated_at: '2026-01-02T00:00:00Z',
+        workspace: '/repo/other',
+      },
+      // An older server ignores ``q`` and sends a normal page.
+      {
+        id: 'x',
+        title: 'Unrelated',
+        agent_name: 'lead',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+        workspace: '/repo/project',
+      },
+    ]
+
+    await renderCodingSidebarForSessions('session-1')
+    await user.click(screen.getByRole('button', { name: 'Search sessions' }))
+    const input = await screen.findByRole('searchbox', { name: 'Search sessions' })
+    await waitFor(() => expect(document.activeElement).toBe(input))
+    await user.type(input, 'MIGR')
+
+    const results = await screen.findByRole('region', { name: 'Search results' })
+    await waitFor(() => expect(results.textContent).toContain('Migration plan'))
+    expect(results.textContent).toContain('other')
+    expect(results.textContent).not.toContain('Unrelated')
+    expect(searchQueries).toContain('MIGR')
+    expect(screen.queryByLabelText('Collapse repository project')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: /Migration plan/ }))
+    expect(navigate).toHaveBeenCalledWith({ to: '/coding/$sessionId', params: { sessionId: 'm1' } })
+    expect(screen.queryByRole('searchbox')).toBeNull()
+    expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
+  })
+
+  it('opens session search when ⌘F is pressed inside the sidebar and closes it on Escape', async () => {
+    const user = userEvent.setup()
+    const view = await renderCodingSidebarForSessions(undefined)
+    const searchButton = screen.getByRole('button', { name: 'Search sessions' })
+    expect(view?.container.querySelector('[data-find-scope="sidebar"]')?.contains(searchButton)).toBe(true)
+
+    act(() => { window.dispatchEvent(new Event(APP_EVENTS.searchSessions)) })
+    const input = await screen.findByRole('searchbox', { name: 'Search sessions' })
+    await waitFor(() => expect(document.activeElement).toBe(input))
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('searchbox')).toBeNull()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Search sessions' }))
   })
 
   it('lists sessions that need you from every workspace above the workspaces', async () => {
