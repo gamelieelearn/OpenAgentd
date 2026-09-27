@@ -253,7 +253,8 @@ export const AssistantTurn = memo(function AssistantTurn({
 
   return (
     <PlanActionContext.Provider value={planActionValue}>
-      <div className="space-y-2">
+      {/* The transcript sets the gap for its density; other panes keep 0.5rem. */}
+      <div className="space-y-[var(--transcript-block-gap,0.5rem)]">
       {segments.map((segment) => {
         if (segment.kind === 'block') return renderAt(segment.index)
         const indices = Array.from({ length: segment.end - segment.start }, (_, k) => segment.start + k)
