@@ -422,6 +422,37 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **iOS text size** `[v3.0.0]` — the iOS app follows the system text size
   (Settings or Control Center) while it runs: larger settings scale the text
   and spacing together, up to 125%. Smaller settings keep the design size.
+- **A calmer transcript** `[v3.0.0]` — the chat reads as prompts and answers,
+  with the work folded away until you want it:
+  - Thinking folds to "Thought for Ns" once done, and streams in a three-line
+    window.
+  - Runs of read-only tool calls fold into one row, such as "Explored · 6
+    reads, 3 searches". Edits, failures, and shell commands keep their own
+    rows, and the agent's own text is never folded.
+  - Every prompt you wrote has Edit (rewind to it and put it back in the
+    composer) and Restore to here (undo the turns after it; `/redo` brings
+    them back), both reachable from the keyboard. The latest answer offers
+    Retry.
+  - A failed turn ends in an error card with Retry and Switch model, which
+    opens Change Model… in the palette.
+  - A turn that changed files ends with "Changed N files +x −y"; each file
+    expands to the diff that turn made.
+  - Right-click a reply for Copy, Copy as Markdown, and Open Session as
+    Markdown; the palette opens the session document too.
+  - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your
+    prompts, and a header pins the prompt whose answer is on screen.
+  - `path:line` references in replies and tool output open the file at that
+    line in the review dock.
+  - Reader mode shows only your prompts and each final answer, plus an error
+    a turn ended on and a question waiting for you; find searches only what
+    it shows.
+  - On desktop a timeline scrubber replaces the transcript's scrollbar and
+    marks prompts, find matches, and a question waiting for you.
+  - Density (Compact, Comfortable, Relaxed) and transcript text size are set
+    from the status bar's Aa menu or the palette, and persist. Reader mode
+    lasts until the app reloads.
+  - Reply footers add the turn's output tokens, or its cost when the model
+    has a price.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits. Read
   results and file-change diffs keep line numbers visible while scrolling
@@ -436,7 +467,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   Both stay visible while streaming and after reloading a session.
 - **Effective model on assistant replies** `[v1.42.0]` — assistant footers show
   the model that produced the reply, including fallback transitions, next to the
-  copy and timing metadata.
+  copy and timing metadata. Since `[v3.0.0]` a footer names the model only on
+  the first reply and where the model changes.
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
   folders render orange. Mentioned files inject inline hidden context on the
   turn without becoming uploads; mentioned folders inject a lightweight directory
