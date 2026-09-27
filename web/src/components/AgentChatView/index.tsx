@@ -333,6 +333,8 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     togglePalette,
     toggleQuickOpen,
   })
+  // The summary lists what the sidebar already shows (Needs you, running rows).
+  const handleOpenActiveSessions = useCallback(() => setCodingSidebarCollapsed(false), [setCodingSidebarCollapsed])
 
   const leadBlocks = useAgentStore((s) => (
     s.leadName ? s.agentStreams[s.leadName]?.blocks ?? EMPTY_BLOCKS : EMPTY_BLOCKS
@@ -567,6 +569,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         onCloseMobileActionsMenu={closeMobileActionsMenu}
         onOpenPalette={handleTogglePalette}
         onRenameSession={handleRenameSession}
+        onOpenActiveSessions={handleOpenActiveSessions}
       />
 
       {/* Body row — sidebar (or coding rail) + main content column. On

@@ -9,6 +9,7 @@ import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
 import { CommandCenterButton } from './CommandCenterButton'
+import { ActiveSessionsSummary } from './ActiveSessionsSummary'
 import { summarizeTodos } from '@/components/TaskChecklist'
 import { TokenMeter } from '@/components/ui/token-meter'
 import type { CodingWorkspaceTreeChat, TodoItem } from '@/api/types'
@@ -46,6 +47,8 @@ interface AgentChatHeaderProps {
   onOpenPalette?: () => void
   /** Rename a session; makes the desktop title editable in place. */
   onRenameSession?: (sessionId: string, title: string) => void
+  /** Desktop: shows the running / needs-you summary, which calls this on click. */
+  onOpenActiveSessions?: () => void
 }
 
 export const AgentChatHeader = memo(function AgentChatHeader({
@@ -74,6 +77,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   onCloseMobileActionsMenu,
   onOpenPalette,
   onRenameSession,
+  onOpenActiveSessions,
 }: AgentChatHeaderProps) {
   const { os } = usePlatform()
   // Keyed by session so a switch mid-edit drops the field instead of carrying
@@ -233,6 +237,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
             />
           </>
         ) : (
+          <>
+          {onOpenActiveSessions && <ActiveSessionsSummary onClick={onOpenActiveSessions} />}
           <AgentTopbar
             isMobile={false}
             tokens={headerTokens}
@@ -257,6 +263,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                   className: dockOpen ? 'bg-(--bg-key) text-(--color-text)' : undefined,
                 } : undefined}
           />
+          </>
         )}
         </div>
     </header>
