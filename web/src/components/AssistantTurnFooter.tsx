@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { groupToolRuns } from '@/components/ToolCall/grouping'
 import { ToolRunGroup } from '@/components/ToolCall/ToolRunGroup'
 import { formatTime, formatFullDateTime, lastTurnText } from '@/utils/format'
+import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
 import { PlanActionContext } from '@/utils/markdown-plan'
 import type { ContentBlock } from '@/api/types'
 
@@ -47,6 +48,12 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
     let responseDurationMs: number | undefined
     let modelId: string | undefined
     let hasTool = false
+    let outputTokens = 0
+    let costUsd = 0
+    for (const block of turnBlocks) {
+      outputTokens += block.usage?.outputTokens ?? 0
+      costUsd += block.usage?.costUsd ?? 0
+    }
     for (let i = turnBlocks.length - 1; i >= 0; i--) {
       const block = turnBlocks[i]
       responseDurationMs ??= typeof block.responseDurationMs === 'number'
@@ -63,9 +70,11 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
       modelId,
       modelName: shortModelName(modelId),
       hasTool,
+      outputTokens,
+      costUsd: Math.round(costUsd * 1e8) / 1e8,
     }
   }, [turnBlocks])
-  const { textContent, timestamp, responseDurationMs, modelName } = footerData
+  const { textContent, timestamp, responseDurationMs, modelName, outputTokens, costUsd } = footerData
 
   const handleCopy = useCallback(async () => {
     try {
@@ -111,6 +120,15 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
       )}
       {responseDurationMs !== undefined && (
         <span className="font-mono text-[11px] text-(--color-text-muted)">{formatDuration(responseDurationMs)}</span>
+      )}
+      {(outputTokens > 0 || costUsd > 0) && (
+        <span
+          className="font-mono text-[11px] text-(--color-text-muted)"
+          aria-label={`${formatInt(outputTokens)} output tokens${costUsd > 0 ? `, $${costUsd.toFixed(4)}` : ''}`}
+          title={`${formatInt(outputTokens)} output tokens${costUsd > 0 ? ` · $${costUsd.toFixed(4)}` : ''}`}
+        >
+          {costUsd > 0 ? formatSpend(costUsd) : `${formatCompact(outputTokens)} tok`}
+        </span>
       )}
     </div>
   )

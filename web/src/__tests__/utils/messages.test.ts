@@ -231,6 +231,30 @@ describe("parseAgentBlocks", () => {
     expect(textBlock?.content).toBe("here is my answer");
   });
 
+  it("carries a message's output tokens and cost on exactly one of its blocks", () => {
+    const blocks = parseAgentBlocks([makeMsg({
+      role: "assistant",
+      content: "answer",
+      reasoning_content: "thinking",
+      tool_calls: [{ id: "tc-u", type: "function", function: { name: "read", arguments: "{}" } }],
+      extra: { usage: { input: 900, output: 120, cost: { estimated_usd: 0.012 } } },
+    })]);
+    const withUsage = blocks.filter((b) => b.usage);
+    expect(withUsage).toHaveLength(1);
+    expect(withUsage[0].type).toBe("text");
+    expect(withUsage[0].usage).toEqual({ outputTokens: 120, costUsd: 0.012 });
+  });
+
+  it("puts usage on the first block when a message has no prose", () => {
+    const blocks = parseAgentBlocks([makeMsg({
+      role: "assistant",
+      content: null,
+      tool_calls: [{ id: "tc-v", type: "function", function: { name: "read", arguments: "{}" } }],
+      extra: { usage: { output: 40 } },
+    })]);
+    expect(blocks[0].usage).toEqual({ outputTokens: 40, costUsd: 0 });
+  });
+
   it("derives text/thinking/tool block ids from the message id instead of a random one, so re-parsing the same message is idempotent", () => {
     // A random id per parse (generateBlockId()) meant the *same* persisted
     // message produced a *different* block id on every loadSession()/

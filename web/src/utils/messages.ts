@@ -63,7 +63,13 @@ function assistantBlocks(
     blocks.push({ id: `${msg.id}:thinking`, type: 'thinking', content: msg.reasoning_content, timestamp })
   }
 
-  const extra = msg.extra as { duration_ms?: number; model?: unknown } | null
+  const extra = msg.extra as {
+    duration_ms?: number
+    model?: unknown
+    usage?: { output?: number; cost?: { estimated_usd?: number }; estimated_cost_usd?: number }
+    cost?: { estimated_usd?: number }
+    estimated_cost_usd?: number
+  } | null
   const responseDurationMs = typeof extra?.duration_ms === 'number' ? extra.duration_ms : undefined
   const model = typeof extra?.model === 'string' ? extra.model : undefined
 
@@ -105,6 +111,13 @@ function assistantBlocks(
     }
     blocks.push(block)
     if (tool.id) pendingToolBlocks.set(tool.id, block)
+  }
+
+  if (extra?.usage && blocks.length > 0) {
+    // Same cost fallbacks as ``sumUsageFromMessages``.
+    const costUsd = extra.usage.cost?.estimated_usd ?? extra.usage.estimated_cost_usd ?? extra.estimated_cost_usd ?? extra.cost?.estimated_usd ?? 0
+    const owner = blocks.find((b) => b.type === 'text') ?? blocks[0]
+    owner.usage = { outputTokens: extra.usage.output ?? 0, costUsd }
   }
 
   return blocks

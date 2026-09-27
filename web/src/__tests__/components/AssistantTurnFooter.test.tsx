@@ -141,6 +141,28 @@ describe("AssistantTurnFooter", () => {
 
     expect(screen.getByText("1m 33s")).toBeTruthy()
   })
+
+  it("sums the turn's cost across its messages, with the output tokens in the label", () => {
+    const blocks: ContentBlock[] = [
+      { id: "t1", type: "tool", content: "", toolName: "read", toolDone: true, usage: { outputTokens: 500, costUsd: 0.004 } },
+      { id: "b1", type: "text", content: "Answer", usage: { outputTokens: 1000, costUsd: 0.016 } },
+    ]
+
+    render(<AssistantTurnFooter turnBlocks={blocks} />)
+
+    const cost = screen.getByText("$0.02")
+    expect(cost.getAttribute("aria-label")).toBe("1,500 output tokens, $0.0200")
+  })
+
+  it("shows output tokens when the provider reports no cost", () => {
+    const blocks: ContentBlock[] = [
+      { id: "b1", type: "text", content: "Answer", usage: { outputTokens: 1500, costUsd: 0 } },
+    ]
+
+    render(<AssistantTurnFooter turnBlocks={blocks} />)
+
+    expect(screen.getByText("1.5K tok")).toBeTruthy()
+  })
 })
 
 /**
