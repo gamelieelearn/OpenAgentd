@@ -1,5 +1,6 @@
 import type React from 'react'
 import type { SessionResponse } from '@/api/types'
+import { needsYouSessions } from '@/lib/active-sessions'
 import { useActiveSessionsQuery } from '@/queries/useSessionsQuery'
 import { SessionStatusMark } from './SessionStatusMark'
 
@@ -14,10 +15,7 @@ export function NeedsYouSection({
   onSessionSelect: (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => void
 }) {
   const { data } = useActiveSessionsQuery()
-  // Filtered here rather than trusted: an older server answers with a normal page.
-  const sessions = (data?.pages.flatMap((page) => page.data) ?? []).filter(
-    (session) => session.needs_input === true && !session.parent_session_id && session.workspace,
-  )
+  const sessions = needsYouSessions(data)
   if (sessions.length === 0) return null
 
   return (

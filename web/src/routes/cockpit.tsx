@@ -9,6 +9,7 @@ import { initBroadcastSync, broadcastMessage } from '@/lib/broadcast-sync'
 import { queryKeys } from '@/queries'
 import { loadLastCodingWorkspace, removeCodingWorkspace, saveLastCodingWorkspace, shouldRestoreLastCodingWorkspace, workspaceFromSession, workspaceLabel } from '@/utils/workspace'
 import { syncDesktopWindowTitle } from '@/lib/window-title'
+import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
 import { useChatWorkspace } from '@/queries/useChatWorkspace'
 
 /**
@@ -46,6 +47,7 @@ function AgentLayoutBase() {
   const workspace = workspaceFromSession(sessionId, cachedSession?.workspace ?? sessionQuery.data?.workspace)
   const chatWorkspace = useChatWorkspace()
   const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : null
+  const needsYou = useNeedsYouBadge()
 
   const navigateRef = useRef(navigate)
   const sessionIdRef = useRef(sessionId)
@@ -63,13 +65,13 @@ function AgentLayoutBase() {
   }, [mode, workspace])
 
   useEffect(() => {
-    syncDesktopWindowTitle({ workspace, workspaceName, sessionTitle: useAgentStore.getState().sessionTitle })
+    syncDesktopWindowTitle({ workspace, workspaceName, needsYou, sessionTitle: useAgentStore.getState().sessionTitle })
     return useAgentStore.subscribe((state, prev) => {
       if (state.sessionTitle !== prev.sessionTitle) {
-        syncDesktopWindowTitle({ workspace, workspaceName, sessionTitle: state.sessionTitle })
+        syncDesktopWindowTitle({ workspace, workspaceName, needsYou, sessionTitle: state.sessionTitle })
       }
     })
-  }, [mode, workspace, workspaceName])
+  }, [mode, workspace, workspaceName, needsYou])
 
   useEffect(() => {
     if (sessionId) return
