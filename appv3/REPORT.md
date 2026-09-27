@@ -455,6 +455,14 @@ explicitly.
   `agent/tests/thinking_duration.rs`). It is an extra key in the existing
   JSON column, not a schema change. v2 never writes it, and the web client
   shows "Thought" without a duration when it is absent.
+- **Active sessions filter:** `GET /api/agent/sessions?active=true` returns
+  every top-level session that is running or waiting on a question, as one
+  page (`next_cursor: null`, `has_more: false`), newest first. `limit` and
+  `before` are ignored and `workspace` still narrows it
+  (`api/src/routes/agent/chat.rs`, tested in `api/tests/http_api.rs`). The
+  sidebar's **Needs you** list uses it, whatever page the sessions are on. v2
+  ignores the parameter and returns a normal page, which the web client
+  filters to the same rows.
 
 ## 4. Layout
 

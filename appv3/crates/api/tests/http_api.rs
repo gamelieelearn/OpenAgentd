@@ -233,6 +233,19 @@ async fn http_api_end_to_end() {
     let (st, v) = c.json("GET", "/api/agent/sessions?limit=5", None).await;
     assert_eq!(st, StatusCode::OK);
     assert_eq!(v["data"][0]["id"].as_str().or(v["sessions"][0]["id"].as_str()), Some(sid.as_str()), "{v}");
+
+    // `active=true` (v3 addition) lists only sessions running or waiting on the user
+    let (st, v) = c.json("GET", "/api/agent/sessions?active=true", None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(v, json!({"data": [], "next_cursor": null, "has_more": false}));
+    appv3_db::create_pending_question(&pool, &sid, "call-active", &[json!({"question": "Which?", "options": []})]).await.unwrap();
+    let (st, v) = c.json("GET", "/api/agent/sessions?active=true&limit=1", None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(v["data"].as_array().map(Vec::len), Some(1), "{v}");
+    assert_eq!(v["data"][0]["id"], json!(sid));
+    assert_eq!(v["data"][0]["needs_input"], json!(true));
+    assert_eq!(v["has_more"], json!(false));
+
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
     assert!(!appv3_agent::snapshot::snapshot_dir(&sid).exists());

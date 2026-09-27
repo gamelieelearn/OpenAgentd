@@ -527,10 +527,20 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     let before = q.opt("before");
     let limit = q.int("limit", 20, Some(1), Some(100))?;
     let workspace = q.opt("workspace");
-    let (sessions, next_cursor, has_more) =
-        db::list_sessions_page(&st.pool, before.as_deref(), limit, workspace.as_deref()).await.map_err(|_| ApiError::unprocessable("Invalid 'before' cursor."))?;
     let running = running_set();
     let awaiting = db::sessions_awaiting_input(&st.pool).await?;
+    // v3 addition: every session running or waiting on the user, in one page,
+    // however old — the sidebar's "Needs you" list and the badge counts. v2
+    // ignores the parameter and returns a normal page.
+    let (sessions, next_cursor, has_more) = if q.opt("active").as_deref() == Some("true") {
+        let ids: Vec<String> = running.iter().chain(awaiting.iter()).cloned().collect();
+        let mut rows = db::get_sessions_by_ids(&st.pool, &ids).await?;
+        rows.retain(|s| s.parent_session_id.is_none() && workspace.as_deref().is_none_or(|w| s.workspace == w));
+        rows.sort_by(|a, b| (&b.created_at, &b.id).cmp(&(&a.created_at, &a.id)));
+        (rows, None, false)
+    } else {
+        db::list_sessions_page(&st.pool, before.as_deref(), limit, workspace.as_deref()).await.map_err(|_| ApiError::unprocessable("Invalid 'before' cursor."))?
+    };
     let ids: Vec<String> = sessions.iter().map(|s| s.id.clone()).collect();
     let children = db::list_child_sessions(&st.pool, &ids).await?;
     let overlay = |s: &db::ChatSession| SessionOverlay {
