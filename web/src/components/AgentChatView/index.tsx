@@ -36,7 +36,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { AlertCircle, FolderCode, X, FileUp } from 'lucide-react'
+import { FolderCode, FileUp } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
@@ -53,6 +53,7 @@ import type {
 } from '@/api/types'
 import { AgentChatHeader } from './AgentChatHeader'
 import { AgentChatPanels } from './AgentChatPanels'
+import { ProviderSetupNotice } from './ProviderSetupNotice'
 import { useDragDrop } from './useDragDrop'
 import { useOverlayState } from './useOverlayState'
 import { useSessionBootstrap } from './useSessionBootstrap'
@@ -571,47 +572,12 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
               </div>
             </div>
           )}
-        {setupRequired && (
-          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-sm border border-(--accent-blue)/35 bg-(--accent-blue-soft) p-3 text-sm text-(--color-text) sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 gap-3">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-(--accent-blue)" aria-hidden="true" />
-              <div className="min-w-0">
-                <p className="font-medium">Configure a provider to start chatting</p>
-                <p className="mt-0.5 text-xs text-(--color-text-muted)">{setupRequired.message}</p>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
-              <Button
-                size="sm"
-                onClick={() => openSettings('providers')}
-              >
-                Open Providers
-              </Button>
-              <button
-                type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-8 md:w-8"
-                onClick={dismissSetupRequired}
-                aria-label="Dismiss provider setup notice"
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-        )}
-        {!setupRequired && !hasConfiguredModelProvider && (
-          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-sm border border-(--color-border) bg-(--bg-card) p-3 text-sm text-(--color-text) sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 gap-3">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-(--color-accent)" aria-hidden="true" />
-              <div className="min-w-0">
-                <p className="font-medium">No model provider configured</p>
-                <p className="mt-0.5 text-xs text-(--color-text-muted)">Connect a provider once, then OpenAgentd can seed and run your default agent.</p>
-              </div>
-            </div>
-            <Button size="sm" onClick={() => openSettings('providers')}>
-              Open Providers
-            </Button>
-          </div>
-        )}
+        <ProviderSetupNotice
+          setupMessage={setupRequired?.message ?? null}
+          hasConfiguredProvider={hasConfiguredModelProvider}
+          onOpenProviders={() => openSettings('providers')}
+          onDismiss={dismissSetupRequired}
+        />
         {isCodingSessionLoading ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
@@ -692,14 +658,14 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 <span className="truncate">Subagents are orchestrated by the lead agent. Switch to the lead session to send instructions.</span>
               </div>
               <Button
-                size="sm"
+                size="xs"
                 variant="default"
                 onClick={() => {
                   if (parentSessionId) {
                     navigate({ to: '/coding/$sessionId', params: { sessionId: parentSessionId } })
                   }
                 }}
-                className="shrink-0 h-6 text-xs px-2.5"
+                className="shrink-0"
               >
                 Return to Lead
               </Button>
