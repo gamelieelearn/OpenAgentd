@@ -23,7 +23,7 @@ import { useRegistryQuery } from '@/queries'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { ModelCombobox } from '@/components/settings/AgentForm/ModelCombobox'
-import type { ModelCatalogEntry } from '@/api/types'
+import { supportedThinkingLevels as levelsFor } from '@/lib/thinking-levels'
 
 const DEFAULT_LEVEL_LABEL = 'Default'
 const KNOWN_LEVEL_LABELS: Record<string, string> = {
@@ -33,22 +33,11 @@ const KNOWN_LEVEL_LABELS: Record<string, string> = {
   high: 'High',
 }
 
-/** Models with no declared levels still accept `none`. */
-const FALLBACK_THINKING_LEVEL_VALUES = ['none']
-
 function levelLabel(value: string): string {
   return (
     KNOWN_LEVEL_LABELS[value] ??
     value.split('-').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')
   )
-}
-
-/** Thinking levels a model actually supports. `__none__` is an internal
- *  registry marker, never a user-selectable level. */
-function levelsFor(entry: ModelCatalogEntry | undefined): string[] {
-  const declared = entry?.thinking_levels ?? []
-  const allowed = declared.length > 0 ? declared : FALLBACK_THINKING_LEVEL_VALUES
-  return allowed.filter((value) => value !== '__none__')
 }
 
 export function SessionModelSettings({
