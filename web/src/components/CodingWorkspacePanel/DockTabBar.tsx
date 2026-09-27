@@ -2,7 +2,8 @@
  * DockTabBar — the review dock's editor-tab strip.
  *
  * One row: scrolling tabs on the left, a fixed action cluster on the right
- * (search files, new terminal, refresh, and on desktop maximize). Hiding the
+ * (new terminal, refresh, and on desktop maximize; file search is Quick
+ * Open, ⌘P). Hiding the
  * dock lives on the header's review-dock toggle (and ⌘D), which is always
  * visible because the dock never covers the header.
  * Tabs stay plain buttons with ``aria-current`` rather than an ARIA
@@ -10,7 +11,7 @@
  * and file tabs a sibling close button, which roving-tabindex tab semantics
  * do not model well.
  */
-import { CalendarClock, FileDiff, GitCommitHorizontal, GitCompare, ListTodo, Maximize2, Minimize2, RefreshCw, Search, TerminalSquare, X } from 'lucide-react'
+import { CalendarClock, FileDiff, GitCommitHorizontal, GitCompare, ListTodo, Maximize2, Minimize2, RefreshCw, TerminalSquare, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { TerminalTabButton } from '../Terminal/TerminalTabButton'
@@ -37,7 +38,6 @@ export interface DockTabBarProps {
   registerTabRef: (id: string, node: HTMLButtonElement | null) => void
   onActivate: (id: string) => void
   onClose: (id: string) => void
-  onOpenPalette?: () => void
   onNewTerminal: () => void
   onRefresh: () => void
   /** ``null`` hides the toggle (mobile, or a forced narrow-window overlay). */
@@ -89,14 +89,11 @@ export function DockTabBar({
   registerTabRef,
   onActivate,
   onClose,
-  onOpenPalette,
   onNewTerminal,
   onRefresh,
   maximized,
   onToggleMaximized,
 }: DockTabBarProps) {
-  const searchLabel = `Search files (${shortcutLabel(APP_SHORTCUTS.quickOpen, os)})`
-
   return (
     <div className="flex h-(--spacing-tab-bar) min-w-0 shrink-0 bg-(--bg-sidebar)">
       <div className="scrollbar-none flex min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
@@ -161,9 +158,6 @@ export function DockTabBar({
         <div aria-hidden="true" className="min-w-2 flex-1 border-b border-(--color-border)" />
       </div>
       <div className="flex shrink-0 items-center gap-0.5 border-b border-(--color-border) px-1">
-        <ActionButton label={searchLabel} onClick={onOpenPalette}>
-          <Search size={14} aria-hidden="true" />
-        </ActionButton>
         <ActionButton label="New terminal" onClick={onNewTerminal}>
           <TerminalSquare size={14} aria-hidden="true" />
         </ActionButton>

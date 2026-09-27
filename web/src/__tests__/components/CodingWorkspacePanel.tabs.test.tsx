@@ -204,10 +204,36 @@ describe('Git view toolbar', () => {
 
     const tablist = screen.getByRole('tablist', { name: 'Git view' })
     const tabs = within(tablist).getAllByRole('tab')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Changes (1)', 'Commits', 'Tree'])
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Changes (1)', 'History'])
     const panel = screen.getByRole('tabpanel')
     expect(tabs[0].getAttribute('aria-controls')).toBe(panel.id)
     expect(panel.getAttribute('aria-labelledby')).toBe(tabs[0].id)
+  })
+
+  it('shows commits under History and swaps in the graph with its toggle', async () => {
+    const user = userEvent.setup()
+    await renderPanel()
+
+    await user.click(screen.getByRole('tab', { name: 'History' }))
+    await waitFor(() => expect(screen.getByText('docs: refresh readme')).toBeTruthy())
+    const history = screen.getByRole('tab', { name: 'History' })
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(history.id)
+    const graph = screen.getByRole('checkbox', { name: 'Graph' }) as HTMLInputElement
+    expect(graph.checked).toBe(false)
+    expect(screen.queryByRole('checkbox', { name: 'All branches' })).toBeNull()
+
+    await user.click(graph)
+
+    expect(useGitPanelStore.getState().workspaces[WORKSPACE]?.subTab).toBe('tree')
+    expect((screen.getByRole('checkbox', { name: 'Graph' }) as HTMLInputElement).checked).toBe(true)
+    expect(screen.getByRole('checkbox', { name: 'All branches' })).toBeTruthy()
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(history.id)
+  })
+
+  it('leaves file search to Quick Open and keeps Refresh in the dock actions', async () => {
+    await renderPanel()
+    expect(screen.queryByRole('button', { name: /Search files/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy()
   })
 
   it('expand-all toggles every changed-file diff open and closed', async () => {

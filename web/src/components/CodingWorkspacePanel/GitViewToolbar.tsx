@@ -1,10 +1,11 @@
 /**
  * GitViewToolbar — the single 32px toolbar under the Git review tab.
  *
- * Replaces the old desktop dropdown / mobile button row pair with one
- * segmented control on every platform, plus the view's only option on the
- * right (expand-all for Changes, all-branches for Tree). The segments are
- * real ARIA tabs; the caller renders the matching ``tabpanel`` using
+ * One segmented control on every platform — Changes and History — plus the
+ * view's options on the right (expand-all for Changes; Graph, and with it
+ * All branches, for History). History covers two stored sub-tabs: the
+ * commit list (``commits``) and the graph (``tree``). The segments are real
+ * ARIA tabs; the caller renders the matching ``tabpanel`` using
  * ``gitViewPanelId`` / ``gitViewTabId`` so the ids line up.
  */
 import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
@@ -16,8 +17,10 @@ import { CommitSyncBadge } from './CommitDetail'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 
 export type GitSubTab = 'changes' | 'commits' | 'tree'
+type GitViewSegment = 'changes' | 'history'
 
-export const gitViewTabId = (idBase: string, tab: GitSubTab) => `${idBase}-${tab}-tab`
+const segmentOf = (tab: GitSubTab): GitViewSegment => (tab === 'changes' ? 'changes' : 'history')
+export const gitViewTabId = (idBase: string, tab: GitSubTab) => `${idBase}-${segmentOf(tab)}-tab`
 export const gitViewPanelId = (idBase: string) => `${idBase}-panel`
 
 export interface GitViewToolbarProps {
@@ -36,11 +39,7 @@ export interface GitViewToolbarProps {
   onAllBranchesChange: (value: boolean) => void
 }
 
-const SUB_TABS: GitSubTab[] = ['changes', 'commits', 'tree']
-
-function isGitSubTab(value: string): value is GitSubTab {
-  return (SUB_TABS as string[]).includes(value)
-}
+const CHECKBOX_CLASS = 'border-(--color-border) bg-(--bg-card) checked:border-(--color-border-strong) checked:bg-(--bg-key)'
 
 export function GitViewToolbar({
   idBase,
@@ -56,9 +55,9 @@ export function GitViewToolbar({
   allBranches,
   onAllBranchesChange,
 }: GitViewToolbarProps) {
-  const trigger = (tab: GitSubTab) => ({
-    value: tab,
-    id: gitViewTabId(idBase, tab),
+  const trigger = (segment: GitViewSegment) => ({
+    value: segment,
+    id: `${idBase}-${segment}-tab`,
     'aria-controls': gitViewPanelId(idBase),
   })
   const expandLabel = allExpanded ? 'Collapse all diffs' : 'Expand all diffs'
@@ -66,15 +65,18 @@ export function GitViewToolbar({
   return (
     <div className="flex h-(--spacing-toolbar) shrink-0 items-center gap-2 border-b border-(--color-border-subtle) bg-(--bg-page) px-2">
       <Tabs
-        value={subTab}
-        onValueChange={(value) => { if (isGitSubTab(value)) onSubTabChange(value) }}
+        value={segmentOf(subTab)}
+        onValueChange={(value) => {
+          if (value === 'changes') onSubTabChange('changes')
+          else if (value === 'history' && subTab === 'changes') onSubTabChange('commits')
+        }}
         className={cn('min-w-0', mobile && 'flex-1')}
       >
         <TabsList size="sm" aria-label="Git view" className={mobile ? 'w-full' : undefined}>
           <TabsTrigger {...trigger('changes')}>Changes ({changedCount})</TabsTrigger>
-          <TabsTrigger {...trigger('commits')}>
+          <TabsTrigger {...trigger('history')}>
             <span className="inline-flex items-center gap-1">
-              Commits
+              History
               {commitsAhead != null && commitsAhead > 0 && (
                 <CommitSyncBadge count={commitsAhead} direction="ahead" upstream={upstream} />
               )}
@@ -83,7 +85,6 @@ export function GitViewToolbar({
               )}
             </span>
           </TabsTrigger>
-          <TabsTrigger {...trigger('tree')}>Tree</TabsTrigger>
         </TabsList>
       </Tabs>
       <div className="ml-auto flex shrink-0 items-center gap-1 select-none">
@@ -106,12 +107,23 @@ export function GitViewToolbar({
             <TooltipContent side="bottom">{expandLabel}</TooltipContent>
           </Tooltip>
         )}
+        {subTab !== 'changes' && (
+          <label className="flex h-7 cursor-pointer items-center gap-1.5 px-1 text-[11px] text-(--color-text-muted)">
+            <Checkbox
+              checked={subTab === 'tree'}
+              onChange={(event) => onSubTabChange(event.currentTarget.checked ? 'tree' : 'commits')}
+              className={CHECKBOX_CLASS}
+              checkClassName="peer-checked:text-(--color-text)"
+            />
+            <span className="whitespace-nowrap">Graph</span>
+          </label>
+        )}
         {subTab === 'tree' && (
           <label className="flex h-7 cursor-pointer items-center gap-1.5 px-1 text-[11px] text-(--color-text-muted)">
             <Checkbox
               checked={allBranches}
               onChange={(event) => onAllBranchesChange(event.currentTarget.checked)}
-              className="border-(--color-border) bg-(--bg-card) checked:border-(--color-border-strong) checked:bg-(--bg-key)"
+              className={CHECKBOX_CLASS}
               checkClassName="peer-checked:text-(--color-text)"
             />
             <span className="whitespace-nowrap">All branches</span>

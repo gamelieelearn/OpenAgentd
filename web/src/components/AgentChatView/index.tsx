@@ -793,7 +793,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 sessionId={sessionIdState}
                 onFileSelect={handleCodingFileSelect}
                 onAddComment={handleAddFileComment}
-                onOpenPalette={handleToggleQuickOpen}
               />
             </Suspense>
           )}

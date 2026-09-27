@@ -124,7 +124,6 @@ export function CodingWorkspacePanel({
   sessionId = null,
   onFileSelect,
   onAddComment,
-  onOpenPalette,
   chatWorkspace = false,
 }: {
   workspace: string
@@ -153,7 +152,6 @@ export function CodingWorkspacePanel({
   sessionId?: string | null
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   onAddComment?: (path: string, startLine: number, endLine: number) => void
-  onOpenPalette?: () => void
   /**
    * True when ``workspace`` is the chat root (see ``useChatWorkspace``).
    * Chat workspaces are not repositories: the Git review tab is hidden and its
@@ -529,7 +527,6 @@ export function CodingWorkspacePanel({
           }}
           onActivate={setActiveTabId}
           onClose={closeTab}
-          onOpenPalette={onOpenPalette}
           onNewTerminal={openTerminal}
           onRefresh={handleRefresh}
           maximized={maximizeState}

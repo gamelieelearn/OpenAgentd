@@ -92,7 +92,6 @@ async function renderCommitsTab(mobile = false) {
         <CodingWorkspacePanel
           workspace={WORKSPACE}
           open
-          onOpenPalette={() => {}}
           mobile={mobile}
         />
       </QueryClientProvider>,
@@ -409,7 +408,6 @@ async function renderWithCommitsSubtab(ahead: number | null, behind: number | nu
         <CodingWorkspacePanel
           workspace={WORKSPACE}
           open
-          onOpenPalette={() => {}}
           mobile={false}
         />
       </QueryClientProvider>,
@@ -437,14 +435,14 @@ describe('CodingWorkspacePanel – commits_ahead badge', () => {
     await renderWithCommitsSubtab(0)
 
     // Give queries time to settle then assert no badge present
-    await waitFor(() => expect(screen.getByText('Commits')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('History')).toBeTruthy())
     expect(screen.queryByText(/↑$/)).toBeNull()
   })
 
   it('hides the badge when commits_ahead is null (no upstream configured)', async () => {
     await renderWithCommitsSubtab(null)
 
-    await waitFor(() => expect(screen.getByText('Commits')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('History')).toBeTruthy())
     expect(screen.queryByText(/↑$/)).toBeNull()
   })
 
@@ -467,7 +465,6 @@ describe('CodingWorkspacePanel – commits_ahead badge', () => {
           <CodingWorkspacePanel
             workspace={WORKSPACE}
             open
-            onOpenPalette={() => {}}
             mobile={false}
           />
         </QueryClientProvider>,
@@ -483,13 +480,13 @@ describe('CodingWorkspacePanel – commits_ahead badge', () => {
     expect(historyCalledBefore).toBe(false)
 
     // Switch to commits via the Git view segmented control
-    await user.click(screen.getByRole('tab', { name: /commits/i }))
+    await user.click(screen.getByRole('tab', { name: /history/i }))
 
-    // Badge is on the Commits segment immediately
+    // Badge is on the History segment immediately
     await waitFor(() => {
       expect(screen.getByText('2↑')).toBeTruthy()
     })
-    expect(screen.getByRole('tab', { name: /commits/i }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('tab', { name: /history/i }).getAttribute('aria-selected')).toBe('true')
   })
 
   it('badge title uses singular "commit" for count of 1', async () => {

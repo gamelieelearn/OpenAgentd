@@ -703,14 +703,17 @@ agent against it.
   - **Review dock tabs and maximize** `[v3.0.0]` — a changed file's diff or a
     commit opens as a full-height tab next to file and terminal tabs, from the
     row's hover action or its right-click / long-press menu. The Git tab has one
-    **Changes / Commits / Tree** toolbar with an expand-all toggle. On desktop,
+    **Changes / History** toolbar with an expand-all toggle; History lists
+    commits, and its **Graph** option swaps in the branch graph (with **All
+    branches**). The dock's actions are New terminal, Refresh and Maximize;
+    files are searched with Quick Open (`Ctrl/⌘+P`). On desktop,
     `Ctrl/⌘+Shift+D`, the dock's maximize button or **Maximize Review Dock** in
     the palette gives the dock the full width over the chat; the conversation
     stays loaded underneath. Tabs close with ×, middle-click or `Ctrl/⌘+W`, and
     focus moves to the neighbouring tab.
   - **Tasks and Scheduled tasks in the dock** `[v3.0.0]` — on desktop with a
-    workspace open, the header's task-list button (`Ctrl/⌘+T`) and the status
-    bar's scheduler button (`Ctrl/⌘+S`) open the agent's task list and the
+    workspace open, the header's task-list button (`Ctrl/⌘+T`) and **Scheduled
+    Tasks** in the palette or the sidebar's Scheduled section open the agent's task list and the
     scheduled-task list (every workspace, with search, details, and **New
     task**) as dock tabs. Pressing the shortcut again while that tab is focused
     hides the dock; the header's review-dock button shows and hides it. On
