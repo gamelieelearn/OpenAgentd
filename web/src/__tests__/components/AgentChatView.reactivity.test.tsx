@@ -63,10 +63,15 @@ mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
 mock.module('@/components/FloatingInputComposer', () => ({
   FloatingInputComposer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
-    { historyPrompts?: string[] }
-  >(function FloatingInputComposerMock({ historyPrompts }, ref) {
+    { historyPrompts?: string[]; context?: { sessionCostUsd?: number } | null }
+  >(function FloatingInputComposerMock({ historyPrompts, context }, ref) {
     useImperativeHandle(ref, () => ({ setValue: () => {}, setFiles: () => {} }))
-    return <div data-testid="history-prompts">{(historyPrompts ?? []).join(',')}</div>
+    return (
+      <>
+        <div data-testid="history-prompts">{(historyPrompts ?? []).join(',')}</div>
+        {context && <div data-testid="composer-cost">{context.sessionCostUsd}</div>}
+      </>
+    )
   }),
 }))
 mock.module('@/components/AgentChatView/useOverlayState', () => ({
@@ -220,10 +225,10 @@ describe('AgentChatView reactive derived state', () => {
 
     render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
 
-    expect(screen.getByTestId('session-cost').textContent).toBe('0.0035')
+    expect(screen.getByTestId('composer-cost').textContent).toBe('0.0035')
   })
 
-  it('shows the header meter while the team is working, before any usage lands', () => {
+  it('keeps the context meter on the composer while the team is working, before any usage lands', () => {
     // Usage arrives when the first model call completes, so gating on totals
     // alone hid the meter for the whole first response of a new session.
     useAgentStore.setState((state) => {
@@ -233,12 +238,21 @@ describe('AgentChatView reactive derived state', () => {
 
     render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
 
-    expect(screen.queryByTestId('session-cost')).not.toBeNull()
+    expect(screen.queryByTestId('composer-cost')).not.toBeNull()
   })
 
-  it('shows the header meter even when idle with no usage', () => {
+  it('moves the context meter from the header to the composer', () => {
+    render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
+
+    expect(screen.queryByTestId('composer-cost')).not.toBeNull()
+    expect(screen.queryByTestId('session-cost')).toBeNull()
+  })
+
+  it('keeps the meter in the header of a session without a composer', () => {
+    useAgentStore.setState({ parentSessionId: 'lead-session' })
     render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
 
     expect(screen.queryByTestId('session-cost')).not.toBeNull()
+    expect(screen.queryByTestId('composer-cost')).toBeNull()
   })
 })
