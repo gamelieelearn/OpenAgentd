@@ -745,6 +745,17 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   overflow-anchor: none;
 }
 
+/* From md up the timeline scrubber (AgentView/TimelineScrubber) is the
+ * transcript's scrollbar; a native one would sit under the same edge. */
+@media (width >= 48rem) {
+  .oa-chat-scroll {
+    scrollbar-width: none;
+  }
+  .oa-chat-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* ─────────────────────────────────────────────────────────────
  * Focus ring — :focus-visible only, never on mouse click
  * ───────────────────────────────────────────────────────────── */

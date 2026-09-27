@@ -383,7 +383,10 @@ describe("chat layout resize", () => {
           left: 0,
           toJSON: () => ({}),
         })
-        const observer = resizeObservers.find((entry) => entry.targets.includes(content))
+        // Auto-follow's observer is the one on the bottom anchor; the
+        // timeline scrubber keeps its own.
+        const anchor = container.querySelector("[data-chat-scroll-anchor]")!
+        const observer = resizeObservers.find((entry) => entry.targets.includes(anchor))
         expect(observer).toBeTruthy()
 
         await act(async () => {
@@ -449,7 +452,8 @@ describe("chat layout resize", () => {
       content.getBoundingClientRect = () => ({
         x: 0, y: 0, width: 800, height: contentHeight, top: 0, right: 800, bottom: contentHeight, left: 0, toJSON: () => ({}),
       })
-      const observer = resizeObservers.find((entry) => entry.targets.includes(content))
+      const anchor = container.querySelector("[data-chat-scroll-anchor]")!
+      const observer = resizeObservers.find((entry) => entry.targets.includes(anchor))
 
       await act(async () => {
         observer?.callback([{ target: content } as unknown as ResizeObserverEntry], {} as ResizeObserver)
@@ -748,7 +752,8 @@ describe("AgentView — escaping auto-follow without a wheel event", () => {
       const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
       const el = scrollable(container)
       const content = el.querySelector(".space-y-3")?.parentElement as HTMLElement
-      const observer = observers.find((o) => o.targets.includes(el))
+      const anchor = container.querySelector("[data-chat-scroll-anchor]")!
+      const observer = observers.find((o) => o.targets.includes(anchor))
       expect(observer).toBeTruthy()
 
       // User presses the mouse (scrollbar thumb / text selection) and drags up.
@@ -829,7 +834,8 @@ describe("AgentView — streaming auto-follow without compositor churn", () => {
       })
       const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
       const content = el.querySelector(".mx-auto") as HTMLDivElement
-      const observer = observers.find((o) => o.targets.includes(el) || o.targets.includes(content))
+      const anchor = container.querySelector("[data-chat-scroll-anchor]")!
+      const observer = observers.find((o) => o.targets.includes(anchor))
       expect(observer).toBeTruthy()
 
       let scrollHeight = 1200

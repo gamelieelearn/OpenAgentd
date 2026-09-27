@@ -41,6 +41,7 @@ import { UserBubble } from './AgentView/UserBubble'
 import { ErrorCard } from './AgentView/ErrorCard'
 import { ReaderTurn } from './AgentView/ReaderTurn'
 import { PromptHeader } from './AgentView/PromptHeader'
+import { TimelineScrubber } from './AgentView/TimelineScrubber'
 import { PROMPT_JUMP_MARGIN, currentPromptIndex, promptElements, promptJumpTarget } from './AgentView/prompt-nav'
 import { ReplyMenu } from './AgentView/ReplyMenu'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
@@ -533,6 +534,8 @@ export function AgentView({
     ? 0
     : ((findActiveIndex % findMatches.length) + findMatches.length) % findMatches.length
   const findHitBlockIds = useMemo(() => new Set(findMatches.map((match) => match.blockId)), [findMatches])
+  const findBlockIds = useMemo(() => [...findHitBlockIds], [findHitBlockIds])
+  const activeFindBlockId = findMatches[clampedFindIndex]?.blockId ?? null
   const modelChangeStarts = useMemo(() => modelChangeTurnStarts(turnItems), [turnItems])
   // Retry rewinds the latest prompt, so it is only honest when nothing but
   // that prompt's own answer, if any, follows a prompt the user wrote.
@@ -809,7 +812,7 @@ export function AgentView({
         onClose={() => onFindClose?.()}
       />
     )}
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="group/transcript relative flex min-h-0 flex-1 flex-col">
     {pinnedPrompt !== null && (
       <PromptHeader
         prompt={pinnedPrompt}
@@ -961,6 +964,12 @@ export function AgentView({
          </div>
       </div>
     </div>
+    <TimelineScrubber
+      scrollRef={scrollRef}
+      contentRef={contentRef}
+      findBlockIds={findBlockIds}
+      activeFindBlockId={activeFindBlockId}
+    />
     </div>
     {showScrollBtn && (
         <button
