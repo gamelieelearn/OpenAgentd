@@ -149,8 +149,6 @@ export interface InputComposerProps {
    * a control stops them.
    */
   minimizedContent?: React.ReactNode
-  /** Controls after the mode chip on the expanded bar, e.g. the model chip. */
-  leadingControls?: React.ReactNode
   /** Forwarded to the textarea so the parent can drive minimize-on-blur. */
   onFocus?: () => void
   /**
@@ -219,7 +217,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   minimized = false,
   onUnminimize,
   minimizedContent,
-  leadingControls,
   onFocus,
   onBlur,
   onHasContentChange,
@@ -918,7 +915,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
           disabled={interactionModeDisabled}
         />
       )}
-      {!minimized && leadingControls}
       {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's w-fit ↔ w-full.
           ``-ml-2`` absorbs the parent gap-2 when collapsed. Expanded always
           takes the full row (flex-basis:100%, order:-1) so the textarea sits

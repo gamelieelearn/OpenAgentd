@@ -456,9 +456,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     reads "N files changed" with Review, which opens the Git changes.
   - Scrolled away from the live end, a "↓ N new" chip rides on the
     composer, wherever it is dragged, and counts what arrived since.
-  - Expanded, it carries a mode chip (Code, or Plan in blue; a click or
-    `Tab` switches) and a model chip with the thinking level and fast mode,
-    which opens Session Settings.
   - While a turn runs, Send splits in two. The pill steers: the agent reads
     the message before its next step (`Enter`). The chevron adds Queue until
     done, which holds the message in this window and sends it as a turn of

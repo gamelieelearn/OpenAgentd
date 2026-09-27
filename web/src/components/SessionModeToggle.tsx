@@ -1,13 +1,10 @@
 import type { SessionInteractionMode } from '@/api/types'
-import { cn } from '@/lib/utils'
 
-const LABEL: Record<SessionInteractionMode, string> = { code: 'Code', plan: 'Plan' }
+const MODES: Array<{ value: SessionInteractionMode; label: string }> = [
+  { value: 'code', label: 'Code' },
+  { value: 'plan', label: 'Plan' },
+]
 
-/**
- * The composer's mode chip: names the mode and switches to the other on a
- * click, as Tab does from the textarea. Plan takes the blue tint the
- * collapsed composer uses.
- */
 export function SessionModeToggle({
   mode,
   pending = false,
@@ -24,28 +21,34 @@ export function SessionModeToggle({
   onChange: (mode: SessionInteractionMode) => void
   disabled?: boolean
 }) {
-  const other: SessionInteractionMode = mode === 'code' ? 'plan' : 'code'
   return (
-    <button
-      type="button"
-      data-mode={mode}
-      aria-label={pending ? `${LABEL[mode]} mode (applies after the current turn)` : `${LABEL[mode]} mode`}
-      title={pending ? 'Applies when the current turn finishes' : `Switch to ${LABEL[other]} mode (Tab)`}
-      disabled={disabled}
-      onClick={() => onChange(other)}
-      className={cn(
-        'flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors duration-(--motion-instant) disabled:cursor-default disabled:opacity-50 md:h-7',
-        mode === 'plan'
-          ? 'border-(--color-info)/50 bg-(--color-info-subtle) text-(--accent-blue-text)'
-          : 'border-(--color-border) bg-(--bg-card) text-(--color-text-2) enabled:hover:bg-(--bg-key) enabled:hover:text-(--color-text)',
-        pending && 'italic opacity-70',
-      )}
+    <div
+      aria-label="Interaction mode"
+      className="flex shrink-0 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)"
+      role="group"
     >
-      <span
-        aria-hidden="true"
-        className={cn('h-1.5 w-1.5 rounded-full', mode === 'plan' ? 'bg-(--color-info)' : 'bg-(--color-text-subtle)')}
-      />
-      {LABEL[mode]}
-    </button>
+      {MODES.map((item) => {
+        const active = mode === item.value
+        const queued = active && pending
+        return (
+          <button
+            key={item.value}
+            type="button"
+            aria-label={queued ? `${item.label} mode (applies after the current turn)` : `${item.label} mode`}
+            aria-pressed={active}
+            title={queued ? 'Applies when the current turn finishes' : undefined}
+            disabled={disabled || active}
+            onClick={() => onChange(item.value)}
+            className={`h-8 px-2 text-xs font-medium transition-colors disabled:cursor-default md:h-7 ${
+              active
+                ? `bg-(--bg-key) text-(--color-text) ${queued ? 'italic opacity-70' : ''}`
+                : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-50'
+            }`}
+          >
+            {item.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }

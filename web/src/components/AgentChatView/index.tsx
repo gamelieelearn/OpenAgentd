@@ -757,9 +757,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             onRedo={() => { void handleSlashCommand('redo') }}
             onRedoAll={() => { void handleSlashCommand('redo-all') }}
             model={sessionModel ?? leadAgent?.model ?? null}
-            thinkingLevel={sessionThinkingLevel}
-            fastMode={storeState.sessionFastMode}
-            onOpenSessionSettings={handleToggleAgentCapabilities}
             context={{ used: leadPromptTokens, limit: summaryTriggerTokens ?? DEFAULT_SUMMARY_TRIGGER_TOKENS }}
             onReviewChanges={isChatWorkspace ? undefined : handleReviewChanges}
           />

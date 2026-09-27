@@ -68,7 +68,6 @@ function Harness(props: {
   exposeFocus?: boolean
   isStreaming?: boolean
   slashCommands?: Array<{ id: string; label: string; description: string }>
-  onOpenSessionSettings?: () => void
 }) {
   const boundsRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<InputComposerHandle>(null)
@@ -92,9 +91,6 @@ function Harness(props: {
         isStreaming={props.isStreaming}
         placeholder={props.placeholder ?? 'Message…'}
         slashCommands={props.slashCommands}
-        model="openai:gpt-5"
-        thinkingLevel="high"
-        onOpenSessionSettings={props.onOpenSessionSettings}
       />
     </div>
   )
@@ -220,17 +216,6 @@ describe('FloatingInputComposer', () => {
 
     const panel = wrapper!.firstElementChild as HTMLElement
     expect(panel.className).toContain('pointer-events-auto')
-  })
-
-  it('offers the model chip once expanded, opening Session Settings', async () => {
-    const user = userEvent.setup()
-    const onOpenSessionSettings = mock(() => {})
-    render(<Harness onOpenSessionSettings={onOpenSessionSettings} />)
-    expect(screen.queryByRole('button', { name: /^Model gpt-5/ })).toBeNull()
-
-    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
-    await user.click(screen.getByRole('button', { name: 'Model gpt-5, thinking high. Open Session Settings' }))
-    expect(onOpenSessionSettings).toHaveBeenCalledTimes(1)
   })
 
   it('carries the jump-to-latest chip on the moving panel', () => {

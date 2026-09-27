@@ -6,44 +6,30 @@ import { SessionModeToggle } from '@/components/SessionModeToggle'
 afterEach(cleanup)
 
 describe('SessionModeToggle', () => {
-  test('is one chip naming the mode, and a click switches to the other', () => {
+  test('shows the active mode and selects the other mode directly', () => {
     const onChange = mock(() => {})
 
     render(<SessionModeToggle mode="code" onChange={onChange} />)
 
-    const chip = screen.getByRole('button', { name: 'Code mode' })
-    expect(chip.textContent).toBe('Code')
-    expect(chip.getAttribute('title')).toBe('Switch to Plan mode (Tab)')
-    expect(screen.queryByRole('button', { name: 'Plan mode' })).toBeNull()
-    fireEvent.click(chip)
+    expect(screen.getByRole('button', { name: 'Code mode' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Plan mode' }))
     expect(onChange).toHaveBeenCalledWith('plan')
-  })
-
-  test('switches back from Plan', () => {
-    const onChange = mock(() => {})
-
-    render(<SessionModeToggle mode="plan" onChange={onChange} />)
-
-    const chip = screen.getByRole('button', { name: 'Plan mode' })
-    expect(chip.dataset.mode).toBe('plan')
-    fireEvent.click(chip)
-    expect(onChange).toHaveBeenCalledWith('code')
   })
 
   test('marks a queued switch as not yet in force', () => {
     // The backend defers a mid-turn switch instead of stopping the turn, so
-    // the chip has to show the pick without claiming it is already active.
+    // the toggle has to show the pick without claiming it is already active.
     render(<SessionModeToggle mode="plan" pending onChange={() => {}} />)
 
     const queued = screen.getByRole('button', { name: 'Plan mode (applies after the current turn)' })
+    expect(queued.getAttribute('aria-pressed')).toBe('true')
     expect(queued.getAttribute('title')).toBe('Applies when the current turn finishes')
   })
 
-  test('cannot switch while disabled', () => {
-    const onChange = mock(() => {})
-    render(<SessionModeToggle mode="code" disabled onChange={onChange} />)
+  test('does not annotate the mode when nothing is queued', () => {
+    render(<SessionModeToggle mode="plan" onChange={() => {}} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Code mode' }))
-    expect(onChange).not.toHaveBeenCalled()
+    const active = screen.getByRole('button', { name: 'Plan mode' })
+    expect(active.getAttribute('title')).toBeNull()
   })
 })
