@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatTokens, formatRelativeDate, formatCompactRelative, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks } from "@/utils/format";
+import { formatTokens, formatRelativeDate, formatCompactRelative, formatDate, isSleepMessage, extractSleepPrefix, shortId, shortModelName, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks } from "@/utils/format";
 
 // ---------------------------------------------------------------------------
 // formatTokens
@@ -211,6 +211,19 @@ describe("shortId", () => {
 
   it("returns exactly 8 characters when input is exactly 8", () => {
     expect(shortId("12345678")).toBe("12345678");
+  });
+});
+
+describe("shortModelName", () => {
+  it("drops the provider prefix and any vendor path", () => {
+    expect(shortModelName("openai:gpt-5")).toBe("gpt-5");
+    expect(shortModelName("openrouter:anthropic/claude-sonnet-4.5")).toBe("claude-sonnet-4.5");
+    expect(shortModelName("gpt-5")).toBe("gpt-5");
+  });
+
+  it("is empty for no model", () => {
+    expect(shortModelName(null)).toBeNull();
+    expect(shortModelName("")).toBeNull();
   });
 });
 

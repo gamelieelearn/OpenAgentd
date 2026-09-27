@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { groupToolRuns, summarizeTurnChanges } from '@/components/ToolCall/grouping'
 import { ToolRunGroup } from '@/components/ToolCall/ToolRunGroup'
 import { TurnChanges } from '@/components/TurnChanges'
-import { formatTime, formatFullDateTime, lastTurnText } from '@/utils/format'
+import { formatTime, formatFullDateTime, lastTurnText, shortModelName } from '@/utils/format'
 import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
 import { PlanActionContext } from '@/utils/markdown-plan'
 import type { ContentBlock } from '@/api/types'
@@ -35,11 +35,6 @@ function formatDuration(ms: number): string {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes}m ${seconds}s`
-}
-
-function shortModelName(modelId: string | null | undefined): string | null {
-  if (!modelId) return null
-  return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
 }
 
 export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact', showModel = true }: AssistantTurnFooterProps) {

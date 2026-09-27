@@ -15,6 +15,38 @@ import { formatSpend } from '@/utils/telemetryFormat'
 
 export const DEFAULT_SUMMARY_TRIGGER_TOKENS = 250_000
 
+const RING_RADIUS = 7
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
+
+/** How far the context has filled towards auto-compact, as a ring. */
+export function ContextRing({ progress, className }: { progress: number; className?: string }) {
+  const clamped = Math.min(Math.max(progress, 0), 1)
+  return (
+    <svg className={cn('-rotate-90', className)} viewBox="0 0 18 18" aria-hidden="true">
+      <circle
+        cx="9"
+        cy="9"
+        r={RING_RADIUS}
+        fill="none"
+        stroke="var(--color-accent)"
+        strokeOpacity="0.18"
+        strokeWidth="2"
+      />
+      <circle
+        cx="9"
+        cy="9"
+        r={RING_RADIUS}
+        fill="none"
+        stroke="var(--color-accent)"
+        strokeLinecap="round"
+        strokeWidth="2.6"
+        strokeDasharray={RING_CIRCUMFERENCE}
+        strokeDashoffset={RING_CIRCUMFERENCE * (1 - clamped)}
+      />
+    </svg>
+  )
+}
+
 export interface TokenMeterProps {
   input: number
   output: number
@@ -52,10 +84,6 @@ export function TokenMeter({
   const safeTrigger = Math.max(trigger, 1)
   const progress = Math.min(input / safeTrigger, 1)
   const percent = Math.round(progress * 100)
-  const ringColor = 'var(--color-accent)'
-  const radius = 7
-  const circumference = 2 * Math.PI * radius
-  const dashOffset = circumference * (1 - progress)
   const cachePercentValue = cachedPercent ?? (cached > 0 && input > 0 ? (cached / input) * 100 : undefined)
   const cachePercentFormatted = cachePercentValue !== undefined ? `${cachePercentValue.toFixed(2)}%` : `${cached.toLocaleString()}%`
   const tooltip =
@@ -177,28 +205,7 @@ export function TokenMeter({
         onFocus={openHoverTooltip}
         onBlur={closeHoverTooltip}
       >
-        <svg className={cn('-rotate-90', compact ? 'h-3.5 w-3.5' : 'h-4 w-4')} viewBox="0 0 18 18" aria-hidden="true">
-          <circle
-            cx="9"
-            cy="9"
-            r={radius}
-            fill="none"
-            stroke={ringColor}
-            strokeOpacity="0.18"
-            strokeWidth="2"
-          />
-          <circle
-            cx="9"
-            cy="9"
-            r={radius}
-            fill="none"
-            stroke={ringColor}
-            strokeLinecap="round"
-            strokeWidth="2.6"
-            strokeDasharray={circumference}
-            strokeDashoffset={dashOffset}
-          />
-        </svg>
+        <ContextRing progress={progress} className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
       </button>
       {open && tooltipPosition && createPortal(
         <div

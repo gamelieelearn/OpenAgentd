@@ -18,6 +18,12 @@ export function shortId(id: string): string {
   return id.slice(0, 8)
 }
 
+/** ``provider:vendor/model`` → ``model``. */
+export function shortModelName(modelId: string | null | undefined): string | null {
+  if (!modelId) return null
+  return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
+}
+
 export function formatTime(date: Date): string {
   return date.toLocaleTimeString(undefined, {
     hour: 'numeric',
