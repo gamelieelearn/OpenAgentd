@@ -759,6 +759,10 @@ agent against it.
   session or the window was hidden. Opening the session clears the dot in every
   window. Unread state stays on this device, and sessions that finish while the
   app is closed are not marked.
+- **Needs you** `[v3.0.0]` — sessions stopped on a question are listed above
+  the workspaces, from every workspace and however old, each with its
+  workspace name and a count. The list updates as questions are asked and
+  answered, and a click opens the session.
 - **Anchored & regex-optimized filesystem search** `[v2.0.0]` — `glob` pattern matching
   anchors walks at the literal prefix (up to 50x faster), `grep` pre-filters files using
   literal scanning and streams matches asynchronously off the main loop, and non-ignored

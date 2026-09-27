@@ -341,13 +341,14 @@ export async function revertCodingWorkspaceCommit(
 export async function listSessions(
   before?: string | null,
   limit = 20,
-  filters?: { workspace?: string | null },
+  filters?: { workspace?: string | null; active?: boolean },
   signal?: AbortSignal,
 ): Promise<SessionPageResponse> {
   const params = new URLSearchParams()
   if (before) params.set('before', before)
   params.set('limit', String(limit))
   if (filters?.workspace) params.set('workspace', filters.workspace)
+  if (filters?.active) params.set('active', 'true')
   const res = await fetch(`${apiBaseUrl()}/agent/sessions?${params}`, { signal })
   if (!res.ok) await parseDetailOrThrow(res, 'listSessions')
   return res.json()

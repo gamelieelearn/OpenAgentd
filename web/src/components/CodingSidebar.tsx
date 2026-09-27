@@ -79,6 +79,7 @@ import {
 import type { CodingWorkspaceTreeRepository, SessionResponse, WorktreeInfo } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { WorkspaceSessionList } from './CodingSidebar/WorkspaceSessionList'
+import { NeedsYouSection } from './CodingSidebar/NeedsYouSection'
 import { CodingSidebarConfirmDialogs } from './CodingSidebar/ConfirmDialogs'
 import {
   addExpandedPaths,
@@ -690,6 +691,12 @@ export function CodingSidebar({
       }
     >
       {!isMobile && !desktopCollapsed && <PanelResizeHandle edge="right" />}
+
+      <NeedsYouSection
+        currentSessionId={currentSessionId}
+        workspaceName={(path) => (isChatPath(path) ? (chatWorkspace?.name ?? path) : workspaceLabel(path))}
+        onSessionSelect={handleSessionSelect}
+      />
 
       {/* Section header — actions stay reachable however long the list is. */}
       <div className="flex h-8 shrink-0 items-center justify-between gap-2 pl-3 pr-1.5">

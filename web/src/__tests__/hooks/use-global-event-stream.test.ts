@@ -444,6 +444,25 @@ describe('handleGlobalEvent', () => {
     expect(client.getQueryState(queryKeys.session.subagents('lead-1'))?.isInvalidated).toBe(true)
   })
 
+  // Membership changes (a session starts, stops, or asks) are not patchable in
+  // place, and the active list is one small page.
+  it('refetches the active sessions list on every turn and question event', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+    const events: [string, Record<string, unknown>][] = [
+      ['session_turn_started', { session_id: 's1' }],
+      ['session_turn_completed', { session_id: 's1', status: 'completed' }],
+      ['desktop_notification', {
+        notification_id: 'n-active', kind: 'input_needed', session_id: 's1', title: 'Needs your input', body: 'Which?',
+      }],
+    ]
+    for (const [type, data] of events) {
+      client.setQueryData(queryKeys.session.sessions.active(), { pages: [], pageParams: [null] })
+      await handleGlobalEvent(client, type, data, 1, () => 1)
+      expect(client.getQueryState(queryKeys.session.sessions.active())?.isInvalidated).toBe(true)
+    }
+  })
+
   it('marks a finished session unread when this window is not showing it', async () => {
     const client = new QueryClient()
     useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })

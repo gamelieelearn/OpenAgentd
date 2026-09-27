@@ -33,6 +33,22 @@ export function useCodingWorkspaceSessionsQuery(workspace: string, enabled = tru
   })
 }
 
+/**
+ * Every session running or waiting on the user, whatever page it sits on.
+ * Kept in the infinite-list shape so the in-place row patches (turn state,
+ * titles) reach it like any other session list; the global event stream
+ * refetches it when a session joins or leaves. A v2 server ignores ``active``
+ * and returns a normal page, so callers filter the rows they show.
+ */
+export function useActiveSessionsQuery() {
+  return useInfiniteQuery({
+    queryKey: queryKeys.session.sessions.active(),
+    queryFn: ({ signal }) => listSessions(null, PAGE_SIZE, { active: true }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: () => undefined,
+  })
+}
+
 export function useUpdateSessionTitleMutation() {
   const queryClient = useQueryClient()
   return useMutation({

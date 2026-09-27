@@ -56,7 +56,8 @@ const CONFIG_RESOURCE_KEYS: Record<string, readonly (readonly unknown[])[]> = {
  * scheduled task. ``running`` and ``needs_input`` are the only turn-dependent
  * fields on a session row, so patch them in place; only fall back to a list
  * refetch when the session is not in any cached page yet (a scheduled task may
- * have just created it).
+ * have just created it). The active list is the exception: a session joining
+ * or leaving it cannot be patched in, and it is a single small page.
  */
 function markSessionRunning(
   queryClient: QueryClient,
@@ -66,7 +67,9 @@ function markSessionRunning(
 ): void {
   if (!patchSessionRunning(queryClient, sessionId, running, needsInput)) {
     queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+    return
   }
+  queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.active() })
 }
 
 export async function handleGlobalEvent(
