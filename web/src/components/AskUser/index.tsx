@@ -177,7 +177,7 @@ export function AskUser({
   }
 
   return (
-    <QuestionShell waiting>
+    <QuestionShell waiting open>
       <QuestionCard
         key={questionId}
         question={pendingQuestion}
@@ -209,13 +209,16 @@ export function AskUser({
 /** The card frame. Fluid width — no separate mobile presentation. */
 function QuestionShell({
   waiting,
+  open = false,
   children,
 }: {
   waiting: boolean
+  /** Still answerable here; the transcript's timeline marks it. */
+  open?: boolean
   children: ReactNode
 }) {
   return (
-    <div className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
+    <div data-question-waiting={open ? '' : undefined} className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
       <div className="flex items-center gap-1.5 border-b border-(--color-border) px-3 py-1.5 text-[11px] font-medium tracking-wide text-(--color-text-muted) uppercase">
         <MessageCircleQuestion size={12} aria-hidden />
         {waiting ? 'Needs your input' : 'Your input'}
