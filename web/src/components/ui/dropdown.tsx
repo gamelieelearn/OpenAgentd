@@ -123,6 +123,8 @@ export interface DropdownProps {
   onValueChange?: (value: string) => void
   className?: string
   panelClassName?: string
+  /** Which trigger edge the panel lines up with; ``end`` suits triggers at a right edge. */
+  align?: 'start' | 'end'
   id?: string
   'aria-label'?: string
   'aria-invalid'?: boolean | 'true' | 'false'
@@ -137,6 +139,7 @@ function Dropdown({
   onValueChange,
   className,
   panelClassName,
+  align = 'start',
   id,
   'aria-label': ariaLabel,
   'aria-invalid': ariaInvalid,
@@ -157,13 +160,17 @@ function Dropdown({
     if (!t) return
     const rect = t.getBoundingClientRect()
     const panelH = panelRef.current?.offsetHeight ?? 200
+    const panelW = panelRef.current?.offsetWidth ?? rect.width
     const flipsUp = rect.bottom + 4 + window.scrollY + panelH > window.innerHeight + window.scrollY
+    const left = align === 'end'
+      ? Math.max(8, rect.right - Math.max(panelW, rect.width))
+      : rect.left
     setPos({
       top: flipsUp ? rect.top - panelH - 4 + window.scrollY : rect.bottom + 4 + window.scrollY,
-      left: rect.left + window.scrollX,
+      left: left + window.scrollX,
       width: rect.width,
     })
-  }, [])
+  }, [align])
 
   useEffect(() => {
     if (!panelMounted) return
