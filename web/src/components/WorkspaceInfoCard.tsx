@@ -13,10 +13,6 @@
  *
  * Backed by ``GET /api/agent/workspace/status``. Fetched once on mount;
  * manual refresh via the button — no polling.
- *
- * The starter action chips are desktop-only. On a phone the empty state is
- * already competing with the composer and the keyboard, and the same actions
- * are reachable from the composer and the chat actions drawer.
  */
 
 import { useQuery } from '@tanstack/react-query'
