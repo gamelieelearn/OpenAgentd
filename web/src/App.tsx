@@ -4,7 +4,6 @@ import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
 import { AppBackendDialog } from '@/components/AppBackendDialog'
 import { Button } from '@/components/ui/button'
 import { getBundledBackendLogPath } from '@/lib/app-backend'
-import { UpdateCard } from './components/UpdateCard'
 import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
 import { queryClient } from '@/lib/query-client'
@@ -23,7 +22,6 @@ function App() {
   return (
     <Suspense fallback={<AppLoadingScreen unavailable={false} failed={false} retrying={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
       <RouterProvider router={router} />
-      <UpdateCard />
     </Suspense>
   )
 }

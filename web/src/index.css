@@ -439,6 +439,13 @@ html[data-mobile-shell] .mobile-safe-header {
   left: max(1rem, env(safe-area-inset-left, 0px));
 }
 
+/* Desktop: floating cards sit above the status bar instead of on it. */
+@media (width >= 48rem) {
+  .mobile-safe-floating {
+    bottom: calc(var(--spacing-status-bar) + 0.75rem);
+  }
+}
+
 .mobile-safe-toast {
   top: max(1rem, env(safe-area-inset-top, 0px));
   right: max(1rem, env(safe-area-inset-right, 0px));

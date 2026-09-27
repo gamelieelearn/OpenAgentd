@@ -5,7 +5,6 @@ import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
 import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
 import { Home } from 'lucide-react'
-import { ToastStack } from '@/components/ToastStack'
 import { SettingsModal } from '@/components/SettingsModal'
 import { TelemetryOverlay } from '@/components/Telemetry/TelemetryOverlay'
 import { SkipLink } from '@/components/motion'
@@ -23,7 +22,7 @@ import { usePreventStrayFileDrop } from '@/hooks/usePreventStrayFileDrop'
 import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardShortcuts'
 import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
-import { LspInstallPrompt } from '@/components/LspInstallPrompt'
+import { FloatingNotices } from '@/components/FloatingNotices'
 import { CAPABILITY, useServerCapability } from '@/queries'
 
 // Lives in the (lazy) Plugins settings chunk: it only shows a toast after the
@@ -127,8 +126,7 @@ export function Root() {
       </Suspense>
       <SettingsModal />
       <TelemetryOverlay />
-      <LspInstallPrompt />
-      <ToastStack />
+      <FloatingNotices />
     </QueryClientProvider>
   )
 }

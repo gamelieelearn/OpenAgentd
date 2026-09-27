@@ -197,7 +197,7 @@ export function UpdateCard() {
 
   return (
     <aside
-      className="mobile-safe-floating fixed z-50 pointer-events-none flex justify-end"
+      className="pointer-events-none flex w-full justify-end"
       aria-live="polite"
     >
       <motion.div
