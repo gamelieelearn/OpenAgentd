@@ -69,14 +69,6 @@ export function mergeBlocks(
   return [...blocks, ...liveTail]
 }
 
-export function latestDirectUserBlockId(blocks: ContentBlock[]): string | undefined {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const block = blocks[i]
-    if (block.type === 'user' && !block.extra?.from_agent) return block.id
-  }
-  return undefined
-}
-
 const PLAN_CONTENT_REGEX =
   /<proposed_plan\b|^\s*(?:#+\s*(?:proposed\s+|implementation\s+)?plan\b|\*\*(?:proposed\s+|implementation\s+)?plan:?\*\*)/im
 
@@ -99,15 +91,6 @@ export function hasPlanContent(blocks: ContentBlock[]): boolean {
       typeof b.content === 'string' &&
       PLAN_CONTENT_REGEX.test(stripBacktickCode(b.content)),
   )
-}
-
-/** Check the live suffix first, then the stable finalized history. This avoids
- * scanning a merged session-sized array for every streamed delta. */
-export function latestDirectUserBlockIdFromParts(
-  blocks: ContentBlock[],
-  currentBlocks: ContentBlock[],
-): string | undefined {
-  return latestDirectUserBlockId(currentBlocks) ?? latestDirectUserBlockId(blocks)
 }
 
 /**

@@ -54,6 +54,7 @@ import type {
 import { AgentChatHeader } from './AgentChatHeader'
 import { AgentChatPanels } from './AgentChatPanels'
 import { ProviderSetupNotice } from './ProviderSetupNotice'
+import { retryLatestPrompt } from './retryPrompt'
 import { useDragDrop } from './useDragDrop'
 import { useOverlayState } from './useOverlayState'
 import { useSessionBootstrap } from './useSessionBootstrap'
@@ -82,6 +83,7 @@ interface ActiveAgentViewProps {
   emptyState?: React.ReactNode
   onMentionFileOpen?: (path: string) => void
   onStartImplementing?: () => void
+  onRetry?: () => void
   isSwitchingInteractionMode?: boolean
   findOpen?: boolean
   findQuery?: string
@@ -95,6 +97,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
   emptyState,
   onMentionFileOpen,
   onStartImplementing,
+  onRetry,
   isSwitchingInteractionMode,
   findOpen,
   findQuery,
@@ -126,6 +129,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
       onMentionFileOpen={onMentionFileOpen}
       emptyState={emptyState}
       onStartImplementing={onStartImplementing}
+      onRetry={onRetry}
       isSwitchingInteractionMode={isSwitchingInteractionMode}
       findOpen={findOpen}
       findQuery={findQuery}
@@ -492,6 +496,10 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     }
   }, [effectiveWorkspace, isSwitchingInteractionMode, sessionIdState, sendMessage, pushToast])
 
+  const handleRetry = useCallback(() => {
+    if (effectiveWorkspace) void retryLatestPrompt(effectiveWorkspace)
+  }, [effectiveWorkspace])
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -620,6 +628,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             <ActiveAgentView
               onMentionFileOpen={handleMentionFileOpen}
               onStartImplementing={handleStartImplementing}
+              onRetry={handleRetry}
               isSwitchingInteractionMode={isSwitchingInteractionMode}
               findOpen={findOpen}
               findQuery={findQuery}

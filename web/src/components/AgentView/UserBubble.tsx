@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, memo } from 'react'
-import { Check, ChevronDown, ChevronUp, Copy, Undo2 } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 
@@ -194,7 +194,17 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onRevert, modelId, onMentionFileOpen, mentions, fromAgent }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; onMentionFileOpen?: (path: string) => void; mentions?: string[]; fromAgent?: string | null }) {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, modelId, onMentionFileOpen, mentions, fromAgent }: {
+  content: string
+  timestamp?: Date
+  attachments?: MessageAttachment[]
+  /** Rewind to just before this prompt and put it back in the composer. */
+  onEdit?: () => void
+  modelId?: string | null
+  onMentionFileOpen?: (path: string) => void
+  mentions?: string[]
+  fromAgent?: string | null
+}) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -329,26 +339,27 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
            )}
          </div>
 
-         {/* Copy button + timestamp row */}
-          {(timestamp || modelName) && (
-            <div className={`flex items-center gap-1.5 transition-opacity duration-150 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
+         {/* Actions + timestamp row. Always rendered: Copy and Edit do not
+             depend on the metadata, and a pending prompt has neither yet. */}
+            <div className={`flex items-center gap-1.5 transition-opacity duration-150 focus-within:opacity-100 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
               {modelName && (
                 <span className="mr-1 font-mono text-[11px] text-(--color-text-subtle)">{modelName}</span>
               )}
-               {onRevert && (
+              {onEdit && (
                 <Tooltip>
                   <TooltipTrigger
                     render={
                       <button
-                        onClick={onRevert}
+                        onClick={onEdit}
                         className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:scale-90"
-                        aria-label="Revert latest message"
+                        aria-label="Edit message"
                       >
-                        <Undo2 size={11} />
+                        <Pencil size={11} />
                       </button>
                     }
                   />
-                  <TooltipContent>Revert latest message</TooltipContent>
+                  {/* Undo, so later turns come back with Redo. */}
+                  <TooltipContent>Edit from here</TooltipContent>
                 </Tooltip>
               )}
               <Tooltip>
@@ -382,7 +393,6 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                 </Tooltip>
               )}
             </div>
-          )}
       </div>
     </div>
   )

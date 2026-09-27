@@ -331,7 +331,7 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(copyBtn).toBeTruthy()
   })
 
-  it("does not show copy button when timestamp is not provided", () => {
+  it("still offers copy when the prompt has no timestamp yet", () => {
     const content = "Test message"
     const blocks: ContentBlock[] = [
       {
@@ -344,9 +344,8 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    // Copy button should not be present
-    const copyBtn = screen.queryByLabelText("Copy message")
-    expect(copyBtn).toBeNull()
+    // Copy does not depend on the metadata row's contents.
+    expect(screen.getByLabelText("Copy message")).toBeTruthy()
   })
 
   it("copies message content to clipboard when copy button is clicked", async () => {

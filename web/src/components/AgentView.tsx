@@ -27,7 +27,7 @@ import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
-import { hasPlanContent, latestDirectUserBlockIdFromParts, liveBlockTail } from '@/utils/blocks'
+import { hasPlanContent, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -215,6 +215,8 @@ interface AgentViewProps {
   onMentionFileOpen?: (path: string) => void
   /** Callback to switch to Code mode and start implementation of a proposed plan. */
   onStartImplementing?: () => void
+  /** Resend the latest prompt; offered under the latest finished answer. */
+  onRetry?: () => void
   /** True when interaction mode is actively transitioning to Code mode. */
   isSwitchingInteractionMode?: boolean
   findOpen?: boolean
@@ -225,12 +227,12 @@ interface AgentViewProps {
   onFindActiveIndexChange?: (index: number) => void
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen, findHit = false }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void; /** Transcript find matched inside this block, so it must be visible. */ findHit?: boolean }) {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, latestMCPAppBlockIds, onMentionFileOpen, findHit = false }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; /** Rewind to a prompt the user wrote; ignored for agent reports. */ onEdit?: (blockId: string) => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void; /** Transcript find matched inside this block, so it must be visible. */ findHit?: boolean }) {
   switch (block.type) {
     case 'user': {
       const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
       const fromAgent = typeof block.extra?.from_agent === 'string' ? block.extra.from_agent : null
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} modelId={blockModel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} forceOpen={findHit} />
@@ -340,6 +342,7 @@ export function AgentView({
   emptyState,
   onMentionFileOpen,
   onStartImplementing,
+  onRetry,
   isSwitchingInteractionMode = false,
   findOpen = false,
   findQuery = '',
@@ -358,17 +361,11 @@ export function AgentView({
   const pendingRestoreRef = useRef(false)
   const onLoadOlderTopRef = useRef<() => void>(() => {})
 
-  const handleRevert = useCallback(() => {
-    void useAgentStore.getState().undoAgent().then(async (response) => {
-      const message = response?.message
-      if (!message || message.role !== 'user' || message.is_summary) return
-      window.dispatchEvent(
-        new CustomEvent('undo:restore-draft', {
-          detail: { content: message.content ?? '', attachments: message.attachments ?? [] },
-        }),
-      )
-    })
+  // The store puts the prompt back in the composer via ``pendingDraft``.
+  const handleEdit = useCallback((blockId: string) => {
+    void useAgentStore.getState().revertToMessage(blockId)
   }, [])
+  const editHandler = isTurnOpen ? undefined : handleEdit
 
   // Live blocks not yet folded into `blocks`, deduped against confirmed ids.
   // Both scroll bookkeeping and turn partitioning below read from this same
@@ -386,15 +383,18 @@ export function AgentView({
     : ((findActiveIndex % findMatches.length) + findMatches.length) % findMatches.length
   const findHitBlockIds = useMemo(() => new Set(findMatches.map((match) => match.blockId)), [findMatches])
   const totalLen = blocks.length + liveTail.length
-  const latestUserBlockId = useMemo(
-    () => latestDirectUserBlockIdFromParts(blocks, currentBlocks),
-    [blocks, currentBlocks],
-  )
   const finalizedTurnItems = useMemo(() => partitionTurns(blocks), [blocks])
   const turnItems = useMemo(
     () => appendCurrentTurns(finalizedTurnItems, blocks.length, liveTail),
     [blocks.length, liveTail, finalizedTurnItems],
   )
+  // Retry rewinds the latest prompt, so it is only honest under a finished
+  // answer that directly follows a prompt the user wrote.
+  const lastTurnItem = turnItems[turnItems.length - 1]
+  const promptBeforeLastTurn = turnItems[turnItems.length - 2]
+  const canRetry = Boolean(onRetry) && !isTurnOpen &&
+    lastTurnItem?.kind === 'assistant' &&
+    promptBeforeLastTurn?.kind === 'user' && isDirectUserBlock(promptBeforeLastTurn.block)
   const { hiddenTurnCount, visibleTurnItems } = useMemo(
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
     [renderedTurnCount, turnItems],
@@ -580,7 +580,7 @@ export function AgentView({
                          block={item.block}
                          isStreaming={false}
                          sessionId={sessionId}
-                         onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
+                         onEdit={editHandler}
                          latestMCPAppBlockIds={mcpAppResourceUri(item.block) ? latestMCPAppBlockIds : undefined}
                          onMentionFileOpen={onMentionFileOpen}
                        />
@@ -609,6 +609,7 @@ export function AgentView({
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
                      findHitBlockIds={findOpen ? findHitBlockIds : undefined}
                      onOpenFile={onMentionFileOpen}
+                     onRetry={canRetry && isTrailingTurn ? onRetry : undefined}
                       renderBlock={({ block, isStreaming }) => (
                        <div
                          data-find-block={isTranscriptFindableBlock(block.type) ? block.id : undefined}
@@ -617,7 +618,6 @@ export function AgentView({
                            block={block}
                            isStreaming={isStreaming}
                            sessionId={sessionId}
-                           onRevert={isDirectUserBlock(block) && block.id === latestUserBlockId ? handleRevert : undefined}
                            latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
                            onMentionFileOpen={onMentionFileOpen}
                            findHit={findHitBlockIds.has(block.id)}
