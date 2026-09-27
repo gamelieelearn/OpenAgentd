@@ -23,6 +23,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { type InputComposerHandle, type SlashCommand, type SnippetCommand } from '../InputComposer'
 import { filterBaseSlashCommands, attachmentToFile } from './helpers'
+import { stopTurn } from './heldMessages'
 
 export interface UseSlashCommandsArgs {
   /** Coding workspace path, or `null` while no workspace is attached. */
@@ -118,7 +119,7 @@ export function useSlashCommands({
   const handleSlashCommand = useCallback((id: string) => {
     switch (id) {
       case 'stop':
-        useAgentStore.getState().stopAgent()
+        void stopTurn(inputRef.current)
         break
       case 'compact':
         useAgentStore.getState().compactAgent()

@@ -156,7 +156,8 @@ export interface InputComposerProps {
 export interface InputComposerHandle {
   focus: () => void
   setValue: (text: string) => void
-  appendValue: (text: string) => void
+  /** ``paragraph`` puts a blank line, rather than a space, before the text. */
+  appendValue: (text: string, options?: { paragraph?: boolean }) => void
   insertText: (text: string) => void
   setFiles: (files: File[]) => void
   addFiles: (files: File[]) => void
@@ -385,8 +386,9 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       // ``resizeAfterLayout`` for why this must wait two frames.
       resizeAfterLayout()
     },
-    appendValue: (text: string) => {
+    appendValue: (text: string, options?: { paragraph?: boolean }) => {
       setValue((prev) => {
+        if (options?.paragraph) return prev.trim() ? `${prev.trimEnd()}\n\n${text}` : text
         const spacer = prev && !/\s$/.test(prev) ? ' ' : ''
         return `${prev}${spacer}${text}`
       })

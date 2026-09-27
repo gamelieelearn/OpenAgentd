@@ -3,10 +3,12 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import type { AgentCommandResponse } from '@/api/types'
 import { BASE_SLASH_COMMANDS, filterBaseSlashCommands, parseBuiltInSlashCommand } from '@/components/AgentChatView/helpers'
 import { useSlashCommands } from '@/components/AgentChatView/useSlashCommands'
+import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 
 const redo = mock(async (): Promise<AgentCommandResponse | undefined> => undefined)
+const stopAgent = mock(async () => {})
 mock.module('@/stores/useAgentStore', () => ({
-  useAgentStore: { getState: () => ({ redoAgent: redo, redoAllAgent: redo }) },
+  useAgentStore: { getState: () => ({ redoAgent: redo, redoAllAgent: redo, sessionId: 'session-1', stopAgent }) },
 }))
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
@@ -165,6 +167,19 @@ describe('useSlashCommands', () => {
     expect(ids).toEqual(['compact', 'undo', 'redo', 'redo-all', 'new', 'init'])
   })
 
+  it('/stop hands messages held for the turn back to the composer', async () => {
+    useHeldMessagesStore.setState({ messages: [] })
+    useHeldMessagesStore.getState().hold({ sessionId: 'session-1', content: 'after that, run the tests' })
+    const { result } = renderHook(() => useSlashCommands({
+      agentWorkspace: '/tmp/project', inputRef, handleNewSession, isAgentWorking: true,
+    }))
+
+    await act(async () => { result.current.handleSlashCommand('stop') })
+
+    expect(inputRef.current.appendValue).toHaveBeenCalledWith('after that, run the tests', { paragraph: true })
+    expect(stopAgent).toHaveBeenCalledTimes(1)
+    expect(useHeldMessagesStore.getState().messages).toEqual([])
+  })
 })
 
 describe('parseBuiltInSlashCommand', () => {

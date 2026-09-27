@@ -64,6 +64,7 @@ import { useSessionBootstrap } from './useSessionBootstrap'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
 import { parseBuiltInSlashCommand } from './helpers'
+import { stopTurn, useReleaseHeldMessages } from './heldMessages'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
@@ -431,6 +432,8 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     hasVisibleMessages: leadHasVisibleBlocks,
   })
 
+  useReleaseHeldMessages({ workspace, sessionId: sessionIdState, composerRef: inputRef })
+
   const handleFindInTranscript = useCallback(() => {
     // Find searches the chat, which a maximized dock covers.
     useLayoutStore.getState().setDockMaximized(false)
@@ -736,7 +739,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
               // error banner as the only trace.
               if (!delivered) inputRef.current?.restoreLastSubmission()
             }}
-            onStop={() => useAgentStore.getState().stopAgent()}
+            onStop={() => { void stopTurn(inputRef.current) }}
             onSlashCommand={handleSlashCommand}
             onSnippetCommand={handleSnippetCommand}
             slashCommands={slashCommands}

@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp, Paperclip, Pencil } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
 
@@ -74,6 +75,46 @@ function QueuedMessageContent({ content, attachments }: { content: string; attac
   )
 }
 
+function QueuedBubble({ content, attachments, label, onEdit }: {
+  content: string
+  attachments?: MessageAttachment[]
+  label: string
+  onEdit: () => void
+}) {
+  return (
+    <div className="group flex justify-end">
+      <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
+        <div className="flex max-w-full items-start gap-2">
+          <QueuedMessageContent content={content} attachments={attachments} />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  onClick={onEdit}
+                  aria-label="Edit queued message"
+                  className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-(--color-text-muted) opacity-100 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 md:opacity-70 md:group-hover:opacity-100"
+                >
+                  <Pencil size={13} aria-hidden="true" className="md:h-3 md:w-3" />
+                </button>
+              }
+            />
+            <TooltipContent>Edit queued message</TooltipContent>
+          </Tooltip>
+        </div>
+        <span className="pr-8 text-[11px] text-(--color-text-subtle)">{label}</span>
+      </div>
+    </div>
+  )
+}
+
+/** Move a queued message back into the composer (see ``useSessionBootstrap``). */
+function restoreDraft(content: string, files?: File[]) {
+  // Files ride along because cancelling a server-queued message deletes its
+  // persisted uploads. The event keeps this component free of the chat
+  // view's composer ref.
+  window.dispatchEvent(new CustomEvent('queue:restore-draft', { detail: { content, files } }))
+}
+
 export const PendingMessageQueue = memo(function PendingMessageQueue() {
   const allMessages = useAgentStore((s) => s._pendingMessages)
   const sessionId = useAgentStore((s) => s.sessionId)
@@ -99,47 +140,37 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
     })
   }, [allMessages, sessionId, agentStreams])
   const removePendingMessage = useAgentStore((s) => s.removePendingMessage)
+  const allHeld = useHeldMessagesStore((s) => s.messages)
+  const held = useMemo(() => allHeld.filter((msg) => msg.sessionId === sessionId), [allHeld, sessionId])
 
-  if (messages.length === 0) return null
-
-  const handleRemove = (id: string, content: string, files?: File[]) => {
-    // Move the queued text (and any queued files) back into the composer so
-    // the user can edit or resend instead of losing what they typed. Files
-    // must ride along because cancelling deletes the persisted uploads
-    // server-side. Mirrors the restore-on-/undo flow in AgentChatView. The
-    // CustomEvent matches the existing `focus-chat-input` pattern and
-    // decouples this component from the chat view's inputRef.
-    window.dispatchEvent(
-      new CustomEvent('queue:restore-draft', { detail: { content, files } }),
-    )
-    removePendingMessage(id)
-  }
+  if (messages.length === 0 && held.length === 0) return null
 
   return (
     <div className="flex flex-col gap-3">
       {messages.map((msg) => (
-        <div key={msg.id} className="group flex justify-end">
-          <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
-            <div className="flex max-w-full items-start gap-2">
-              <QueuedMessageContent content={msg.content} attachments={msg.attachments} />
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={() => handleRemove(msg.id, msg.content, msg.files)}
-                      aria-label="Edit queued message"
-                      className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-(--color-text-muted) opacity-100 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 md:opacity-70 md:group-hover:opacity-100"
-                    >
-                      <Pencil size={13} aria-hidden="true" className="md:h-3 md:w-3" />
-                    </button>
-                  }
-                />
-                <TooltipContent>Edit queued message</TooltipContent>
-              </Tooltip>
-            </div>
-            <span className="pr-8 text-[11px] text-(--color-text-subtle)">Queued</span>
-          </div>
-        </div>
+        <QueuedBubble
+          key={msg.id}
+          content={msg.content}
+          attachments={msg.attachments}
+          // The backend hands it to the agent before its next model call.
+          label="Read before the next step"
+          onEdit={() => {
+            restoreDraft(msg.content, msg.files)
+            removePendingMessage(msg.id)
+          }}
+        />
+      ))}
+      {held.map((msg) => (
+        <QueuedBubble
+          key={msg.id}
+          content={msg.content}
+          attachments={msg.attachments}
+          label="Sends when this turn ends"
+          onEdit={() => {
+            // Held client-side only, so there is nothing to cancel on the server.
+            if (useHeldMessagesStore.getState().take(msg.id)) restoreDraft(msg.content, msg.files)
+          }}
+        />
       ))}
     </div>
   )

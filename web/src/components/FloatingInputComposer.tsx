@@ -248,9 +248,9 @@ export const FloatingInputComposer = memo(
         if (text) expand()
         innerRef.current?.setValue(text)
       },
-      appendValue: (text: string) => {
+      appendValue: (text: string, options?: { paragraph?: boolean }) => {
         if (text) expand()
-        innerRef.current?.appendValue(text)
+        innerRef.current?.appendValue(text, options)
       },
       insertText: (text: string) => {
         if (text) expand()

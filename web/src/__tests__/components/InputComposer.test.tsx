@@ -433,6 +433,18 @@ describe("InputComposer — ref API", () => {
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     expect(textarea.value).toBe("hello !make")
   })
+
+  it("appendValue with paragraph: true starts a new paragraph after existing text", () => {
+    const ref = createRef<InputComposerHandle>()
+    render(<InputComposer onSubmit={() => {}} ref={ref} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    act(() => { ref.current?.appendValue("first", { paragraph: true }) })
+    expect(textarea.value).toBe("first")
+
+    act(() => { ref.current?.appendValue("second", { paragraph: true }) })
+    expect(textarea.value).toBe("first\n\nsecond")
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
