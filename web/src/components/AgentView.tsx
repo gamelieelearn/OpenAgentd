@@ -29,7 +29,7 @@ import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { appendCurrentTurns, getVisibleTurnWindow, modelChangeTurnStarts, partitionTurns } from '@/utils/turns'
 import { hasPlanContent, liveBlockTail } from '@/utils/blocks'
-import { extractSleepPrefix } from '@/utils/format'
+import { extractSleepPrefix, finalAnswerBlocks } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { transcriptStyle, useTranscriptStore } from '@/stores/useTranscriptStore'
@@ -39,6 +39,7 @@ import { getPlatform } from '@/hooks/use-platform'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { ErrorCard } from './AgentView/ErrorCard'
+import { ReaderTurn } from './AgentView/ReaderTurn'
 import { PromptHeader } from './AgentView/PromptHeader'
 import { PROMPT_JUMP_MARGIN, currentPromptIndex, promptElements, promptJumpTarget } from './AgentView/prompt-nav'
 import { ReplyMenu } from './AgentView/ReplyMenu'
@@ -73,6 +74,17 @@ function endingProviderError(blocks: ContentBlock[]): ContentBlock | undefined {
     return isProviderErrorBlock(blocks[i]) ? blocks[i] : undefined
   }
   return undefined
+}
+
+/** What reader mode keeps of a turn: its final answer, the error it ended
+ *  on, and a question still waiting on the user. */
+function readerTurnBlocks(turn: ContentBlock[], openQuestionCallId: string | null): ContentBlock[] {
+  const keep = new Set(finalAnswerBlocks(turn).map((block) => block.id))
+  const error = endingProviderError(turn)
+  if (error) keep.add(error.id)
+  return turn.filter((block) =>
+    keep.has(block.id) || (openQuestionCallId !== null && block.type === 'tool' && block.toolCallId === openQuestionCallId),
+  )
 }
 
 /** True for a `thinking`/`text` block that has streamed in only whitespace
@@ -403,6 +415,11 @@ export function AgentView({
   const sessionInteractionMode = useAgentStore((s) => s.sessionInteractionMode)
   const density = useTranscriptStore((s) => s.density)
   const fontSize = useTranscriptStore((s) => s.fontSize)
+  const readerMode = useTranscriptStore((s) => s.readerMode)
+  const toggleReaderMode = useTranscriptStore((s) => s.toggleReaderMode)
+  const openQuestionCallId = useAgentStore((s) =>
+    s.pendingQuestion && s.pendingQuestion.sessionId === s.sessionId ? s.pendingQuestion.toolCallId : null,
+  )
   const viewStyle = useMemo(() => transcriptStyle(density, fontSize), [density, fontSize])
   const prevScrollHeightRef = useRef<number | null>(null)
   const loadingOlderRef = useRef(false)
@@ -484,20 +501,38 @@ export function AgentView({
   // merged content, only counts and the last block).
   const liveTail = useMemo(() => liveBlockTail(blocks, currentBlocks), [blocks, currentBlocks])
   const searchableBlocks = useMemo(() => [...blocks, ...liveTail], [blocks, liveTail])
-  const findMatches = useMemo(
-    () => (findOpen ? collectTranscriptFindMatches(searchableBlocks, findQuery) : []),
-    [findOpen, findQuery, searchableBlocks],
-  )
-  const clampedFindIndex = findMatches.length === 0
-    ? 0
-    : ((findActiveIndex % findMatches.length) + findMatches.length) % findMatches.length
-  const findHitBlockIds = useMemo(() => new Set(findMatches.map((match) => match.blockId)), [findMatches])
   const totalLen = blocks.length + liveTail.length
   const finalizedTurnItems = useMemo(() => partitionTurns(blocks), [blocks])
   const turnItems = useMemo(
     () => appendCurrentTurns(finalizedTurnItems, blocks.length, liveTail),
     [blocks.length, liveTail, finalizedTurnItems],
   )
+  // Reader mode: what each assistant turn keeps, keyed by its start index.
+  const readerTurns = useMemo(() => {
+    if (!readerMode) return null
+    const shown = new Map<number, ContentBlock[]>()
+    for (const item of turnItems) {
+      if (item.kind === 'assistant') shown.set(item.startIndex, readerTurnBlocks(item.blocks, openQuestionCallId))
+    }
+    return shown
+  }, [openQuestionCallId, readerMode, turnItems])
+  // Find counts only what is on screen.
+  const findableBlocks = useMemo(
+    () => readerTurns
+      ? turnItems.flatMap((item) => item.kind === 'user'
+        ? (isDirectUserBlock(item.block) ? [item.block] : [])
+        : readerTurns.get(item.startIndex) ?? [])
+      : searchableBlocks,
+    [readerTurns, searchableBlocks, turnItems],
+  )
+  const findMatches = useMemo(
+    () => (findOpen ? collectTranscriptFindMatches(findableBlocks, findQuery) : []),
+    [findOpen, findQuery, findableBlocks],
+  )
+  const clampedFindIndex = findMatches.length === 0
+    ? 0
+    : ((findActiveIndex % findMatches.length) + findMatches.length) % findMatches.length
+  const findHitBlockIds = useMemo(() => new Set(findMatches.map((match) => match.blockId)), [findMatches])
   const modelChangeStarts = useMemo(() => modelChangeTurnStarts(turnItems), [turnItems])
   // Retry rewinds the latest prompt, so it is only honest when nothing but
   // that prompt's own answer, if any, follows a prompt the user wrote.
@@ -542,10 +577,23 @@ export function AgentView({
     ? `${lastBlock.content ?? ''}:${lastBlock.toolOutput ?? ''}:${lastBlock.toolResult ?? ''}:${lastBlock.toolArgs ?? ''}`
     : ''
   const isUserMessage = lastBlock ? isDirectUserBlock(lastBlock) : false
+  // The block taking deltas is always the last live one.
+  const streamingBlockId = isWorking && liveTail.length > 0 ? liveTail[liveTail.length - 1].id : null
   const isEmpty = !isWorking &&
     !blocks.some((b) => b.type !== 'compaction') &&
     !liveTail.some((b) => b.type !== 'compaction') &&
     !visibleQuotaWait
+  /* Me show dots when:
+   *   1. pending - user just sent, agent hasn't woken yet (no agent_status event yet), OR
+   *   2. working with no visible agent content yet (user bubbles don't count), OR
+   *   3. restarting after an answered question - no new user block, and
+   *      currentBlocks still holds the turn being resumed, so neither
+   *      of the above can see it.
+   * Covers the POST to first SSE event gap so the user always gets immediate feedback.
+   */
+  const showPendingDots = (!isTurnOpen && !isError && currentBlocks.some(isDirectUserBlock)) ||
+    isAwaitingRestart ||
+    (isWorking && currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))
 
   const handleLoadOlderTopTrigger = useCallback(() => {
     onLoadOlderTopRef.current()
@@ -730,6 +778,23 @@ export function AgentView({
     }
   }, [attachedRef, clampedFindIndex, findOpen, findQuery, scrollRef])
 
+  const renderTurnBlock = (block: ContentBlock, isStreaming: boolean) => (
+    <div
+      data-find-block={isTranscriptFindableBlock(block.type) ? block.id : undefined}
+    >
+      <BlockRenderer
+        block={block}
+        isStreaming={isStreaming}
+        sessionId={sessionId}
+        onRetry={block.id === endingErrorId ? errorRetry : undefined}
+        onSwitchModel={block.id === endingErrorId ? errorSwitchModel : undefined}
+        latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
+        onMentionFileOpen={onMentionFileOpen}
+        findHit={findHitBlockIds.has(block.id)}
+      />
+    </div>
+  )
+
   return (
     <FileRefContext.Provider value={fileRefOpener ?? null}>
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -780,6 +845,18 @@ export function AgentView({
          )}
 
          <div className="space-y-(--transcript-turn-gap)">
+              {readerTurns && !isEmpty && (
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-sm border border-(--color-border) bg-(--bg-card) py-1 pr-1 pl-3 text-xs text-(--color-text-muted)">
+                  <span>Reader mode · prompts and final answers only</span>
+                  <button
+                    type="button"
+                    onClick={toggleReaderMode}
+                    className="inline-flex min-h-7 items-center rounded-sm px-2 text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+                  >
+                    Show everything
+                  </button>
+                </div>
+              )}
               {hiddenTurnCount > 0 && (
                 <div className="flex justify-center py-2">
                   <button
@@ -796,6 +873,7 @@ export function AgentView({
               {visibleTurnItems.map((item, k) => {
                  const globalTurnIndex = hiddenTurnCount + k
                  if (item.kind === 'user') {
+                   if (readerTurns && !isDirectUserBlock(item.block)) return null
                    return (
                      <div
                        key={item.block.id}
@@ -821,11 +899,25 @@ export function AgentView({
                     !isWorking &&
                     sessionInteractionMode === 'plan' &&
                     hasPlanContent(item.blocks)
+                 const readerShown = readerTurns?.get(item.startIndex)
                  return (
                    <div
                      key={`turn-${item.startIndex}-${item.blocks[0]?.id ?? k}`}
                      onContextMenu={(event) => handleReplyContextMenu(event, item.blocks)}
                    >
+                   {readerShown ? (
+                   <ReaderTurn
+                     blocks={item.blocks}
+                     shown={readerShown}
+                     isOpen={isTurnOpen && isTrailingTurn}
+                     quiet={showPendingDots}
+                     showModel={modelChangeStarts.has(item.startIndex)}
+                     onRetry={isTrailingTurn ? footerRetry : undefined}
+                     onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
+                     isSwitchingInteractionMode={isSwitchingInteractionMode}
+                     renderBlock={(block) => renderTurnBlock(block, block.id === streamingBlockId)}
+                   />
+                   ) : (
                    <AssistantTurn
                      blocks={item.blocks}
                      startIndex={item.startIndex}
@@ -840,23 +932,9 @@ export function AgentView({
                      onOpenFile={onMentionFileOpen}
                      showModel={modelChangeStarts.has(item.startIndex)}
                      onRetry={isTrailingTurn ? footerRetry : undefined}
-                      renderBlock={({ block, isStreaming }) => (
-                       <div
-                         data-find-block={isTranscriptFindableBlock(block.type) ? block.id : undefined}
-                       >
-                         <BlockRenderer
-                           block={block}
-                           isStreaming={isStreaming}
-                           sessionId={sessionId}
-                           onRetry={block.id === endingErrorId ? errorRetry : undefined}
-                           onSwitchModel={block.id === endingErrorId ? errorSwitchModel : undefined}
-                           latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
-                           onMentionFileOpen={onMentionFileOpen}
-                           findHit={findHitBlockIds.has(block.id)}
-                         />
-                       </div>
-                     )}
+                      renderBlock={({ block, isStreaming }) => renderTurnBlock(block, isStreaming)}
                    />
+                   )}
                    </div>
                  )
                 })}
@@ -865,17 +943,7 @@ export function AgentView({
               <QuotaWaitNotice wait={restoredQuotaWait} sessionId={sessionId} persist={false} />
             )}
 
-            {/* Me show dots when:
-             *   1. pending - user just sent, agent hasn't woken yet (no agent_status event yet), OR
-             *   2. working with no visible agent content yet (user bubbles don't count), OR
-             *   3. restarting after an answered question - no new user block, and
-             *      currentBlocks still holds the turn being resumed, so neither
-             *      of the above can see it.
-             * Covers the POST to first SSE event gap so the user always gets immediate feedback.
-             */}
-            {((!isTurnOpen && !isError && currentBlocks.some(isDirectUserBlock)) ||
-              isAwaitingRestart ||
-              (isWorking && currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))) && (
+            {showPendingDots && (
               <div className="flex items-center gap-1.5 py-1" role="status" aria-label="Agent is preparing a response">
                 <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
                 <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />
