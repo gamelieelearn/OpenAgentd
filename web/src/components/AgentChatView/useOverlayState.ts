@@ -46,6 +46,9 @@ import { listCodingWorkspaceFiles } from '@/api/client'
 import { queryKeys } from '@/queries'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
+import { useFileRevealStore } from '@/stores/useFileRevealStore'
+import { useToastStore } from '@/stores/useToastStore'
+import { workspaceRelativePath, type FileRef } from '@/utils/file-refs'
 import { resolveSidebarCollapsed, SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT } from '@/lib/workbench-layout'
 import { useViewportAtLeast } from '@/hooks/use-viewport-width'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
@@ -98,6 +101,8 @@ export interface UseOverlayStateResult {
   handleOpenWorkspaceDialog: () => void
   handleCodingFileSelect: (file: WorkspaceFileInfo | null) => void
   handleMentionFileOpen: (path: string) => Promise<void>
+  /** Open a clicked ``path:line`` from the transcript, at its line. */
+  handleFileRefOpen: (ref: FileRef) => Promise<void>
   closeMobileActionsMenu: () => void
   handleSetShowMobileActions: Dispatch<SetStateAction<boolean>>
   handleToggleAgentCapabilities: () => void
@@ -224,16 +229,15 @@ export function useOverlayState({
     setCodingFileViewer(file)
   }, [])
 
-  const handleMentionFileOpen = useCallback(async (path: string) => {
-    if (!workspace) return
-    const cleanPath = path.split('#', 1)[0]
-    if (!cleanPath) return
+  /** Show a workspace-relative file in the dock; false when it is not listed. */
+  const openWorkspaceFile = useCallback(async (cleanPath: string): Promise<boolean> => {
+    if (!workspace) return false
     const current = codingFileViewer?.path === cleanPath ? codingFileViewer : null
     if (current) {
       setCodingFileViewer(current)
       setCodingFileOpenKey((value) => value + 1)
       setCodingPanel((value) => value ?? 'files')
-      return
+      return true
     }
     try {
       const result = await queryClient.fetchQuery({
@@ -242,15 +246,31 @@ export function useOverlayState({
         staleTime: 5_000,
       })
       const file = result.files.find((item) => item.path === cleanPath)
-      if (file) {
-        setCodingFileViewer(file)
-        setCodingFileOpenKey((value) => value + 1)
-        setCodingPanel((value) => value ?? 'files')
-      }
+      if (!file) return false
+      setCodingFileViewer(file)
+      setCodingFileOpenKey((value) => value + 1)
+      setCodingPanel((value) => value ?? 'files')
+      return true
     } catch {
       // Keep the current panel state; the panel query will surface listing errors.
+      return false
     }
   }, [codingFileViewer, queryClient, workspace])
+
+  const handleMentionFileOpen = useCallback(async (path: string) => {
+    const cleanPath = path.split('#', 1)[0]
+    if (cleanPath) await openWorkspaceFile(cleanPath)
+  }, [openWorkspaceFile])
+
+  const handleFileRefOpen = useCallback(async (ref: FileRef) => {
+    const path = workspaceRelativePath(ref.path, workspace)
+    if (!path) return
+    if (!(await openWorkspaceFile(path))) {
+      useToastStore.getState().push({ tone: 'info', title: 'File not found', description: `${path} is not in this workspace.` })
+      return
+    }
+    if (ref.line) useFileRevealStore.getState().reveal(path, ref.line)
+  }, [openWorkspaceFile, workspace])
 
   const closeMobileActionsMenu = useCallback(() => setShowMobileActions(false), [])
 
@@ -446,6 +466,7 @@ export function useOverlayState({
     handleOpenWorkspaceDialog,
     handleCodingFileSelect,
     handleMentionFileOpen,
+    handleFileRefOpen,
     closeMobileActionsMenu,
     handleSetShowMobileActions,
     handleToggleAgentCapabilities,
