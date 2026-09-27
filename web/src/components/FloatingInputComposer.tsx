@@ -13,7 +13,6 @@ import { ComposerIsland } from './ComposerIsland'
 import { ComposerModelChip } from './ComposerModelChip'
 import { JumpToLatestChip } from './JumpToLatestChip'
 import { RevertNotice } from './RevertNotice'
-import { TokenMeter } from './ui/token-meter'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 
@@ -116,28 +115,6 @@ function composerClearance(panelHeight: number, offsetY: number, boundsHeight: n
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-/** Marks a popover the bar owns but portals out of its panel. */
-const COMPOSER_LAYER = 'composer'
-
-/** Focus on the bar, or in a popover it owns; either keeps the bar open. */
-function isComposerFocus(panel: HTMLElement | null, node: EventTarget | null): boolean {
-  if (!(node instanceof Element)) return false
-  return Boolean(panel?.contains(node)) || node.closest(`[data-layer="${COMPOSER_LAYER}"]`) !== null
-}
-
-/** The lead's context use, for the status island and the context ring. */
-export interface ComposerContext {
-  /** Input tokens of the latest request. */
-  used: number
-  /** The auto-compact threshold. */
-  limit: number
-  output?: number
-  cached?: number
-  cachedPercent?: number
-  /** Summed across every agent in the session. */
-  sessionCostUsd?: number
-}
-
 interface FloatingInputComposerProps {
   boundsRef: React.RefObject<HTMLElement | null>
   onSubmit: (message: string, files?: File[], mentions?: string[], delivery?: SendDelivery) => void
@@ -170,9 +147,8 @@ interface FloatingInputComposerProps {
   fastMode?: boolean
   /** Opens Session Settings from the model chip. */
   onOpenSessionSettings?: () => void
-  context?: ComposerContext | null
-  /** Compact now, from the context ring. */
-  onCompact?: () => void
+  /** Input tokens against the auto-compact threshold. */
+  context?: { used: number; limit: number } | null
   /** Opens the working-tree changes; offered after a turn edits files. */
   onReviewChanges?: () => void
 }
@@ -196,7 +172,6 @@ export const FloatingInputComposer = memo(
       fastMode,
       onOpenSessionSettings,
       context,
-      onCompact,
       onReviewChanges,
       ...inputProps
     }, ref) {
@@ -312,13 +287,9 @@ export const FloatingInputComposer = memo(
       if (isMobileRef.current) return
       // Short delay so a click on a sibling control inside the bar
       // (e.g. the attach picker, mic) doesn't trigger a collapse mid-action.
-      if (blurTimerRef.current) clearTimeout(blurTimerRef.current)
       blurTimerRef.current = setTimeout(() => {
-        blurTimerRef.current = null
-        // Focus that moved on to another control on the bar keeps it open;
-        // the bar collapses once focus leaves from there instead.
-        if (isComposerFocus(panelRef.current, document.activeElement)) return
         setMinimized(true)
+        blurTimerRef.current = null
       }, 180)
     }, [])
 
@@ -452,7 +423,9 @@ export const FloatingInputComposer = memo(
       if (isMobile || forceExpanded) return
 
       const syncMinimizedWithFocus = () => {
-        if (!isComposerFocus(panelRef.current, document.activeElement)) setMinimized(true)
+        const active = document.activeElement
+        const containsFocus = active instanceof Node && panelRef.current?.contains(active)
+        if (!containsFocus) setMinimized(true)
       }
 
       syncMinimizedWithFocus()
@@ -580,19 +553,6 @@ export const FloatingInputComposer = memo(
     const modelChip = onOpenSessionSettings ? (
       <ComposerModelChip model={model} thinkingLevel={thinkingLevel} fastMode={fastMode} onOpen={onOpenSessionSettings} />
     ) : null
-    const contextRing = context ? (
-      <TokenMeter
-        input={context.used}
-        trigger={context.limit}
-        output={context.output ?? 0}
-        cached={context.cached}
-        cachedPercent={context.cachedPercent}
-        sessionCostUsd={context.sessionCostUsd}
-        onCompact={onCompact}
-        compactDisabled={inputProps.isStreaming === true || inputProps.disabled === true}
-        layer={COMPOSER_LAYER}
-      />
-    ) : null
 
     // ── Mobile: static docked bar ────────────────────────────────────────────
     if (isMobile) {
@@ -622,7 +582,6 @@ export const FloatingInputComposer = memo(
             suggestionsBelow={false}
             {...inputProps}
             leadingControls={modelChip}
-            trailingControls={contextRing}
             onValueChange={inputProps.onValueChange}
             onSuggestionsMenuChange={setSuggestionsOpen}
             onSubmit={handleSubmit}
@@ -676,11 +635,6 @@ export const FloatingInputComposer = memo(
           transition={{ type: 'spring', stiffness: 380, damping: 32 }}
           className="pointer-events-auto relative w-full"
           style={{ touchAction: 'none' }}
-          // React bubbles focus events out of portals too, so this also sees
-          // focus leaving the ring's popover.
-          onBlur={(event: React.FocusEvent) => {
-            if (!isComposerFocus(panelRef.current, event.relatedTarget)) handleBlur(!hasContent)
-          }}
         >
         <JumpToLatestChip below={jumpChipBelow} />
         <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
@@ -693,7 +647,6 @@ export const FloatingInputComposer = memo(
             minimized={effectiveMinimized}
             onUnminimize={expand}
             leadingControls={modelChip}
-            trailingControls={contextRing}
             minimizedContent={
               <ComposerIsland
                 mode={inputProps.interactionMode ?? 'code'}

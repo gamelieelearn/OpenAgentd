@@ -151,8 +151,6 @@ export interface InputComposerProps {
   minimizedContent?: React.ReactNode
   /** Controls after the mode chip on the expanded bar, e.g. the model chip. */
   leadingControls?: React.ReactNode
-  /** Controls just before Send on the expanded bar, e.g. the context ring. */
-  trailingControls?: React.ReactNode
   /** Forwarded to the textarea so the parent can drive minimize-on-blur. */
   onFocus?: () => void
   /**
@@ -222,7 +220,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   onUnminimize,
   minimizedContent,
   leadingControls,
-  trailingControls,
   onFocus,
   onBlur,
   onHasContentChange,
@@ -934,7 +931,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       </div>
       {/* Spacer pushes Send to the right edge of the action-button row. */}
       {!minimized && <div className="flex-1" />}
-      {!minimized && trailingControls}
       {!minimized && sendOrStopEl}
     </div>
   )

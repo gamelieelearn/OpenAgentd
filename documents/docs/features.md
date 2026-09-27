@@ -459,9 +459,6 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Expanded, it carries a mode chip (Code, or Plan in blue; a click or
     `Tab` switches) and a model chip with the thinking level and fast mode,
     which opens Session Settings.
-  - The context meter moved from the header to the expanded composer. Its
-    panel ends in Compact now, held while a turn runs. A subagent session,
-    which has no composer, keeps the meter in its header.
   - While a turn runs, Send splits in two. The pill steers: the agent reads
     the message before its next step (`Enter`). The chevron adds Queue until
     done, which holds the message in this window and sends it as a turn of
@@ -530,8 +527,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   included), so reloading a session longer than one history page no longer
   undercounts the meter — the client adopts the server total instead of
   re-summing the truncated page, and older-page loads no longer re-add usage
-  `[v2.4.2]`. The meter now sits on the composer; see "The composer as
-  control center" `[v3.0.0]`.
+  `[v2.4.2]`.
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation.
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer

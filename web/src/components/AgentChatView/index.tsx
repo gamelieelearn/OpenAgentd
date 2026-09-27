@@ -384,9 +384,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     pulsing: isAgentWorking,
     sessionCostUsd,
   }
-  // The composer carries the context ring and the jump-to-latest chip; a
-  // subagent session has no composer, so its header keeps the meter.
-  const composerShown = Boolean(workspace) && !parentSessionId
 
   const {
     handleNewSession,
@@ -547,7 +544,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           chatWorkspace={chatWorkspace}
           sessionTitle={sessionTitle}
           onCodingSidebarToggle={handleCodingSidebarToggle}
-          headerTokens={composerShown ? undefined : headerTokens}
+          headerTokens={headerTokens}
           sessionId={sessionIdState}
           todos={todos}
           onToggleTasks={handleToggleTasks}
@@ -673,7 +670,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 setFindActiveIndex(0)
               }}
               onFindActiveIndexChange={setFindActiveIndex}
-              jumpToLatestInComposer={composerShown}
+              jumpToLatestInComposer={!parentSessionId && Boolean(workspace)}
               emptyState={
                 effectiveWorkspace ? (
                   <div className="flex flex-col items-center justify-center py-16">
@@ -763,15 +760,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             thinkingLevel={sessionThinkingLevel}
             fastMode={storeState.sessionFastMode}
             onOpenSessionSettings={handleToggleAgentCapabilities}
-            context={{
-              used: leadPromptTokens,
-              limit: summaryTriggerTokens ?? DEFAULT_SUMMARY_TRIGGER_TOKENS,
-              output: leadCompletionTokens,
-              cached: leadCachedTokens,
-              cachedPercent: leadCachedPercent,
-              sessionCostUsd,
-            }}
-            onCompact={sessionIdState ? () => { void handleSlashCommand('compact') } : undefined}
+            context={{ used: leadPromptTokens, limit: summaryTriggerTokens ?? DEFAULT_SUMMARY_TRIGGER_TOKENS }}
             onReviewChanges={isChatWorkspace ? undefined : handleReviewChanges}
           />
         ) : null}

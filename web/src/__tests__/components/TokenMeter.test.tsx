@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
@@ -81,43 +81,5 @@ describe('TokenMeter', () => {
 
     await user.click(trigger)
     expect(screen.queryByRole('tooltip')).toBeNull()
-  })
-
-  it('offers Compact now, and closes once it runs', async () => {
-    const user = userEvent.setup()
-    const onCompact = mock(() => {})
-
-    render(<TokenMeter input={1500} output={200} onCompact={onCompact} />)
-    await user.click(screen.getByRole('button', { name: /before auto-compact/ }))
-
-    const panel = screen.getByRole('dialog', { name: 'Context' })
-    expect(panel.textContent).toContain('auto-compact at')
-    await user.click(screen.getByRole('button', { name: 'Compact now' }))
-    expect(onCompact).toHaveBeenCalledTimes(1)
-    expect(screen.queryByRole('dialog', { name: 'Context' })).toBeNull()
-  })
-
-  it('moves focus to Compact now when opened, and back on Escape', async () => {
-    const user = userEvent.setup()
-
-    render(<TokenMeter input={1500} output={200} onCompact={() => {}} />)
-    const trigger = screen.getByRole('button', { name: /before auto-compact/ })
-    trigger.focus()
-    await user.keyboard('{Enter}')
-    await new Promise((resolve) => requestAnimationFrame(resolve))
-
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Compact now' }))
-    await user.keyboard('{Escape}')
-    expect(screen.queryByRole('dialog', { name: 'Context' })).toBeNull()
-    expect(document.activeElement).toBe(trigger)
-  })
-
-  it('holds Compact now while it cannot run', async () => {
-    const user = userEvent.setup()
-
-    render(<TokenMeter input={1500} output={200} onCompact={() => {}} compactDisabled />)
-    await user.click(screen.getByRole('button', { name: /before auto-compact/ }))
-
-    expect(screen.getByRole('button', { name: 'Compact now' })).toHaveProperty('disabled', true)
   })
 })

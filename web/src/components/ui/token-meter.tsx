@@ -3,9 +3,7 @@
  *
  * The circle keeps the header quiet while still surfacing the value that
  * drives context compaction. Hover/focus/click reveals input/output/cache
- * detail; click covers touch platforms where hover is unavailable. Given
- * ``onCompact``, the detail becomes a small dialog ending in Compact now,
- * which takes focus when the meter is clicked open.
+ * detail; click covers touch platforms where hover is unavailable.
  */
 
 import { createPortal } from 'react-dom'
@@ -63,12 +61,6 @@ export interface TokenMeterProps {
   className?: string
   /** Title attribute override (defaults to a verbose tooltip). */
   title?: string
-  /** Offers Compact now in the detail panel. */
-  onCompact?: () => void
-  /** Holds Compact now, e.g. while a turn runs. */
-  compactDisabled?: boolean
-  /** ``data-layer`` on the portalled panel, so its owner can tell focus inside it. */
-  layer?: string
 }
 
 export function TokenMeter({
@@ -82,9 +74,6 @@ export function TokenMeter({
   compact = false,
   className,
   title,
-  onCompact,
-  compactDisabled = false,
-  layer,
 }: TokenMeterProps) {
   const [hoverOpen, setHoverOpen] = useState(false)
   const [pinnedOpen, setPinnedOpen] = useState(false)
@@ -92,14 +81,6 @@ export function TokenMeter({
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const tooltipRef = useRef<HTMLDivElement | null>(null)
-  const compactRef = useRef<HTMLButtonElement | null>(null)
-  // Focus handed back to the trigger must not reopen the panel it closed.
-  const returningFocusRef = useRef(false)
-  // Six ``leading-5`` rows + ``py-2`` + border; flipping above the status-bar
-  // meter uses this, so an undercount overlaps the trigger. Compact now adds
-  // a divider and a 28px button.
-  const panelHeightRef = useRef(138)
-  panelHeightRef.current = onCompact ? 183 : 138
   const safeTrigger = Math.max(trigger, 1)
   const progress = Math.min(input / safeTrigger, 1)
   const percent = Math.round(progress * 100)
@@ -120,7 +101,9 @@ export function TokenMeter({
     const rect = trigger.getBoundingClientRect()
     // Matches ``w-48`` below; wide enough for "auto-compact at" + a 7-digit count.
     const tooltipWidth = 192
-    const tooltipHeight = panelHeightRef.current
+    // Six ``leading-5`` rows + ``py-2`` + border; flipping above the status-bar
+    // meter uses this, so an undercount overlaps the trigger.
+    const tooltipHeight = 138
     const gap = 8
     const left = Math.max(8, Math.min(rect.right - tooltipWidth, window.innerWidth - tooltipWidth - 8))
     const preferredTop = rect.bottom + gap
@@ -139,10 +122,6 @@ export function TokenMeter({
   }
 
   const openHoverTooltip = () => {
-    if (returningFocusRef.current) {
-      returningFocusRef.current = false
-      return
-    }
     clearCloseTimer()
     updateTooltipPosition()
     setHoverOpen(true)
@@ -192,24 +171,9 @@ export function TokenMeter({
     }
   }, [pinnedOpen])
 
-  const close = (returnFocus: boolean) => {
+  useHotkey('Escape', () => {
     setPinnedOpen(false)
     setHoverOpen(false)
-    if (returnFocus && triggerRef.current && document.activeElement !== triggerRef.current) {
-      returningFocusRef.current = true
-      triggerRef.current.focus()
-      returningFocusRef.current = false
-    }
-  }
-
-  useEffect(() => {
-    if (!pinnedOpen || !onCompact) return
-    const frame = requestAnimationFrame(() => compactRef.current?.focus())
-    return () => cancelAnimationFrame(frame)
-  }, [pinnedOpen, onCompact])
-
-  useHotkey('Escape', () => {
-    close(tooltipRef.current?.contains(document.activeElement) ?? false)
   }, { enabled: pinnedOpen })
 
   return (
@@ -248,9 +212,7 @@ export function TokenMeter({
           ref={tooltipRef}
           className="fixed z-50 w-48 rounded-sm border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-lg"
           style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
-          role={onCompact ? 'dialog' : 'tooltip'}
-          aria-label={onCompact ? 'Context' : undefined}
-          data-layer={layer}
+          role="tooltip"
           onMouseEnter={openHoverTooltip}
           onMouseLeave={closeHoverTooltip}
         >
@@ -264,23 +226,6 @@ export function TokenMeter({
               Labelled so the two are not read as the same scope. */}
           {sessionCostUsd !== undefined && sessionCostUsd > 0 && (
             <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">session cost</span><span>{formatSpend(sessionCostUsd)}</span></div>
-          )}
-          {onCompact && (
-            <div className="mt-2 border-t border-(--color-border-subtle) pt-2">
-              <button
-                ref={compactRef}
-                type="button"
-                disabled={compactDisabled}
-                title={compactDisabled ? 'Available once the turn finishes' : 'Summarize this session to free context'}
-                onClick={() => {
-                  onCompact()
-                  close(true)
-                }}
-                className="flex h-7 w-full items-center justify-center rounded-xs border border-(--color-border) bg-(--bg-card) font-sans text-xs text-(--color-text) transition-colors duration-(--motion-instant) enabled:hover:bg-(--bg-key) disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Compact now
-              </button>
-            </div>
           )}
         </div>,
         document.body,

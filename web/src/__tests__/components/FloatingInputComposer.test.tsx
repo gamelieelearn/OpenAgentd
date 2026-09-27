@@ -69,7 +69,6 @@ function Harness(props: {
   isStreaming?: boolean
   slashCommands?: Array<{ id: string; label: string; description: string }>
   onOpenSessionSettings?: () => void
-  onCompact?: () => void
 }) {
   const boundsRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<InputComposerHandle>(null)
@@ -96,8 +95,6 @@ function Harness(props: {
         model="openai:gpt-5"
         thinkingLevel="high"
         onOpenSessionSettings={props.onOpenSessionSettings}
-        context={{ used: 50_000, limit: 200_000, output: 1_200 }}
-        onCompact={props.onCompact}
       />
     </div>
   )
@@ -246,26 +243,6 @@ describe('FloatingInputComposer', () => {
     expect(panel.contains(chip)).toBe(true)
   })
 
-  it('carries the context ring, which compacts on request', async () => {
-    const user = userEvent.setup()
-    const onCompact = mock(() => {})
-    render(<Harness onCompact={onCompact} />)
-
-    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
-    await user.click(screen.getByRole('button', { name: /50,000 of 200,000 before auto-compact \(25%\)/ }))
-    await user.click(screen.getByRole('button', { name: 'Compact now' }))
-    expect(onCompact).toHaveBeenCalledTimes(1)
-  })
-
-  it('holds Compact now while the agent works', async () => {
-    const user = userEvent.setup()
-    render(<Harness isStreaming onCompact={() => {}} />)
-
-    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
-    await user.click(screen.getByRole('button', { name: /before auto-compact/ }))
-    expect(screen.getByRole('button', { name: 'Compact now' })).toHaveProperty('disabled', true)
-  })
-
   it('does not render queued messages inside the floating composer', () => {
     useAgentStore.setState({
       sessionId: 'session-a',
@@ -328,45 +305,6 @@ describe('FloatingInputComposer', () => {
 
     expect(textarea.getAttribute('disabled')).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
-  })
-
-  it('stays open while focus moves to a control on the bar or its popover', async () => {
-    const user = userEvent.setup()
-    render(<Harness onCompact={() => {}} />)
-
-    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
-    const textarea = screen.getByRole('textbox', { name: 'Message input' })
-    await user.click(textarea)
-    // The ring's panel is portalled out of the bar, and takes focus.
-    await user.click(screen.getByRole('button', { name: /before auto-compact/ }))
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 220))
-    })
-
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Compact now' }))
-    expect(textarea.getAttribute('disabled')).toBeNull()
-  })
-
-  it('collapses when focus leaves a control on the bar for the page', async () => {
-    const user = userEvent.setup()
-    render(<Harness onOpenSessionSettings={() => {}} />)
-
-    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
-    const textarea = screen.getByRole('textbox', { name: 'Message input' })
-    const chip = screen.getByRole('button', { name: /^Model gpt-5/ })
-    act(() => chip.focus())
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 220))
-    })
-    expect(textarea.getAttribute('disabled')).toBeNull()
-
-    // A click on plain transcript text moves focus to the body: no focusin.
-    act(() => chip.blur())
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 220))
-    })
-
-    expect(textarea.getAttribute('disabled')).not.toBeNull()
   })
 
 
@@ -485,11 +423,8 @@ describe('FloatingInputComposer — desktop: minimize/expand lifecycle', () => {
     render(<Harness />)
 
     await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
-    // Focus leaves the textarea for the page (a Tab would land on the
-    // bar's own context ring, which keeps it open).
-    await act(nextFrame)
-    await act(nextFrame)
-    act(() => (document.activeElement as HTMLElement | null)?.blur())
+    // Tab away from the textarea to trigger blur.
+    await user.tab()
 
     // After the 180 ms blur-debounce timer the bar collapses.
     await act(async () => {
