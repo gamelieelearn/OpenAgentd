@@ -225,7 +225,7 @@ interface AgentViewProps {
   onFindActiveIndexChange?: (index: number) => void
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void }) {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen, findHit = false }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void; /** Transcript find matched inside this block, so it must be visible. */ findHit?: boolean }) {
   switch (block.type) {
     case 'user': {
       const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
@@ -233,7 +233,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
     }
     case 'thinking':
-      return <Thinking content={block.content} isStreaming={isStreaming} />
+      return <Thinking content={block.content} isStreaming={isStreaming} forceOpen={findHit} />
     case 'compaction': {
       const state = block.extra?.state === 'compacting' ? 'compacting' : 'compacted'
       const error = Boolean(block.extra?.error)
@@ -384,6 +384,7 @@ export function AgentView({
   const clampedFindIndex = findMatches.length === 0
     ? 0
     : ((findActiveIndex % findMatches.length) + findMatches.length) % findMatches.length
+  const findHitBlockIds = useMemo(() => new Set(findMatches.map((match) => match.blockId)), [findMatches])
   const totalLen = blocks.length + liveTail.length
   const latestUserBlockId = useMemo(
     () => latestDirectUserBlockIdFromParts(blocks, currentBlocks),
@@ -617,6 +618,7 @@ export function AgentView({
                            onRevert={isDirectUserBlock(block) && block.id === latestUserBlockId ? handleRevert : undefined}
                            latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
                            onMentionFileOpen={onMentionFileOpen}
+                           findHit={findHitBlockIds.has(block.id)}
                          />
                        </div>
                      )}

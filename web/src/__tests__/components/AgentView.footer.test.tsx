@@ -659,7 +659,7 @@ describe("AgentView — AssistantFooter", () => {
       expect(container.textContent).toContain("x = 1\n\n    return x")
     })
 
-    it("preserves double newlines in thinking block as-is", () => {
+    it("preserves double newlines in an opened thinking block as-is", () => {
       const { container } = renderStream({
         blocks: [
           makeUserBlock("u1", "Question"),
@@ -668,6 +668,8 @@ describe("AgentView — AssistantFooter", () => {
         currentBlocks: [],
         isWorking: false,
       })
+      // A finished trace folds to one row; the reader opens it.
+      fireEvent.click(screen.getByRole("button", { name: /thought/i }))
       expect(container.textContent).toContain("Reasoning line one\n\nReasoning line two")
     })
   })
