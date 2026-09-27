@@ -193,4 +193,12 @@ describe('AppFooter', () => {
     expect(button.getAttribute('aria-pressed')).toBe('true')
     useUIStore.getState().closeTelemetry()
   })
+
+  it('opens the transcript view settings beside the theme', () => {
+    renderWithQueryClient(<AppFooter />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Transcript view' }))
+
+    expect(screen.getByRole('switch', { name: 'Reader mode' })).toBeTruthy()
+  })
 })

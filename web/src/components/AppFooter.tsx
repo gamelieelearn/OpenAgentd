@@ -4,7 +4,7 @@
  * Left cluster is workspace-scoped, right cluster is session-scoped:
  *   • left:  backend health · git branch with ahead/behind + dirty count
  *   • right: active model (thinking level) · fast mode · scheduler · theme ·
- *            telemetry · settings
+ *            transcript view · telemetry · settings
  *
  * The command palette entry lives in the header's command center, so the
  * footer carries no help button. Hidden below ``md``; mobile surfaces these
@@ -23,6 +23,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { HealthDot } from './HealthDot'
 import { ThemeToggle } from './ThemeToggle'
+import { TranscriptViewMenu } from './TranscriptViewMenu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
@@ -214,6 +215,8 @@ export const AppFooter = memo(function AppFooter({
         )}
 
         <ThemeToggle collapsed compact />
+
+        <TranscriptViewMenu className={cn(ICON_ITEM, 'data-active:bg-(--bg-key) data-active:text-(--color-text)')} />
 
         <Tooltip>
           <TooltipTrigger
