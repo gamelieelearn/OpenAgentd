@@ -204,7 +204,15 @@ export interface AgentStoreActions {
   setSessionInteractionMode: (mode: SessionInteractionMode) => Promise<boolean>
   setSessionModelSettings: (model: string | null, thinkingLevel: string | null, fastMode?: boolean) => void
   compactAgent: () => Promise<void>
-  undoAgent: () => Promise<AgentCommandResponse | undefined>
+  /** ``restoreDraft: false`` skips putting the undone prompt back in the composer. */
+  undoAgent: (options?: { restoreDraft?: boolean }) => Promise<AgentCommandResponse | undefined>
+  /**
+   * Undo back to just before the direct prompt ``blockId`` — later prompts
+   * included — and, unless ``restoreDraft`` is false, put it in the composer.
+   * Resolves to the reverted prompt, or ``null`` when nothing was reverted.
+   * Redo still brings everything back.
+   */
+  revertToMessage: (blockId: string, options?: { restoreDraft?: boolean }) => Promise<ContentBlock | null>
   redoAgent: () => Promise<AgentCommandResponse | undefined>
   redoAllAgent: () => Promise<AgentCommandResponse | undefined>
   consumePendingDraft: () => { content: string; attachments?: MessageAttachment[] } | null
