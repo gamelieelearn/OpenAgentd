@@ -2,9 +2,9 @@
  * AppFooter — full-width desktop status bar (VS Code / Zed convention).
  *
  * Left cluster is workspace-scoped, right cluster is session-scoped:
- *   • left:  backend health (the git branch sits in the header)
- *   • right: active model (thinking level) · fast mode · scheduler · theme ·
- *            telemetry · settings
+ *   • left:  backend health, only for an external or unhealthy backend (the
+ *            git branch sits in the header)
+ *   • right: active model (thinking level) · fast mode · 24h spend · settings
  *
  * The command palette entry lives in the header's command center, so the
  * footer carries no help button. Hidden below ``md``; mobile surfaces these
@@ -12,15 +12,12 @@
  */
 import { memo } from 'react'
 import {
-  Activity,
-  CalendarClock,
   Settings,
   Sparkles,
   Zap,
 } from 'lucide-react'
 
 import { HealthDot } from './HealthDot'
-import { ThemeToggle } from './ThemeToggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
@@ -28,17 +25,19 @@ import { preloadSettings } from '@/components/settings/page-loaders'
 import { preloadTelemetryView } from '@/components/Telemetry/telemetry-loader'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
-import { useUIStore } from '@/stores/useUIStore'
+import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
+import { useObservabilitySummaryQuery } from '@/queries/useObservabilitySummaryQuery'
+import { formatSpend } from '@/utils/telemetryFormat'
 import { cn } from '@/lib/utils'
+
+// The summary endpoint only refreshes on demand; poll so spend follows turns.
+const SPEND_REFRESH_MS = 60_000
 
 export interface AppFooterProps {
   sessionId?: string | null
   sessionModel?: string | null
   sessionThinkingLevel?: string | null
   sessionFastMode?: boolean
-  onToggleScheduler?: () => void
-  /** Scheduler is showing (dock Schedule tab focused, or overlay open). */
-  schedulerActive?: boolean
   onToggleSessionSettings?: () => void
   className?: string
 }
@@ -57,15 +56,16 @@ export const AppFooter = memo(function AppFooter({
   sessionModel,
   sessionThinkingLevel,
   sessionFastMode,
-  onToggleScheduler,
-  schedulerActive = false,
   onToggleSessionSettings,
   className,
 }: AppFooterProps) {
   const { os } = usePlatform()
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const telemetryOpen = useUIStore((s) => s.telemetryOpen)
-  const closeTelemetry = useUIStore((s) => s.closeTelemetry)
+  const health = useHealthQuery()
+  const backendStatus = useBackendStatusQuery()
+  const showHealth = health.isError || backendStatus.data?.external === true
+  const spend = useObservabilitySummaryQuery(1, {}, { refetchInterval: SPEND_REFRESH_MS }).data?.totals.estimated_cost_usd
+  const spendLabel = spend === undefined ? null : formatSpend(spend)
 
   return (
     <footer
@@ -78,7 +78,7 @@ export const AppFooter = memo(function AppFooter({
     >
       {/* Left cluster — connection. */}
       <div className="flex min-w-0 items-center gap-1 overflow-hidden">
-        <HealthDot labeled />
+        {showHealth && <HealthDot labeled />}
       </div>
 
       {/* Right cluster — session scope, then app utilities. */}
@@ -121,48 +121,26 @@ export const AppFooter = memo(function AppFooter({
 
         {(sessionModel || sessionFastMode) && <Divider />}
 
-        {onToggleScheduler && (
+        {spendLabel && (
           <Tooltip>
             <TooltipTrigger
               render={
                 <button
                   type="button"
-                  onClick={onToggleScheduler}
-                  className={cn(ICON_ITEM, schedulerActive && 'bg-(--bg-key) text-(--color-text)')}
-                  aria-label="Scheduled tasks"
-                  aria-pressed={schedulerActive}
+                  onClick={() => openTelemetry({ days: 1 })}
+                  onPointerEnter={preloadTelemetryView}
+                  onFocus={preloadTelemetryView}
+                  className={cn(ITEM, 'font-mono tabular-nums')}
+                  aria-label={`Spend in the last 24 hours: ${spendLabel}`}
                 >
-                  <CalendarClock size={12} aria-hidden="true" />
+                  <span>{spendLabel}</span>
+                  <span className="text-(--color-text-subtle)">24h</span>
                 </button>
               }
             />
-            <TooltipContent>Scheduled tasks</TooltipContent>
+            <TooltipContent>Spend in the last 24 hours · Open Telemetry</TooltipContent>
           </Tooltip>
         )}
-
-        <ThemeToggle collapsed compact />
-
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                className={cn(ICON_ITEM, telemetryOpen && 'bg-(--bg-key) text-(--color-text)')}
-                aria-label="Telemetry"
-                aria-pressed={telemetryOpen}
-                onPointerEnter={preloadTelemetryView}
-                onFocus={preloadTelemetryView}
-                onClick={() => {
-                  if (telemetryOpen) closeTelemetry()
-                  else openTelemetry()
-                }}
-              >
-                <Activity size={12} aria-hidden="true" />
-              </button>
-            }
-          />
-          <TooltipContent>Telemetry</TooltipContent>
-        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger

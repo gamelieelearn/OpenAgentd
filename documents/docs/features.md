@@ -172,7 +172,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   `⌘D`/`Ctrl+D` toggles the files and git dock. `⌘N`/`Ctrl+N` starts a new
   session and is a no-op on an already empty idle session. The desktop status
   footer and mobile sidebar name the connected backend (`builtin` or the saved
-  server name/host) instead of a hardcoded local label. Mobile chat actions
+  server name/host) instead of a hardcoded local label; since `[v3.0.0]` the
+  desktop footer shows it only for an external or unreachable backend. Mobile chat actions
   expose transcript find and terminal access without a hardware keyboard.
   Empty coding sessions no longer show the Ask about this repo, Generate
   AGENTS.md, and Open terminal starter chips *(deprecated)*; the composer,
@@ -724,7 +725,10 @@ agent against it.
 - **Desktop workbench layout** `[v3.0.0]` — the desktop coding view is split into
   a header with a command center (**Search or run a command**, `Ctrl/⌘+K`), the
   sidebar, the chat, the review dock and a status bar. The status bar shows
-  backend health and the session model. The header reads `repo ▸ branch ·
+  the session model, the last 24 hours of spend (a click opens Telemetry on
+  that range), and backend health only when the backend is external or
+  failing; scheduled tasks and the theme moved to the sidebar, the palette and
+  Settings. The header reads `repo ▸ branch ·
   session title`; the branch shows commits to push/pull and uncommitted
   changes, and a click opens the review dock. The sidebar opens expanded on windows at least 1280px
   wide and resizes between 220 and 440px. The dock takes a share of the chat
@@ -1379,7 +1383,7 @@ Everything stays local. No third-party telemetry SaaS.
   UI. Focused usage/cost cards, cache hit/miss by step and provider:model,
   scroll-paginated traces, and trace waterfall details.
 - **Telemetry overlay** `[v3.0.0]` — telemetry opens over the current screen from
-  the status bar, the mobile drawer, or **Open Telemetry** in the palette; `/telemetry`
+  the status-bar spend, the mobile drawer, or **Open Telemetry** in the palette; `/telemetry`
   links (`?days=`, `?traceId=`, `?session=`) open it too. It shows spend, turns
   (and how many failed), median turn time, tokens, and cache hit rate, per-day
   spend or turns, and spend by workspace, session, model, and tool. Filter by

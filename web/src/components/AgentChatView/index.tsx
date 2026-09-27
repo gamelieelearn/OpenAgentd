@@ -299,7 +299,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     dockActiveView,
     setDockActiveView,
     dockViewsEnabled,
-    schedulerInDock,
     codingSidebarCollapsed,
     setCodingSidebarCollapsed,
     openWorkspaceDialogKey,
@@ -807,9 +806,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         sessionModel={sessionModel}
         sessionThinkingLevel={sessionThinkingLevel}
         sessionFastMode={storeState.sessionFastMode}
-        onToggleScheduler={handleToggleScheduler}
         onToggleSessionSettings={handleToggleAgentCapabilities}
-        schedulerActive={schedulerInDock ? codingPanel !== null && dockActiveView === 'schedule' : schedulerOpen}
       />
 
       <AgentChatPanels
