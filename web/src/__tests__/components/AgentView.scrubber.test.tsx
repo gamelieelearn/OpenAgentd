@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, render, waitFor } from '@testing-library/react'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
@@ -45,17 +45,18 @@ function markKinds(container: HTMLElement): string[] {
 }
 
 describe('AgentView — timeline scrubber', () => {
-  it('marks each prompt the user wrote', () => {
+  it('marks each prompt the user wrote', async () => {
     const { container } = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
 
-    expect(markKinds(container)).toEqual(['prompt', 'prompt'])
+    // The rail is its own chunk, so it arrives just after the transcript.
+    await waitFor(() => expect(markKinds(container)).toEqual(['prompt', 'prompt']))
   })
 
-  it('marks the find matches, the current one set apart', () => {
+  it('marks the find matches, the current one set apart', async () => {
     const { container } = render(
       <AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} findOpen findQuery="answer" findActiveIndex={1} />,
     )
 
-    expect(markKinds(container)).toEqual(['prompt', 'prompt', 'find', 'find-active'])
+    await waitFor(() => expect(markKinds(container)).toEqual(['prompt', 'prompt', 'find', 'find-active']))
   })
 })

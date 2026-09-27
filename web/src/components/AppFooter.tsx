@@ -10,7 +10,7 @@
  * footer carries no help button. Hidden below ``md``; mobile surfaces these
  * in the sidebar drawer footer instead.
  */
-import { memo } from 'react'
+import { lazy, memo, Suspense } from 'react'
 import {
   Activity,
   CalendarClock,
@@ -23,7 +23,6 @@ import { useQuery } from '@tanstack/react-query'
 
 import { HealthDot } from './HealthDot'
 import { ThemeToggle } from './ThemeToggle'
-import { TranscriptViewMenu } from './TranscriptViewMenu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
@@ -35,6 +34,9 @@ import { useUIStore } from '@/stores/useUIStore'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
+
+// Off the startup bundle; a same-size placeholder holds its slot meanwhile.
+const TranscriptViewMenu = lazy(() => import('./TranscriptViewMenu').then((module) => ({ default: module.TranscriptViewMenu })))
 
 export interface AppFooterProps {
   workspace?: string | null
@@ -216,7 +218,9 @@ export const AppFooter = memo(function AppFooter({
 
         <ThemeToggle collapsed compact />
 
-        <TranscriptViewMenu className={ICON_ITEM} />
+        <Suspense fallback={<span className="h-5 w-5 shrink-0" aria-hidden="true" />}>
+          <TranscriptViewMenu className={ICON_ITEM} />
+        </Suspense>
 
         <Tooltip>
           <TooltipTrigger

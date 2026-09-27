@@ -194,10 +194,11 @@ describe('AppFooter', () => {
     useUIStore.getState().closeTelemetry()
   })
 
-  it('opens the transcript view settings beside the theme', () => {
+  it('opens the transcript view settings beside the theme', async () => {
     renderWithQueryClient(<AppFooter />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Transcript view' }))
+    // The menu is its own chunk, so it arrives just after the footer.
+    fireEvent.click(await screen.findByRole('button', { name: 'Transcript view' }))
 
     expect(screen.getByRole('radiogroup', { name: 'Density' })).toBeTruthy()
   })

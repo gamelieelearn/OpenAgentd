@@ -24,6 +24,8 @@ import { ChevronDown, ChevronUp, Clock } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 const MCPAppResult = lazy(() => import('./MCPAppResult').then((module) => ({ default: module.MCPAppResult })))
+// Off the startup bundle: the rail is a desktop overview, not needed to read.
+const TimelineScrubber = lazy(() => import('./AgentView/TimelineScrubber').then((module) => ({ default: module.TimelineScrubber })))
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
@@ -40,7 +42,6 @@ import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { ErrorCard } from './AgentView/ErrorCard'
 import { PromptHeader } from './AgentView/PromptHeader'
-import { TimelineScrubber } from './AgentView/TimelineScrubber'
 import { PROMPT_JUMP_MARGIN, currentPromptIndex, promptElements, promptJumpTarget } from './AgentView/prompt-nav'
 import { ReplyMenu } from './AgentView/ReplyMenu'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
@@ -896,12 +897,14 @@ export function AgentView({
          </div>
       </div>
     </div>
-    <TimelineScrubber
-      scrollRef={scrollRef}
-      contentRef={contentRef}
-      findBlockIds={findBlockIds}
-      activeFindBlockId={activeFindBlockId}
-    />
+    <Suspense fallback={null}>
+      <TimelineScrubber
+        scrollRef={scrollRef}
+        contentRef={contentRef}
+        findBlockIds={findBlockIds}
+        activeFindBlockId={activeFindBlockId}
+      />
+    </Suspense>
     </div>
     {showScrollBtn && (
         <button
