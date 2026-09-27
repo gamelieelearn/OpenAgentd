@@ -9,6 +9,7 @@ import { queryKeys } from '@/queries'
 import { appendSubagent, patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
+import { useUnreadStore } from '@/stores/useUnreadStore'
 
 const notifiedIds = new Set<string>()
 const MAX_NOTIFIED_IDS = 200
@@ -121,6 +122,12 @@ export async function handleGlobalEvent(
     queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(sessionId) })
 
     const before = useAgentStore.getState()
+    // Subagent output surfaces through its lead, and a stopped turn is the
+    // user's own doing; neither has anything new to read.
+    const shown = before.sessionId === sessionId && document.visibilityState === 'visible'
+    if (!parentSessionId && event.status !== 'stopped' && !shown) {
+      useUnreadStore.getState().markUnread(sessionId)
+    }
     if (before.sessionId !== sessionId) return true
     // This notification travels over a *separate* global SSE connection from
     // the session's own agent stream, so it carries no ordering guarantee

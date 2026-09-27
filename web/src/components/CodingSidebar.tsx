@@ -59,7 +59,7 @@ import { useDeleteSessionMutation, useSessionsQuery, useUpdateSessionTitleMutati
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceTree, listWorktrees } from '@/api/client'
-import { workspaceLabel } from '@/utils/workspace'
+import { CODING_WORKSPACES_KEY, workspaceLabel } from '@/utils/workspace'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
@@ -341,11 +341,16 @@ export function CodingSidebar({
   useEffect(() => {
     void refreshWorkspaceTree()
     const handler = () => { void refreshWorkspaceTree(true) }
+    // Other windows also write storage for unrelated state (unread marks on
+    // every finished turn, theme…); only the saved workspace list moves the tree.
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === CODING_WORKSPACES_KEY) handler()
+    }
     window.addEventListener('coding-workspaces-changed', handler)
-    window.addEventListener('storage', handler)
+    window.addEventListener('storage', onStorage)
     return () => {
       window.removeEventListener('coding-workspaces-changed', handler)
-      window.removeEventListener('storage', handler)
+      window.removeEventListener('storage', onStorage)
     }
   }, [refreshWorkspaceTree])
 

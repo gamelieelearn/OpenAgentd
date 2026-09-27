@@ -818,15 +818,6 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   animation: done-pulse var(--motion-base) var(--ease-out);
 }
 
-/* Running session title/dot — slower breathing emphasis for active work. */
-@keyframes session-title-breathe {
-  0%, 100% { opacity: 0.56; }
-  50%      { opacity: 1; }
-}
-.session-title-breathe {
-  animation: session-title-breathe 2200ms var(--ease-in-out) infinite;
-}
-
 /* ─────────────────────────────────────────────────────────────
  * Raised surface — cards, panels, grouped containers.
  * Both modes use the same shadow+border treatment because the

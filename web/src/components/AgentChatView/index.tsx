@@ -29,6 +29,7 @@ import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
+import { useMarkSessionRead } from '@/stores/useUnreadStore'
 import { useElementWidthSelect } from '@/hooks/use-element-width'
 import { useReturnFocusFromDock } from '@/hooks/use-dock-focus'
 import { dockOverlaysChat } from '@/lib/workbench-layout'
@@ -428,6 +429,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   })
 
   useReleaseHeldMessages({ workspace, sessionId: sessionIdState, composerRef: inputRef })
+  useMarkSessionRead(sessionIdState)
 
   const handleFindInTranscript = useCallback(() => {
     // Find searches the chat, which a maximized dock covers.

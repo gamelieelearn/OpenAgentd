@@ -51,7 +51,7 @@ export function workspaceLabel(
   return pathBasename(workspace)
 }
 
-const CODING_WORKSPACES_KEY = 'oa-coding-workspaces'
+export const CODING_WORKSPACES_KEY = 'oa-coding-workspaces'
 const LAST_CODING_WORKSPACE_KEY = 'oa-last-coding-workspace'
 
 export interface CodingWorkspaceEntry {

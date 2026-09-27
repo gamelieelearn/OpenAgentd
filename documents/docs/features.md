@@ -753,6 +753,12 @@ agent against it.
   can be deleted from the sidebar with instant cache pruning `[v2.17.0]`, falling back cleanly to the
   parent lead session, and opening one shows a read-only banner with a
   **Return to Lead** action.
+- **Session status and unread marks in the sidebar** `[v3.0.0]` — each session
+  row has one status slot: `!` while it waits for your answer, a spinner while
+  it runs, and an accent dot when a turn ended while you were in another
+  session or the window was hidden. Opening the session clears the dot in every
+  window. Unread state stays on this device, and sessions that finish while the
+  app is closed are not marked.
 - **Anchored & regex-optimized filesystem search** `[v2.0.0]` — `glob` pattern matching
   anchors walks at the literal prefix (up to 50x faster), `grep` pre-filters files using
   literal scanning and streams matches asynchronously off the main loop, and non-ignored

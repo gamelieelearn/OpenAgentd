@@ -7,6 +7,7 @@ import { setApiBaseUrl } from '@/api/base-url'
 import { loadLastCodingWorkspace } from '@/utils/workspace'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
+import { useUnreadStore } from '@/stores/useUnreadStore'
 import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
@@ -627,6 +628,7 @@ describe('CodingSidebar helpers', () => {
 describe('CodingSidebar workspace trust flow', () => {
   beforeEach(() => {
     localStorage.clear()
+    useUnreadStore.setState({ ids: [] })
     sessionsData = []
     workspaceSessionsData = []
     chatWorkspaceEntry = null
@@ -1177,6 +1179,89 @@ describe('CodingSidebar workspace trust flow', () => {
 
     expect(screen.getByLabelText('Session needs your input')).toBeTruthy()
     expect(screen.queryByLabelText('Session running')).toBeNull()
+  })
+
+  it('refreshes the repository tree only when another window changes the saved workspaces', async () => {
+    await renderCodingSidebarForSessions(undefined)
+    const fetchSpy = globalThis.fetch as unknown as ReturnType<typeof mock>
+    const treeFetches = () => fetchSpy.mock.calls.filter(([input]) => String(input).includes('/api/agent/workspace/tree')).length
+    const before = treeFetches()
+
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'oa.unread-sessions.v1' }))
+      await Promise.resolve()
+    })
+    expect(treeFetches()).toBe(before)
+
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'oa-coding-workspaces' }))
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(treeFetches()).toBe(before + 1))
+  })
+
+  it('marks a session that finished while you were elsewhere as unread', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Current session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+      {
+        id: 'session-2',
+        title: 'Finished elsewhere',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+    useUnreadStore.setState({ ids: ['session-2'] })
+
+    await renderCodingSidebarForSessions('session-1')
+
+    expect(screen.getAllByLabelText('Unread session')).toHaveLength(1)
+    expect(screen.getByText('Finished elsewhere').closest('button')?.querySelector('[aria-label="Unread session"]')).toBeTruthy()
+  })
+
+  it('shows a waiting or running state instead of the unread mark', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Waiting session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+        running: true,
+        needs_input: true,
+      },
+      {
+        id: 'session-2',
+        title: 'Running session',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+        running: true,
+      },
+    ]
+    workspaceSessionsData = sessionsData
+    useUnreadStore.setState({ ids: ['session-1', 'session-2'] })
+
+    await renderCodingSidebarForSessions(undefined)
+
+    expect(screen.getByLabelText('Session needs your input')).toBeTruthy()
+    expect(screen.getByLabelText('Session running')).toBeTruthy()
+    expect(screen.queryByLabelText('Unread session')).toBeNull()
   })
 
   it('loads more sessions from an explicit "Show more" row instead of a nested scroller', async () => {

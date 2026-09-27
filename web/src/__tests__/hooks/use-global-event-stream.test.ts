@@ -19,6 +19,7 @@ import { GlobalEventStream, handleGlobalEvent, reconcileCurrentSession, resetGlo
 import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
+import { useUnreadStore } from '@/stores/useUnreadStore'
 
 const INITIAL = {
   sessionId: null as string | null,
@@ -42,6 +43,8 @@ beforeEach(() => {
   globalCallbacks = null
   globalSignals = []
   useLspInstallStore.setState({ request: null })
+  useUnreadStore.setState({ ids: [] })
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
 })
 
 afterEach(cleanup)
@@ -439,6 +442,40 @@ describe('handleGlobalEvent', () => {
     expect(data.pages[0].data[0].subagents?.[0].id).toBe('child-1')
     expect(data.pages[0].data[0].subagents?.[0].running).toBe(true)
     expect(client.getQueryState(queryKeys.session.subagents('lead-1'))?.isInvalidated).toBe(true)
+  })
+
+  it('marks a finished session unread when this window is not showing it', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+
+    await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'done', status: 'completed' }, 1, () => 1)
+    await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'failed', status: 'error' }, 1, () => 1)
+
+    expect(useUnreadStore.getState().ids).toEqual(['done', 'failed'])
+  })
+
+  it('marks the shown session unread only while the window is hidden', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'current', reconcileTurnTail: mock(async () => {}) })
+
+    await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'current', status: 'completed' }, 1, () => 1)
+    expect(useUnreadStore.getState().ids).toEqual([])
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+    await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'current', status: 'completed' }, 1, () => 1)
+    expect(useUnreadStore.getState().ids).toEqual(['current'])
+  })
+
+  it('does not mark stopped turns or subagent turns unread', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+
+    await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'stopped', status: 'stopped' }, 1, () => 1)
+    await handleGlobalEvent(client, 'session_turn_completed', {
+      session_id: 'child', parent_session_id: 'lead', status: 'completed',
+    }, 1, () => 1)
+
+    expect(useUnreadStore.getState().ids).toEqual([])
   })
 
   it('invalidates parent subagents on session_turn_completed with parent_session_id', async () => {

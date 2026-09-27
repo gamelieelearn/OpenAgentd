@@ -3,9 +3,11 @@ import type React from 'react'
 import { ChevronRight, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { useCodingWorkspaceSessionsQuery, useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
+import { useUnreadStore } from '@/stores/useUnreadStore'
 import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { SessionStatusMark } from './SessionStatusMark'
 
 function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
   return event.button === 0 && (event.metaKey || event.ctrlKey)
@@ -40,6 +42,8 @@ function WorkspaceSessionRowView({
 }) {
   const needsInput = session.needs_input === true
   const isRunning = session.running === true && !needsInput
+  const unread = useUnreadStore((state) => state.ids.includes(session.id))
+  const status = needsInput ? 'needs_input' : isRunning ? 'running' : unread ? 'unread' : 'idle'
   const sessionTitle = session.title || 'Untitled'
   const sessionDate = formatRelativeDate(session.created_at)
   const sessionAge = formatCompactRelative(session.updated_at ?? session.created_at)
@@ -147,31 +151,17 @@ function WorkspaceSessionRowView({
                     : 'text-(--color-text-2) hover:text-(--color-text)'
                 }`}
               >
-                <span
-                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                    needsInput
-                      ? 'animate-pulse bg-(--color-warning)'
-                      : isRunning
-                        ? 'session-title-breathe bg-(--color-accent)'
-                        : 'border border-(--color-text-subtle)'
-                  }`}
-                  aria-label={needsInput ? 'Session needs your input' : isRunning ? 'Session running' : undefined}
-                  aria-hidden={needsInput || isRunning ? undefined : true}
-                />
-                <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${isRunning ? 'session-title-breathe text-(--color-text)' : ''}`}>{sessionTitle}</span>
+                <SessionStatusMark status={status} />
+                <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${status !== 'idle' ? 'text-(--color-text)' : ''}`}>{sessionTitle}</span>
                 {hasSubagents && (
                   <span
                     className="ml-1 inline-flex shrink-0 items-center gap-1 rounded-full bg-(--bg-key) px-1.5 font-mono text-[11px] leading-4 text-(--color-text-subtle)"
                     aria-label={`${subagents.length} subagent${subagents.length > 1 ? 's' : ''}`}
                   >
                     {!isExpanded && hasActiveWork && (
-                      <span
-                        className={`h-1.5 w-1.5 rounded-full ${
-                          hasWaitingSubagent
-                            ? 'animate-pulse bg-(--color-warning)'
-                            : 'session-title-breathe bg-(--color-accent)'
-                        }`}
-                        aria-label={hasWaitingSubagent ? 'Subagent waiting for lead' : 'Subagent working'}
+                      <SessionStatusMark
+                        status={hasWaitingSubagent ? 'needs_input' : 'running'}
+                        label={hasWaitingSubagent ? 'Subagent waiting for lead' : 'Subagent working'}
                       />
                     )}
                     <span>{subagents.length}</span>
@@ -214,7 +204,7 @@ function WorkspaceSessionRowView({
       </div>
 
       {hasSubagents && isExpanded && (
-        // The guide tracks the status dot, so it moves with the wider touch chevron.
+        // The guide tracks the status mark, so it moves with the wider touch chevron.
         <div className="ml-[21px] space-y-px border-l border-(--color-border-subtle) py-0.5 pl-1 pointer-coarse:ml-[37px]">
           {subagents.map((sub) => {
             const isSubCurrent = sub.session_id === currentSessionId
@@ -250,15 +240,9 @@ function WorkspaceSessionRowView({
                           : 'text-(--color-text-2) hover:text-(--color-text)'
                       }`}
                     >
-                      <span
-                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                          isSubWaiting
-                            ? 'animate-pulse bg-(--color-warning)'
-                            : isSubWorking
-                              ? 'session-title-breathe bg-(--color-accent)'
-                              : 'border border-(--color-text-subtle)'
-                        }`}
-                        aria-label={isSubWaiting ? 'Subagent waiting for lead' : isSubWorking ? 'Subagent working' : undefined}
+                      <SessionStatusMark
+                        status={isSubWaiting ? 'needs_input' : isSubWorking ? 'running' : 'idle'}
+                        label={isSubWaiting ? 'Subagent waiting for lead' : 'Subagent working'}
                       />
                       <span className="shrink-0 font-mono text-[11px] font-semibold text-(--color-text)">
                         {sub.member_id}
