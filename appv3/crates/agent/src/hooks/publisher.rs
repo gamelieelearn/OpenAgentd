@@ -67,6 +67,9 @@ pub struct StreamPublisherHook {
     resolver: Mutex<ToolIdResolver>,
     turn_started: Mutex<Option<Instant>>,
     model_started: Mutex<Option<Instant>>,
+    /// First reasoning delta of the current model call, and the first
+    /// content or tool-call delta after it; their gap is how long it thought.
+    reasoning_span: Mutex<(Option<Instant>, Option<Instant>)>,
     totals: Mutex<Totals>,
 }
 
@@ -79,6 +82,7 @@ impl StreamPublisherHook {
             resolver: Mutex::new(ToolIdResolver::default()),
             turn_started: Mutex::new(None),
             model_started: Mutex::new(None),
+            reasoning_span: Mutex::new((None, None)),
             totals: Mutex::new(Totals::default()),
         }
     }
@@ -138,6 +142,7 @@ impl Hook for StreamPublisherHook {
 
     async fn before_model(&self, _ctx: &RunContext, _state: &mut AgentState, _req: &ModelRequest) -> Option<ModelRequest> {
         *self.model_started.lock().unwrap() = Some(Instant::now());
+        *self.reasoning_span.lock().unwrap() = (None, None);
         None
     }
 
@@ -146,6 +151,12 @@ impl Hook for StreamPublisherHook {
         if let Some(s) = started {
             let ms = appv3_core::pymath::py_round(s.elapsed().as_secs_f64() * 1000.0, 3);
             resp.meta.extra.get_or_insert_with(Default::default).insert("duration_ms".into(), json!(ms));
+        }
+        // Additive v3 key (see REPORT.md §3); v2 readers ignore it.
+        if let (Some(from), until) = *self.reasoning_span.lock().unwrap() {
+            let elapsed = until.unwrap_or_else(Instant::now).duration_since(from);
+            let ms = appv3_core::pymath::py_round(elapsed.as_secs_f64() * 1000.0, 3);
+            resp.meta.extra.get_or_insert_with(Default::default).insert("thinking_duration_ms".into(), json!(ms));
         }
         let usage = resp.meta.extra.as_ref().and_then(|e| e.get("usage")).filter(|u| u.is_object()).cloned();
         if let Some(u) = usage {
@@ -171,6 +182,14 @@ impl Hook for StreamPublisherHook {
             None => json!({}),
         };
         let d = &choice.delta;
+        {
+            let mut span = self.reasoning_span.lock().unwrap();
+            if d.reasoning_content.as_deref().is_some_and(|r| !r.is_empty()) {
+                span.0.get_or_insert_with(Instant::now);
+            } else if span.0.is_some() && span.1.is_none() && (d.content.as_deref().is_some_and(|c| !c.is_empty()) || d.tool_calls.is_some()) {
+                span.1 = Some(Instant::now());
+            }
+        }
         if self.publish_reasoning {
             if let Some(r) = d.reasoning_content.as_deref().filter(|s| !s.is_empty()) {
                 self.push(events::thinking(&self.agent, r, Some(metadata.clone())));

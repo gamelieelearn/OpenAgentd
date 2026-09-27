@@ -448,6 +448,13 @@ explicitly.
     paths) use the typed `Py` tree and match v2.
   - `!!set` order is insertion order. v2's order depends on string hashing,
     which varies from run to run.
+- **Thinking time on assistant rows:** v3 adds `thinking_duration_ms` to
+  an assistant message's `extra` when the model streamed reasoning: the
+  time from its first reasoning delta to its first content or tool-call
+  delta (`agent/src/hooks/publisher.rs`, tested in
+  `agent/tests/thinking_duration.rs`). It is an extra key in the existing
+  JSON column, not a schema change. v2 never writes it, and the web client
+  shows "Thought" without a duration when it is absent.
 
 ## 4. Layout
 

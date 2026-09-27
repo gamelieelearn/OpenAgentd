@@ -66,6 +66,8 @@ async fn tool_turn_persists_and_streams_like_v2() {
     assert_eq!(roles, vec!["user", "assistant", "tool", "assistant"]);
     assert_eq!(appv3_db::codec::api_uuid(&rows[0].id), mid);
     assert_eq!(rows[3].content.as_deref(), Some("The file says hello world."));
+    // No reasoning streamed, so there is no thinking time to record.
+    assert!(rows[3].extra_json().unwrap().get("thinking_duration_ms").is_none());
     let tc = rows[1].tool_calls_json().unwrap();
     assert_eq!(tc[0]["function"]["name"], "read");
     let s = appv3_db::get_session(&pool, &sid).await.unwrap().unwrap();
