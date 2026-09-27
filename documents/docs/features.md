@@ -221,7 +221,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   longer disappear mid-read.
 - **Floating surfaces keep content visible** `[v3.0.0]` — the transcript leaves
   room under the floating composer, so the latest reply is never hidden behind
-  it, and the jump-to-latest button sits just above the composer. On desktop,
+  it. On desktop,
   toasts, the update card, and the language-tools prompt stack in one
   bottom-right column above the status bar instead of overlapping each other.
 - **Categorized stream & execution error handling** `[v1.133.0]` — provider stream
@@ -454,6 +454,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     the island offers them, so one click answers it; other questions get
     Answer, which jumps to the card. After a turn that changed files it
     reads "N files changed" with Review, which opens the Git changes.
+  - Scrolled away from the live end, a "↓ N new" chip rides on the
+    composer, wherever it is dragged, and counts what arrived since.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits. Read
   results and file-change diffs keep line numbers visible while scrolling

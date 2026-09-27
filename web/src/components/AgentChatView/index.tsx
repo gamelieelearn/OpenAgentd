@@ -96,6 +96,8 @@ interface ActiveAgentViewProps {
   onFindQueryChange?: (query: string) => void
   onFindClose?: () => void
   onFindActiveIndexChange?: (index: number) => void
+  /** The floating composer is up and carries the jump-to-latest chip. */
+  jumpToLatestInComposer?: boolean
 }
 
 const ActiveAgentView = memo(function ActiveAgentView({
@@ -112,6 +114,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
   onFindQueryChange,
   onFindClose,
   onFindActiveIndexChange,
+  jumpToLatestInComposer,
 }: ActiveAgentViewProps) {
   const activeStream = useAgentStore((s) => {
     if (s.leadName && s.agentStreams[s.leadName]) return s.agentStreams[s.leadName]
@@ -146,6 +149,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
       onFindQueryChange={onFindQueryChange}
       onFindClose={onFindClose}
       onFindActiveIndexChange={onFindActiveIndexChange}
+      jumpToLatestInComposer={jumpToLatestInComposer}
     />
   )
 })
@@ -663,6 +667,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 setFindActiveIndex(0)
               }}
               onFindActiveIndexChange={setFindActiveIndex}
+              jumpToLatestInComposer={!parentSessionId && Boolean(workspace)}
               emptyState={
                 effectiveWorkspace ? (
                   <div className="flex flex-col items-center justify-center py-16">

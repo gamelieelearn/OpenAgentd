@@ -69,6 +69,21 @@ export function mergeBlocks(
   return [...blocks, ...liveTail]
 }
 
+/**
+ * Blocks after ``id`` that render something; ``null`` once ``id`` is gone.
+ * Scans from the end, so the cost is the number of blocks counted.
+ */
+export function countBlocksAfter(blocks: ContentBlock[], id: string): number | null {
+  let count = 0
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const block = blocks[i]
+    if (block.id === id) return count
+    const blank = (block.type === 'text' || block.type === 'thinking') && block.content.trim().length === 0
+    if (!blank) count += 1
+  }
+  return null
+}
+
 const PLAN_CONTENT_REGEX =
   /<proposed_plan\b|^\s*(?:#+\s*(?:proposed\s+|implementation\s+)?plan\b|\*\*(?:proposed\s+|implementation\s+)?plan:?\*\*)/im
 

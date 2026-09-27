@@ -4,6 +4,7 @@ import { render, screen, cleanup, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FloatingInputComposer } from '@/components/FloatingInputComposer'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import type { InputComposerHandle } from '@/components/InputComposer'
 
 let mockIsMobile = false
@@ -51,6 +52,7 @@ afterEach(cleanup)
 beforeEach(() => {
   localStorage.clear()
   useAgentStore.setState({ _pendingMessages: [], isAgentWorking: false })
+  useTranscriptFollowStore.setState({ unseen: null, jumpToLatest: null })
   mockIsMobile = false
 })
 
@@ -214,6 +216,16 @@ describe('FloatingInputComposer', () => {
 
     const panel = wrapper!.firstElementChild as HTMLElement
     expect(panel.className).toContain('pointer-events-auto')
+  })
+
+  it('carries the jump-to-latest chip on the moving panel', () => {
+    useTranscriptFollowStore.setState({ unseen: 2, jumpToLatest: () => {} })
+    render(<Harness />)
+
+    const chip = screen.getByRole('button', { name: 'Jump to latest, 2 new' })
+    const handle = screen.getByRole('button', { name: /drag input bar/i })
+    const panel = (handle.closest('div.absolute') as HTMLElement).firstElementChild as HTMLElement
+    expect(panel.contains(chip)).toBe(true)
   })
 
   it('does not render queued messages inside the floating composer', () => {

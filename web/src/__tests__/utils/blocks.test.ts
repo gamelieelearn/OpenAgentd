@@ -12,8 +12,23 @@ import {
   startCompaction,
   appendCompactionContent,
   endCompaction,
+  countBlocksAfter,
 } from "@/utils/blocks";
 import type { ContentBlock } from "@/api/types";
+
+describe("countBlocksAfter", () => {
+  const block = (id: string, content = id, type: ContentBlock["type"] = "text"): ContentBlock => ({ id, type, content });
+
+  it("counts what follows the block, skipping chunks that render nothing", () => {
+    const blocks = [block("a"), block("b"), block("blank", " "), block("c", "", "tool")];
+    expect(countBlocksAfter(blocks, "a")).toBe(2);
+    expect(countBlocksAfter(blocks, "c")).toBe(0);
+  });
+
+  it("is null once the block is gone", () => {
+    expect(countBlocksAfter([block("a")], "missing")).toBeNull();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // mergeBlocks

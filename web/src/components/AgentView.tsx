@@ -30,10 +30,11 @@ import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { appendCurrentTurns, getVisibleTurnWindow, modelChangeTurnStarts, partitionTurns } from '@/utils/turns'
-import { hasPlanContent, liveBlockTail } from '@/utils/blocks'
+import { countBlocksAfter, hasPlanContent, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
 import { getPlatform } from '@/hooks/use-platform'
 import type { ContentBlock } from '@/api/types'
@@ -258,6 +259,11 @@ interface AgentViewProps {
   onFindQueryChange?: (query: string) => void
   onFindClose?: () => void
   onFindActiveIndexChange?: (index: number) => void
+  /**
+   * The floating composer carries the jump-to-latest chip, so the transcript
+   * publishes its follow state instead of drawing its own button.
+   */
+  jumpToLatestInComposer?: boolean
 }
 
 const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, onRestore, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, findHit = false }: {
@@ -397,6 +403,7 @@ export function AgentView({
   onFindQueryChange,
   onFindClose,
   onFindActiveIndexChange,
+  jumpToLatestInComposer = false,
 }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
@@ -558,6 +565,29 @@ export function AgentView({
     isEmpty,
     onLoadOlderTop: handleLoadOlderTopTrigger,
   })
+
+  // ── Follow state for the composer's jump chip ─────────────────────────────
+  // Counted from the newest block when the reader scrolled away, so earlier
+  // messages loading in above never read as new.
+  const followAnchorRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!jumpToLatestInComposer) return
+    if (!showScrollBtn) {
+      followAnchorRef.current = null
+      if (useTranscriptFollowStore.getState().unseen !== null) useTranscriptFollowStore.setState({ unseen: null })
+      return
+    }
+    followAnchorRef.current ??= searchableBlocks[searchableBlocks.length - 1]?.id ?? ''
+    const counted = countBlocksAfter(searchableBlocks, followAnchorRef.current)
+    // A reconcile can swap the anchor's id; keep the last count then.
+    const unseen = counted ?? useTranscriptFollowStore.getState().unseen ?? 0
+    if (useTranscriptFollowStore.getState().unseen !== unseen) useTranscriptFollowStore.setState({ unseen })
+  }, [jumpToLatestInComposer, searchableBlocks, showScrollBtn])
+  useEffect(() => {
+    if (!jumpToLatestInComposer) return
+    useTranscriptFollowStore.setState({ jumpToLatest: () => scrollToBottom('smooth') })
+    return () => useTranscriptFollowStore.setState({ jumpToLatest: null, unseen: null })
+  }, [jumpToLatestInComposer, scrollToBottom])
 
   const showEarlierTurns = useCallback(() => {
     const el = scrollRef.current
@@ -893,7 +923,7 @@ export function AgentView({
       />
     </Suspense>
     </div>
-    {showScrollBtn && (
+    {showScrollBtn && !jumpToLatestInComposer && (
         <button
           onClick={() => scrollToBottom('smooth')}
           // Centred by margin rather than a percentage translate (DESIGN.md:

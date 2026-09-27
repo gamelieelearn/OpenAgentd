@@ -3,6 +3,7 @@ import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
 import { InputComposer, type FileRef, type InputComposerHandle, type SlashCommand, type SnippetCommand } from './InputComposer'
 import { ComposerIsland } from './ComposerIsland'
+import { JumpToLatestChip } from './JumpToLatestChip'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
@@ -159,6 +160,8 @@ export const FloatingInputComposer = memo(
     const [offset, setOffset] = useState<StoredOffset>(() => loadOffset())
     const [renderSuggestionsBelow, setRenderSuggestionsBelow] = useState(false)
     const [suggestionsOpen, setSuggestionsOpen] = useState(false)
+    // A bar dragged into the upper half keeps the jump chip below it.
+    const [jumpChipBelow, setJumpChipBelow] = useState(false)
 
     // ── Minimize-on-blur (desktop only) ──────────────────────────────────
     // The bar collapses to the slim action strip after the
@@ -482,12 +485,10 @@ export const FloatingInputComposer = memo(
       const panel = panelRef.current
       if (!bounds || !panel) return
       const update = () => {
-        const px = composerClearance(
-          panel.getBoundingClientRect().height,
-          offset.y,
-          bounds.getBoundingClientRect().height,
-        )
+        const panelHeight = panel.getBoundingClientRect().height
+        const px = composerClearance(panelHeight, offset.y, bounds.getBoundingClientRect().height)
         bounds.style.setProperty('--composer-clearance', `${px}px`)
+        setJumpChipBelow(panelHeight > 0 && px === 0)
       }
       update()
       let resizeObserver: ResizeObserver | null = null
@@ -545,8 +546,9 @@ export const FloatingInputComposer = memo(
           // content change (e.g. attachment/action buttons mounting or
           // unmounting), which flickers. A solid fill is cheaper, flicker-free,
           // and more legible over scrolling chat content.
-          className="pointer-events-auto border-t border-(--color-border) bg-(--bg-page) px-3 pb-safe pt-2"
+          className="pointer-events-auto relative border-t border-(--color-border) bg-(--bg-page) px-3 pb-safe pt-2"
         >
+          <JumpToLatestChip />
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
           <InputComposer
             ref={setInputRefs}
@@ -605,9 +607,10 @@ export const FloatingInputComposer = memo(
           // suppressing. Re-derive with `spring()` from framer-motion before
           // flagging this again.
           transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-          className="pointer-events-auto w-full"
+          className="pointer-events-auto relative w-full"
           style={{ touchAction: 'none' }}
         >
+        <JumpToLatestChip below={jumpChipBelow} />
         <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
         <div className={effectiveMinimized ? '' : 'px-3'}>
           <InputComposer
