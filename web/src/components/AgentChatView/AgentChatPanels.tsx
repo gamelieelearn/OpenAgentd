@@ -3,7 +3,7 @@ import { CommandPalette, QuickOpen } from '../CommandPalette'
 import { SchedulerPanel } from '../SchedulerPanel'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { TodosPopover } from '../TodosPopover'
-import type { TodoItem, WorkspaceFileInfo } from '@/api/types'
+import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 
 /** True from the first time ``open`` is set, so a panel mounted then can still animate out. */
@@ -24,6 +24,8 @@ interface AgentChatPanelsProps {
   showTodos: boolean
   onShowTodosChange: (open: boolean) => void
   todos: TodoItem[]
+  plan?: SessionPlan | null
+  onClearPlan?: () => void
   schedulerOpen: boolean
   onCloseScheduler: () => void
   showPalette: boolean
@@ -49,6 +51,8 @@ export function AgentChatPanels({
   showTodos,
   onShowTodosChange,
   todos,
+  plan,
+  onClearPlan,
   schedulerOpen,
   onCloseScheduler,
   showPalette,
@@ -79,6 +83,8 @@ export function AgentChatPanels({
         open={showTodos}
         onOpenChange={onShowTodosChange}
         todos={todos}
+        plan={plan}
+        onClearPlan={onClearPlan}
       />
       {schedulerOpened && (
         <SchedulerPanel

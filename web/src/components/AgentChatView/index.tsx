@@ -23,6 +23,7 @@ import type { FileRefOpener } from '../FileRefLink'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
+import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
 import { useProvidersQuery } from '@/queries'
 import { renameSession } from '@/queries/session-rename'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
@@ -351,6 +352,15 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   const { data: todosData } = useTodosQuery(sessionIdState)
   const todos = todosData?.todos ?? []
+  const { data: planData } = useSessionPlanQuery(sessionIdState)
+  const plan = planData?.plan ?? null
+  const { mutate: clearPlan } = useClearSessionPlanMutation()
+  const handleClearPlan = useCallback(() => {
+    if (!sessionIdState) return
+    clearPlan(sessionIdState, {
+      onError: (err) => pushToast({ tone: 'error', title: 'Could not clear the plan', description: err instanceof Error ? err.message : String(err) }),
+    })
+  }, [sessionIdState, clearPlan, pushToast])
   const providersQ = useProvidersQuery()
   const hasConfiguredModelProvider = providersQ.data?.providers.some(
     (provider) => provider.kind !== 'local' && provider.is_configured,
@@ -792,6 +802,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               onActiveViewChange={setDockActiveView}
               todos={todos}
               sessionId={sessionIdState}
+              plan={plan}
+              onClearPlan={handleClearPlan}
               onFileSelect={handleFileSelect}
               onAddComment={handleAddFileComment}
             />
@@ -821,6 +833,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         showTodos={!dockViewsEnabled && showTodos}
         onShowTodosChange={handleSetShowTodos}
         todos={todos}
+        plan={plan}
+        onClearPlan={handleClearPlan}
         schedulerOpen={schedulerOpen}
         onCloseScheduler={closeScheduler}
         showPalette={paletteOpen}

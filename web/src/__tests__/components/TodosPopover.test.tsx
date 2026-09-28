@@ -38,6 +38,19 @@ describe('TodosPopover', () => {
     expect(screen.queryByRole('list', { name: 'Task list' })).toBeNull()
   })
 
+  it('shows the saved plan row even before there are tasks', () => {
+    const plan = { content: '## Summary\nDo it.', updated_at: new Date().toISOString() }
+    render(<TodosPopover open onOpenChange={() => {}} todos={[]} plan={plan} onClearPlan={() => {}} />)
+
+    expect(screen.getByRole('button', { name: 'View plan' })).toBeTruthy()
+    expect(screen.getByText('No tasks yet')).toBeTruthy()
+  })
+
+  it('has no plan row without a saved plan', () => {
+    render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
+    expect(screen.queryByRole('button', { name: 'View plan' })).toBeNull()
+  })
+
   it('renders a flat checklist sorted in_progress → pending → completed → cancelled', () => {
     render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
 

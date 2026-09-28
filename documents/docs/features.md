@@ -193,7 +193,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   Open searches
   commands instead of files. The desktop app adds Reload Window, since `⌘R`
   no longer reloads.
-- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0]` — the expanded composer switches an
+- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
@@ -203,6 +203,15 @@ run from the terminal (the native Rust binary since v3.0.0).
   queued and applied when that turn closes, so it binds from the next turn and
   any message queued behind it. The toggle shows the queued mode in italics
   until it lands. Use stop if you actually want to interrupt the turn.
+  - **Saved session plan** `[v3.0.0]` — the plan a Plan-mode turn ends with
+    is saved as `plan.md` in the session's data directory; each revision
+    replaces it. Context compaction restates it verbatim, with the task
+    list, just before the summary, so the agent keeps following the
+    approved plan in long sessions (once every tracked task is finished,
+    only a pointer to the file is kept). Selecting text on a plan card offers
+    **Comment**, which quotes the selection into the composer for the agent
+    to revise. The Tasks tab and popover show a Plan row with **View** (opens
+    the file) and **Clear** (stops compaction from restating it).
 - **Fullscreen view mode and traffic-light space reclamation** `[v2.0.0]` — automatically
   detects macOS fullscreen mode and reclaims the window traffic-light header padding to
   maximise message and diff reading area.

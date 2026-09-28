@@ -17,6 +17,10 @@ mock.module('@tanstack/react-query', () => ({
   QueryClientProvider: ({ children }: { children: unknown }) => children,
 }))
 mock.module('@/queries/useTodosQuery', () => ({ useTodosQuery: () => ({ data: { todos: [] } }) }))
+mock.module('@/queries/useSessionPlanQuery', () => ({
+  useSessionPlanQuery: () => ({ data: { plan: null } }),
+  useClearSessionPlanMutation: () => ({ mutate: () => {} }),
+}))
 mock.module('@/queries', () => ({ useProvidersQuery: () => ({ data: { providers: [] } }) }))
 mock.module('@/queries/useAgentsQuery', () => ({
   useAgentsQuery: () => ({ data: { agents: [{ name: 'code' }] }, isLoading: false }),

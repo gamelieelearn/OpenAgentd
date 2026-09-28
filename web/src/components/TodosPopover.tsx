@@ -9,16 +9,20 @@ import { ListTodo } from 'lucide-react'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { cn } from '@/lib/utils'
-import type { TodoItem } from '@/api/types'
+import type { SessionPlan, TodoItem } from '@/api/types'
+import { ActivePlanSection } from './ActivePlanSection'
 import { TaskChecklist, TaskProgressBar, summarizeTodos } from './TaskChecklist'
 
 interface TodosPopoverProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   todos: TodoItem[]
+  /** The session's saved plan; its row sits under the header. */
+  plan?: SessionPlan | null
+  onClearPlan?: () => void
 }
 
-export function TodosPopover({ open, onOpenChange, todos }: TodosPopoverProps) {
+export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPlan }: TodosPopoverProps) {
   const summary = summarizeTodos(todos)
   const { mounted, closing } = useDeferredUnmount(open, 100)
   useHotkey('Escape', () => onOpenChange(false), { enabled: open })
@@ -71,6 +75,7 @@ export function TodosPopover({ open, onOpenChange, todos }: TodosPopoverProps) {
             </span>
           )}
         </div>
+        {plan && onClearPlan && <ActivePlanSection plan={plan} onClear={onClearPlan} />}
         {summary.total > 0 && <TaskProgressBar summary={summary} />}
         {summary.total === 0 ? (
           <div role="status" className="flex flex-col items-center gap-1 px-3 py-5 text-center">

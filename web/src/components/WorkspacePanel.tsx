@@ -43,7 +43,7 @@ import {
 } from '@/lib/workbench-layout'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
-import type { TodoItem, WorkspaceFileInfo } from '@/api/types'
+import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import { EASINGS } from '@/lib/motion'
 import {
   type ChangedFileStatus,
@@ -115,6 +115,8 @@ export function WorkspacePanel({
   onActiveViewChange,
   todos = EMPTY_TODOS,
   sessionId = null,
+  plan = null,
+  onClearPlan,
   onFileSelect,
   onAddComment,
   chatWorkspace = false,
@@ -143,6 +145,9 @@ export function WorkspacePanel({
   /** Agent task list for the Tasks tab. */
   todos?: TodoItem[]
   sessionId?: string | null
+  /** The session's saved plan, shown above the Tasks tab's list. */
+  plan?: SessionPlan | null
+  onClearPlan?: () => void
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   onAddComment?: (path: string, startLine: number, endLine: number) => void
   /**
@@ -541,7 +546,7 @@ export function WorkspacePanel({
           ) : activeTab?.type === 'terminal' ? (
             <TerminalSubPanel key={activeTab.termId} termId={activeTab.termId} workspace={workspace} />
           ) : activeTab?.type === 'tasks' ? (
-            <TasksTabView todos={todos} sessionId={sessionId} />
+            <TasksTabView todos={todos} sessionId={sessionId} plan={plan} onClearPlan={onClearPlan} />
           ) : activeTab?.type === 'schedule' ? (
             <SchedulerDockView contextWorkspace={chatWorkspace ? null : workspace} />
           ) : chatWorkspace ? (
