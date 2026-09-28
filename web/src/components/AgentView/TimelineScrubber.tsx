@@ -34,9 +34,9 @@ const MARK_ORDER: Record<MarkKind, number> = { prompt: 0, find: 1, 'find-active'
 
 const MARK_CLASS: Record<MarkKind, string> = {
   prompt: 'h-0.5 w-1.5 bg-(--color-text-subtle)',
-  find: 'h-0.5 w-2 bg-(--accent-orange)',
-  'find-active': 'h-1 w-3 bg-(--accent-orange-text)',
-  question: 'h-1 w-3 bg-(--color-accent)',
+  find: 'h-0.5 w-1.5 bg-(--accent-orange)',
+  'find-active': 'h-1 w-2 bg-(--accent-orange-text)',
+  question: 'h-1 w-2 bg-(--color-accent)',
 }
 
 const ID_SEPARATOR = '\u0000'
@@ -165,8 +165,10 @@ export function TimelineScrubber({ scrollRef, contentRef, findBlockIds, activeFi
       <div
         ref={thumbRef}
         data-scrubber-thumb=""
+        // As slim as the app's native scrollbars (index.css); the rail
+        // around it stays wider so it is still easy to grab.
         className={cn(
-          'absolute inset-x-0.5 rounded-full bg-(--color-border) transition-opacity duration-(--motion-fast) group-hover/scrubber:bg-(--color-text-muted)',
+          'absolute right-0 w-[5px] rounded-full bg-(--color-border) transition-opacity duration-(--motion-fast) group-hover/scrubber:bg-(--color-text-muted)',
           dragging ? 'opacity-100' : 'opacity-0 group-hover/transcript:opacity-100',
         )}
         style={{

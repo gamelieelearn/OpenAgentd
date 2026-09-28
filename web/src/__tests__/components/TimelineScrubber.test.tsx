@@ -108,6 +108,14 @@ describe('TimelineScrubber', () => {
     expect(thumb.style.height).toContain('25%')
   })
 
+  it('keeps the thumb as slim as the native scrollbars elsewhere in the app', () => {
+    const { container } = render(<Harness scrollTop={500} />)
+
+    const thumb = container.querySelector<HTMLElement>('[data-scrubber-thumb]')!
+    expect(thumb.className.split(' ')).toContain('w-[5px]')
+    expect(thumb.className).not.toContain('inset-x-')
+  })
+
   it('marks prompts, find matches, the active match and a waiting question where they sit', () => {
     const { container } = render(<Harness findBlockIds={['t1', 't2']} activeFindBlockId="t2" question />)
 
