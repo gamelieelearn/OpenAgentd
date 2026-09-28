@@ -14,6 +14,8 @@ import { formatTime, formatFullDateTime, lastTurnText, shortModelName } from '@/
 import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
 import { PlanActionContext } from '@/utils/markdown-plan'
 import type { ContentBlock } from '@/api/types'
+import { TurnChangedFiles, WorkSummaryRow } from '@/components/ReaderTurn'
+import { readerSegments, turnChangedFiles } from '@/components/ReaderTurn/segments'
 
 export interface AssistantTurnFooterProps {
   /** Blocks belonging to a single assistant turn (no user blocks inside). */
@@ -166,6 +168,13 @@ export interface AssistantTurnProps {
   isSwitchingInteractionMode?: boolean
   /** Passed to the footer. */
   showModel?: boolean
+  /**
+   * Reader mode: the work folds behind one summary row, and a finished
+   * turn lists the files it edited (see ``ReaderTurn/segments.ts``).
+   */
+  reader?: boolean
+  /** Blocks transcript find matched; a fold holding one opens. */
+  findHitBlockIds?: ReadonlySet<string>
 }
 
 export const AssistantTurn = memo(function AssistantTurn({
@@ -181,6 +190,8 @@ export const AssistantTurn = memo(function AssistantTurn({
   onStartImplementing,
   isSwitchingInteractionMode = false,
   showModel,
+  reader = false,
+  findHitBlockIds,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
   // rather than merely for the stream to stop.
@@ -192,32 +203,56 @@ export const AssistantTurn = memo(function AssistantTurn({
     }),
     [turnIsOpen, onStartImplementing, isSwitchingInteractionMode],
   )
+  const segments = useMemo(() => (reader ? readerSegments(blocks) : null), [reader, blocks])
+  const changedFiles = useMemo(() => (reader && !turnIsOpen ? turnChangedFiles(blocks) : []), [reader, turnIsOpen, blocks])
+
+  const renderAt = (j: number) => {
+    const block = blocks[j]
+    const absoluteIdx = startIndex + j
+    const isLast = absoluteIdx === totalBlocks - 1
+    // Only the block currently receiving output is streaming. Earlier
+    // blocks of the same turn are finished the moment the next one opens —
+    // flagging them too gave every one of them a typewriter rAF loop with
+    // nothing to animate. `appendStreamed` only ever fills the last block
+    // of a kind, so the block taking deltas is always the trailing one.
+    // Compaction blocks live in `blocks` directly, so their active streaming
+    // state is indicated by `block.extra?.state === 'compacting'`.
+    const isCompactionStreaming = isWorking && block.type === 'compaction' && block.extra?.state === 'compacting'
+    const isStreaming = isCompactionStreaming || (isWorking && absoluteIdx >= finalizedCount && isLast)
+    return (
+      <div key={block.id}>
+        {renderBlock({
+          block,
+          isStreaming,
+          isLast,
+        })}
+      </div>
+    )
+  }
 
   return (
     <PlanActionContext.Provider value={planActionValue}>
       <div className="space-y-2">
-      {blocks.map((block, j) => {
-        const absoluteIdx = startIndex + j
-        const isLast = absoluteIdx === totalBlocks - 1
-        // Only the block currently receiving output is streaming. Earlier
-        // blocks of the same turn are finished the moment the next one opens —
-        // flagging them too gave every one of them a typewriter rAF loop with
-        // nothing to animate. `appendStreamed` only ever fills the last block
-        // of a kind, so the block taking deltas is always the trailing one.
-        // Compaction blocks live in `blocks` directly, so their active streaming
-        // state is indicated by `block.extra?.state === 'compacting'`.
-        const isCompactionStreaming = isWorking && block.type === 'compaction' && block.extra?.state === 'compacting'
-        const isStreaming = isCompactionStreaming || (isWorking && absoluteIdx >= finalizedCount && isLast)
-        return (
-          <div key={block.id}>
-            {renderBlock({
-              block,
-              isStreaming,
-              isLast,
-            })}
-          </div>
-        )
-      })}
+      {segments
+        ? segments.map((segment) => {
+            if (segment.kind === 'block') return renderAt(segment.index)
+            const work = segment.indices.map((j) => blocks[j])
+            const lastIndex = segment.indices[segment.indices.length - 1]
+            return (
+              <WorkSummaryRow
+                // Keyed by its first block so the toggle survives new steps.
+                key={`work-${work[0].id}`}
+                blocks={work}
+                live={turnIsOpen}
+                currentStep={turnIsOpen && lastIndex === blocks.length - 1 ? blocks[lastIndex] : null}
+                forceOpen={work.some((block) => findHitBlockIds?.has(block.id) ?? false)}
+              >
+                {segment.indices.map(renderAt)}
+              </WorkSummaryRow>
+            )
+          })
+        : blocks.map((_, j) => renderAt(j))}
+      {changedFiles.length > 0 && <TurnChangedFiles files={changedFiles} />}
       {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} showModel={showModel} />}
     </div>
     </PlanActionContext.Provider>

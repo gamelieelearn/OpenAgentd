@@ -62,7 +62,8 @@ function formatShellResult(result: string | undefined): { statusLine: string | n
   return { statusLine: firstLine, body: body || null }
 }
 
-function formatToolLabel(name: string): string {
+/** A tool's display name, e.g. ``web_fetch`` → "Web Fetch". */
+export function formatToolLabel(name: string): string {
   if (!name) return 'Tool'
   if (name === 'lsp') return 'LSP'
   return name
