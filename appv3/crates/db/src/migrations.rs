@@ -187,7 +187,10 @@ async fn migrate_19(conn: &mut SqliteConnection, stmts: &[&str]) -> Result<()> {
 }
 
 async fn apply(conn: &mut SqliteConnection, rev: &str, sql: &str) -> Result<()> {
-    let stmts = statements(sql);
+    // A Windows checkout with `core.autocrlf` embeds the file with CRLF; the
+    // separator and the DDL text stored in `sqlite_master` must read as LF.
+    let sql = sql.replace("\r\n", "\n");
+    let stmts = statements(&sql);
     let mut tx = conn.begin().await?;
     match rev {
         "00000013" => migrate_13(&mut tx, &stmts).await?,
@@ -404,5 +407,18 @@ CREATE UNIQUE INDEX ix_scheduled_task_name ON scheduled_task (name);
             v
         };
         assert_eq!(norm(ma), norm(mb));
+    }
+
+    /// Windows checkouts with `core.autocrlf` embed the revision files with
+    /// CRLF. They must replay to exactly the schema text an LF build writes.
+    #[tokio::test]
+    async fn crlf_revision_files_replay_like_lf() {
+        let mut lf = SqliteConnection::connect("sqlite::memory:").await.unwrap();
+        upgrade(&mut lf).await.unwrap();
+        let mut crlf = SqliteConnection::connect("sqlite::memory:").await.unwrap();
+        for (rev, sql) in MIGRATIONS.iter() {
+            apply(&mut crlf, rev, &sql.replace('\n', "\r\n")).await.unwrap();
+        }
+        assert_eq!(master(&mut crlf).await, master(&mut lf).await);
     }
 }
