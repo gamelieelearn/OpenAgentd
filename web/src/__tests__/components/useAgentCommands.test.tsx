@@ -20,7 +20,7 @@
  *     inputs returns the new commands (no stale closures).
  */
 import { describe, it, expect, afterEach, mock } from "bun:test"
-import { renderHook, cleanup } from "@testing-library/react"
+import { act, renderHook, cleanup } from "@testing-library/react"
 import { useAgentCommands } from "@/components/AgentChatView/useAgentCommands"
 import { useSettingsStore } from "@/stores/useSettingsStore"
 import { useUIStore } from "@/stores/useUIStore"
@@ -194,14 +194,17 @@ describe("useAgentCommands — navigation", () => {
     localStorage.removeItem(THEME_STORAGE_KEY)
   })
 
-  it("switches the transcript between detailed and reader", () => {
+  it("toggles reader mode, saying which mode it is in", () => {
     const { result } = renderHook(() => useAgentCommands(makeArgs()))
-    expect(["transcript-detailed", "transcript-reader"].map((id) => byId(result.current, id).label))
-      .toEqual(["Transcript: Detailed", "Transcript: Reader"])
+    const toggle = () => byId(result.current, "toggle-reader-mode")
+    expect(toggle().label).toBe("Toggle Reader Mode")
+    expect(toggle().description).toMatch(/^Fold each turn/)
 
-    byId(result.current, "transcript-reader").action()
+    act(() => toggle().action())
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe("reader")
-    byId(result.current, "transcript-detailed").action()
+    expect(toggle().description).toMatch(/^Reader mode is on/)
+
+    act(() => toggle().action())
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe("detailed")
   })
 })

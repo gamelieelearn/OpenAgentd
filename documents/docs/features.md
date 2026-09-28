@@ -460,8 +460,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
 - **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
-  About → Appearance → Transcript, or `Transcript: Reader` in the command
-  palette). Each turn reads as its answer:
+  About → Appearance → Transcript, or Toggle Reader Mode in the command
+  palette, which also finds it as "compact" or "transcript"). Each turn reads
+  as its answer:
   - The thinking, every tool call, and the narration between them fold into
     one row such as "6 reads, 3 searches, 4 commands, 2 edits", with failures
     counted; while the turn runs it names the current step ("Working ·

@@ -22,6 +22,8 @@ export const TRANSCRIPT_STYLES: readonly { value: TranscriptStyle; label: string
 interface DisplayPrefsState {
   transcriptStyle: TranscriptStyle
   setTranscriptStyle: (style: TranscriptStyle) => void
+  /** Detailed ⇄ reader; reads the current style at call time. */
+  toggleTranscriptStyle: () => void
 }
 
 function isTranscriptStyle(value: unknown): value is TranscriptStyle {
@@ -30,9 +32,10 @@ function isTranscriptStyle(value: unknown): value is TranscriptStyle {
 
 export const useDisplayPrefsStore = create<DisplayPrefsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       transcriptStyle: DEFAULT_TRANSCRIPT_STYLE,
       setTranscriptStyle: (style) => set({ transcriptStyle: style }),
+      toggleTranscriptStyle: () => set({ transcriptStyle: get().transcriptStyle === 'reader' ? 'detailed' : 'reader' }),
     }),
     {
       name: DISPLAY_PREFS_STORAGE_KEY,

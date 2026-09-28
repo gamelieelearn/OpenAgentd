@@ -121,6 +121,24 @@ describe("CommandPalette", () => {
     expect(screen.queryByText("New Chat")).toBeNull()
   })
 
+  it("matches every word of the query across label, description, and keywords", async () => {
+    const user = userEvent.setup()
+    const commands: Command[] = [
+      { id: "reader", label: "Toggle Reader Mode", description: "Fold each turn", keywords: "compact transcript detailed", action: () => {} },
+      { id: "new-chat", label: "New Chat", description: "Start a new session", action: () => {} },
+    ]
+    render(<CommandPalette commands={commands} onClose={() => {}} />)
+    const input = screen.getByPlaceholderText("Search commands…")
+
+    await user.type(input, "compact mode")
+    expect(screen.getByText("Toggle Reader Mode")).toBeTruthy()
+    expect(screen.queryByText("New Chat")).toBeNull()
+
+    await user.clear(input)
+    await user.type(input, "reader chat")
+    expect(screen.queryByText("Toggle Reader Mode")).toBeNull()
+  })
+
   it("shows no-match message when query has no results", async () => {
     const user = userEvent.setup()
     render(<CommandPalette commands={makeCommands()} onClose={() => {}} />)

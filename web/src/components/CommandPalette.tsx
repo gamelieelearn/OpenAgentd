@@ -30,9 +30,17 @@ export interface Command {
   shortcut?: string
   /** Optional category for grouping */
   group?: string
+  /** Other words it is found by, e.g. "compact" for Reader Mode; not shown. */
+  keywords?: string
   /** Opens this list inside the palette; ``action`` is not run. */
   page?: CommandPage
   action: () => void
+}
+
+/** Every word of ``query`` appears in the command's label, description, group, or keywords. */
+function commandMatches(cmd: Command, query: string): boolean {
+  const haystack = [cmd.label, cmd.description, cmd.group, cmd.keywords].filter(Boolean).join('\n').toLowerCase()
+  return query.split(/\s+/).every((word) => haystack.includes(word))
 }
 
 // Max file rows shown in the palette — matches the old inline file-search
@@ -138,8 +146,9 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
   // `limit` caps the work inside fuzzysort rather than filtering the whole
   // workspace into an intermediate array and slicing afterwards.
   //
-  // Commands: substring matched across label/description/group. Kept as a
-  // substring match deliberately — command labels are a small, curated set the
+  // Commands: every query word substring-matched across label, description,
+  // group, and keywords, so "compact mode" finds Toggle Reader Mode. Kept to
+  // substrings deliberately — command labels are a small, curated set the
   // user is scanning visually, and fuzzy matching a 20-item list mostly just
   // surfaces surprising rows.
   // Quick Open remains a file-search surface even before an empty workspace
@@ -158,12 +167,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
 
     // ── Commands ──────────────────────────────────────────────────────────────
     const listCommands = page ? page.page.commands : commandMode ? commands : []
-    const filteredCmds = listCommands.filter((cmd) =>
-      !q ||
-      cmd.label.toLowerCase().includes(q) ||
-      cmd.description?.toLowerCase().includes(q) ||
-      cmd.group?.toLowerCase().includes(q),
-    )
+    const filteredCmds = q ? listCommands.filter((cmd) => commandMatches(cmd, q)) : listCommands
 
     // ── Files (ranked + capped) ───────────────────────────────────────────────
     let filteredFiles: WorkspaceFileInfo[] = []
