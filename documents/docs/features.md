@@ -763,9 +763,6 @@ agent against it.
   can be deleted from the sidebar with instant cache pruning `[v2.17.0]`, falling back cleanly to the
   parent lead session, and opening one shows a read-only banner with a
   **Return to Lead** action.
-- **New session button** `[v3.0.0]` — the top of the coding sidebar has a
-  **New session** row with its shortcut (`⌘N` / `Ctrl+N`) that starts a
-  session in the current workspace.
 - **Rename sessions in place** `[v3.0.0]` — the pencil, a double-click on a
   sidebar row, **Edit title** in its menu, or a click on the session title in
   the desktop header turns the title into a text field. Enter or clicking away

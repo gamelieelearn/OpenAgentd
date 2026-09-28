@@ -1208,26 +1208,6 @@ describe('CodingSidebar workspace trust flow', () => {
     await waitFor(() => expect(treeFetches()).toBe(before + 1))
   })
 
-  it('starts a new session from the button at the top of the sidebar', async () => {
-    const user = userEvent.setup()
-    const onNewSession = mock(() => {})
-    const onMobileClose = mock(() => {})
-
-    await renderCodingSidebarWithProps({ workspace: '/repo/project', onNewSession, onMobileClose })
-
-    const button = screen.getByRole('button', { name: 'New session' })
-    expect(button.textContent).toContain('⌘N')
-    await user.click(button)
-    expect(onNewSession).toHaveBeenCalledTimes(1)
-    expect(onMobileClose).toHaveBeenCalledTimes(1)
-  })
-
-  it('offers no new session button before a workspace is open', async () => {
-    await renderCodingSidebarWithProps({ workspace: null, onNewSession: mock(() => {}) })
-
-    expect(screen.queryByRole('button', { name: 'New session' })).toBeNull()
-  })
-
   it('searches session titles across workspaces in place of the tree', async () => {
     const user = userEvent.setup()
     sessionsData = [
