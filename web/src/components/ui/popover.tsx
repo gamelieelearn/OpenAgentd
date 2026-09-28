@@ -26,6 +26,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -177,7 +178,8 @@ function PopoverContent({
   const [pos, setPos] = useState<Pos | null>(null)
 
   // Must be called before any conditional returns (Rules of Hooks)
-  const { mounted, closing } = useDeferredUnmount(open, 100)
+  // Matches the exit's ``animation-duration-(--motion-fast)`` below.
+  const { mounted, closing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)
 
   const reposition = useCallback(() => {
     const trigger = triggerRef.current
@@ -235,10 +237,11 @@ function PopoverContent({
         // Animation only: ``duration-*`` would also transition ``top``/``left``
         // (``transition-property`` defaults to ``all``) as the content moves
         // from where it mounts, hidden, to where it measures itself into place.
-        'animation-duration-100',
+        // DESIGN.md → Motion: in at ``base`` on the ``ease-out`` curve, out at ``fast``.
+        'ease-(--ease-out)',
         closing
-          ? 'animate-out fade-out-0 zoom-out-95'
-          : 'animate-in fade-in-0',
+          ? 'animate-out fade-out-0 zoom-out-95 animation-duration-(--motion-fast)'
+          : 'animate-in fade-in-0 animation-duration-(--motion-base)',
         className,
       )}
       style={{

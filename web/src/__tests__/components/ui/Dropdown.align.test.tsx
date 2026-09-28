@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitForElementToBeRemoved } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
@@ -85,5 +85,55 @@ describe('floating panels — entrance', () => {
 
     const content = document.querySelector<HTMLElement>('[data-slot="popover-content"]')!
     expect(content.className).not.toMatch(TRANSITION_DURATION)
+  })
+})
+
+/**
+ * DESIGN.md → Motion: dropdowns are ``base`` (240ms) with the ``ease-out``
+ * entrance curve. The exit is ``fast`` (150ms) so a picked item's panel is
+ * out of the way sooner, and the panel stays mounted until the exit ends.
+ */
+describe('floating panels — motion tokens', () => {
+  const has = (el: Element, token: string) => el.className.split(/\s+/).includes(token)
+
+  it('opens a dropdown at the base duration and closes it at the fast one', async () => {
+    render(
+      <Dropdown trigger="More" aria-label="More">
+        <DropdownItem>One</DropdownItem>
+      </Dropdown>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'More' }))
+    const panel = screen.getByRole('menu')
+    expect(has(panel, 'animation-duration-(--motion-base)')).toBe(true)
+    expect(has(panel, 'ease-(--ease-out)')).toBe(true)
+
+    await userEvent.keyboard('{Escape}')
+    const closing = screen.getByRole('menu')
+    expect(has(closing, 'animate-out')).toBe(true)
+    expect(has(closing, 'animation-duration-(--motion-fast)')).toBe(true)
+
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    expect(screen.queryByRole('menu')).not.toBeNull()
+    await waitForElementToBeRemoved(() => screen.queryByRole('menu'))
+  })
+
+  it('opens a popover at the base duration and closes it at the fast one', async () => {
+    render(
+      <Popover>
+        <PopoverTrigger>Open</PopoverTrigger>
+        <PopoverContent>Details</PopoverContent>
+      </Popover>,
+    )
+    const content = () => document.querySelector<HTMLElement>('[data-slot="popover-content"]')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open' }))
+    expect(has(content()!, 'animation-duration-(--motion-base)')).toBe(true)
+    expect(has(content()!, 'ease-(--ease-out)')).toBe(true)
+
+    await userEvent.keyboard('{Escape}')
+    expect(has(content()!, 'animation-duration-(--motion-fast)')).toBe(true)
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    expect(content()).not.toBeNull()
+    await waitForElementToBeRemoved(content)
   })
 })
