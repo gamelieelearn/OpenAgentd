@@ -722,4 +722,28 @@ describe("AgentView — footer model label", () => {
     const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
     expect(labels).toEqual(["gpt-5", "claude-opus-4"])
   })
+
+  it("names the thinking level beside the model, and again when only the level changes", () => {
+    const leveled = (id: string, model: string, level: string): ContentBlock => ({
+      ...answer(id, model),
+      extra: { model, thinking_level: level },
+    })
+    const { container } = renderStream({
+      blocks: [
+        makeUserBlock("u1", "one"),
+        leveled("a1", "openai:gpt-5", "high"),
+        makeUserBlock("u2", "two"),
+        leveled("a2", "openai:gpt-5", "high"),
+        makeUserBlock("u3", "three"),
+        leveled("a3", "openai:gpt-5", "low"),
+        makeUserBlock("u4", "four"),
+        answer("a4", "openai:gpt-5"),
+      ],
+      currentBlocks: [],
+      isWorking: false,
+    })
+
+    const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
+    expect(labels).toEqual(["gpt-5 · high", "gpt-5 · low", "gpt-5"])
+  })
 })

@@ -142,6 +142,7 @@ function appendStreamingText(
   kind: BufferedTextKind,
   text: string,
   model?: string | null,
+  thinkingLevel?: string | null,
 ) {
   const name = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
   ensureAgent(draft, name)
@@ -164,7 +165,9 @@ function appendStreamingText(
     const last = stream.currentBlocks[stream.currentBlocks.length - 1]
     if (last?.type === 'text') {
       if (!last.startedAt) last.startedAt = Date.now()
-      if (model) last.extra = { ...(last.extra ?? {}), model }
+      if (model) {
+        last.extra = { ...(last.extra ?? {}), model, ...(thinkingLevel ? { thinking_level: thinkingLevel } : {}) }
+      }
     }
   }
 }
@@ -190,14 +193,14 @@ function applyBufferedSSEDelta(draft: AgentStore, event: BufferedSSEDelta) {
   const d = event.data
   const agentName = (d.agent as string) || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
   if (event.type === 'message' || event.type === 'thinking') {
+    const metadata = d.metadata as Record<string, unknown> | undefined
     appendStreamingText(
       draft,
       agentName,
       event.type,
       d.text as string,
-      typeof (d.metadata as Record<string, unknown> | undefined)?.model === 'string'
-        ? ((d.metadata as Record<string, unknown>).model as string)
-        : null,
+      typeof metadata?.model === 'string' ? metadata.model : null,
+      typeof metadata?.thinking_level === 'string' ? metadata.thinking_level : null,
     )
     return
   }

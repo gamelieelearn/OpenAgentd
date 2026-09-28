@@ -66,12 +66,14 @@ function assistantBlocks(
   const extra = msg.extra as {
     duration_ms?: number
     model?: unknown
+    thinking_level?: unknown
     usage?: { output?: number; cost?: { estimated_usd?: number }; estimated_cost_usd?: number }
     cost?: { estimated_usd?: number }
     estimated_cost_usd?: number
   } | null
   const responseDurationMs = typeof extra?.duration_ms === 'number' ? extra.duration_ms : undefined
   const model = typeof extra?.model === 'string' ? extra.model : undefined
+  const thinkingLevel = typeof extra?.thinking_level === 'string' ? extra.thinking_level : undefined
 
   // Me text before tools — LLM emits content first, then tool_calls
   if (msg.content) {
@@ -81,7 +83,7 @@ function assistantBlocks(
       content: msg.content,
       timestamp,
       responseDurationMs,
-      extra: model ? { model } : undefined,
+      extra: model ? { model, ...(thinkingLevel ? { thinking_level: thinkingLevel } : {}) } : undefined,
     })
   }
 

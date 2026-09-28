@@ -231,6 +231,15 @@ describe("parseAgentBlocks", () => {
     expect(textBlock?.content).toBe("here is my answer");
   });
 
+  it("keeps the thinking level an assistant row ran with beside its model", () => {
+    const [withLevel, withoutLevel] = [
+      makeMsg({ role: "assistant", content: "a", extra: { model: "openai:gpt-5", thinking_level: "high" } }),
+      makeMsg({ role: "assistant", content: "b", extra: { model: "openai:gpt-5" } }),
+    ].map((msg) => parseAgentBlocks([msg])[0]);
+    expect(withLevel.extra).toEqual({ model: "openai:gpt-5", thinking_level: "high" });
+    expect(withoutLevel.extra).toEqual({ model: "openai:gpt-5" });
+  });
+
   it("carries a message's output tokens and cost on exactly one of its blocks", () => {
     const blocks = parseAgentBlocks([makeMsg({
       role: "assistant",

@@ -48,28 +48,35 @@ export function partitionTurns(blocks: ContentBlock[]): TurnItem[] {
   return items
 }
 
-/** The model that produced a turn: the newest block that names one. */
-export function turnModelId(blocks: ContentBlock[]): string | undefined {
+/**
+ * The model that produced a turn, with the thinking level it ran at: read
+ * together from the newest block that names a model.
+ */
+export function turnModel(blocks: ContentBlock[]): { model: string; thinkingLevel?: string } | undefined {
   for (let i = blocks.length - 1; i >= 0; i--) {
-    const model = blocks[i].extra?.model
-    if (typeof model === 'string') return model
+    const extra = blocks[i].extra
+    if (typeof extra?.model !== 'string') continue
+    const level = extra.thinking_level
+    return { model: extra.model, thinkingLevel: typeof level === 'string' && level ? level : undefined }
   }
   return undefined
 }
 
 /**
- * ``startIndex`` of every assistant turn whose model differs from the last
- * model seen before it, so a footer names the model only when it changes.
+ * ``startIndex`` of every assistant turn whose model or thinking level
+ * differs from the last seen before it, so a footer names them only when
+ * they change.
  */
 export function modelChangeTurnStarts(items: TurnItem[]): Set<number> {
   const starts = new Set<number>()
   let previous: string | undefined
   for (const item of items) {
     if (item.kind !== 'assistant') continue
-    const model = turnModelId(item.blocks)
-    if (model === undefined) continue
-    if (model !== previous) starts.add(item.startIndex)
-    previous = model
+    const turn = turnModel(item.blocks)
+    if (turn === undefined) continue
+    const key = `${turn.model}\n${turn.thinkingLevel ?? ''}`
+    if (key !== previous) starts.add(item.startIndex)
+    previous = key
   }
   return starts
 }

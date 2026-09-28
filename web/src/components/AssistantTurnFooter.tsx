@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { formatTime, formatFullDateTime, lastTurnText, shortModelName } from '@/utils/format'
 import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
 import { PlanActionContext } from '@/utils/markdown-plan'
+import { turnModel } from '@/utils/turns'
 import type { ContentBlock } from '@/api/types'
 import { useQuestionAwaitsUser } from '@/components/AskUser'
 import { TurnChangedFiles, WorkSummaryRow } from '@/components/ReaderTurn'
@@ -23,7 +24,7 @@ export interface AssistantTurnFooterProps {
   turnBlocks: ContentBlock[]
   /** Visual density: 'compact' for narrow panes, 'roomy' for the wide view. */
   size?: 'compact' | 'roomy'
-  /** Name the model; the transcript does so only when it changed. */
+  /** Name the model and thinking level; the transcript does so only when they changed. */
   showModel?: boolean
 }
 
@@ -44,7 +45,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
     const textContent = lastTurnText(turnBlocks)
     const lastBlock = turnBlocks[turnBlocks.length - 1]
     let responseDurationMs: number | undefined
-    let modelId: string | undefined
     let hasTool = false
     let outputTokens = 0
     let costUsd = 0
@@ -57,22 +57,22 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
       responseDurationMs ??= typeof block.responseDurationMs === 'number'
         ? block.responseDurationMs
         : undefined
-      modelId ??= typeof block.extra?.model === 'string' ? block.extra.model : undefined
       hasTool ||= block.type === 'tool'
-      if (responseDurationMs !== undefined && modelId !== undefined && hasTool) break
+      if (responseDurationMs !== undefined && hasTool) break
     }
+    const model = turnModel(turnBlocks)
     return {
       textContent,
       timestamp: lastBlock?.timestamp,
       responseDurationMs,
-      modelId,
-      modelName: shortModelName(modelId),
+      modelName: shortModelName(model?.model),
+      thinkingLevel: model?.thinkingLevel,
       hasTool,
       outputTokens,
       costUsd: Math.round(costUsd * 1e8) / 1e8,
     }
   }, [turnBlocks])
-  const { textContent, timestamp, responseDurationMs, modelName, outputTokens, costUsd } = footerData
+  const { textContent, timestamp, responseDurationMs, modelName, thinkingLevel, outputTokens, costUsd } = footerData
 
   const handleCopy = useCallback(async () => {
     try {
@@ -108,7 +108,13 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
         </Tooltip>
       )}
       {showModel && modelName && (
-        <span data-turn-model className="font-mono text-[11px] text-(--color-text-muted)">{modelName}</span>
+        <span
+          data-turn-model
+          className="font-mono text-[11px] text-(--color-text-muted)"
+          title={thinkingLevel ? `Thinking level: ${thinkingLevel}` : undefined}
+        >
+          {thinkingLevel ? `${modelName} · ${thinkingLevel}` : modelName}
+        </span>
       )}
       {timestamp && (
         <Tooltip className="text-[11px] text-(--color-text-muted)">

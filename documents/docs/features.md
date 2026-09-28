@@ -508,7 +508,9 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Effective model on assistant replies** `[v1.42.0]` — assistant footers show
   the model that produced the reply, including fallback transitions, next to the
   copy and timing metadata. Since `[v3.0.0]` a footer names the model only on
-  the first reply and where the model changes.
+  the first reply and where the model changes, followed by the thinking level
+  the reply ran at (e.g. `gpt-5 · high`); a change of level alone names it
+  again.
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
   folders render orange. Mentioned files inject inline hidden context on the
   turn without becoming uploads; mentioned folders inject a lightweight directory
