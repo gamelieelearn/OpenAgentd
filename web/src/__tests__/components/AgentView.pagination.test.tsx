@@ -301,4 +301,17 @@ describe("AgentView — earlier turns landing above the view", () => {
 
     expect(el.scrollTop).toBe(1400)
   })
+
+  it("keeps rendered replies mounted when earlier turns load above them", async () => {
+    const blocks = makeTurns(3)
+    const { container, rerender } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    const reply = container.querySelector('[data-find-block="t1"]')
+    expect(reply).not.toBeNull()
+
+    await act(async () => {
+      rerender(<AgentView blocks={[...makeTurns(2, "old-"), ...blocks]} currentBlocks={[]} isWorking={false} />)
+    })
+
+    expect(container.querySelector('[data-find-block="t1"]')).toBe(reply)
+  })
 })

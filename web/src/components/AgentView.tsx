@@ -908,7 +908,9 @@ export function AgentView({
                     hasPlanContent(item.blocks)
                  return (
                    <div
-                     key={`turn-${item.startIndex}-${item.blocks[0]?.id ?? k}`}
+                     // Keyed by the first block alone: an older page shifts every
+                     // startIndex, and a key built on it remounted every reply.
+                     key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}
                      onContextMenu={(event) => handleReplyContextMenu(event, item.blocks)}
                    >
                    <AssistantTurn
