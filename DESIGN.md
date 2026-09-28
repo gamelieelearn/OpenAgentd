@@ -506,16 +506,18 @@ holding the chat and the review dock, and a status bar. Mobile keeps its drawer
 and full-screen dock sheet unchanged.
 
 ```
-┌──────────────────────── app-header 36 · bg-sidebar ────────────────────────┐
+┌────────────── app-header 36 · bg-page (light) / bg-sidebar (dark) ─────────┐
 │ sidebar 264 │ chat · bg-page (≥ 400)         │ review dock (≥ 340)          │
-│ bg-sidebar  │                                │ tab-bar 36 · bg-sidebar      │
+│ page / rail │                                │ tab-bar 36 · bg-sidebar      │
 │ 28px rows   │                                │ toolbar 32 · bg-page         │
 │             │                                │ one scroller                 │
-└──────────────────────── status-bar 24 · bg-sidebar ────────────────────────┘
+└────────────── status-bar 24 · bg-page (light) / bg-sidebar (dark) ─────────┘
 ```
 
-- **Zoning is tonal.** Chrome (header, sidebar, status bar, dock tab bar) sits
-  on the recessed `bg-sidebar`; working surfaces (chat, dock content) sit on
+- **Zoning is tonal in dark mode.** There the header, sidebar and status bar
+  sit on the recessed `bg-sidebar`; in light mode they share the chat's
+  `bg-page`, so the app reads as one sheet of paper. The dock tab bar is
+  `bg-sidebar` in both. Working surfaces (chat, dock content) sit on
   `bg-page`. The zones meet at hairline borders, never shadows.
 - **Geometry lives in one place.** `lib/workbench-layout.ts` owns the math and
   `useLayoutStore` (`oa.layout.v1`) persists the choices. The sidebar defaults

@@ -731,7 +731,8 @@ agent against it.
   commits to push/pull and uncommitted changes (a click opens the review dock),
   the session model, and the last 24 hours of spend (a click opens Telemetry on
   that range); scheduled tasks and the theme moved to the sidebar, the palette
-  and Settings. The sidebar opens expanded on windows at least 1280px
+  and Settings. In light mode the header, sidebar, status bar and chat share
+  one page tone; dark mode sets the chrome on a darker rail. The sidebar opens expanded on windows at least 1280px
   wide and resizes between 220 and 440px. The dock takes a share of the chat
   area and always leaves the chat at least 400px; on narrower windows it opens
   over the chat instead. Both dividers resize by drag or keyboard (arrow keys,

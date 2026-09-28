@@ -1316,6 +1316,14 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(opened).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the sidebar on the page tone in light mode and the rail in dark', async () => {
+    const view = await renderCodingSidebarForSessions(undefined)
+    const aside = view?.container.querySelector('[data-find-scope="sidebar"]') as HTMLElement
+    expect(aside.className).toContain('bg-(--bg-page)')
+    expect(aside.className).toContain('dark:bg-(--bg-sidebar)')
+    expect(aside.className.split(' ')).not.toContain('bg-(--bg-sidebar)')
+  })
+
   it('lists sessions that need you from every workspace above the workspaces', async () => {
     const user = userEvent.setup()
     activeSessionsData = [

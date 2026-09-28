@@ -62,6 +62,14 @@ describe('AgentChatHeader', () => {
     expect(screen.queryByText('Fix updater restart')).not.toBeInTheDocument()
   })
 
+  it('keeps the desktop header on the page tone in light mode', () => {
+    const { container } = renderHeader({ isMobile: false })
+    const header = container.querySelector('header') as HTMLElement
+    expect(header.className).toContain('bg-(--bg-page)')
+    expect(header.className).toContain('md:dark:bg-(--bg-sidebar)')
+    expect(header.className.split(' ')).not.toContain('md:bg-(--bg-sidebar)')
+  })
+
   it('keeps desktop coding sessions showing workspace and session title', () => {
     renderHeader({ isMobile: false })
 

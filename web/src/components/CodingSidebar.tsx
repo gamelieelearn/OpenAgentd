@@ -700,8 +700,8 @@ export function CodingSidebar({
       getMotion={sidebarMotion}
       className={
         isMobile
-          ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-sidebar) shadow-xl'
-          : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-sidebar)'
+          ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl dark:bg-(--bg-sidebar)'
+          : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) dark:bg-(--bg-sidebar)'
       }
     >
       {!isMobile && !desktopCollapsed && <PanelResizeHandle edge="right" />}

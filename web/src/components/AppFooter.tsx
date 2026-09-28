@@ -113,7 +113,7 @@ export const AppFooter = memo(function AppFooter({
   return (
     <footer
       className={cn(
-        'hidden h-(--spacing-status-bar) shrink-0 select-none items-center justify-between gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-2 text-[11px] text-(--color-text-muted) md:flex',
+        'hidden h-(--spacing-status-bar) shrink-0 select-none items-center justify-between gap-2 border-t border-(--color-border) bg-(--bg-page) px-2 text-[11px] text-(--color-text-muted) md:flex dark:bg-(--bg-sidebar)',
         className,
       )}
       role="status"

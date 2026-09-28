@@ -138,6 +138,14 @@ describe('AppFooter', () => {
     expect(requested.some((url) => url.includes('/workspace/status'))).toBe(false)
   })
 
+  it('sits on the page tone in light mode and the recessed rail only in dark', () => {
+    renderWithQueryClient(<AppFooter />)
+    const footer = screen.getByRole('status', { name: 'Application status' })
+    expect(footer.className).toContain('bg-(--bg-page)')
+    expect(footer.className).toContain('dark:bg-(--bg-sidebar)')
+    expect(footer.className.split(' ')).not.toContain('bg-(--bg-sidebar)')
+  })
+
   it('renders model name and thinking level when provided and triggers session settings', async () => {
     const user = userEvent.setup()
     const onToggleSessionSettings = mock(() => {})

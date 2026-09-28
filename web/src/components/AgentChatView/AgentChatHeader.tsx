@@ -101,9 +101,9 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   return (
     <header
       {...dragHandlers}
-      // Desktop zoning: the header joins the sidebar and status bar on the
-      // recessed rail tone so the chat reads as the one "page" surface.
-      className={`mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:bg-(--bg-sidebar) ${
+      // Desktop zoning (dark only): the header joins the sidebar and status
+      // bar on the recessed rail tone; light mode keeps one page tone.
+      className={`mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar) ${
         isMacOverlay ? 'select-none pl-[70px]' : ''
       }`}
     >
