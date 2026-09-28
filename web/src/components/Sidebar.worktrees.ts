@@ -5,7 +5,7 @@ import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalida
 import { useAgentStore } from '@/stores/useAgentStore'
 import { saveLastCodingWorkspace } from '@/utils/workspace'
 import { isTransientNetworkError } from '@/utils/errors'
-import { worktreeNameSlug } from './CodingSidebar/utils'
+import { worktreeNameSlug } from './Sidebar/utils'
 
 export async function loadWorktreesForSource(
   path: string,

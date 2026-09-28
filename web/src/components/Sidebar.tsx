@@ -1,5 +1,5 @@
 /**
- * CodingSidebar — flat workspace + session switcher for the app's one
+ * Sidebar — flat workspace + session switcher for the app's one
  * screen. Mirrors the wireframe sidebar ``Q4zeZN`` in
  * ``.diagrams/OpenAgentd-ui.pen``:
  *
@@ -79,10 +79,10 @@ import {
 } from '@/components/ui/dialog'
 import type { CodingWorkspaceTreeRepository, SessionResponse, WorktreeInfo } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
-import { WorkspaceSessionList } from './CodingSidebar/WorkspaceSessionList'
-import { NeedsYouSection } from './CodingSidebar/NeedsYouSection'
-import { ScheduledSection } from './CodingSidebar/ScheduledSection'
-import { CodingSidebarConfirmDialogs } from './CodingSidebar/ConfirmDialogs'
+import { WorkspaceSessionList } from './Sidebar/WorkspaceSessionList'
+import { NeedsYouSection } from './Sidebar/NeedsYouSection'
+import { ScheduledSection } from './Sidebar/ScheduledSection'
+import { SidebarConfirmDialogs } from './Sidebar/ConfirmDialogs'
 import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
@@ -90,44 +90,44 @@ import {
   sourceWorkspacePaths,
   toggleExpandedPath,
   visibleNestedWorktrees,
-} from './CodingSidebar.helpers'
+} from './Sidebar.helpers'
 import {
   loadWorkspaceBrowser,
   shouldUseServerWorkspaceBrowser,
   validateTrustedWorkspace,
-} from './CodingSidebar.browser'
+} from './Sidebar.browser'
 import {
   loadWorktreesForSource,
   recoverCreatedWorktreeAfterTransientError,
   removeManagedWorktree,
   submitWorktreeSession,
-} from './CodingSidebar.worktrees'
+} from './Sidebar.worktrees'
 import {
   applySessionDelete,
   applySessionSelection,
-} from './CodingSidebar.sessions'
+} from './Sidebar.sessions'
 import {
   confirmWorkspaceRemoval,
   selectCodingWorkspace,
-} from './CodingSidebar.workspace'
+} from './Sidebar.workspace'
 import {
   consumeTrustedWorkspace,
   selectTrustedWorkspace,
-} from './CodingSidebar.trust'
+} from './Sidebar.trust'
 import {
   beginWorktreeTitleEdit,
   buildOpenWorktreeDialogState,
   submitWorktreeRename,
-} from './CodingSidebar.worktree-dialog'
+} from './Sidebar.worktree-dialog'
 import {
   openSessionInNewWindow,
   sessionWindowErrorDescription,
   shouldOpenSessionInNewWindow,
-} from './CodingSidebar.window'
-import { SessionSearch } from './CodingSidebar/SessionSearch'
+} from './Sidebar.window'
+import { SessionSearch } from './Sidebar/SessionSearch'
 import { EASINGS } from '@/lib/motion'
 
-interface CodingSidebarProps {
+interface SidebarProps {
   currentSessionId?: string
   workspace?: string | null
   onCollapse?: () => void
@@ -156,7 +156,7 @@ async function pickWorkspaceDirectory(): Promise<string | null> {
   return typeof selected === 'string' ? selected : null
 }
 
-export function CodingSidebar({
+export function Sidebar({
   currentSessionId,
   workspace,
   onCollapse,
@@ -166,7 +166,7 @@ export function CodingSidebar({
   mobileOpen = false,
   mobileDragOffset = null,
   onMobileClose,
-}: CodingSidebarProps) {
+}: SidebarProps) {
   const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
   const [nativeFolderPickerEnabled, setNativeFolderPickerEnabled] = useState(isTauri)
@@ -1635,7 +1635,7 @@ export function CodingSidebar({
         </DialogContent>
       </Dialog>
 
-      <CodingSidebarConfirmDialogs
+      <SidebarConfirmDialogs
         deleteTarget={deleteTarget}
         setDeleteTarget={setDeleteTarget}
         onConfirmSessionDelete={confirmSessionDelete}

@@ -1,5 +1,5 @@
 /**
- * CodingSidebar re-renders often (agent status, queries, routing) and passes
+ * Sidebar re-renders often (agent status, queries, routing) and passes
  * inline callbacks. Session rows are memoized behind stable handlers, so a
  * parent re-render with unchanged sessions does not re-run every row.
  */
@@ -32,7 +32,7 @@ mock.module('@/queries/useSessionsQuery', () => ({
   },
 }))
 
-const { WorkspaceSessionList } = await import('@/components/CodingSidebar/WorkspaceSessionList')
+const { WorkspaceSessionList } = await import('@/components/Sidebar/WorkspaceSessionList')
 
 afterEach(() => {
   cleanup()

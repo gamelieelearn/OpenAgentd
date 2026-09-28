@@ -19,8 +19,8 @@ import { useCodingWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { formatCompactRelative } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
-import { applySessionSelection } from './CodingSidebar.sessions'
-import { SessionStatusMark, sessionStatus } from './CodingSidebar/SessionStatusMark'
+import { applySessionSelection } from './Sidebar.sessions'
+import { SessionStatusMark, sessionStatus } from './Sidebar/SessionStatusMark'
 
 interface Props {
   workspace: string

@@ -43,7 +43,7 @@ mock.module('@/stores/useToastStore', () => ({
     push: (t: { tone: string; title: string; description?: string }) => { toastedAlerts.push(t) },
   }),
 }))
-mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
+mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHeader: () => null }))

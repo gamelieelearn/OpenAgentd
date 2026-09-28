@@ -55,7 +55,7 @@ mock.module('@/utils/workspace', () => ({ saveLastCodingWorkspace: () => {}, wor
 mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null }))
-mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
+mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/CodingWorkspacePanel', () => ({
   CodingWorkspacePanel: ({ onClose }: { onClose: () => void }) => (
     <aside data-testid="coding-workspace-panel">
@@ -68,7 +68,6 @@ mock.module('framer-motion', () => ({
     <div data-testid="presence-boundary">{children}</div>
   ),
 }))
-mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
   AgentChatHeader: ({ onWorkspaceFiles }: { onWorkspaceFiles: () => void }) => (
     <button type="button" onClick={onWorkspaceFiles}>Toggle workspace panel</button>

@@ -1,7 +1,7 @@
 import { describe, it, expect, mock, afterEach } from 'bun:test'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { WorkspaceSessionList } from '@/components/CodingSidebar/WorkspaceSessionList'
+import { WorkspaceSessionList } from '@/components/Sidebar/WorkspaceSessionList'
 import type { SessionResponse } from '@/api/types'
 import { queryKeys } from '@/queries/keys'
 

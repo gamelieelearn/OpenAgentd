@@ -61,12 +61,11 @@ mock.module('@/utils/workspace', () => ({ saveLastCodingWorkspace: () => {}, wor
 mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null }))
-mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
+mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: () => null }))
 mock.module('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
-mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHeader: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentCommands: () => [] }))

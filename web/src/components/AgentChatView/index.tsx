@@ -21,7 +21,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { AgentView } from '../AgentView'
 import type { FileRefOpener } from '../FileRefLink'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
-import { CodingSidebar } from '../CodingSidebar'
+import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery } from '@/queries'
 import { renameSession } from '@/queries/session-rename'
@@ -563,7 +563,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           mobile the Sidebar is position:fixed (overlay drawer), so it
           takes no space here and the main column is always full-width. */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <CodingSidebar
+        <Sidebar
             currentSessionId={sessionIdState || undefined}
             workspace={workspace}
             onCollapse={() => setCodingSidebarCollapsed(true)}

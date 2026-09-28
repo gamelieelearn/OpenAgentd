@@ -17,41 +17,41 @@ import {
   sourceWorkspacePaths,
   toggleExpandedPath,
   visibleNestedWorktrees,
-} from '@/components/CodingSidebar.helpers'
+} from '@/components/Sidebar.helpers'
 import {
   loadWorkspaceBrowser,
   shouldUseServerWorkspaceBrowser,
   validateTrustedWorkspace,
-} from '@/components/CodingSidebar.browser'
+} from '@/components/Sidebar.browser'
 import {
   applySessionDelete,
   applySessionSelection,
   getFallbackSessionAfterDelete,
-} from '@/components/CodingSidebar.sessions'
+} from '@/components/Sidebar.sessions'
 import {
   confirmWorkspaceRemoval,
   selectCodingWorkspace,
-} from '@/components/CodingSidebar.workspace'
+} from '@/components/Sidebar.workspace'
 import {
   consumeTrustedWorkspace,
   selectTrustedWorkspace,
-} from '@/components/CodingSidebar.trust'
+} from '@/components/Sidebar.trust'
 import {
   beginWorktreeTitleEdit,
   buildOpenWorktreeDialogState,
   prepareWorktreeRename,
   submitWorktreeRename,
-} from '@/components/CodingSidebar.worktree-dialog'
+} from '@/components/Sidebar.worktree-dialog'
 import {
   openSessionInNewWindow,
   sessionWindowErrorDescription,
   shouldOpenSessionInNewWindow,
-} from '@/components/CodingSidebar.window'
+} from '@/components/Sidebar.window'
 import {
   loadWorktreesForSource,
   recoverCreatedWorktreeAfterTransientError,
   removeManagedWorktree,
-} from '@/components/CodingSidebar.worktrees'
+} from '@/components/Sidebar.worktrees'
 
 const navigate = mock(() => {})
 const originalFetch = globalThis.fetch
@@ -259,7 +259,7 @@ mock.module('@/queries/useSessionsQuery', () => ({
   }),
 }))
 
-describe('CodingSidebar helpers', () => {
+describe('Sidebar helpers', () => {
   it('exports workspace browser helpers used by the component', async () => {
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
@@ -630,7 +630,7 @@ describe('CodingSidebar helpers', () => {
   })
 })
 
-describe('CodingSidebar workspace trust flow', () => {
+describe('Sidebar workspace trust flow', () => {
   beforeEach(() => {
     localStorage.clear()
     useUnreadStore.setState({ ids: [] })
@@ -700,14 +700,14 @@ describe('CodingSidebar workspace trust flow', () => {
     globalThis.fetch = originalFetch
   })
 
-  async function renderCodingSidebar() {
-    const { CodingSidebar } = await import('@/components/CodingSidebar')
+  async function renderSidebar() {
+    const { Sidebar } = await import('@/components/Sidebar')
     const queryClient = new QueryClient()
     let view: ReturnType<typeof render> | undefined
     await act(async () => {
       view = render(
         <QueryClientProvider client={queryClient}>
-          <CodingSidebar openWorkspaceDialogKey={1} />
+          <Sidebar openWorkspaceDialogKey={1} />
         </QueryClientProvider>,
       )
       await Promise.resolve()
@@ -715,14 +715,14 @@ describe('CodingSidebar workspace trust flow', () => {
     return view
   }
 
-  async function renderCodingSidebarForSessions(currentSessionId?: string) {
-    const { CodingSidebar } = await import('@/components/CodingSidebar')
+  async function renderSidebarForSessions(currentSessionId?: string) {
+    const { Sidebar } = await import('@/components/Sidebar')
     const queryClient = new QueryClient()
     let view: ReturnType<typeof render> | undefined
     await act(async () => {
       view = render(
         <QueryClientProvider client={queryClient}>
-          <CodingSidebar currentSessionId={currentSessionId} workspace="/repo/project" />
+          <Sidebar currentSessionId={currentSessionId} workspace="/repo/project" />
         </QueryClientProvider>,
       )
       await Promise.resolve()
@@ -730,14 +730,14 @@ describe('CodingSidebar workspace trust flow', () => {
     return view
   }
 
-  async function renderCodingSidebarWithProps(props: React.ComponentProps<typeof import('@/components/CodingSidebar').CodingSidebar>) {
-    const { CodingSidebar } = await import('@/components/CodingSidebar')
+  async function renderSidebarWithProps(props: React.ComponentProps<typeof import('@/components/Sidebar').Sidebar>) {
+    const { Sidebar } = await import('@/components/Sidebar')
     const queryClient = new QueryClient()
     let view: ReturnType<typeof render> | undefined
     await act(async () => {
       view = render(
         <QueryClientProvider client={queryClient}>
-          <CodingSidebar {...props} />
+          <Sidebar {...props} />
         </QueryClientProvider>,
       )
       await Promise.resolve()
@@ -750,7 +750,7 @@ describe('CodingSidebar workspace trust flow', () => {
     const onMobileClose = mock(() => {})
     const onCommandPalette = mock(() => {})
 
-    await renderCodingSidebarWithProps({ mobileOpen: true, onMobileClose, onCommandPalette })
+    await renderSidebarWithProps({ mobileOpen: true, onMobileClose, onCommandPalette })
 
     expect(screen.getAllByRole('button', { name: 'Telemetry' })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: 'Open Quick Open' })).toBeNull()
@@ -759,7 +759,7 @@ describe('CodingSidebar workspace trust flow', () => {
   it('shows the connected backend name in the mobile sidebar footer', async () => {
     isMobile = true
 
-    await renderCodingSidebarWithProps({ mobileOpen: true })
+    await renderSidebarWithProps({ mobileOpen: true })
 
     expect(screen.getByText('backend-name')).toBeTruthy()
   })
@@ -769,7 +769,7 @@ describe('CodingSidebar workspace trust flow', () => {
     const onMobileClose = mock(() => {})
     const onCommandPalette = mock(() => {})
 
-    await renderCodingSidebarWithProps({ mobileOpen: true, onMobileClose, onCommandPalette })
+    await renderSidebarWithProps({ mobileOpen: true, onMobileClose, onCommandPalette })
 
     const helpBtn = screen.getByRole('button', { name: 'Help and shortcuts' })
     fireEvent.click(helpBtn)
@@ -780,7 +780,7 @@ describe('CodingSidebar workspace trust flow', () => {
   it('does not render a search bar on desktop', async () => {
     isMobile = false
 
-    await renderCodingSidebarWithProps({})
+    await renderSidebarWithProps({})
 
     expect(screen.queryByRole('button', { name: 'Open Quick Open' })).toBeNull()
   })
@@ -817,7 +817,7 @@ describe('CodingSidebar workspace trust flow', () => {
       }
       return new Response(null, { status: 404 })
     }) as typeof fetch
-    await renderCodingSidebar()
+    await renderSidebar()
 
     expect(dialogOpen).toHaveBeenCalledWith({
       directory: true,
@@ -850,7 +850,7 @@ describe('CodingSidebar workspace trust flow', () => {
   it('uses the native desktop folder picker on Linux desktop too', async () => {
     platformOs = 'linux'
 
-    await renderCodingSidebar()
+    await renderSidebar()
 
     expect(dialogOpen).toHaveBeenCalledWith({
       directory: true,
@@ -862,7 +862,7 @@ describe('CodingSidebar workspace trust flow', () => {
   })
 
   it('animates desktop collapse width', async () => {
-    const view = await renderCodingSidebarWithProps({ desktopCollapsed: true })
+    const view = await renderSidebarWithProps({ desktopCollapsed: true })
     const sidebar = view.container.querySelector('aside')
 
     expect(JSON.parse(sidebar?.getAttribute('data-transition') ?? '{}')).toMatchObject({ duration: 0.22 })
@@ -872,7 +872,7 @@ describe('CodingSidebar workspace trust flow', () => {
     const originalWidth = window.innerWidth
     try {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1600 })
-      await renderCodingSidebarWithProps({ desktopCollapsed: false })
+      await renderSidebarWithProps({ desktopCollapsed: false })
       const separator = screen.getByRole('separator', { name: 'Resize sidebar' })
       expect(separator.getAttribute('aria-valuemax')).toBe('440')
 
@@ -891,7 +891,7 @@ describe('CodingSidebar workspace trust flow', () => {
   it('keeps the mobile drawer visible after a desktop-collapsed coding sidebar crosses the breakpoint', async () => {
     isMobile = true
 
-    const view = await renderCodingSidebarWithProps({
+    const view = await renderSidebarWithProps({
       desktopCollapsed: true,
       mobileOpen: true,
       workspace: '/repo/project',
@@ -908,7 +908,7 @@ describe('CodingSidebar workspace trust flow', () => {
   it('renders a backdrop when the mobile coding sidebar is open', async () => {
     isMobile = true
 
-    const view = await renderCodingSidebarWithProps({ mobileOpen: true })
+    const view = await renderSidebarWithProps({ mobileOpen: true })
     const backdrop = view.container.querySelector('[aria-hidden="true"]')
 
     expect(backdrop).toBeTruthy()
@@ -916,7 +916,7 @@ describe('CodingSidebar workspace trust flow', () => {
 
   it('lets the user go back from the trust warning without opening the workspace', async () => {
     const user = userEvent.setup()
-    await renderCodingSidebar()
+    await renderSidebar()
 
     expect(await screen.findByText('Trust this workspace?')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: /back/i }))
@@ -929,7 +929,7 @@ describe('CodingSidebar workspace trust flow', () => {
   it('shows validation errors without showing the trust confirmation', async () => {
     validateError = new Error('Workspace does not exist')
 
-    await renderCodingSidebar()
+    await renderSidebar()
 
     expect(await screen.findByText('Workspace does not exist')).toBeTruthy()
     expect(screen.queryByText('Trust this workspace?')).toBeNull()
@@ -941,7 +941,7 @@ describe('CodingSidebar workspace trust flow', () => {
     const user = userEvent.setup()
     isTauri = false
 
-    await renderCodingSidebar()
+    await renderSidebar()
 
     expect(dialogOpen).not.toHaveBeenCalled()
     expect(await screen.findByText('/repo/project')).toBeTruthy()
@@ -963,7 +963,7 @@ describe('CodingSidebar workspace trust flow', () => {
       servers: [],
     }
 
-    await renderCodingSidebar()
+    await renderSidebar()
 
     expect(dialogOpen).not.toHaveBeenCalled()
     expect(await screen.findByText('/repo/project')).toBeTruthy()
@@ -989,7 +989,7 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarForSessions()
+    await renderSidebarForSessions()
 
     fireEvent.mouseDown(screen.getByRole('button', { name: 'Selected session' }), { button: 0, metaKey: true })
 
@@ -1037,7 +1037,7 @@ describe('CodingSidebar workspace trust flow', () => {
       },
     ]
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
 
     expect(screen.getByLabelText('Session running')).toBeTruthy()
     expect(screen.getByText('Selected idle session')).toBeTruthy()
@@ -1060,7 +1060,7 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarForSessions(undefined)
+    await renderSidebarForSessions(undefined)
     await userEvent.setup().click(screen.getByLabelText('Collapse repository project'))
 
     expect(screen.getByLabelText('Expand repository project')).toBeTruthy()
@@ -1084,7 +1084,7 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
     localStorage.setItem('oa-coding-workspaces', JSON.stringify([{ id: 'main', path: '/repo/project', createdAt: '2026-05-01T00:00:00Z' }]))
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
 
     expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
     await user.click(screen.getByLabelText('Actions for project'))
@@ -1135,7 +1135,7 @@ describe('CodingSidebar workspace trust flow', () => {
     })
     const fetchSpy = globalThis.fetch as unknown as ReturnType<typeof mock>
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('Actions for project'))
     await user.click(screen.getByRole('menuitem', { name: /new session/i }))
 
@@ -1157,7 +1157,7 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
 
     expect(screen.queryByLabelText('Session running')).toBeNull()
   })
@@ -1183,14 +1183,14 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarForSessions(undefined)
+    await renderSidebarForSessions(undefined)
 
     expect(screen.getByLabelText('Session needs your input')).toBeTruthy()
     expect(screen.queryByLabelText('Session running')).toBeNull()
   })
 
   it('refreshes the repository tree only when another window changes the saved workspaces', async () => {
-    await renderCodingSidebarForSessions(undefined)
+    await renderSidebarForSessions(undefined)
     const fetchSpy = globalThis.fetch as unknown as ReturnType<typeof mock>
     const treeFetches = () => fetchSpy.mock.calls.filter(([input]) => String(input).includes('/api/agent/workspace/tree')).length
     const before = treeFetches()
@@ -1242,7 +1242,7 @@ describe('CodingSidebar workspace trust flow', () => {
       },
     ]
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
     await user.click(screen.getByRole('button', { name: 'Search sessions' }))
     const input = await screen.findByRole('searchbox', { name: 'Search sessions' })
     await waitFor(() => expect(document.activeElement).toBe(input))
@@ -1263,7 +1263,7 @@ describe('CodingSidebar workspace trust flow', () => {
 
   it('opens session search when ⌘F is pressed inside the sidebar and closes it on Escape', async () => {
     const user = userEvent.setup()
-    const view = await renderCodingSidebarForSessions(undefined)
+    const view = await renderSidebarForSessions(undefined)
     const searchButton = screen.getByRole('button', { name: 'Search sessions' })
     expect(view?.container.querySelector('[data-find-scope="sidebar"]')?.contains(searchButton)).toBe(true)
 
@@ -1300,7 +1300,7 @@ describe('CodingSidebar workspace trust flow', () => {
     const opened = mock(() => {})
     window.addEventListener(APP_EVENTS.openScheduler, opened)
 
-    await renderCodingSidebarForSessions(undefined)
+    await renderSidebarForSessions(undefined)
     const section = await screen.findByRole('region', { name: 'Scheduled' })
     await waitFor(() => expect(section.textContent).toContain('Nightly build'))
     const names = Array.from(section.querySelectorAll('li')).map((row) => row.textContent ?? '')
@@ -1317,7 +1317,7 @@ describe('CodingSidebar workspace trust flow', () => {
   })
 
   it('keeps the sidebar on the page tone in light mode and the rail in dark', async () => {
-    const view = await renderCodingSidebarForSessions(undefined)
+    const view = await renderSidebarForSessions(undefined)
     const aside = view?.container.querySelector('[data-find-scope="sidebar"]') as HTMLElement
     expect(aside.className).toContain('bg-(--bg-page)')
     expect(aside.className).toContain('dark:bg-(--bg-sidebar)')
@@ -1359,7 +1359,7 @@ describe('CodingSidebar workspace trust flow', () => {
       },
     ]
 
-    await renderCodingSidebarForSessions(undefined)
+    await renderSidebarForSessions(undefined)
 
     const section = screen.getByRole('region', { name: 'Needs you' })
     expect(section.textContent).toContain('Pick a migration plan')
@@ -1372,7 +1372,7 @@ describe('CodingSidebar workspace trust flow', () => {
   })
 
   it('hides the Needs you section when nothing is waiting', async () => {
-    await renderCodingSidebarForSessions(undefined)
+    await renderSidebarForSessions(undefined)
 
     expect(screen.queryByRole('region', { name: 'Needs you' })).toBeNull()
   })
@@ -1401,7 +1401,7 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
     useUnreadStore.setState({ ids: ['session-2'] })
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
 
     expect(screen.getAllByLabelText('Unread session')).toHaveLength(1)
     expect(screen.getByText('Finished elsewhere').closest('button')?.querySelector('[aria-label="Unread session"]')).toBeTruthy()
@@ -1434,7 +1434,7 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
     useUnreadStore.setState({ ids: ['session-1', 'session-2'] })
 
-    await renderCodingSidebarForSessions(undefined)
+    await renderSidebarForSessions(undefined)
 
     expect(screen.getByLabelText('Session needs your input')).toBeTruthy()
     expect(screen.getByLabelText('Session running')).toBeTruthy()
@@ -1457,7 +1457,7 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
     workspaceHasNextPage = true
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
 
     const showMore = await screen.findByRole('button', { name: 'Show more sessions' })
     expect(fetchWorkspaceNextPage).not.toHaveBeenCalled()
@@ -1492,7 +1492,7 @@ describe('CodingSidebar workspace trust flow', () => {
       { id: 'worktree', path: '/data/worktrees/project/task-a', createdAt: '2026-05-02T00:00:00Z' },
     ]))
 
-    await renderCodingSidebarWithProps({
+    await renderSidebarWithProps({
       currentSessionId: 'session-1',
       workspace: '/data/worktrees/project/task-a',
     })
@@ -1544,7 +1544,7 @@ describe('CodingSidebar workspace trust flow', () => {
 
     localStorage.setItem('oa-coding-workspaces', JSON.stringify([{ id: 'main', path: '/repo/project', createdAt: '2026-05-01T00:00:00Z' }]))
 
-    await renderCodingSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project' })
+    await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project' })
     useAgentStore.setState({
       sessionId: 'session-1',
       isAgentWorking: false,
@@ -1609,7 +1609,7 @@ describe('CodingSidebar workspace trust flow', () => {
       return new Response(null, { status: 404 })
     }) as typeof fetch
 
-    await renderCodingSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project' })
+    await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project' })
     await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
     await user.click(screen.getByLabelText('Actions for worktree task-a'))
     await user.click(screen.getByRole('menuitem', { name: 'Edit title' }))
@@ -1652,7 +1652,7 @@ describe('CodingSidebar workspace trust flow', () => {
       { id: 'worktree', path: '/data/worktrees/project/task-a', createdAt: '2026-05-02T00:00:00Z' },
     ]))
 
-    await renderCodingSidebarWithProps({
+    await renderSidebarWithProps({
       currentSessionId: 'session-1',
       workspace: '/repo/project',
     })
@@ -1699,7 +1699,7 @@ describe('CodingSidebar workspace trust flow', () => {
       { id: 'worktree', path: '/data/worktrees/project/task-a', createdAt: '2026-05-02T00:00:00Z' },
     ]))
 
-    await renderCodingSidebarWithProps({
+    await renderSidebarWithProps({
       currentSessionId: 'session-1',
       workspace: '/data/worktrees/project/task-a',
     })
@@ -1725,7 +1725,7 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('Edit session Old title'))
     const input = screen.getByLabelText('Session title')
     await user.clear(input)
@@ -1754,7 +1754,7 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
     await user.dblClick(screen.getByText('Old title'))
     const input = screen.getByLabelText('Session title')
     await user.clear(input)
@@ -1781,7 +1781,7 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('Edit session Old title'))
     await user.clear(screen.getByLabelText('Session title'))
     await user.type(screen.getByLabelText('Session title'), '   {Enter}')
@@ -1819,7 +1819,7 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('Delete session Delete me'))
     await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
@@ -1847,7 +1847,7 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
     await user.click(screen.getByLabelText('Delete session Delete me'))
 
     expect(deleteSessionMutate).not.toHaveBeenCalled()
@@ -1878,7 +1878,7 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
 
     await user.click(screen.getByLabelText('Actions for project'))
     const copyOption = screen.getByRole('menuitem', { name: /copy repo absolute path/i })
@@ -1902,7 +1902,7 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarForSessions('chat-1')
+    await renderSidebarForSessions('chat-1')
 
     // Labelled "Chat" rather than the home directory's basename, and the
     // session list under it is reachable from the pinned row.
@@ -1933,7 +1933,7 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarWithProps({
+    await renderSidebarWithProps({
       currentSessionId: 'chat-1',
       workspace: '/home/user',
       mobileOpen: true,
@@ -1977,7 +1977,7 @@ describe('CodingSidebar workspace trust flow', () => {
     ]
     workspaceSessionsData = sessionsData
 
-    await renderCodingSidebarForSessions('session-1')
+    await renderSidebarForSessions('session-1')
 
     expect(screen.getByText('project')).toBeTruthy()
     expect(screen.getByLabelText('Actions for project')).toBeTruthy()

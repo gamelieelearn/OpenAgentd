@@ -1,9 +1,9 @@
 /**
- * CodingSidebarConfirmDialogs — the three destructive-action confirmation
- * dialogs for the coding sidebar (delete session · remove workspace ·
- * remove worktree). Extracted from CodingSidebar.tsx as a purely
+ * SidebarConfirmDialogs — the three destructive-action confirmation
+ * dialogs for the sidebar (delete session · remove workspace ·
+ * remove worktree). Extracted from Sidebar.tsx as a purely
  * presentational component driven by props, so the main component stays
- * focused on state/orchestration (house pattern — see CodingSidebar.*.ts).
+ * focused on state/orchestration (house pattern — see Sidebar.*.ts).
  *
  * Each dialog is a portal, so rendering them together here (rather than
  * inline at three call sites) has no visual/layout effect.
@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button'
 import { workspaceLabel } from '@/utils/workspace'
 import type { SessionResponse, WorktreeInfo } from '@/api/types'
 
-interface CodingSidebarConfirmDialogsProps {
+interface SidebarConfirmDialogsProps {
   deleteTarget: SessionResponse | null
   setDeleteTarget: (value: SessionResponse | null) => void
   onConfirmSessionDelete: () => void
@@ -32,7 +32,7 @@ interface CodingSidebarConfirmDialogsProps {
   onConfirmRemoveWorktree: () => void
 }
 
-export function CodingSidebarConfirmDialogs({
+export function SidebarConfirmDialogs({
   deleteTarget,
   setDeleteTarget,
   onConfirmSessionDelete,
@@ -42,7 +42,7 @@ export function CodingSidebarConfirmDialogs({
   removeWorktreeTarget,
   setRemoveWorktreeTarget,
   onConfirmRemoveWorktree,
-}: CodingSidebarConfirmDialogsProps) {
+}: SidebarConfirmDialogsProps) {
   return (
     <>
       <Dialog
