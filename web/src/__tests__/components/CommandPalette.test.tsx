@@ -609,6 +609,23 @@ describe("QuickOpen — a query with a line", () => {
     expect(opened as { path: string; line?: number } | null).toEqual({ path: 'app/ui/Button.tsx', line: 42 })
   })
 
+  it("opens the pick at a query's :start-end range", async () => {
+    const user = userEvent.setup()
+    let opened: unknown[] | null = null
+    render(
+      <QuickOpen
+        workspaceFiles={files}
+        initialQuery="web/src/App.tsx:42-58"
+        onFileOpen={(file, line, endLine) => { opened = [file.path, line, endLine] }}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.keyboard("{Enter}")
+
+    expect(opened as unknown[] | null).toEqual(['web/src/App.tsx', 42, 58])
+  })
+
   it("opens a pick without a line when the query has none", async () => {
     const user = userEvent.setup()
     let opened: { path: string; line?: number } | null = null

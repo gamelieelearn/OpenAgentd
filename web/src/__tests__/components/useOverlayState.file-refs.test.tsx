@@ -62,6 +62,14 @@ describe('useOverlayState — opening file references', () => {
     expect(useFileRevealStore.getState().request).toMatchObject({ path: 'web/src/components/Button.tsx', line: 7 })
   })
 
+  it('opens a line range with the range selected', async () => {
+    const { result } = renderOverlay()
+
+    await act(() => result.current.handleFileRefOpen({ path: 'Button.tsx', line: 7, endLine: 12 }))
+
+    expect(useFileRevealStore.getState().request).toMatchObject({ path: 'web/src/components/Button.tsx', line: 7, endLine: 12 })
+  })
+
   it('opens the matching file the session read when several match', async () => {
     const read = { id: 't1', type: 'tool', content: '', toolName: 'read', toolArgs: JSON.stringify({ path: `${WORKSPACE}/app/src/index.ts` }) } as const
     useAgentStore.setState({ leadName: 'lead', agentStreams: { lead: { blocks: [read], currentBlocks: [] } as unknown as AgentStream } })
@@ -80,6 +88,14 @@ describe('useOverlayState — opening file references', () => {
     expect(result.current.fileViewer).toBeNull()
     expect(useUIStore.getState()).toMatchObject({ quickOpenOpen: true, quickOpenQuery: 'index.ts:3' })
     expect(useToastStore.getState().toasts).toEqual([])
+  })
+
+  it('keeps a line range in the Quick Open query', async () => {
+    const { result } = renderOverlay()
+
+    await act(() => result.current.handleFileRefOpen({ path: 'index.ts', line: 3, endLine: 9 }))
+
+    expect(useUIStore.getState().quickOpenQuery).toBe('index.ts:3-9')
   })
 
   it('says so when the file is not in the workspace', async () => {

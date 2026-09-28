@@ -57,8 +57,8 @@ export interface UseCommandPaletteResult {
   quickOpenWorkspaceFiles: WorkspaceFileInfo[]
   /** The backend listing hit its file cap — surfaced in the Quick Open footer. */
   quickOpenFilesTruncated: boolean
-  /** Opens the pick in the dock, at ``line`` when the query named one. */
-  handleQuickOpenFileOpen: (file: WorkspaceFileInfo, line?: number) => void
+  /** Opens the pick in the dock, at the lines the query named. */
+  handleQuickOpenFileOpen: (file: WorkspaceFileInfo, line?: number, endLine?: number) => void
 }
 
 export function useCommandPalette({
@@ -132,11 +132,11 @@ export function useCommandPalette({
   const quickOpenWorkspaceFiles = quickOpenOpen ? (paletteFilesData?.files ?? []) : []
   const quickOpenFilesTruncated = quickOpenOpen && Boolean(paletteFilesData?.truncated)
 
-  const handleQuickOpenFileOpen = useCallback((file: WorkspaceFileInfo, line?: number) => {
+  const handleQuickOpenFileOpen = useCallback((file: WorkspaceFileInfo, line?: number, endLine?: number) => {
     setFileViewer(file)
     setFileOpenKey((k) => k + 1)
     setWorkspacePanel((prev) => prev ?? 'files')
-    if (line) useFileRevealStore.getState().reveal(file.path, line)
+    if (line) useFileRevealStore.getState().reveal(file.path, line, endLine)
   }, [setFileViewer, setFileOpenKey, setWorkspacePanel])
 
   const { os } = getPlatform()

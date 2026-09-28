@@ -267,15 +267,18 @@ function TextPreview({
     [content, ext],
   )
 
-  // A clicked ``path:line`` selects that line and centres it, once loaded.
+  // A clicked ``path:line`` or ``path:start-end`` selects those lines and
+  // centres them, once loaded.
   const revealRequest = useFileRevealStore((s) => (s.request?.path === file.path ? s.request : null))
   useEffect(() => {
     if (!revealRequest || highlightedLines.length === 0) return
     useFileRevealStore.getState().consume(revealRequest.key)
     const line = Math.min(revealRequest.line, highlightedLines.length)
-    setSelection({ anchor: line, focus: line })
-    const row = containerRef.current?.querySelector<HTMLElement>(`[data-line="${line}"]`)
-    if (row) centerInScrollContainer(row)
+    const endLine = Math.min(revealRequest.endLine ?? line, highlightedLines.length)
+    setSelection({ anchor: line, focus: endLine })
+    const row = (n: number) => containerRef.current?.querySelector<HTMLElement>(`[data-line="${n}"]`)
+    const first = row(line)
+    if (first) centerInScrollContainer(first, row(endLine) ?? first)
   }, [highlightedLines.length, revealRequest])
 
   if (deleted) {
@@ -478,12 +481,13 @@ function DeletedFilePreview() {
 }
 
 /**
- * Vertically centre ``el`` inside its nearest scroll container only.
+ * Vertically centre ``el`` (through ``last``, for a range) inside its nearest
+ * scroll container only; a range taller than the container shows its top.
  * ``scrollIntoView`` also scrolls every other ancestor, including
  * ``overflow: hidden`` shells, which shifts the whole workbench out of view
  * with no way to scroll it back.
  */
-function centerInScrollContainer(el: HTMLElement) {
+function centerInScrollContainer(el: HTMLElement, last: HTMLElement = el) {
   let container = el.parentElement
   while (container) {
     const { overflowY } = getComputedStyle(container)
@@ -491,8 +495,10 @@ function centerInScrollContainer(el: HTMLElement) {
     container = container.parentElement
   }
   if (!container) return
-  const offset = el.getBoundingClientRect().top - container.getBoundingClientRect().top
-  container.scrollTop += offset - (container.clientHeight - el.offsetHeight) / 2
+  const top = el.getBoundingClientRect().top
+  const height = last.getBoundingClientRect().bottom - top
+  const offset = top - container.getBoundingClientRect().top
+  container.scrollTop += offset - Math.max(0, (container.clientHeight - height) / 2)
 }
 
 /**

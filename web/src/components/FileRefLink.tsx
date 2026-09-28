@@ -1,7 +1,7 @@
 /**
  * Clickable file references in the transcript: code spans, relative links,
  * and tool output that name a workspace file open it in the review dock, at
- * the line when one is given.
+ * the line or range when one is given.
  *
  * The opener comes from context, so surfaces with no workspace to open into
  * (settings, memory, other panes) render the same text unlinked.
@@ -23,7 +23,8 @@ export const FileRefContext = createContext<FileRefOpener | null>(null)
 const REF_CLASS = 'cursor-pointer rounded-xs underline decoration-dotted decoration-(--color-text-muted) underline-offset-2 hover:text-(--color-text) hover:decoration-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40'
 
 function refTitle(ref: FileRef): string {
-  return ref.line ? `Open ${ref.path} at line ${ref.line}` : `Open ${ref.path}`
+  if (!ref.line) return `Open ${ref.path}`
+  return ref.endLine ? `Open ${ref.path} at lines ${ref.line}-${ref.endLine}` : `Open ${ref.path} at line ${ref.line}`
 }
 
 /** A button that opens ``fileRef``; its text stays its accessible name. */

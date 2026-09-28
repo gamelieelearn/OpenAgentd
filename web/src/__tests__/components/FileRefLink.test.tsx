@@ -61,6 +61,20 @@ describe('file references in Markdown', () => {
     expect(screen.queryByRole('button', { name: 'config.enabled' })).toBeNull()
   })
 
+  it('opens a code span that names a line range, and says which lines', () => {
+    const files = opener()
+    render(
+      <FileRefContext.Provider value={files}>
+        <MarkdownBlock content="See `src/app.ts:42-58`." />
+      </FileRefContext.Provider>,
+    )
+
+    const range = screen.getByRole('button', { name: 'src/app.ts:42-58' })
+    expect(range.getAttribute('title')).toBe('Open src/app.ts at lines 42-58')
+    fireEvent.click(range)
+    expect(files.open).toHaveBeenCalledWith({ path: 'src/app.ts', line: 42, endLine: 58 })
+  })
+
   it('opens a relative link in the workspace instead of a new tab', () => {
     const files = opener()
     render(

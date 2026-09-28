@@ -280,7 +280,8 @@ export function useOverlayState({
     const match = resolveWorkspaceRef(cited, files.map((file) => file.path), sessionTouchedPaths(agentStreams, leadName, workspace))
     if (match.kind === 'ambiguous') {
       closeOtherMobileOverlays('palette')
-      useUIStore.getState().openQuickOpen(ref.line ? `${cited}:${ref.line}` : cited)
+      const lines = ref.line ? `:${ref.line}${ref.endLine ? `-${ref.endLine}` : ''}` : ''
+      useUIStore.getState().openQuickOpen(`${cited}${lines}`)
       return
     }
     const file = match.kind === 'file' ? files.find((item) => item.path === match.path) : undefined
@@ -289,7 +290,7 @@ export function useOverlayState({
       return
     }
     showFile(file)
-    if (ref.line) useFileRevealStore.getState().reveal(file.path, ref.line)
+    if (ref.line) useFileRevealStore.getState().reveal(file.path, ref.line, ref.endLine)
   }, [closeOtherMobileOverlays, listWorkspaceFiles, showFile, workspace])
 
   const closeMobileActionsMenu = useCallback(() => setShowMobileActions(false), [])

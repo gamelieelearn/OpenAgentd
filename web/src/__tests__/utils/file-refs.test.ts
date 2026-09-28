@@ -7,8 +7,20 @@ describe('parseFileRef — a whole code span', () => {
     expect(parseFileRef('src/a.ts')).toEqual({ path: 'src/a.ts' })
     expect(parseFileRef('src/a.ts:12')).toEqual({ path: 'src/a.ts', line: 12 })
     expect(parseFileRef('src/a.ts:12:5')).toEqual({ path: 'src/a.ts', line: 12, column: 5 })
-    expect(parseFileRef('src/a.ts#L7-L9')).toEqual({ path: 'src/a.ts', line: 7 })
+    expect(parseFileRef('src/a.ts#L7')).toEqual({ path: 'src/a.ts', line: 7 })
     expect(parseFileRef('./web/src/App.tsx')).toEqual({ path: './web/src/App.tsx' })
+  })
+
+  it('reads a line range, as start-end or a GitHub anchor', () => {
+    expect(parseFileRef('src/a.ts:12-18')).toEqual({ path: 'src/a.ts', line: 12, endLine: 18 })
+    expect(parseFileRef('src/a.ts:12–18')).toEqual({ path: 'src/a.ts', line: 12, endLine: 18 })
+    expect(parseFileRef('src/a.ts#L7-L9')).toEqual({ path: 'src/a.ts', line: 7, endLine: 9 })
+    expect(parseFileRef('src/a.ts#L7C2-L9C4')).toEqual({ path: 'src/a.ts', line: 7, column: 2, endLine: 9 })
+  })
+
+  it('keeps the start of a range that does not run forward', () => {
+    expect(parseFileRef('src/a.ts:12-12')).toEqual({ path: 'src/a.ts', line: 12 })
+    expect(parseFileRef('src/a.ts:18-12')).toEqual({ path: 'src/a.ts', line: 18 })
   })
 
   it('takes a bare file name only with a known extension', () => {
@@ -29,6 +41,8 @@ describe('parseFileHref — a Markdown link target', () => {
   it('reads relative targets, with anchors and escapes', () => {
     expect(parseFileHref('src/a.ts#L3')).toEqual({ path: 'src/a.ts', line: 3 })
     expect(parseFileHref('src/a.ts:4')).toEqual({ path: 'src/a.ts', line: 4 })
+    expect(parseFileHref('src/a.ts#L3-L5')).toEqual({ path: 'src/a.ts', line: 3, endLine: 5 })
+    expect(parseFileHref('src/a.ts:4-6')).toEqual({ path: 'src/a.ts', line: 4, endLine: 6 })
     expect(parseFileHref('docs/my%20guide.md')).toEqual({ path: 'docs/my guide.md' })
     expect(parseFileHref('Makefile')).toEqual({ path: 'Makefile' })
   })
@@ -47,6 +61,14 @@ describe('findFileRefs — free text such as tool output', () => {
       ['src/a.ts:12:5', { path: 'src/a.ts', line: 12, column: 5 }],
       ['/repo/src/b.js:3:9', { path: '/repo/src/b.js', line: 3, column: 9 }],
       ['README.md:4', { path: 'README.md', line: 4 }],
+    ])
+  })
+
+  it('takes a line range whole, and only a line when no end number follows', () => {
+    const text = 'see web/src/a.ts:10-20 and b.ts:3-x'
+    expect(findFileRefs(text).map(({ start, end, ref }) => [text.slice(start, end), ref])).toEqual([
+      ['web/src/a.ts:10-20', { path: 'web/src/a.ts', line: 10, endLine: 20 }],
+      ['b.ts:3', { path: 'b.ts', line: 3 }],
     ])
   })
 

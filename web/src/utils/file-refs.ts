@@ -1,6 +1,7 @@
 /**
- * File references in model text: ``src/app.ts:42``, ``src/app.ts:42:7`` and
- * ``src/app.ts#L42`` in code spans, link targets, and tool output.
+ * File references in model text: ``src/app.ts:42``, ``src/app.ts:42:7``,
+ * the ranges ``src/app.ts:42-58`` and ``src/app.ts#L42-L58``, and
+ * ``src/app.ts#L42``, in code spans, link targets, and tool output.
  *
  * Recognition is deliberately conservative, because a false positive turns
  * code into a link that goes nowhere: free text needs a folder or a line
@@ -12,6 +13,8 @@ export interface FileRef {
   path: string
   line?: number
   column?: number
+  /** Last line of a range; only ever after ``line``. */
+  endLine?: number
 }
 
 /** Extensions that make a bare name (no folder) a file. */
@@ -30,8 +33,9 @@ const MAX_FREE_REFS = 500
 // A segment never ends on a dot, so "see src/a.ts." leaves the full stop out.
 const SEGMENT = String.raw`[\w@+-](?:[\w.@+-]*[\w@+-])?`
 const PATH = String.raw`(?:\.{1,2}\/|~\/|\/)?(?:${SEGMENT}\/)*${SEGMENT}`
-// :line[:column], or a GitHub anchor #Lline[Ccolumn][-Lend].
-const POSITION = String.raw`(?::(\d+)(?::(\d+))?|#L(\d+)(?:C(\d+))?(?:-L?\d+(?:C\d+)?)?)`
+// :line[:column][-end], or a GitHub anchor #Lline[Ccolumn][-Lend[Ccolumn]].
+// An en dash counts too: models write ranges as prose.
+const POSITION = String.raw`(?::(\d+)(?::(\d+))?(?:[-–](\d+))?|#L(\d+)(?:C(\d+))?(?:-L?(\d+)(?:C\d+)?)?)`
 const EXACT = new RegExp(`^(${PATH})${POSITION}?$`)
 const FREE = new RegExp(String.raw`(?<![\w./@~:-])(${PATH})${POSITION}?(?![\w/])`, 'g')
 const HREF = new RegExp(`^(.+?)${POSITION}?$`)
@@ -42,11 +46,16 @@ function extensionOf(path: string): string | null {
 }
 
 function withPosition(path: string, match: RegExpExecArray | RegExpMatchArray, offset: number): FileRef | null {
-  const line = match[offset] ?? match[offset + 2]
-  const column = match[offset + 1] ?? match[offset + 3]
+  // The two POSITION forms capture line, column, and end in that order.
+  const at = match[offset] !== undefined ? offset : offset + 3
+  const [line, column, end] = [match[at], match[at + 1], match[at + 2]]
   if (line === undefined) return { path }
-  if (Number(line) < 1) return null
-  return column === undefined ? { path, line: Number(line) } : { path, line: Number(line), column: Number(column) }
+  const start = Number(line)
+  if (start < 1) return null
+  const ref: FileRef = { path, line: start }
+  if (column !== undefined) ref.column = Number(column)
+  if (end !== undefined && Number(end) > start) ref.endLine = Number(end)
+  return ref
 }
 
 /** A code span that is nothing but a file reference. */
@@ -80,7 +89,7 @@ export function findFileRefs(text: string): Array<{ start: number; end: number; 
   const found: Array<{ start: number; end: number; ref: FileRef }> = []
   for (const match of text.matchAll(FREE)) {
     const path = match[1]
-    const hasLine = match[2] !== undefined || match[4] !== undefined
+    const hasLine = match[2] !== undefined || match[5] !== undefined
     if (!extensionOf(path) || (!path.includes('/') && !hasLine)) continue
     const ref = withPosition(path, match, 2)
     if (!ref) continue

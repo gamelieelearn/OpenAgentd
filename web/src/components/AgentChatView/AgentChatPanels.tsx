@@ -34,7 +34,7 @@ interface AgentChatPanelsProps {
   quickOpenWorkspaceFiles: WorkspaceFileInfo[]
   /** Backend hit its file cap — Quick Open says so instead of silently hiding. */
   quickOpenFilesTruncated?: boolean
-  onQuickOpenFileOpen: (file: WorkspaceFileInfo, line?: number) => void
+  onQuickOpenFileOpen: (file: WorkspaceFileInfo, line?: number, endLine?: number) => void
   onClosePalette: () => void
   onCloseQuickOpen: () => void
 }

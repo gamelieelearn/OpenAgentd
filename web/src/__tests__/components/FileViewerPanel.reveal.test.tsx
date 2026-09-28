@@ -37,6 +37,15 @@ describe('FilePreviewContent — revealing a line', () => {
     expect(await screen.findByRole('button', { name: 'Add comment for line 4' })).toBeTruthy()
   })
 
+  it('selects a requested range, its end clamped to the file', async () => {
+    useFileRevealStore.getState().reveal('src/main.ts', 2, 3)
+    render(<FilePreviewContent workspace="/repo" file={FILE} />)
+    expect(await screen.findByRole('button', { name: 'Add comment for lines 2-3' })).toBeTruthy()
+
+    act(() => useFileRevealStore.getState().reveal('src/main.ts', 3, 99))
+    expect(await screen.findByRole('button', { name: 'Add comment for lines 3-4' })).toBeTruthy()
+  })
+
   it('leaves a request for another file alone', async () => {
     useFileRevealStore.getState().reveal('src/other.ts', 2)
     render(<FilePreviewContent workspace="/repo" file={FILE} />)

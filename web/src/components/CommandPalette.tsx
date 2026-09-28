@@ -5,8 +5,8 @@
  * surfaces reuse the same searchable overlay and keyboard navigation.
  * Typing ``>`` in Quick Open searches commands instead (VS Code habit), and a
  * command with a ``page`` opens a nested list in place (Switch Session…).
- * A trailing ``:line`` (``Button.tsx:42``) searches for the path and opens the
- * pick at that line, as VS Code's Go to File does.
+ * A trailing ``:line`` or ``:start-end`` (``Button.tsx:42``) searches for the
+ * path and opens the pick at those lines, as VS Code's Go to File does.
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
@@ -39,13 +39,15 @@ export interface Command {
 // dialog cap to keep the list snappy with large workspaces.
 const MAX_FILE_ROWS = 30
 
-const LINE_SUFFIX = /:(\d+)(?::\d+)?$/
+const LINE_SUFFIX = /:(\d+)(?::\d+)?(?:[-–](\d+))?$/
 
-/** A file query split into the path to search for and the line to open at. */
-function splitLine(query: string): { text: string; line?: number } {
+/** A file query split into the path to search for and the lines to open at. */
+function splitLine(query: string): { text: string; line?: number; endLine?: number } {
   const match = LINE_SUFFIX.exec(query)
   if (!match || Number(match[1]) < 1) return { text: query }
-  return { text: query.slice(0, match.index), line: Number(match[1]) }
+  const line = Number(match[1])
+  const endLine = match[2] !== undefined && Number(match[2]) > line ? Number(match[2]) : undefined
+  return { text: query.slice(0, match.index), line, endLine }
 }
 
 interface CommandPaletteProps {
@@ -70,8 +72,8 @@ interface PaletteOverlayProps {
    * "my file isn't in the palette" mystery repeat.
    */
   filesTruncated?: boolean
-  /** Called when the user selects a file row, with the query's ``:line``. */
-  onFileOpen?: (file: WorkspaceFileInfo, line?: number) => void
+  /** Called when the user selects a file row, with the query's ``:start-end``. */
+  onFileOpen?: (file: WorkspaceFileInfo, line?: number, endLine?: number) => void
   /** Query the overlay opens with, selected so typing replaces it. */
   initialQuery?: string
 }
@@ -81,8 +83,8 @@ interface QuickOpenProps {
   filesTruncated?: boolean
   /** Searched instead of files while the query starts with ``>``. */
   commands?: Command[]
-  /** ``line`` is set when the query ended in ``:line``. */
-  onFileOpen: (file: WorkspaceFileInfo, line?: number) => void
+  /** ``line`` (and ``endLine``) are set when the query ended in ``:line`` (``:start-end``). */
+  onFileOpen: (file: WorkspaceFileInfo, line?: number, endLine?: number) => void
   onClose: () => void
   /** Query to open with, e.g. a file reference that matched several files. */
   initialQuery?: string
@@ -243,7 +245,11 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
   )
 
   const runFile = useCallback(
-    (file: WorkspaceFileInfo) => { onClose(); onFileOpen?.(file, splitLine(query.trim()).line) },
+    (file: WorkspaceFileInfo) => {
+      const { line, endLine } = splitLine(query.trim())
+      onClose()
+      onFileOpen?.(file, line, endLine)
+    },
     [onClose, onFileOpen, query],
   )
 
