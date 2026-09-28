@@ -10,9 +10,8 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { groupToolRuns, summarizeTurnChanges } from '@/components/ToolCall/grouping'
+import { groupToolRuns } from '@/components/ToolCall/grouping'
 import { ToolRunGroup } from '@/components/ToolCall/ToolRunGroup'
-import { TurnChanges } from '@/components/TurnChanges'
 import { formatTime, formatFullDateTime, lastTurnText, shortModelName } from '@/utils/format'
 import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
 import { PlanActionContext } from '@/utils/markdown-plan'
@@ -167,8 +166,6 @@ export interface AssistantTurnProps {
   onStartImplementing?: () => void
   /** True when interaction mode is actively transitioning to Code mode. */
   isSwitchingInteractionMode?: boolean
-  /** Open a workspace file listed in the turn's change summary. */
-  onOpenFile?: (path: string) => void
   /** Passed to the footer. */
   showModel?: boolean
 }
@@ -185,7 +182,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   size = 'compact',
   onStartImplementing,
   isSwitchingInteractionMode = false,
-  onOpenFile,
   showModel,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
@@ -199,7 +195,6 @@ export const AssistantTurn = memo(function AssistantTurn({
     [turnIsOpen, onStartImplementing, isSwitchingInteractionMode],
   )
   const segments = useMemo(() => groupToolRuns(blocks, { live: turnIsOpen }), [blocks, turnIsOpen])
-  const changes = useMemo(() => (turnIsOpen ? null : summarizeTurnChanges(blocks)), [blocks, turnIsOpen])
 
   const renderAt = (j: number) => {
     const block = blocks[j]
@@ -239,7 +234,6 @@ export const AssistantTurn = memo(function AssistantTurn({
           </ToolRunGroup>
         )
       })}
-      {changes && <TurnChanges changes={changes} onOpenFile={onOpenFile} />}
       {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} showModel={showModel} />}
     </div>
     </PlanActionContext.Provider>

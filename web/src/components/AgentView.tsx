@@ -901,7 +901,6 @@ export function AgentView({
                       size="roomy"
                       onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
-                     onOpenFile={onMentionFileOpen}
                      showModel={modelChangeStarts.has(item.startIndex)}
                       renderBlock={({ block, isStreaming }) => (
                        <div

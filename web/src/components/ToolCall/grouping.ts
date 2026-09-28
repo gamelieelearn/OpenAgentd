@@ -1,6 +1,6 @@
 /**
  * Folding runs of read-only tool calls into one "Explored" row, plus the
- * per-file patch stats behind a turn's change summary.
+ * files a ``patch`` call touches.
  *
  * A *run* is a maximal stretch of successful read-only calls (and blank text
  * chunks, which render nothing) inside one assistant turn. Anything the reader
@@ -9,7 +9,7 @@
  */
 import type { ContentBlock } from '@/api/types'
 
-import { parseDiffMeta, parsePatchText, type FileDiff } from './diffUtils'
+import { parsePatchText, type FileDiff } from './diffUtils'
 import { isFailedResult } from './toolResultStatus'
 
 const MIN_GROUP_TOOLS = 2
@@ -45,17 +45,6 @@ export interface PatchFileStat {
   deletions: number
 }
 
-export interface TurnFileChange extends PatchFileStat {
-  /** The turn's edits to this file, oldest first, as its tool rows show them. */
-  diffs: FileDiff[]
-}
-
-export interface TurnChangeSummary {
-  files: TurnFileChange[]
-  additions: number
-  deletions: number
-}
-
 function parseArgs(args: string | undefined): Record<string, unknown> | null {
   if (!args) return null
   try {
@@ -84,37 +73,6 @@ function diffStat(diff: FileDiff): PatchFileStat {
 export function patchFileStats(args: string | undefined): PatchFileStat[] {
   const text = patchText(args)
   return text === null ? [] : parsePatchText(text).map(diffStat)
-}
-
-/** Every file the turn's successful ``patch`` calls touched, merged by path. */
-export function summarizeTurnChanges(blocks: ContentBlock[]): TurnChangeSummary {
-  const byPath = new Map<string, TurnFileChange>()
-  for (const block of blocks) {
-    if (block.type !== 'tool' || block.toolName !== 'patch') continue
-    if (!block.toolDone || isFailedResult(block.toolResult)) continue
-    const text = patchText(block.toolArgs)
-    if (text === null) continue
-    // The result's meta carries each hunk's real line numbers.
-    for (const diff of parsePatchText(text, parseDiffMeta(block.toolResult))) {
-      const stat = diffStat(diff)
-      const prev = byPath.get(stat.path)
-      if (!prev) {
-        byPath.set(stat.path, { ...stat, diffs: [diff] })
-        continue
-      }
-      prev.additions += stat.additions
-      prev.deletions += stat.deletions
-      prev.diffs.push(diff)
-      // A file created this turn stays "new" through later edits; a delete wins.
-      prev.kind = stat.kind === 'delete' ? 'delete' : prev.kind === 'add' ? 'add' : stat.kind
-    }
-  }
-  const files = [...byPath.values()]
-  return {
-    files,
-    additions: files.reduce((sum, f) => sum + f.additions, 0),
-    deletions: files.reduce((sum, f) => sum + f.deletions, 0),
-  }
 }
 
 function isGroupable(block: ContentBlock): boolean {

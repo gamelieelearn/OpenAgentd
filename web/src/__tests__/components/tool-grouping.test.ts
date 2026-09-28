@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'bun:test'
 
 import type { ContentBlock } from '@/api/types'
-import { groupToolRuns, patchFileStats, summarizeToolRun, summarizeTurnChanges } from '@/components/ToolCall/grouping'
+import { groupToolRuns, patchFileStats, summarizeToolRun } from '@/components/ToolCall/grouping'
 
 function tool(id: string, name: string, args: Record<string, unknown> = {}, extra: Partial<ContentBlock> = {}): ContentBlock {
   return { id, type: 'tool', content: '', toolName: name, toolArgs: JSON.stringify(args), toolDone: true, toolResult: 'ok', ...extra }
 }
 const text = (id: string, content = 'Answer'): ContentBlock => ({ id, type: 'text', content })
 const thinking = (id: string): ContentBlock => ({ id, type: 'thinking', content: 'Considering' })
-const patch = (path: string, body: string) => ({ patch_text: `*** Begin Patch\n*** Update File: ${path}\n@@\n${body}\n*** End Patch` })
 
 describe('groupToolRuns', () => {
   it('leaves a single read-only call alone', () => {
@@ -115,57 +114,5 @@ describe('patchFileStats', () => {
   it('returns nothing for unparsable arguments', () => {
     expect(patchFileStats('{not json')).toEqual([])
     expect(patchFileStats(undefined)).toEqual([])
-  })
-})
-
-describe('summarizeTurnChanges', () => {
-  it('merges every successful edit to a path, in first-touched order', () => {
-    const changes = summarizeTurnChanges([
-      tool('p1', 'patch', patch('src/b.ts', '-x\n+y')),
-      text('mid'),
-      tool('p2', 'patch', { patch_text: '*** Begin Patch\n*** Add File: src/new.ts\n+a\n+b\n*** End Patch' }),
-      tool('p3', 'patch', patch('src/b.ts', '+z')),
-      tool('p4', 'patch', patch('src/new.ts', '+c')),
-    ])
-    expect(changes).toMatchObject({
-      files: [
-        { path: 'src/b.ts', kind: 'update', additions: 2, deletions: 1 },
-        { path: 'src/new.ts', kind: 'add', additions: 3, deletions: 0 },
-      ],
-      additions: 5,
-      deletions: 1,
-    })
-  })
-
-  it('keeps each edit to a file as its own diff, oldest first, numbered from the result', () => {
-    const meta = '@@ openagentd-diff-meta {"files":[{"path":"src/b.ts","hunks":[{"old_start":40,"new_start":41}]}]}'
-    const changes = summarizeTurnChanges([
-      tool('p1', 'patch', patch('src/b.ts', '-x\n+y'), { toolResult: `${meta}\nPatch applied successfully.` }),
-      tool('p2', 'patch', patch('src/b.ts', '+z')),
-    ])
-
-    const [file] = changes.files
-    expect(file.diffs.map((diff) => diff.lines.map((line) => `${line.type}:${line.value}`))).toEqual([
-      ['removed:x', 'added:y'],
-      ['added:z'],
-    ])
-    expect(file.diffs[0].hunkStarts).toEqual([{ oldStart: 40, newStart: 41 }])
-  })
-
-  it('ignores failed and unfinished edits', () => {
-    const changes = summarizeTurnChanges([
-      tool('p1', 'patch', patch('a.ts', '+x'), { toolResult: 'Error: context not found' }),
-      tool('p2', 'patch', patch('b.ts', '+x'), { toolDone: false, toolResult: undefined }),
-    ])
-    expect(changes.files).toEqual([])
-  })
-
-  it('reports a file deleted after being edited as deleted', () => {
-    const changes = summarizeTurnChanges([
-      tool('p1', 'patch', patch('a.ts', '+x')),
-      tool('p2', 'patch', { patch_text: '*** Begin Patch\n*** Delete File: a.ts\n*** End Patch' }),
-    ])
-    expect(changes.files).toHaveLength(1)
-    expect(changes.files[0]).toMatchObject({ path: 'a.ts', kind: 'delete', additions: 1, deletions: 0 })
   })
 })

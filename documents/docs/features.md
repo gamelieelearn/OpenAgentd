@@ -445,8 +445,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     them back), both reachable from the keyboard.
   - A failed turn ends in an error card with Retry and Switch model, which
     opens Session Settings.
-  - A turn that changed files ends with "Changed N files +x −y"; each file
-    expands to the diff that turn made.
   - Right-click a reply for Copy, Copy as Markdown, and Open Session as
     Markdown.
   - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your
