@@ -6,13 +6,16 @@ import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 
 /**
- * The prompt whose answer is on screen, pinned over the transcript's top edge
- * once the prompt itself has scrolled away. An overlay, not a sticky row: an
- * in-flow row appearing above the content would shove the reading position.
+ * The prompt whose turn is being read, pinned over the transcript's top edge
+ * while the view is inside a turn. Its text scrolls back to that prompt; ↑
+ * and ↓ step to the prompt before and after it. An overlay, not a sticky row:
+ * an in-flow row appearing above the content would shove the reading position.
  */
-export function PromptHeader({ prompt, onJumpToPrompt, onPrevious, onNext }: {
+export function PromptHeader({ prompt, onJumpToPrompt, canGoPrevious = true, onPrevious, onNext }: {
   prompt: string
   onJumpToPrompt: () => void
+  /** False on the first prompt when nothing earlier is left to load. */
+  canGoPrevious?: boolean
   onPrevious: () => void
   onNext: () => void
 }) {
@@ -32,7 +35,7 @@ export function PromptHeader({ prompt, onJumpToPrompt, onPrevious, onNext }: {
         <Tooltip>
           <TooltipTrigger
             render={
-              <Button variant="ghost" size="icon-xs" onClick={onPrevious} aria-label="Previous prompt">
+              <Button variant="ghost" size="icon-xs" onClick={onPrevious} disabled={!canGoPrevious} aria-label="Previous prompt">
                 <ChevronUp aria-hidden="true" />
               </Button>
             }

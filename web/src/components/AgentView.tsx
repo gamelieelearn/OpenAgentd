@@ -40,7 +40,7 @@ import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { ErrorCard } from './AgentView/ErrorCard'
 import { PromptHeader } from './AgentView/PromptHeader'
-import { PROMPT_JUMP_MARGIN, currentPromptIndex, promptElements, promptJumpTarget } from './AgentView/prompt-nav'
+import { currentPromptIndex, promptElements, promptLine } from './AgentView/prompt-nav'
 import { ReplyMenu } from './AgentView/ReplyMenu'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
 import { loadSessionMarkdown, replyMarkdown, sessionFileName, shouldOpenReplyMenu } from './AgentView/message-menu'
@@ -630,6 +630,9 @@ export function AgentView({
   }, [blocks.length, renderedTurnCount, scrollRef, attachedRef])
 
   // ── Prompt navigation ──────────────────────────────────────────────────────
+  // The bar names the prompt whose turn is being read. It stays for as long
+  // as the view is inside a turn, a prompt just jumped to included, so its
+  // ↑ and ↓ can keep stepping.
   const [pinnedPromptId, setPinnedPromptId] = useState<string | null>(null)
   // A smooth jump still scrolling; the next press steps on from its target.
   const pendingJumpRef = useRef<{ id: string; until: number } | null>(null)
@@ -640,10 +643,11 @@ export function AgentView({
     const rootTop = root.getBoundingClientRect().top
     const prompts = promptElements(root)
     const rects = prompts.map((el) => el.getBoundingClientRect())
-    const index = currentPromptIndex(rects.map((rect) => rect.top - rootTop), PROMPT_JUMP_MARGIN)
-    // Pinned only once the prompt itself has left the view; a prompt with no
-    // height is not laid out (a hidden view), so nothing has scrolled.
-    const pinned = index >= 0 && rects[index].height > 0 && rects[index].bottom - rootTop < PROMPT_JUMP_MARGIN
+    const index = currentPromptIndex(rects.map((rect) => rect.top - rootTop), promptLine())
+    // Not at the very top, where nothing has scrolled under the bar and it
+    // would only cover the first prompt. A prompt with no height is not laid
+    // out (a hidden view).
+    const pinned = index >= 0 && root.scrollTop > 0 && rects[index].height > 0
       ? prompts[index].dataset.promptId ?? null
       : null
     setPinnedPromptId(pinned)
@@ -665,7 +669,7 @@ export function AgentView({
     const top = prompt.getBoundingClientRect().top - root.getBoundingClientRect().top
     const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     attachedRef.current = false
-    root.scrollTo({ top: root.scrollTop + top - PROMPT_JUMP_MARGIN, behavior: smooth ? 'smooth' : 'auto' })
+    root.scrollTo({ top: root.scrollTop + top - promptLine(), behavior: smooth ? 'smooth' : 'auto' })
     pendingJumpRef.current = smooth && prompt.dataset.promptId
       ? { id: prompt.dataset.promptId, until: performance.now() + PROMPT_JUMP_MS }
       : null
@@ -680,9 +684,12 @@ export function AgentView({
     const from = pending && performance.now() < pending.until
       ? prompts.findIndex((el) => el.dataset.promptId === pending.id)
       : -1
-    const index = from >= 0
-      ? from + direction
-      : promptJumpTarget(prompts.map((el) => el.getBoundingClientRect().top - rootTop), PROMPT_JUMP_MARGIN, direction)
+    // Step from the prompt in the bar, or from the one a jump still in
+    // flight is heading to. Its own top is the bar's text button.
+    const current = from >= 0
+      ? from
+      : currentPromptIndex(prompts.map((el) => el.getBoundingClientRect().top - rootTop), promptLine())
+    const index = current + direction
     if (index >= 0 && index < prompts.length) {
       scrollPromptIntoView(prompts[index])
       return
@@ -719,6 +726,11 @@ export function AgentView({
     () => (pinnedPromptId ? searchableBlocks.find((block) => block.id === pinnedPromptId)?.content ?? null : null),
     [pinnedPromptId, searchableBlocks],
   )
+  // Previous from the first prompt reveals earlier turns or loads the page
+  // before; with neither left there is nowhere to go.
+  const hasMoreHistory = useAgentStore((s) => s.hasMore)
+  const firstPromptId = useMemo(() => searchableBlocks.find(isDirectUserBlock)?.id ?? null, [searchableBlocks])
+  const canGoToPreviousPrompt = pinnedPromptId !== firstPromptId || hiddenTurnCount > 0 || hasMoreHistory
 
   const cycleFind = useCallback((delta: number) => {
     if (findMatches.length === 0) return
@@ -770,6 +782,7 @@ export function AgentView({
       <PromptHeader
         prompt={pinnedPrompt}
         onJumpToPrompt={jumpToPinnedPrompt}
+        canGoPrevious={canGoToPreviousPrompt}
         onPrevious={() => jumpToPrompt(-1)}
         onNext={() => jumpToPrompt(1)}
       />
