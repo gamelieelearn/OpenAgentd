@@ -4,10 +4,9 @@
  * command palette, and ``/telemetry`` deep links all open the same surface
  * without leaving the current route.
  *
- * The shell is eager and tiny; the view (charts, tables, waterfall) loads on
- * first open. Escape steps back from a trace before it closes the overlay.
+ * Escape steps back from a trace before it closes the overlay.
  */
-import { lazy, Suspense, useCallback } from 'react'
+import { useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, X } from 'lucide-react'
@@ -19,10 +18,7 @@ import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import { useTelemetryStore } from '@/stores/useTelemetryStore'
 import { useUIStore } from '@/stores/useUIStore'
-import { TelemetrySkeleton } from './TelemetrySkeleton'
-import { loadTelemetryView } from './telemetry-loader'
-
-const TelemetryView = lazy(() => loadTelemetryView().then((m) => ({ default: m.TelemetryView })))
+import { TelemetryView } from './TelemetryView'
 
 /** Mirrors SettingsModal's panel motion; reduced motion keeps only the fade. */
 const PANEL_VARIANTS = {
@@ -119,9 +115,7 @@ export function TelemetryOverlay() {
               </Tooltip>
             </div>
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <Suspense fallback={<TelemetrySkeleton />}>
-                <TelemetryView onOpenSession={openSession} />
-              </Suspense>
+              <TelemetryView onOpenSession={openSession} />
             </div>
           </motion.div>
         </>

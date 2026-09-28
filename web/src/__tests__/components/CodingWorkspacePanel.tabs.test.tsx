@@ -47,6 +47,9 @@ const appFile = { path: 'src/app.ts', name: 'app.ts', size: 40, mtime: 1, mime: 
 const Icon = () => null
 mock.module('lucide-react', () => ({
   CalendarClock: Icon, ListTodo: Icon,
+  AlertCircle: Icon, ArrowLeft: Icon, CalendarIcon: Icon, Circle: Icon, Clock: Icon, Minus: Icon,
+  Pause: Icon, Play: Icon, Terminal: Icon, Trash2: Icon, Zap: Icon,
+  ChevronDownIcon: Icon, ChevronLeftIcon: Icon, ChevronRightIcon: Icon,
   Check: Icon, ChevronDown: Icon, ChevronLeft: Icon, ChevronRight: Icon,
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
   Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileText: Icon,

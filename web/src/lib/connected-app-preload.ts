@@ -2,15 +2,11 @@ import type { QueryClient } from '@tanstack/react-query'
 import { getCodingWorkspaceTree, listProviders, listSessions } from '@/api/client'
 import { queryKeys } from '@/queries/keys'
 import { agentRegistryQueryOptions } from '@/queries/agent-registry'
-import { preloadHeavyRenderers } from '@/lib/optimistic-preload'
 
 const SESSION_PAGE_SIZE = 20
 
 /** Warm data needed by the coding workspace entry surface. */
 export function preloadConnectedApp(client: QueryClient): void {
-  // Warm heavy rendering chunks (markdown, mermaid, pdfjs) during idle time.
-  preloadHeavyRenderers()
-
   // Warms the single /agent/agents entry read by both the home-page agent probe
   // and the chat header. See ``queries/agent-registry.ts``.
   void client.prefetchQuery({

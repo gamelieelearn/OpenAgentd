@@ -18,15 +18,13 @@
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
-import { preloadSettings } from '@/components/settings/page-loaders'
-import { preloadTelemetryView } from '@/components/Telemetry/telemetry-loader'
 import { PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
 import { useViewportWidth } from '@/hooks/use-viewport-width'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -126,10 +124,8 @@ import {
   sessionWindowErrorDescription,
   shouldOpenSessionInNewWindow,
 } from './CodingSidebar.window'
+import { SessionSearch } from './CodingSidebar/SessionSearch'
 import { EASINGS } from '@/lib/motion'
-
-// Opened on demand; keeps the search and its debouncer out of the eager bundle.
-const SessionSearch = lazy(() => import('./CodingSidebar/SessionSearch').then((m) => ({ default: m.SessionSearch })))
 
 interface CodingSidebarProps {
   currentSessionId?: string
@@ -771,7 +767,6 @@ export function CodingSidebar({
       </div>
 
       {searchOpen ? (
-        <Suspense fallback={<div className="min-h-0 flex-1" />}>
         <SessionSearch
           currentSessionId={currentSessionId}
           focusKey={searchFocusKey}
@@ -782,7 +777,6 @@ export function CodingSidebar({
           }}
           onClose={closeSessionSearch}
         />
-        </Suspense>
       ) : (
       /* Workspace + sessions tree */
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-2">
@@ -1031,8 +1025,6 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => { openSettings(); onMobileClose?.() }}
-                  onPointerEnter={() => preloadSettings()}
-                  onFocus={() => preloadSettings()}
                   className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                   aria-label="Settings"
                 >
@@ -1048,8 +1040,6 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => { openTelemetry(); onMobileClose?.() }}
-                  onPointerEnter={preloadTelemetryView}
-                  onFocus={preloadTelemetryView}
                   className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                   aria-label="Telemetry"
                 >

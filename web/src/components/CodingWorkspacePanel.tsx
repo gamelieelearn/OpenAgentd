@@ -11,7 +11,7 @@
  * Tab state lives in ``useDockTabs`` and Git write actions in
  * ``useGitActions``; this component owns the queries and the layout.
  */
-import { Suspense, lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import {
   getCodingWorkspaceStatus,
@@ -59,6 +59,8 @@ import { TerminalSubPanel } from './CodingWorkspacePanel/TerminalSubPanel'
 import { FilePreviewSubPanel } from './CodingWorkspacePanel/FilePreviewSubPanel'
 import { DiffTabView } from './CodingWorkspacePanel/DiffTabView'
 import { CommitTabView } from './CodingWorkspacePanel/CommitTabView'
+import { TasksTabView } from './CodingWorkspacePanel/TasksTabView'
+import { SchedulerDockView } from './SchedulerPanel/SchedulerDockView'
 import { DockTabBar } from './CodingWorkspacePanel/DockTabBar'
 import { DockActionMenus, type CommitActionTarget } from './CodingWorkspacePanel/DockActionMenus'
 import { useGitActions } from './CodingWorkspacePanel/useGitActions'
@@ -78,15 +80,6 @@ import {
 } from './CodingWorkspacePanel/dock-tabs'
 
 export type { ChangedFileStatus, ChangedFileInfo, DiffFileSection }
-
-// On-demand views (Tasks / Schedule) load with their first open rather than with
-// every dock mount.
-const TasksTabView = lazy(() =>
-  import('./CodingWorkspacePanel/TasksTabView').then((m) => ({ default: m.TasksTabView })),
-)
-const SchedulerDockView = lazy(() =>
-  import('./SchedulerPanel/SchedulerDockView').then((m) => ({ default: m.SchedulerDockView })),
-)
 
 const EMPTY_TODOS: TodoItem[] = []
 /** Stable empty ref: with no center element the width falls back to the viewport. */
@@ -548,13 +541,9 @@ export function CodingWorkspacePanel({
           ) : activeTab?.type === 'terminal' ? (
             <TerminalSubPanel key={activeTab.termId} termId={activeTab.termId} workspace={workspace} />
           ) : activeTab?.type === 'tasks' ? (
-            <Suspense fallback={null}>
-              <TasksTabView todos={todos} sessionId={sessionId} />
-            </Suspense>
+            <TasksTabView todos={todos} sessionId={sessionId} />
           ) : activeTab?.type === 'schedule' ? (
-            <Suspense fallback={null}>
-              <SchedulerDockView contextWorkspace={chatWorkspace ? null : workspace} />
-            </Suspense>
+            <SchedulerDockView contextWorkspace={chatWorkspace ? null : workspace} />
           ) : chatWorkspace ? (
             <div className="flex h-full items-center justify-center px-4">
               <p className="max-w-56 text-center text-xs text-(--color-text-subtle)">

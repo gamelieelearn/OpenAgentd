@@ -1,5 +1,5 @@
-import { Suspense, lazy, useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
-import { ArrowUp, ChevronDown, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
+import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
+import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer.mentions'
@@ -11,6 +11,7 @@ import { MAX_TEXTAREA_HEIGHT, useTextareaAutosize } from './InputComposer.autosi
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 import { buildAcceptString } from './InputComposer.files'
 import { useInputComposerAttachments } from './InputComposer.attachments'
+import { DeliveryMenu } from './InputComposer.deliveryMenu'
 import { cn } from '@/lib/utils'
 import { buildHistoryEntries } from './InputComposer.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -80,10 +81,6 @@ function deliveryForKey(e: { metaKey: boolean; ctrlKey: boolean; altKey: boolean
   if (e.altKey) return 'after-turn'
   return 'steer'
 }
-
-// Mid-turn only, so off the startup bundle; fetched as soon as a turn starts.
-const loadDeliveryMenu = () => import('./InputComposer.deliveryMenu')
-const DeliveryMenu = lazy(() => loadDeliveryMenu().then((module) => ({ default: module.DeliveryMenu })))
 
 /** The chevron half of the split Send pill. */
 const DELIVERY_TRIGGER_CLASS =
@@ -723,9 +720,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
   const mac = isPrimaryModifierOS(os)
   const splitSend = isStreaming && hasText && !disabled
-  useEffect(() => {
-    if (isStreaming) void loadDeliveryMenu()
-  }, [isStreaming])
 
   const sendOrStopEl = canStop && !hasText ? (
     <button
@@ -747,15 +741,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       >
         <ArrowUp size={14} aria-hidden="true" />
       </button>
-      <Suspense
-        fallback={(
-          <span aria-hidden="true" className={DELIVERY_TRIGGER_CLASS}>
-            <ChevronDown size={11} />
-          </span>
-        )}
-      >
-        <DeliveryMenu className={DELIVERY_TRIGGER_CLASS} mac={mac} showShortcuts={!isMobile} onPick={submit} />
-      </Suspense>
+      <DeliveryMenu className={DELIVERY_TRIGGER_CLASS} mac={mac} showShortcuts={!isMobile} onPick={submit} />
     </div>
   ) : (
     <button

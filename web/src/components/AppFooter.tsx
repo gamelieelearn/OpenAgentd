@@ -23,8 +23,6 @@ import { HealthDot } from './HealthDot'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
-import { preloadSettings } from '@/components/settings/page-loaders'
-import { preloadTelemetryView } from '@/components/Telemetry/telemetry-loader'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 import { useObservabilitySummaryQuery } from '@/queries/useObservabilitySummaryQuery'
@@ -197,8 +195,6 @@ export const AppFooter = memo(function AppFooter({
                 <button
                   type="button"
                   onClick={() => openTelemetry({ days: 1 })}
-                  onPointerEnter={preloadTelemetryView}
-                  onFocus={preloadTelemetryView}
                   className={cn(ITEM, 'font-mono tabular-nums')}
                   aria-label={`Spend in the last 24 hours: ${spendLabel}`}
                 >
@@ -217,8 +213,6 @@ export const AppFooter = memo(function AppFooter({
               <button
                 type="button"
                 onClick={() => openSettings()}
-                onPointerEnter={() => preloadSettings()}
-                onFocus={() => preloadSettings()}
                 className={ICON_ITEM}
                 aria-label="Settings"
               >

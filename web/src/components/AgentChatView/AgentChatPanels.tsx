@@ -1,14 +1,10 @@
-import { Suspense, lazy, useState } from 'react'
+import { useState } from 'react'
 import { CommandPalette, QuickOpen } from '../CommandPalette'
+import { SchedulerPanel } from '../SchedulerPanel'
+import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { TodosPopover } from '../TodosPopover'
 import type { TodoItem, WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
-
-// Both modals are closed until asked for, so they stay off the startup bundle.
-const SchedulerPanel = lazy(() => import('../SchedulerPanel').then((m) => ({ default: m.SchedulerPanel })))
-const SessionSettingsPanel = lazy(() =>
-  import('../SessionSettingsPanel').then((m) => ({ default: m.SessionSettingsPanel })),
-)
 
 /** True from the first time ``open`` is set, so a panel mounted then can still animate out. */
 function useOpenedOnce(open: boolean): boolean {
@@ -67,16 +63,14 @@ export function AgentChatPanels({
   return (
     <>
       {settingsOpened && (
-        <Suspense fallback={null}>
-          <SessionSettingsPanel
-            open={agentCapabilitiesOpen}
-            workspace={agentWorkspace}
-            sessionModel={sessionModel}
-            sessionThinkingLevel={sessionThinkingLevel}
-            onSessionModelSettingsChange={onSessionModelSettingsChange}
-            onClose={onCloseAgentCapabilities}
-          />
-        </Suspense>
+        <SessionSettingsPanel
+          open={agentCapabilitiesOpen}
+          workspace={agentWorkspace}
+          sessionModel={sessionModel}
+          sessionThinkingLevel={sessionThinkingLevel}
+          onSessionModelSettingsChange={onSessionModelSettingsChange}
+          onClose={onCloseAgentCapabilities}
+        />
       )}
       <TodosPopover
         open={showTodos}
@@ -84,12 +78,10 @@ export function AgentChatPanels({
         todos={todos}
       />
       {schedulerOpened && (
-        <Suspense fallback={null}>
-          <SchedulerPanel
-            open={schedulerOpen}
-            onClose={onCloseScheduler}
-          />
-        </Suspense>
+        <SchedulerPanel
+          open={schedulerOpen}
+          onClose={onCloseScheduler}
+        />
       )}
       {showPalette && (
         <CommandPalette commands={paletteCommands} onClose={onClosePalette} />

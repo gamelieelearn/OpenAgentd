@@ -14,7 +14,7 @@
  * (one primitive per ``useAgentStore`` call) to avoid the infinite loop
  * that returning a freshly-built object on every render would trigger.
  */
-import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -48,6 +48,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { type InputComposerHandle } from '../InputComposer'
 import { FloatingInputComposer } from '../FloatingInputComposer'
 import { AppFooter } from '../AppFooter'
+import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
 import { workspaceLabel } from '@/utils/workspace'
 import { workspaceRelativePath } from '@/utils/file-refs'
 import type {
@@ -74,15 +75,6 @@ const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
 const isInReviewDock = (element: Element) => element.closest('[data-review-dock]') !== null
 /** Stable selector: the shell only needs to know when the split stops fitting. */
 const isCenterTooNarrow = (width: number) => dockOverlaysChat(width, false)
-
-// The review dock (tabs, diffs, commit views, file previews) is closed until
-// asked for, so it loads as its own chunk and stays off the startup bundle.
-// ``loadCodingWorkspacePanel`` is also called ahead of time once a workspace
-// is attached, so the first open does not wait on the network.
-const loadCodingWorkspacePanel = () => import('../CodingWorkspacePanel')
-const CodingWorkspacePanel = lazy(() =>
-  loadCodingWorkspacePanel().then((module) => ({ default: module.CodingWorkspacePanel })),
-)
 
 interface ActiveAgentViewProps {
   emptyState?: React.ReactNode
@@ -488,10 +480,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     onReturn: focusComposer,
   })
 
-  useEffect(() => {
-    if (workspace) void loadCodingWorkspacePanel()
-  }, [workspace])
-
   const handleStartImplementing = useCallback(async () => {
     if (!effectiveWorkspace || isSwitchingInteractionMode || !sessionIdState) return
     setIsSwitchingInteractionMode(true)
@@ -773,27 +761,26 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             Mobile: fixed full-screen overlay from the right. */}
         <AnimatePresence initial={false}>
           {workspace && codingPanel !== null && (
-            <Suspense key="review-dock" fallback={null}>
-              <CodingWorkspacePanel
-                workspace={workspace}
-                open
-                chatWorkspace={isChatWorkspace}
-                mobile={isMobile}
-                mobileDragOffset={codingPanelDragOffset}
-                centerRef={centerRef}
-                selectedFilePath={codingFileViewer?.path ?? null}
-                selectedFileOpenKey={codingFileOpenKey}
-                terminalOpenKey={terminalOpenKey}
-                handledTerminalOpenKeyRef={handledTerminalOpenKeyRef}
-                viewRequest={dockViewRequest}
-                handledViewRequestKeyRef={handledDockViewKeyRef}
-                onActiveViewChange={setDockActiveView}
-                todos={todos}
-                sessionId={sessionIdState}
-                onFileSelect={handleCodingFileSelect}
-                onAddComment={handleAddFileComment}
-              />
-            </Suspense>
+            <CodingWorkspacePanel
+              key="review-dock"
+              workspace={workspace}
+              open
+              chatWorkspace={isChatWorkspace}
+              mobile={isMobile}
+              mobileDragOffset={codingPanelDragOffset}
+              centerRef={centerRef}
+              selectedFilePath={codingFileViewer?.path ?? null}
+              selectedFileOpenKey={codingFileOpenKey}
+              terminalOpenKey={terminalOpenKey}
+              handledTerminalOpenKeyRef={handledTerminalOpenKeyRef}
+              viewRequest={dockViewRequest}
+              handledViewRequestKeyRef={handledDockViewKeyRef}
+              onActiveViewChange={setDockActiveView}
+              todos={todos}
+              sessionId={sessionIdState}
+              onFileSelect={handleCodingFileSelect}
+              onAddComment={handleAddFileComment}
+            />
           )}
         </AnimatePresence>
         </div>

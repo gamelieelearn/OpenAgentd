@@ -16,6 +16,9 @@ const filesResponse = { workspace: WORKSPACE, truncated: true, files: [] }
 const Icon = () => null
 mock.module('lucide-react', () => ({
   CalendarClock: Icon, ListTodo: Icon,
+  AlertCircle: Icon, ArrowLeft: Icon, CalendarIcon: Icon, Circle: Icon, Clock: Icon, Minus: Icon,
+  Pause: Icon, Play: Icon, Terminal: Icon, Trash2: Icon, Zap: Icon,
+  ChevronDownIcon: Icon, ChevronLeftIcon: Icon, ChevronRightIcon: Icon,
   Check: Icon, CheckSquare: Icon, ChevronDown: Icon, ChevronLeft: Icon, ChevronRight: Icon,
   ChevronsDownUp: Icon, ChevronsUpDown: Icon,
   ClipboardPaste: Icon, Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileDiff: Icon, FileText: Icon,

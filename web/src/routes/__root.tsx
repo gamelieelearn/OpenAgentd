@@ -1,11 +1,12 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { useHotkey } from '@tanstack/react-hotkeys'
-import { lazy, Suspense, useEffect, useRef } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
 import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
 import { Home } from 'lucide-react'
 import { SettingsModal } from '@/components/SettingsModal'
+import { PluginNotice } from '@/components/settings/pages/settings.plugins'
 import { TelemetryOverlay } from '@/components/Telemetry/TelemetryOverlay'
 import { SkipLink } from '@/components/motion'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -25,17 +26,10 @@ import { GlobalEventStream } from '@/hooks/use-global-event-stream'
 import { FloatingNotices } from '@/components/FloatingNotices'
 import { CAPABILITY, useServerCapability } from '@/queries'
 
-// Lives in the (lazy) Plugins settings chunk: it only shows a toast after the
-// plugin status request resolves, and only v3 backends can answer it.
-const PluginNotice = lazy(() => import('@/components/settings/pages/settings.plugins').then((m) => ({ default: m.PluginNotice })))
-
+// Only v3 backends can answer the plugin status request the notice makes.
 function PluginNoticeGate() {
   if (!useServerCapability(CAPABILITY.plugins)) return null
-  return (
-    <Suspense fallback={null}>
-      <PluginNotice />
-    </Suspense>
-  )
+  return <PluginNotice />
 }
 
 export function Root() {

@@ -413,6 +413,12 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **On-demand bundle splitting for heavy components** `[v2.0.0]` — xterm.js, Mermaid
   diagrams, and PDF.js load lazily on demand when first needed, accelerating cold-start
   boot time and reducing initial bundle memory.
+- **App surfaces open without a loading step** `[v3.0.0]` — Settings pages,
+  Telemetry, the review dock with its Tasks and Schedule tabs, the scheduler and
+  session settings dialogs, session search, message Markdown, and MCP app
+  results ship with the app instead of loading on first open, so none of them
+  shows a placeholder first. Only xterm.js, Mermaid, and PDF.js still load on
+  demand.
 - **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
   tapping the scroll-to-bottom button no longer detaches the stream
   auto-follow; direction-based detach logic removed from `onScroll` (was

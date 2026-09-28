@@ -1,8 +1,9 @@
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
-import { lazyRouteComponent } from '@tanstack/react-router'
 import { z } from 'zod'
 import { Root, NotFound } from './routes/__root'
 import { CodingLayout } from './routes/cockpit'
+import { SchedulerPage } from './routes/scheduler'
+import { TelemetryPage } from './routes/telemetry'
 
 const rootRoute = createRootRoute({
   component: Root,
@@ -69,7 +70,7 @@ const telemetryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/telemetry',
   validateSearch: (search) => telemetrySearchSchema.parse(search),
-  component: lazyRouteComponent(() => import('./routes/telemetry'), 'TelemetryPage'),
+  component: TelemetryPage,
 })
 
 // /scheduler — standalone scheduler page (manage scheduled tasks)
@@ -77,7 +78,7 @@ const schedulerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/scheduler',
   validateSearch: (search) => schedulerSearchSchema.parse(search),
-  component: lazyRouteComponent(() => import('./routes/scheduler'), 'SchedulerPage'),
+  component: SchedulerPage,
 })
 
 const routeTree = rootRoute.addChildren([

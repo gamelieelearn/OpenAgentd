@@ -10,10 +10,6 @@ import { queryKeys } from '@/queries/keys'
 const navigate = mock(() => Promise.resolve())
 mock.module('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 const mockOpenSettings = mock(() => {})
-const mockPreloadSettings = mock(() => {})
-const mockPreloadTelemetry = mock(() => {})
-mock.module('@/components/settings/page-loaders', () => ({ preloadSettings: mockPreloadSettings }))
-mock.module('@/components/Telemetry/telemetry-loader', () => ({ preloadTelemetryView: mockPreloadTelemetry }))
 
 // ``getState`` too: opening telemetry closes Settings through the UI store,
 // which calls back into this module.
@@ -74,8 +70,6 @@ describe('AppFooter', () => {
   const realFetch = globalThis.fetch
   beforeEach(() => {
     mockOpenSettings.mockClear()
-    mockPreloadSettings.mockClear()
-    mockPreloadTelemetry.mockClear()
     healthError = false
     backendExternal = false
     requested = []
@@ -87,15 +81,6 @@ describe('AppFooter', () => {
   })
   afterEach(() => {
     globalThis.fetch = realFetch
-  })
-
-  it('starts loading the Settings and Telemetry chunks on pointer or focus intent', () => {
-    renderWithQueryClient(<AppFooter />, 1.5)
-
-    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Settings' }))
-    expect(mockPreloadSettings).toHaveBeenCalledTimes(1)
-    fireEvent.focus(screen.getByRole('button', { name: /Spend in the last 24 hours/ }))
-    expect(mockPreloadTelemetry).toHaveBeenCalledTimes(1)
   })
 
   it('names the connected backend even when it is the healthy bundled one', () => {

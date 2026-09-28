@@ -15,7 +15,7 @@
  * `AgentPane` for split/unified modes.
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo, memo, lazy, Suspense } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
 import { useHotkeys } from '@tanstack/react-hotkeys'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
@@ -23,9 +23,8 @@ import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 import { ChevronDown, ChevronUp, Clock } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
-const MCPAppResult = lazy(() => import('./MCPAppResult').then((module) => ({ default: module.MCPAppResult })))
-// Off the startup bundle: the rail is a desktop overview, not needed to read.
-const TimelineScrubber = lazy(() => import('./AgentView/TimelineScrubber').then((module) => ({ default: module.TimelineScrubber })))
+import { MCPAppResult } from './MCPAppResult'
+import { TimelineScrubber } from './AgentView/TimelineScrubber'
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
@@ -353,9 +352,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
           />
           {block.toolDone && Boolean(mcpApp) && latestMCPAppBlockIds?.has(block.id) ? (
             <div className="mt-2">
-              <Suspense fallback={<p role="status" className="min-h-24 text-xs text-(--color-text-muted)">Loading interactive tool result...</p>}>
-                <MCPAppResult mcpApp={mcpApp as never} sessionId={sessionId} toolCallId={block.toolCallId} />
-              </Suspense>
+              <MCPAppResult mcpApp={mcpApp as never} sessionId={sessionId} toolCallId={block.toolCallId} />
             </div>
           ) : null}
         </div>
@@ -957,14 +954,12 @@ export function AgentView({
          </div>
       </div>
     </div>
-    <Suspense fallback={null}>
-      <TimelineScrubber
-        scrollRef={scrollRef}
-        contentRef={contentRef}
-        findBlockIds={findBlockIds}
-        activeFindBlockId={activeFindBlockId}
-      />
-    </Suspense>
+    <TimelineScrubber
+      scrollRef={scrollRef}
+      contentRef={contentRef}
+      findBlockIds={findBlockIds}
+      activeFindBlockId={activeFindBlockId}
+    />
     </div>
     {showScrollBtn && !jumpToLatestInComposer && (
         <button

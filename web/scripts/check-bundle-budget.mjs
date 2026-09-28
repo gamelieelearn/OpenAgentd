@@ -38,11 +38,13 @@ export function measureBundle(directory) {
 
 if (import.meta.main) {
   const sizes = measureBundle(resolve(import.meta.dir, '../dist'))
-  // eagerGzipBytes +1 kB for push-based refresh (config/MCP events) and
-  // capability-gated settings; the plugin page and notice stay lazy.
-  // Lowered to 530 kB once the scheduler and Session Settings modals went
-  // lazy (~69 kB), so that saving is not quietly spent again.
-  const limits = { eagerBytes: 2_000_000, eagerGzipBytes: 530_000, largestChunkBytes: 1_500_000 }
+  // App surfaces (Settings pages, Telemetry, the review dock, the scheduler
+  // and Session Settings modals, Markdown, MCP app results) load with the
+  // shell, so opening one never waits on a chunk; that raised the eager graph
+  // by ~231 kB gzip. Only the heavy renderers stay lazy: Mermaid, PDF.js and
+  // xterm. Limits sit just above the measured 2.54 MB / 754 kB gzip, and the
+  // 1.90 MB index chunk is now the largest one.
+  const limits = { eagerBytes: 2_600_000, eagerGzipBytes: 760_000, largestChunkBytes: 1_950_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

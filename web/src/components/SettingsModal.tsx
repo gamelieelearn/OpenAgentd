@@ -11,10 +11,8 @@
  */
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, X, type LucideIcon } from 'lucide-react'
-import { lazy, Suspense } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -36,29 +34,21 @@ import {
 } from '@/components/settings/sections'
 import { useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
 import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
-import { settingsPageLoaders } from '@/components/settings/page-loaders'
+import { SettingsHubPage } from '@/components/settings/pages/settings.index'
+import { AgentsListPage } from '@/components/settings/pages/settings.agents'
+import { SkillsListPage } from '@/components/settings/pages/settings.skills'
+import { NewSkillPage } from '@/components/settings/pages/settings.skills.new'
+import { SkillEditorPage } from '@/components/settings/pages/settings.skills.$name'
+import { McpListPage } from '@/components/settings/pages/settings.mcp'
+import { NewMcpServerPage } from '@/components/settings/pages/settings.mcp.new'
+import { McpServerDetailPage } from '@/components/settings/pages/settings.mcp.$name'
+import { MemorySettingsPage } from '@/components/settings/pages/settings.memory'
+import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
+import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
+import { AutomationSettingsPage } from '@/components/settings/pages/settings.automation'
+import { PluginsSettingsPage } from '@/components/settings/pages/settings.plugins'
 
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
-
-// Section pages are loaded on demand. The modal is opened from a button, not
-// on the tauri:// navigation path, so the Suspense-waterfall concern that
-// keeps route components eager (see web/vite.config.ts) does not apply here,
-// and the pages are ~3.6k LOC the first paint never needs.
-// Loaders are shared with the hover/focus preload (settings/page-loaders).
-const pages = settingsPageLoaders
-const SettingsHubPage = lazy(() => pages.hub().then((m) => ({ default: m.SettingsHubPage })))
-const AgentsListPage = lazy(() => pages.agents().then((m) => ({ default: m.AgentsListPage })))
-const SkillsListPage = lazy(() => pages.skills().then((m) => ({ default: m.SkillsListPage })))
-const NewSkillPage = lazy(() => pages.skillsNew().then((m) => ({ default: m.NewSkillPage })))
-const SkillEditorPage = lazy(() => pages.skillsEdit().then((m) => ({ default: m.SkillEditorPage })))
-const McpListPage = lazy(() => pages.mcp().then((m) => ({ default: m.McpListPage })))
-const NewMcpServerPage = lazy(() => pages.mcpNew().then((m) => ({ default: m.NewMcpServerPage })))
-const McpServerDetailPage = lazy(() => pages.mcpEdit().then((m) => ({ default: m.McpServerDetailPage })))
-const MemorySettingsPage = lazy(() => pages.memory().then((m) => ({ default: m.MemorySettingsPage })))
-const ProvidersSettingsPage = lazy(() => pages.providers().then((m) => ({ default: m.ProvidersSettingsPage })))
-const DeniedPathsSettingsPage = lazy(() => pages.deniedPaths().then((m) => ({ default: m.DeniedPathsSettingsPage })))
-const AutomationSettingsPage = lazy(() => pages.automation().then((m) => ({ default: m.AutomationSettingsPage })))
-const PluginsSettingsPage = lazy(() => pages.plugins().then((m) => ({ default: m.PluginsSettingsPage })))
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 
@@ -276,23 +266,6 @@ function SectionContent({
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 
-/** Mirrors a page's sticky h-11 header plus a few rows so the lazy chunk
- *  swap does not shift layout. */
-function SectionSkeleton() {
-  return (
-    <div aria-busy="true" className="flex flex-col">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) px-3 sm:px-4">
-        <Skeleton className="h-3 w-24" />
-      </div>
-      <div className="flex flex-col gap-3 p-3 sm:p-4">
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-2/3" />
-      </div>
-    </div>
-  )
-}
-
 /** Panel enter/exit. Module scope so framer sees a stable target reference.
  *  Mirrors MODAL_VARIANTS / MODAL_VARIANTS_REDUCED in ui/app-overlay.tsx —
  *  reduced motion keeps the fade and drops the scale/translate. */
@@ -398,14 +371,12 @@ export function SettingsModal() {
 
               <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page)">
                 <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
-                  <Suspense fallback={<SectionSkeleton />}>
-                    <SectionContent
-                      key={`${section}:${selectedName ?? ''}`}
-                      section={section}
-                      selectedName={selectedName}
-                      setSection={setSection}
-                    />
-                  </Suspense>
+                  <SectionContent
+                    key={`${section}:${selectedName ?? ''}`}
+                    section={section}
+                    selectedName={selectedName}
+                    setSection={setSection}
+                  />
                 </div>
               </main>
             </div>
