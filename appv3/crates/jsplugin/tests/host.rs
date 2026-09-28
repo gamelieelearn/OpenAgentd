@@ -68,7 +68,8 @@ export async function roundtrip() {
 }
 
 export async function netfail() {
-  try { await fetch("http://127.0.0.1:1/", { timeout: 2000 }); return "no error"; } catch (e: any) { return [e.name, e.kind, e.connect]; }
+  // Windows retries a refused SYN for about 2 s; the timeout must outlast that.
+  try { await fetch("http://127.0.0.1:1/", { timeout: 10000 }); return "no error"; } catch (e: any) { return [e.name, e.kind, e.connect]; }
 }
 "#;
 
