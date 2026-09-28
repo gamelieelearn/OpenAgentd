@@ -101,7 +101,13 @@ impl Hook for WorkspaceInstructionsHook {
     async fn wrap_system_prompt(&self, _ctx: &RunContext, _state: &AgentState, prompt: String) -> String {
         let mut blocks = Vec::new();
         if let Some(ws) = &self.workspace {
-            blocks.push(format!("## Workspace\nRoot: `{}`", ws.display()));
+            // Here rather than in a built-in prompt: those are written once
+            // and then user-owned, so a change there never reaches existing
+            // installs. The UI links code spans holding a path.
+            blocks.push(format!(
+                "## Workspace\nRoot: `{}`\nCite a file by its path from this root, in backticks, adding `:line` to point at code (e.g. `web/src/app.ts:42`).",
+                ws.display()
+            ));
         }
         let global = self.read_file(&self.global);
         if !global.is_empty() {
@@ -255,5 +261,30 @@ impl Hook for QueuedInjectionHook {
         );
         tracing::info!("queued_messages_injected session_id={} count={}", self.session_id, queued.len());
         Some(ModelRequest { messages: state.messages_for_llm(), system_prompt: _req.system_prompt.clone() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The UI links a cited file only when it can find it; a path from the
+    /// root is the one form it never has to guess at.
+    #[tokio::test]
+    async fn workspace_block_asks_for_file_paths_from_the_root() {
+        let hook = WorkspaceInstructionsHook {
+            workspace: Some(PathBuf::from("/repo")),
+            include_workspace: false,
+            global: PathBuf::from("/nonexistent/AGENTS.md"),
+            cache: Mutex::new(HashMap::new()),
+        };
+        let ctx = RunContext { session_id: None, run_id: "run".into(), agent_name: "test".into(), workspace: None };
+        let state = AgentState::new(Vec::new(), String::new());
+
+        let prompt = hook.wrap_system_prompt(&ctx, &state, "Base.".into()).await;
+
+        assert!(prompt.starts_with("Base.\n\n## Workspace\nRoot: `/repo`\n"), "{prompt}");
+        assert!(prompt.contains("path from this root"), "{prompt}");
+        assert!(prompt.contains("`web/src/app.ts:42`"), "{prompt}");
     }
 }
