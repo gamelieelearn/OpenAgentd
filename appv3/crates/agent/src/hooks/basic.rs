@@ -105,7 +105,7 @@ impl Hook for WorkspaceInstructionsHook {
             // and then user-owned, so a change there never reaches existing
             // installs. The UI links code spans holding a path.
             blocks.push(format!(
-                "## Workspace\nRoot: `{}`\nCite a file by its path from this root, in backticks, adding `:line` to point at code (e.g. `web/src/app.ts:42`).",
+                "## Workspace\nRoot: `{}`\nCite a file by its path from this root, in backticks, adding `:line` or `:start-end` to point at code (e.g. `web/src/app.ts:42-58`).",
                 ws.display()
             ));
         }
@@ -285,6 +285,7 @@ mod tests {
 
         assert!(prompt.starts_with("Base.\n\n## Workspace\nRoot: `/repo`\n"), "{prompt}");
         assert!(prompt.contains("path from this root"), "{prompt}");
-        assert!(prompt.contains("`web/src/app.ts:42`"), "{prompt}");
+        assert!(prompt.contains("`:line` or `:start-end`"), "{prompt}");
+        assert!(prompt.contains("`web/src/app.ts:42-58`"), "{prompt}");
     }
 }
