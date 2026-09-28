@@ -3,11 +3,13 @@ import { fireEvent, render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentView } from "@/components/AgentView"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
 import type { ContentBlock } from "@/api/types"
 
 afterEach(() => {
   cleanup()
   useAgentStore.setState({ sessionId: null, _pendingMessages: [] })
+  useDisplayPrefsStore.setState({ transcriptStyle: "detailed" })
 })
 
 // Mock lucide-react icons to avoid SVG issues in Happy DOM
@@ -47,6 +49,31 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────
+
+describe("AgentView — reader transcript", () => {
+  const blocks = [
+    makeUserBlock("u1", "Fix it"),
+    makeThinkingBlock("t1", "Looking around."),
+    { ...makeToolBlock("r1", "read"), toolArgs: '{"path":"src/a.ts"}', toolResult: "x" },
+    makeTextBlock("a1", "Fixed."),
+  ]
+
+  it("folds a turn's work behind one row when reader mode is on", () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: "reader" })
+    renderStream({ blocks })
+
+    expect(screen.getByText("Fixed.")).toBeTruthy()
+    expect(screen.queryByText("Looking around.")).toBeNull()
+    expect(screen.getByRole("button", { name: /^1 read/ }).getAttribute("aria-expanded")).toBe("false")
+  })
+
+  it("shows every step in the default detailed transcript", () => {
+    renderStream({ blocks })
+
+    expect(screen.getByText("Looking around.")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /^1 read/ })).toBeNull()
+  })
+})
 
 describe("AgentView — mentioned files", () => {
   it("hides mention-generated attachment cards", () => {

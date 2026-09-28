@@ -4,7 +4,7 @@
  * The mobile nav cards that used to live here are no longer needed since
  * the modal's own sidebar handles all section navigation.
  */
-import { useState } from 'react'
+import { useState, type ComponentType } from 'react'
 import {
   Server,
   Download,
@@ -27,32 +27,57 @@ import { MarkdownBlock } from '@/utils/markdown'
 import { useHealthQuery } from '@/queries'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { cn } from '@/lib/utils'
+import { TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
 // ── Appearance ────────────────────────────────────────────────────────────
 
+function SegmentedChoice<T extends string>({ label, options, value, onChange }: {
+  label: string
+  options: readonly { value: T; label: string; Icon?: ComponentType<{ size?: number; 'aria-hidden'?: boolean | 'true' }> }[]
+  value: T
+  onChange: (next: T) => void
+}) {
+  return (
+    <div role="group" aria-label={label} className="inline-flex rounded-md border border-(--color-border) bg-(--bg-key) p-0.5">
+      {options.map(({ value: option, label: optionLabel, Icon }) => (
+        <button
+          key={option}
+          type="button"
+          aria-pressed={value === option}
+          onClick={() => onChange(option)}
+          className={cn(
+            'flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 pointer-coarse:h-11',
+            value === option ? 'bg-(--bg-card) text-(--color-text) shadow-sm' : 'text-(--color-text-muted) hover:text-(--color-text)',
+          )}
+        >
+          {Icon && <Icon size={13} aria-hidden="true" />}
+          {optionLabel}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function AppearanceSection() {
   const { preference, setPreference } = useThemePreference()
+  const transcriptStyle = useDisplayPrefsStore((s) => s.transcriptStyle)
+  const setTranscriptStyle = useDisplayPrefsStore((s) => s.setTranscriptStyle)
   return (
     <SettingsSection title="Appearance">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-(--color-text-muted)">Theme</p>
-        <div role="group" aria-label="Theme" className="inline-flex rounded-md border border-(--color-border) bg-(--bg-key) p-0.5">
-          {THEME_OPTIONS.map(({ value, label, Icon }) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={preference === value}
-              onClick={() => setPreference(value)}
-              className={cn(
-                'flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 pointer-coarse:h-11',
-                preference === value ? 'bg-(--bg-card) text-(--color-text) shadow-sm' : 'text-(--color-text-muted) hover:text-(--color-text)',
-              )}
-            >
-              <Icon size={13} aria-hidden="true" />
-              {label}
-            </button>
-          ))}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-(--color-text-muted)">Theme</p>
+          <SegmentedChoice label="Theme" options={THEME_OPTIONS} value={preference} onChange={setPreference} />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-(--color-text-muted)">Transcript</p>
+            <p className="mt-0.5 text-[11px] text-(--color-text-subtle)">
+              Reader folds each turn&apos;s thinking and tool calls into one row, and lists the files it changed.
+            </p>
+          </div>
+          <SegmentedChoice label="Transcript" options={TRANSCRIPT_STYLES} value={transcriptStyle} onChange={setTranscriptStyle} />
         </div>
       </div>
     </SettingsSection>

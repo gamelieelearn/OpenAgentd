@@ -19,6 +19,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
 import { usePlatform } from '@/hooks/use-platform'
 import { useThemePreference } from '@/hooks/useThemePreference'
+import { TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 
@@ -54,6 +55,7 @@ export function useAgentCommands({
 }: UseAgentCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
   const { setPreference: setTheme } = useThemePreference()
+  const setTranscriptStyle = useDisplayPrefsStore((s) => s.setTranscriptStyle)
   const { os, isTauri } = usePlatform()
   return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
@@ -72,10 +74,13 @@ export function useAgentCommands({
     ...THEME_OPTIONS.map(({ value, label }) => ({
       id: `theme-${value}`, group: 'View' as const, label: `Theme: ${label}`, description: value === 'system' ? 'Follow the system appearance' : `Use the ${value} theme`, action: () => setTheme(value),
     })),
+    ...TRANSCRIPT_STYLES.map(({ value, label }) => ({
+      id: `transcript-${value}`, group: 'View' as const, label: `Transcript: ${label}`, description: value === 'reader' ? "Fold each turn's work into one row and list the files it changed" : 'Show every thinking trace and tool call', action: () => setTranscriptStyle(value),
+    })),
     // Desktop only: the native ⌘R accelerator was dropped so a stray key
     // press cannot wipe a live turn's UI state; browsers keep their own reload.
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme])
+  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme, setTranscriptStyle])
 }

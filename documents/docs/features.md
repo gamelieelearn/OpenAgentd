@@ -459,6 +459,18 @@ run from the terminal (the native Rust binary since v3.0.0).
     marks prompts, find matches, and a question waiting for you.
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
+- **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
+  About → Appearance → Transcript, or `Transcript: Reader` in the command
+  palette). Each turn reads as its answer:
+  - The thinking, every tool call, and the narration between them fold into
+    one row such as "6 reads, 3 searches, 4 commands, 2 edits", with failures
+    counted; while the turn runs it names the current step ("Working ·
+    Shell: Run web tests"). Opening it shows the steps as in the detailed
+    transcript, and transcript find opens it when it matches inside.
+  - Questions, interactive MCP apps, errors, and compaction dividers stay
+    in place.
+  - A finished turn lists the files its `patch` calls changed, with line
+    counts; each opens in the review dock.
 - **The composer while the agent works** `[v3.0.0]`:
   - Scrolled away from the live end, a "↓ N new" chip rides on the
     composer, wherever it is dragged, and counts what arrived since.

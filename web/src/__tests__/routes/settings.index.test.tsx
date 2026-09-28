@@ -14,6 +14,7 @@ import userEvent from '@testing-library/user-event'
 
 import { queryKeys } from '@/queries'
 import { THEME_STORAGE_KEY } from '@/lib/theme'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => () => {},
@@ -160,5 +161,21 @@ describe('SettingsHubPage — appearance', () => {
     expect(screen.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true')
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
     expect(document.documentElement.classList.contains('dark')).toBe(true)
+  })
+
+  it('switches the transcript to reader mode from the Appearance section', async () => {
+    const user = userEvent.setup()
+    renderHub()
+
+    const transcript = screen.getByRole('group', { name: 'Transcript' })
+    const reader = screen.getByRole('button', { name: 'Reader' })
+    expect(transcript.contains(reader)).toBe(true)
+    expect(screen.getByRole('button', { name: 'Detailed' })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(reader)
+
+    expect(reader).toHaveAttribute('aria-pressed', 'true')
+    expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
+    useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
   })
 })

@@ -24,6 +24,7 @@ import { renderHook, cleanup } from "@testing-library/react"
 import { useAgentCommands } from "@/components/AgentChatView/useAgentCommands"
 import { useSettingsStore } from "@/stores/useSettingsStore"
 import { useUIStore } from "@/stores/useUIStore"
+import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
 import { THEME_STORAGE_KEY } from "@/lib/theme"
 import type { Command } from "@/components/CommandPalette"
 
@@ -191,5 +192,16 @@ describe("useAgentCommands — navigation", () => {
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark")
     expect(document.documentElement.classList.contains("dark")).toBe(true)
     localStorage.removeItem(THEME_STORAGE_KEY)
+  })
+
+  it("switches the transcript between detailed and reader", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    expect(["transcript-detailed", "transcript-reader"].map((id) => byId(result.current, id).label))
+      .toEqual(["Transcript: Detailed", "Transcript: Reader"])
+
+    byId(result.current, "transcript-reader").action()
+    expect(useDisplayPrefsStore.getState().transcriptStyle).toBe("reader")
+    byId(result.current, "transcript-detailed").action()
+    expect(useDisplayPrefsStore.getState().transcriptStyle).toBe("detailed")
   })
 })

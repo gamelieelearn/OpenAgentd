@@ -33,6 +33,7 @@ import { countBlocksAfter, hasPlanContent, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
 import { getPlatform } from '@/hooks/use-platform'
@@ -515,6 +516,7 @@ export function AgentView({
     ? 0
     : ((findActiveIndex % findMatches.length) + findMatches.length) % findMatches.length
   const findHitBlockIds = useMemo(() => new Set(findMatches.map((match) => match.blockId)), [findMatches])
+  const readerTranscript = useDisplayPrefsStore((s) => s.transcriptStyle === 'reader')
   const findBlockIds = useMemo(() => [...findHitBlockIds], [findHitBlockIds])
   const activeFindBlockId = findMatches[clampedFindIndex]?.blockId ?? null
   const totalLen = blocks.length + liveTail.length
@@ -962,6 +964,8 @@ export function AgentView({
                       onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
                      showModel={modelChangeStarts.has(item.startIndex)}
+                     reader={readerTranscript}
+                     findHitBlockIds={readerTranscript ? findHitBlockIds : undefined}
                       renderBlock={({ block, isStreaming }) => (
                        <div
                          data-block-id={block.id}
