@@ -808,10 +808,6 @@ agent against it.
   answered, and a click opens the session. The same count badges the app icon
   in the dock (macOS and Linux) and prefixes the browser tab title, e.g.
   `(2) Fix updater restart`.
-- **Session summary in the header** `[v3.0.0]` — on desktop the header shows
-  how many sessions are running and how many need you, across every workspace
-  (e.g. `2 running · 1 needs you`). A click opens the sidebar, where those
-  sessions are listed. It is hidden while nothing runs.
 - **Scheduled in the sidebar** `[v3.0.0]` — the bottom of the coding sidebar
   lists the next five enabled scheduled tasks, soonest first, each with its next
   run time (`18:05`, `Wed 09:00`, or `20/03`). Clicking a task opens the

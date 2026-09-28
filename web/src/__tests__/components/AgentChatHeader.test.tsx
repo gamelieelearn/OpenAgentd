@@ -3,16 +3,10 @@ import { describe, expect, it, mock } from 'bun:test'
 import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { AgentChatHeader } from '@/components/AgentChatView/AgentChatHeader'
-import { queryKeys } from '@/queries/keys'
-import type { SessionResponse } from '@/api/types'
 
-function renderHeader(
-  overrides: Partial<ComponentProps<typeof AgentChatHeader>> = {},
-  wrapper?: (props: { children: React.ReactNode }) => React.ReactNode,
-) {
+function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>> = {}) {
   const props: ComponentProps<typeof AgentChatHeader> = {
     dragHandlers: {},
     isMacOverlay: false,
@@ -38,20 +32,7 @@ function renderHeader(
     onCloseMobileActionsMenu: () => undefined,
     ...overrides,
   }
-  return render(<AgentChatHeader {...props} />, wrapper ? { wrapper } : undefined)
-}
-
-function withActiveSessions(rows: Partial<SessionResponse>[]) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
-  client.setQueryData(queryKeys.session.sessions.active(), {
-    pages: [{
-      data: rows.map((row, index) => ({ id: `s${index}`, title: null, agent_name: 'lead', created_at: null, updated_at: null, workspace: '/w', ...row })),
-      next_cursor: null,
-      has_more: false,
-    }],
-    pageParams: [null],
-  })
-  return ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return render(<AgentChatHeader {...props} />)
 }
 
 describe('AgentChatHeader', () => {
@@ -234,30 +215,6 @@ describe('AgentChatHeader', () => {
     expect(button).toHaveTextContent('1/3')
     await user.click(button)
     expect(onToggleTasks).toHaveBeenCalledTimes(1)
-  })
-
-  it('summarises running and waiting sessions on desktop and opens the sidebar on click', async () => {
-    const user = userEvent.setup()
-    const onOpenActiveSessions = mock(() => {})
-    renderHeader({ isMobile: false, onOpenActiveSessions }, withActiveSessions([
-      { running: true },
-      { running: true },
-      { running: true, needs_input: true },
-    ]))
-
-    const summary = screen.getByRole('button', { name: '2 running · 1 needs you' })
-    await user.click(summary)
-    expect(onOpenActiveSessions).toHaveBeenCalledTimes(1)
-  })
-
-  it('hides the session summary when nothing runs', () => {
-    renderHeader({ isMobile: false, onOpenActiveSessions: () => {} }, withActiveSessions([{}]))
-    expect(screen.queryByRole('button', { name: /running|needs you/ })).not.toBeInTheDocument()
-  })
-
-  it('drops the zero half of the summary', () => {
-    renderHeader({ isMobile: false, onOpenActiveSessions: () => {} }, withActiveSessions([{ running: true, needs_input: true }]))
-    expect(screen.getByRole('button', { name: '1 needs you' })).toBeInTheDocument()
   })
 
   it('disables the desktop Tasks button without a session', () => {
