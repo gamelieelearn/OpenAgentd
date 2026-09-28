@@ -306,4 +306,25 @@ describe("useAgentStore — todo_manage rendering and event emission", () => {
       expect(useAgentStore.getState().cacheInvalidations).toEqual([{ kind: "scheduler" }])
     })
   })
+
+  // The backend saves a Plan-mode turn's <proposed_plan> as the session plan,
+  // so only those turns refresh the Plan row.
+  describe("session plan refresh on done", () => {
+    it("queues a plan invalidation when a Plan-mode turn ends", () => {
+      useAgentStore.setState({ sessionInteractionMode: "plan" })
+      useAgentStore.getState()._handleSSEEvent("done", {})
+      expect(useAgentStore.getState().cacheInvalidations).toEqual([
+        { kind: "session_running", sessionId: "sess-123", running: false },
+        { kind: "plan", sessionId: "sess-123" },
+      ])
+    })
+
+    it("does not refetch the plan after a Code-mode turn", () => {
+      useAgentStore.setState({ sessionInteractionMode: "code" })
+      useAgentStore.getState()._handleSSEEvent("done", {})
+      expect(useAgentStore.getState().cacheInvalidations).toEqual([
+        { kind: "session_running", sessionId: "sess-123", running: false },
+      ])
+    })
+  })
 })

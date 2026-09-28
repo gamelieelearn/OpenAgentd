@@ -825,6 +825,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               sessionId: draft.sessionId,
               running: false,
             })
+            // The backend saves a Plan-mode turn's `<proposed_plan>` as the
+            // session plan; other turns never write it.
+            if (draft.sessionInteractionMode === 'plan') {
+              draft.cacheInvalidations.push({ kind: 'plan', sessionId: draft.sessionId })
+            }
           }
         })
         break

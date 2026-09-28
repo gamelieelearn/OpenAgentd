@@ -623,6 +623,16 @@ export interface TodosResponse {
   todos: TodoItem[]
 }
 
+/** The session's saved Plan-mode plan (``plan.md``); v3 only. */
+export interface SessionPlan {
+  content: string
+  updated_at: string
+}
+
+export interface SessionPlanResponse {
+  plan: SessionPlan | null
+}
+
 export interface AgentChatResponse {
   status: string
   session_id: string
