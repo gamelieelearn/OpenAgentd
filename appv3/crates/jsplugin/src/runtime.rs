@@ -244,6 +244,7 @@ fn js_error(ctx: &Ctx<'_>, e: rquickjs::Error) -> JsError {
     }
 }
 
+#[allow(clippy::result_large_err)] // see `JsPlugin::call`
 async fn invoke(ctx: &AsyncContext, target: String, method: String, args: String, mode: Mode) -> Result<CallResult, JsError> {
     let out: Result<String, JsError> = ctx
         .async_with(async |ctx| {

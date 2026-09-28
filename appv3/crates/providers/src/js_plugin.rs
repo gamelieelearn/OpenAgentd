@@ -169,6 +169,7 @@ impl JsProviderPlugin {
         Target::export("provider")
     }
 
+    #[allow(clippy::result_large_err)] // JsError carries name, message, stack and props
     async fn call(&self, method: &str, args: &[Value]) -> Result<Value, JsError> {
         self.js.call(&Self::target(), method, args, Mode::Value).await.map(|r| r.value)
     }
