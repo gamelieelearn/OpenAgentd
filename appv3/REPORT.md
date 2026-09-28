@@ -465,6 +465,15 @@ explicitly.
   `agent/tests/thinking_duration.rs`). It is an extra key in the existing
   JSON column, not a schema change. v2 never writes it, and the web client
   shows "Thought" without a duration when it is absent.
+- **Transport retries** (`agent/src/retry.rs`, `agent/src/streaming.rs`):
+  a dropped connection, DNS failure or timeout retries on a flat, jittered
+  3–5 s interval. The turn's model call retries without limit until the
+  network is back or the user stops (its `provider_status` frames carry
+  `max_attempts: null`); summarization, which cannot be stopped mid-call,
+  gives up after 10 attempts. v2 backs off exponentially (up to 27 s) for 5
+  attempts and then resumes the turn at most 3 times before failing with
+  `ProviderConnectionError`; that resume layer is gone. HTTP errors keep
+  v2's exponential backoff.
 - **`todo_manage` clear:** `clear` without a status removes every task
   (`tools/src/todo.rs`; the `status` description in
   `contract/tool_definitions.json` says so). v2 defaults to `finished`, so

@@ -396,7 +396,16 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (!agent || !status) break
         set((draft) => {
           ensureAgent(draft, agent)
-          draft.agentStreams[agent].currentBlocks.push({
+          const blocks = draft.agentStreams[agent].currentBlocks
+          const last = blocks[blocks.length - 1]
+          // A call waiting out a network drop retries every few seconds
+          // for as long as it takes: update one notice instead of stacking.
+          if (status === 'retrying' && last?.type === 'provider_status' && last.extra?.status === 'retrying') {
+            last.extra = d
+            last.timestamp = new Date()
+            return
+          }
+          blocks.push({
             id: generateBlockId(),
             type: 'provider_status',
             content: '',

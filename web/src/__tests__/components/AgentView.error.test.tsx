@@ -238,3 +238,24 @@ describe("AgentView — error card actions", () => {
     expect(screen.getByRole("button", { name: "Switch model" })).toBeTruthy()
   })
 })
+
+describe("AgentView — provider retry notice", () => {
+  function retrying(extra: Record<string, unknown>): ContentBlock {
+    return {
+      id: "r1",
+      type: "provider_status",
+      content: "",
+      extra: { status: "retrying", model: "openai:gpt", attempt: 3, delay_seconds: 4.2, error_type: "RemoteProtocolError", ...extra },
+    }
+  }
+
+  it("counts attempts without a budget while waiting for the network", () => {
+    render(<AgentView blocks={[]} currentBlocks={[retrying({ max_attempts: null })]} isWorking />)
+    expect(screen.getByText("Retrying openai:gpt (attempt 3) after RemoteProtocolError. Waiting 4.2s.")).toBeTruthy()
+  })
+
+  it("shows the budget when the retries have one", () => {
+    render(<AgentView blocks={[]} currentBlocks={[retrying({ max_attempts: 5, error_type: "HTTPStatusError", status_code: 503 })]} isWorking />)
+    expect(screen.getByText("Retrying openai:gpt (3/5) after HTTPStatusError 503. Waiting 4.2s.")).toBeTruthy()
+  })
+})

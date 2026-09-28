@@ -332,7 +332,11 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       if (status === 'retrying') {
         const delayText = typeof delay === 'number' ? ` Waiting ${delay.toFixed(1)}s.` : ''
         const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
-        message = `Retrying ${String(model ?? 'model')} (${String(attempt ?? '?')}/${String(maxAttempts ?? '?')})${errorText}.${delayText}`
+        // Dropped connections retry without a budget until the network is back.
+        const progress = typeof maxAttempts === 'number'
+          ? `${String(attempt ?? '?')}/${maxAttempts}`
+          : `attempt ${String(attempt ?? '?')}`
+        message = `Retrying ${String(model ?? 'model')} (${progress})${errorText}.${delayText}`
       }
       return <p className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }

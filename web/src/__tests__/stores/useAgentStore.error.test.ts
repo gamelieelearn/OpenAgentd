@@ -49,6 +49,26 @@ function makeStream(status: "idle" | "working" | "error") {
 }
 
 describe("_handleSSEEvent: done", () => {
+  it("keeps one retry notice while a call keeps retrying", () => {
+    useAgentStore.setState({ agentStreams: { lead: makeStream("working") } });
+    const retry = (attempt: number) =>
+      useAgentStore.getState()._handleSSEEvent("provider_status", {
+        agent: "lead",
+        status: "retrying",
+        attempt,
+        max_attempts: null,
+        delay_seconds: 4,
+        error_type: "RemoteProtocolError",
+      });
+    retry(1);
+    retry(2);
+    retry(3);
+
+    const blocks = useAgentStore.getState().agentStreams.lead.currentBlocks;
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].extra?.attempt).toBe(3);
+  });
+
   it("preserves error status", () => {
     useAgentStore.setState({
       isAgentWorking: true,

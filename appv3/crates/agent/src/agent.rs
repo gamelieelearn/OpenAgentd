@@ -17,8 +17,6 @@ use std::time::Instant;
 
 pub const MAX_AGENT_ITERATIONS: usize = 5000;
 pub const MAX_CONCURRENT_TOOLS: usize = 10;
-pub const MAX_PROVIDER_RESUME_ATTEMPTS: u32 = 3;
-pub const PROVIDER_RESUME_BASE_DELAY: f64 = 2.0;
 pub const ASK_USER: &str = "ask_user";
 pub const ASK_LEAD: &str = "ask_lead";
 pub const ASK_MERGED_INTO_PRIMARY: &str = "Merged into your other ask_user call — the user sees a single card with every question.";
@@ -304,7 +302,6 @@ impl Agent {
 
         let mut iteration = 0usize;
         let mut empty_retries = 0u32;
-        let mut resume_attempts = 0u32;
         let mut total_tokens = 0i64;
         let mut last_assistant: Option<AssistantMessage> = None;
 
@@ -382,35 +379,18 @@ impl Agent {
                 }
             }
             let (mut assistant, usage): (AssistantMessage, Option<Usage>) = match call {
-                Ok(r) => {
-                    resume_attempts = 0;
-                    r
-                }
+                Ok(r) => r,
                 Err(ModelError::Agent(e)) => return Err(e),
+                // The turn's stream retries transport failures until the
+                // network is back or the user stops, so it does not end here.
                 Err(ModelError::Transient { error_type, .. }) => {
-                    resume_attempts += 1;
-                    if resume_attempts > MAX_PROVIDER_RESUME_ATTEMPTS {
-                        tracing::error!("agent_provider_resume_exhausted agent={} iteration={}", self.name, iteration);
-                        return Err(AgentError::Connection {
-                            message: format!(
-                                "Could not reach the LLM provider — exhausted {MAX_PROVIDER_RESUME_ATTEMPTS} resume attempts after a transient connectivity failure ({error_type}). Check your network connection and the provider's base URL in Settings → Providers."
-                            ),
-                            error_type: Some(error_type),
-                            provider: Some(label.clone()),
-                        });
-                    }
-                    let delay = PROVIDER_RESUME_BASE_DELAY * resume_attempts as f64;
-                    tracing::warn!("agent_provider_resume agent={} attempt={}/{} delay={:.1}s", self.name, resume_attempts, MAX_PROVIDER_RESUME_ATTEMPTS, delay);
-                    match &opts.interrupt {
-                        Some(ev) => {
-                            if ev.wait_timeout(std::time::Duration::from_secs_f64(delay)).await {
-                                break;
-                            }
-                        }
-                        None => tokio::time::sleep(std::time::Duration::from_secs_f64(delay)).await,
-                    }
-                    iteration -= 1;
-                    continue;
+                    return Err(AgentError::Connection {
+                        message: format!(
+                            "Could not reach the LLM provider after a transient connectivity failure ({error_type}). Check your network connection and the provider's base URL in Settings → Providers."
+                        ),
+                        error_type: Some(error_type),
+                        provider: Some(label.clone()),
+                    });
                 }
             };
 

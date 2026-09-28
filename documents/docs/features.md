@@ -600,6 +600,8 @@ executes tools, manages its task list, and inspects workspace repositories.
   model endpoint exhausts its retry budget mid-task (`ReadTimeout` /
   `ConnectError`), the loop resumes the same turn from where it left off
   instead of dropping the agent after a tool call. Bounded and interrupt-aware.
+  Since `[v3.0.0]` a turn's connection retries no longer run out (see below),
+  so there is nothing left to resume from.
 - **Network blip and disconnection resilience** `[v2.9.0]` — transient network
   drops, socket resets, TLS handshake interruptions, DNS resolution glitches,
   connection/write timeouts, and gateway errors (408, 5xx) automatically retry
@@ -612,6 +614,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   alone so switching windows does not tear it down. Replay-state cleanup also
   preserves attached session streams, so long silent tool runs and turns beyond
   the replay-retention window continue delivering later output.
+  Since `[v3.0.0]` a dropped connection, DNS failure, or timeout during a turn
+  retries every 3–5 seconds for as long as the network is down (Stop ends it),
+  so the turn picks up within seconds of the connection returning; the
+  transcript keeps one retry notice that counts the attempts. Summarization,
+  which cannot be stopped mid-call, gives up after 10 attempts.
 - **Automatic max-tokens truncation recovery** `[v1.87.0]` — when a provider
   hits the output token limit (`finish_reason="max_tokens"` or `"length"`), the
   loop automatically injects a recovery message (requesting a continuation for

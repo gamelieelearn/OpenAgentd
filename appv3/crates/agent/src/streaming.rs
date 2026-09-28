@@ -55,6 +55,11 @@ pub struct RetryStream<'a> {
     interrupt: Option<Event>,
     current: Option<SyncStream>,
     attempt: i64,
+    /// Transport failures so far; budgeted apart from HTTP errors.
+    network_attempt: i64,
+    /// Most attempts through transport failures; `None` retries until the
+    /// network is back (or the caller stops the stream).
+    network_budget: Option<i64>,
     quota_waits: i64,
     emitted: bool,
     done: bool,
@@ -75,7 +80,30 @@ impl<'a> RetryStream<'a> {
         hooks: Option<(&'a [HookRef], &'a RunContext)>,
         interrupt: Option<Event>,
     ) -> Self {
-        Self { provider, label: label.into(), messages, tools, kwargs, hooks, interrupt, current: None, attempt: 0, quota_waits: 0, emitted: false, done: false }
+        Self {
+            provider,
+            label: label.into(),
+            messages,
+            tools,
+            kwargs,
+            hooks,
+            interrupt,
+            current: None,
+            attempt: 0,
+            network_attempt: 0,
+            network_budget: Some(MAX_NETWORK_ATTEMPTS),
+            quota_waits: 0,
+            emitted: false,
+            done: false,
+        }
+    }
+
+    /// Retry transport failures without limit. Only for streams the user can
+    /// stop: the turn's own model call, which races its interrupt and
+    /// hard-cancel. A background call (summarization) keeps the budget.
+    pub fn retry_network_indefinitely(mut self) -> Self {
+        self.network_budget = None;
+        self
     }
 
     fn interrupted(&self) -> bool {
@@ -107,12 +135,12 @@ impl<'a> RetryStream<'a> {
         }
     }
 
-    async fn notify_exhausted(&self, error_type: &str, status_code: Option<i64>) {
+    async fn notify_exhausted(&self, error_type: &str, status_code: Option<i64>, max_attempts: i64) {
         if let Some((hooks, ctx)) = self.hooks {
             let info = ProviderStatus {
                 status: "exhausted".into(),
                 model: Some(self.label.clone()),
-                max_attempts: Some(MAX_RETRIES),
+                max_attempts: Some(max_attempts),
                 error_type: Some(error_type.into()),
                 status_code,
                 ..Default::default()
@@ -189,7 +217,7 @@ impl<'a> RetryStream<'a> {
                 }
                 if self.attempt + 1 >= MAX_RETRIES {
                     tracing::warn!("llm_provider_exhausted model={} status={} attempts={}", self.label, status, MAX_RETRIES);
-                    self.notify_exhausted("HTTPStatusError", Some(status as i64)).await;
+                    self.notify_exhausted("HTTPStatusError", Some(status as i64), MAX_RETRIES).await;
                     return Err(self.final_error(&err));
                 }
                 let required = required_delay(self.attempt, retry_after);
@@ -218,18 +246,19 @@ impl<'a> RetryStream<'a> {
             }
             ProviderError::Network(msg) => {
                 let et = network_error_type(msg).to_string();
-                if self.attempt + 1 >= MAX_RETRIES {
-                    tracing::warn!("llm_provider_exhausted model={} error={} attempts={}", self.label, et, MAX_RETRIES);
-                    self.notify_exhausted(&et, None).await;
+                if let Some(budget) = self.network_budget.filter(|b| self.network_attempt + 1 >= *b) {
+                    tracing::warn!("llm_provider_exhausted model={} error={} attempts={}", self.label, et, budget);
+                    self.notify_exhausted(&et, None, budget).await;
                     return Err(ModelError::Transient { error_type: et, message: msg.clone() });
                 }
-                let delay = backoff_delay(self.attempt, 0);
-                tracing::warn!("llm_provider_retry model={} error={} attempt={}/{} delay={:.1}s", self.label, et, self.attempt + 1, MAX_RETRIES, delay);
+                let delay = network_retry_delay();
+                let budget = self.network_budget.map(|b| b.to_string()).unwrap_or_else(|| "unlimited".into());
+                tracing::warn!("llm_provider_retry model={} error={} attempt={}/{} delay={:.1}s", self.label, et, self.network_attempt + 1, budget, delay);
                 self.notify_retry(ProviderStatus {
                     status: "retrying".into(),
                     model: Some(self.label.clone()),
-                    attempt: Some(self.attempt + 1),
-                    max_attempts: Some(MAX_RETRIES),
+                    attempt: Some(self.network_attempt + 1),
+                    max_attempts: self.network_budget,
                     delay_seconds: Some(delay),
                     error_type: Some(et),
                     ..Default::default()
@@ -238,7 +267,7 @@ impl<'a> RetryStream<'a> {
                 if self.sleep(delay).await {
                     return Ok(Next::Stop);
                 }
-                self.attempt += 1;
+                self.network_attempt += 1;
                 Ok(Next::Continue)
             }
             ProviderError::Unconfigured(m) => Err(AgentError::Unconfigured(m.clone()).into()),
@@ -387,7 +416,9 @@ pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage,
             kwargs.insert("session_id".into(), json!(sid));
         }
     }
-    let mut rs = RetryStream::new(a.provider.clone(), a.label, &wire, tools, kwargs, Some((a.hooks, a.ctx)), effective_interrupt.clone());
+    // The loop below races the interrupt and hard-cancel, so Stop always
+    // ends a call that is waiting for the network to come back.
+    let mut rs = RetryStream::new(a.provider.clone(), a.label, &wire, tools, kwargs, Some((a.hooks, a.ctx)), effective_interrupt.clone()).retry_network_indefinitely();
     loop {
         if effective_interrupt.as_ref().map(|e| e.is_set()).unwrap_or(false) {
             break;
@@ -547,4 +578,110 @@ pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage,
         meta,
     };
     Ok((msg, last_usage))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hooks::Hook;
+    use appv3_providers::mock::{MockProvider, MockTurn};
+    use async_trait::async_trait;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct StatusLog(Mutex<Vec<ProviderStatus>>);
+
+    #[async_trait]
+    impl Hook for StatusLog {
+        async fn on_provider_retry(&self, _ctx: &RunContext, info: &ProviderStatus) {
+            self.0.lock().unwrap().push(info.clone());
+        }
+        async fn on_provider_exhausted(&self, _ctx: &RunContext, info: &ProviderStatus) {
+            self.0.lock().unwrap().push(info.clone());
+        }
+    }
+
+    fn ctx() -> RunContext {
+        RunContext { session_id: None, run_id: "run".into(), agent_name: "lead".into(), workspace: None }
+    }
+
+    fn dropped() -> MockTurn {
+        MockTurn::Error(ProviderError::Network("SSE stream ended before terminal \"message_stop\" frame".into()))
+    }
+
+    async fn drain(rs: &mut RetryStream<'_>) -> Result<String, ModelError> {
+        let mut text = String::new();
+        while let Some(item) = rs.next().await? {
+            if let RetryItem::Chunk(c) = item {
+                text.extend(c.choices.iter().filter_map(|ch| ch.delta.content.clone()));
+            }
+        }
+        Ok(text)
+    }
+
+    /// A dropped connection is retried on a short, flat interval for as
+    /// long as it takes, so the turn resumes within seconds of the network
+    /// coming back instead of sitting out an exponential backoff or failing.
+    #[tokio::test(start_paused = true)]
+    async fn turn_stream_retries_dropped_connections_every_few_seconds_until_back() {
+        let drops = 100;
+        let mut turns: Vec<MockTurn> = (0..drops).map(|_| dropped()).collect();
+        turns.push(MockProvider::text("back online"));
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::new(turns));
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider, "mock:mock", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None).retry_network_indefinitely();
+
+        let started = tokio::time::Instant::now();
+        assert_eq!(drain(&mut rs).await.unwrap(), "back online");
+        let waited = started.elapsed().as_secs_f64();
+        assert!((drops as f64 * NETWORK_RETRY_MIN_DELAY..=drops as f64 * NETWORK_RETRY_MAX_DELAY).contains(&waited), "waited {waited}s");
+        let statuses = log.0.lock().unwrap();
+        assert_eq!(statuses.len(), drops);
+        for (i, s) in statuses.iter().enumerate() {
+            assert_eq!(s.status, "retrying");
+            assert_eq!(s.error_type.as_deref(), Some("RemoteProtocolError"));
+            assert_eq!(s.attempt, Some(i as i64 + 1));
+            assert_eq!(s.max_attempts, None, "no retry budget");
+            let delay = s.delay_seconds.unwrap();
+            assert!((NETWORK_RETRY_MIN_DELAY..=NETWORK_RETRY_MAX_DELAY).contains(&delay), "attempt {} waited {delay}s", i + 1);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stop_ends_the_wait_for_the_network() {
+        let turns: Vec<MockTurn> = (0..1000).map(|_| dropped()).collect();
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::new(turns));
+        let messages = vec![ChatMessage::user("hi")];
+        let stop = Event::new();
+        let mut rs = RetryStream::new(provider, "mock:mock", &messages, None, Kwargs::new(), None, Some(stop.clone())).retry_network_indefinitely();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            stop.set();
+        });
+
+        let started = tokio::time::Instant::now();
+        assert_eq!(drain(&mut rs).await.unwrap(), "");
+        assert!(started.elapsed() < Duration::from_secs(31), "stopped after {:?}", started.elapsed());
+    }
+
+    /// Summarization cannot be stopped mid-call, so it keeps a budget.
+    #[tokio::test(start_paused = true)]
+    async fn background_streams_give_up_after_the_network_budget() {
+        let turns: Vec<MockTurn> = (0..MAX_NETWORK_ATTEMPTS).map(|_| dropped()).collect();
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::new(turns));
+        let log = Arc::new(StatusLog::default());
+        let hooks: Vec<HookRef> = vec![log.clone()];
+        let ctx = ctx();
+        let messages = vec![ChatMessage::user("hi")];
+        let mut rs = RetryStream::new(provider, "mock:mock", &messages, None, Kwargs::new(), Some((&hooks, &ctx)), None);
+
+        let err = drain(&mut rs).await.unwrap_err();
+        assert!(matches!(err, ModelError::Transient { ref error_type, .. } if error_type == "RemoteProtocolError"), "{err:?}");
+        let statuses = log.0.lock().unwrap();
+        assert_eq!(statuses.len() as i64, MAX_NETWORK_ATTEMPTS);
+        assert_eq!(statuses.last().unwrap().status, "exhausted");
+    }
 }

@@ -15,6 +15,15 @@ pub const MAX_QUOTA_WAITS: i64 = 3;
 pub const CLOCK_SKEW_BUFFER_SECONDS: f64 = 2.0;
 pub const BASE_DELAY: f64 = 1.0;
 pub const MAX_DELAY: f64 = 60.0;
+/// Transport failures (dropped connection, DNS, timeouts) usually mean the
+/// network blinked, so they retry on a flat, jittered 3–5 s interval
+/// instead of the exponential backoff above: the call resumes within
+/// seconds of the network coming back. A turn's model call retries them
+/// without limit (the user can stop it); background calls that cannot be
+/// stopped (summarization) give up after 10 attempts, about 36 s.
+pub const MAX_NETWORK_ATTEMPTS: i64 = 10;
+pub const NETWORK_RETRY_MIN_DELAY: f64 = 3.0;
+pub const NETWORK_RETRY_MAX_DELAY: f64 = 5.0;
 
 const NON_RETRYABLE_429_MARKERS: &[&str] = &[
     "usage_limit_reached",
@@ -209,6 +218,11 @@ pub fn backoff_delay(attempt: i64, retry_after: i64) -> f64 {
 pub fn required_delay(attempt: i64, retry_after: i64) -> f64 {
     let r = if retry_after > 0 { retry_after as f64 } else { BASE_DELAY * 3f64.powi(attempt as i32) };
     r.min(MAX_DELAY)
+}
+
+/// Wait before retrying a transport failure (see [`MAX_NETWORK_ATTEMPTS`]).
+pub fn network_retry_delay() -> f64 {
+    NETWORK_RETRY_MIN_DELAY + rand::random::<f64>() * (NETWORK_RETRY_MAX_DELAY - NETWORK_RETRY_MIN_DELAY)
 }
 
 /// `_is_retryable_http_error`.
