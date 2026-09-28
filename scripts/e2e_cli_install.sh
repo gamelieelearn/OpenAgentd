@@ -70,9 +70,11 @@ serve() { # latest dir
   : > "$SB/port"
   LATEST=$1 DIR=$2 "$PY" "$ROOT/scripts/fake_release_server.py" > "$SB/port" 2> "$SB/server.log" &
   SRV=$!
-  for _ in $(seq 100); do [ -s "$SB/port" ] && break; sleep 0.1; done
+  # A cold runner's first Python start can take well over 10 s.
+  for _ in $(seq 600); do [ -s "$SB/port" ] && break; sleep 0.1; done
   local port
   port=$(head -n1 "$SB/port" | tr -d '\r')
+  [ -n "$port" ] || { cat "$SB/server.log" >&2; echo "FAIL: fake release server did not report a port" >&2; exit 1; }
   export OPENAGENTD_RELEASES_URL="http://127.0.0.1:$port"
 }
 
