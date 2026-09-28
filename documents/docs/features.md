@@ -172,8 +172,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   `⌘D`/`Ctrl+D` toggles the files and git dock. `⌘N`/`Ctrl+N` starts a new
   session and is a no-op on an already empty idle session. The desktop status
   footer and mobile sidebar name the connected backend (`builtin` or the saved
-  server name/host) instead of a hardcoded local label; since `[v3.0.0]` the
-  desktop footer shows it only for an external or unreachable backend. Mobile chat actions
+  server name/host) instead of a hardcoded local label. Mobile chat actions
   expose transcript find and terminal access without a hardware keyboard.
   Empty coding sessions no longer show the Ask about this repo, Generate
   AGENTS.md, and Open terminal starter chips *(deprecated)*; the composer,
@@ -728,7 +727,7 @@ agent against it.
 - **Desktop workbench layout** `[v3.0.0]` — the desktop coding view is split into
   a header with a command center (**Search or run a command**, `Ctrl/⌘+K`), the
   sidebar, the chat, the review dock and a status bar. The status bar shows
-  backend health only when the backend is external or failing, the branch with
+  the connected backend and its health, the branch with
   commits to push/pull and uncommitted changes (a click opens the review dock),
   the session model, and the last 24 hours of spend (a click opens Telemetry on
   that range); scheduled tasks and the theme moved to the sidebar, the palette

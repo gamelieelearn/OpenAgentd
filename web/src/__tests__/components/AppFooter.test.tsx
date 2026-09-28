@@ -98,10 +98,10 @@ describe('AppFooter', () => {
     expect(mockPreloadTelemetry).toHaveBeenCalledTimes(1)
   })
 
-  it('leaves a healthy bundled backend out of the status bar', () => {
+  it('names the connected backend even when it is the healthy bundled one', () => {
     renderWithQueryClient(<AppFooter />)
     expect(screen.getByRole('status', { name: 'Application status' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /Change backend connection/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /Connected\. Change backend connection/ }).textContent).toBe('builtin')
   })
 
   it('shows the backend indicator for an external server', () => {

@@ -2,8 +2,8 @@
  * AppFooter — full-width desktop status bar (VS Code / Zed convention).
  *
  * Left cluster is workspace-scoped, right cluster is session-scoped:
- *   • left:  backend health, only for an external or unhealthy backend · git
- *            branch with ahead/behind + dirty count
+ *   • left:  connected backend and its health · git branch with ahead/behind
+ *            + dirty count
  *   • right: active model (thinking level) · fast mode · 24h spend · settings
  *
  * The command palette entry lives in the header's command center, so the
@@ -27,7 +27,6 @@ import { preloadSettings } from '@/components/settings/page-loaders'
 import { preloadTelemetryView } from '@/components/Telemetry/telemetry-loader'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { openTelemetry } from '@/stores/useTelemetryStore'
-import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
 import { useObservabilitySummaryQuery } from '@/queries/useObservabilitySummaryQuery'
 import { formatSpend } from '@/utils/telemetryFormat'
 import { queryKeys } from '@/queries/keys'
@@ -83,9 +82,6 @@ export const AppFooter = memo(function AppFooter({
 }: AppFooterProps) {
   const { os } = usePlatform()
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const health = useHealthQuery()
-  const backendStatus = useBackendStatusQuery()
-  const showHealth = health.isError || backendStatus.data?.external === true
   const spend = useObservabilitySummaryQuery(1, {}, { refetchInterval: SPEND_REFRESH_MS }).data?.totals.estimated_cost_usd
   const spendLabel = spend === undefined ? null : formatSpend(spend)
 
@@ -125,11 +121,11 @@ export const AppFooter = memo(function AppFooter({
     >
       {/* Left cluster — workspace scope: connection, repository state. */}
       <div className="flex min-w-0 items-center gap-1 overflow-hidden">
-        {showHealth && <HealthDot labeled />}
+        <HealthDot labeled />
 
         {isCoding && isGit && branch && (
           <>
-            {showHealth && <Divider />}
+            <Divider />
             <Tooltip>
               <TooltipTrigger
                 render={
