@@ -272,12 +272,11 @@ export async function handleGlobalEvent(
     if (kind === 'input_needed' && sessionId) {
       markSessionRunning(queryClient, sessionId, true, true)
     }
-    const viewingAskingSession =
-      kind === 'input_needed' && sessionId !== undefined
-      && useAgentStore.getState().sessionId === sessionId
+    // Mobile has no window focus to check, so it skips by this instead.
+    const sessionOnScreen = sessionId !== undefined && useAgentStore.getState().sessionId === sessionId
     await sendDesktopNotification(
       { kind, sessionId, title: event.title, body: event.body },
-      { force: kind === 'input_needed' && !viewingAskingSession },
+      { force: kind === 'input_needed' && !sessionOnScreen, sessionOnScreen },
     )
     return true
   }

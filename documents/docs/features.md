@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-25
+updated: 2026-09-29
 ---
 
 # Features
@@ -167,6 +167,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   the operating system;
   OpenAgentd does not play an extra in-app sound. Background-process completion
   alerts are deprecated and no longer emitted by app clients.
+  Mobile notifications send again after `[v1.113.4]` stopped them; tapping
+  one opens its session, and the one for the session already on screen is
+  skipped while the app is open `[v3.0.0]`. iOS pauses the app in the
+  background, so mobile notifications arrive only while it is running.
 - **Quick Open and Command Palette** `[v2.3.0]` — `⌘P`/`Ctrl+P` searches and
   opens files in the active workspace; `⌘K`/`Ctrl+K` searches app actions.
   Both use the compact warm-paper search surface, keyboard navigation, and a

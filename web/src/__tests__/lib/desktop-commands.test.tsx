@@ -6,6 +6,15 @@ import { render, waitFor } from '@testing-library/react'
 const navigate = mock(async () => {})
 mock.module('@tanstack/react-router', () => ({ useRouter: () => ({ navigate }) }))
 
+// Mobile notification taps come from the notification library, not the event bus.
+let tapListener: ((sessionId: string) => void) | null = null
+mock.module('@/lib/desktop-notifications', () => ({
+  listenForNotificationTaps: async (cb: (sessionId: string) => void) => {
+    tapListener = cb
+    return () => { tapListener = null }
+  },
+}))
+
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { APP_EVENTS } from '@/lib/app-events'
 import { useUIStore } from '@/stores/useUIStore'
@@ -46,6 +55,7 @@ function resetUIStore(): void {
   })
   listener = null
   notificationListener = null
+  tapListener = null
   unlistenCalls = 0
   navigate.mockClear()
 }
@@ -225,5 +235,16 @@ describe('useDesktopCommands', () => {
     expect(unlistenCalls).toBe(2)
     expect(listener).toBeNull()
     expect(notificationListener).toBeNull()
+  })
+
+  it('opens the session of a tapped mobile notification, until the root unmounts', async () => {
+    const view = await renderBridge()
+    await waitFor(() => expect(tapListener).not.toBeNull())
+
+    tapListener?.('session-9')
+    expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'session-9' } })
+
+    view.unmount()
+    expect(tapListener).toBeNull()
   })
 })

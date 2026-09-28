@@ -13,6 +13,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { getPlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, dispatchAppShortcut } from '@/lib/app-shortcuts'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
+import { listenForNotificationTaps } from '@/lib/desktop-notifications'
 
 interface NotificationClickPayload {
   sessionId?: unknown
@@ -88,14 +89,20 @@ export function useDesktopCommands(): void {
         const unlistenNotification = await listen<NotificationClickPayload>('desktop-notification-clicked', (event) => {
           openNotificationSession(event.payload, router)
         })
+        // The mobile shell reports taps through the notification plugin instead.
+        const stopTaps = await listenForNotificationTaps((sessionId) => {
+          openNotificationSession({ sessionId }, router)
+        })
         if (cancelled) {
           unlisten()
           unlistenNotification()
+          stopTaps()
           return
         }
         cleanup = () => {
           unlisten()
           unlistenNotification()
+          stopTaps()
         }
       } catch {
         // Browser build: no Tauri event bus.

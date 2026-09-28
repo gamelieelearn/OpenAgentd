@@ -621,7 +621,7 @@ describe('handleGlobalEvent', () => {
 
     expect(handled).toBe(true)
     expect(sendDesktopNotification).toHaveBeenCalledTimes(1)
-    expect(sendDesktopNotification.mock.calls[0][1]).toEqual({ force: true })
+    expect(sendDesktopNotification.mock.calls[0][1]).toEqual({ force: true, sessionOnScreen: false })
   })
 
   it('leaves the focus check in charge when the asking session is open', async () => {
@@ -636,7 +636,26 @@ describe('handleGlobalEvent', () => {
 
     // Not forced: a focused, visible window suppresses it (the card is right
     // there), while a backgrounded window still gets it.
-    expect(sendDesktopNotification.mock.calls[0][1]).toEqual({ force: false })
+    expect(sendDesktopNotification.mock.calls[0][1]).toEqual({ force: false, sessionOnScreen: true })
+  })
+
+  // The mobile app cannot tell a focused window from the app being open, so it
+  // needs to know which completions are for the session already on screen.
+  it('tells the notifier whether a finished session is the one on screen', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'shown' })
+
+    await handleGlobalEvent(client, 'desktop_notification', {
+      notification_id: 'notice-d1', session_id: 'shown', kind: 'assistant_done', title: 'Done', body: 'Shown',
+    }, 1, () => 1)
+    await handleGlobalEvent(client, 'desktop_notification', {
+      notification_id: 'notice-d2', session_id: 'elsewhere', kind: 'assistant_done', title: 'Done', body: 'Elsewhere',
+    }, 1, () => 1)
+
+    expect(sendDesktopNotification.mock.calls.map((call) => call[1])).toEqual([
+      { force: false, sessionOnScreen: true },
+      { force: false, sessionOnScreen: false },
+    ])
   })
 
   it('badges the session row so another window sees the stopped session', async () => {
