@@ -433,11 +433,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **iOS text size** `[v3.0.0]` — the iOS app follows the system text size
   (Settings or Control Center) while it runs: larger settings scale the text
   and spacing together, up to 125%. Smaller settings keep the design size.
-- **A calmer transcript** `[v3.0.0]` — the chat reads as prompts and answers,
-  with the work folded away until you want it:
-  - Runs of read-only tool calls fold into one row, such as "Explored · 6
-    reads, 3 searches". Edits, failures, and shell commands keep their own
-    rows, and the agent's own text is never folded.
+- **A calmer transcript** `[v3.0.0]` — the chat reads as prompts and answers:
   - Every prompt you wrote has Edit (rewind to it and put it back in the
     composer) and Restore to here (undo the turns after it; `/redo` brings
     them back), both reachable from the keyboard.

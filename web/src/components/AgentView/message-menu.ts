@@ -4,7 +4,7 @@
  */
 import type { ContentBlock } from '@/api/types'
 import { getToolDisplay } from '@/components/ToolCall/display'
-import { patchFileStats } from '@/components/ToolCall/grouping'
+import { patchFileStats } from '@/components/ToolCall/diffUtils'
 import { isFailedResult } from '@/components/ToolCall/toolResultStatus'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { liveBlockTail } from '@/utils/blocks'

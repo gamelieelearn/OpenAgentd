@@ -10,8 +10,6 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { groupToolRuns } from '@/components/ToolCall/grouping'
-import { ToolRunGroup } from '@/components/ToolCall/ToolRunGroup'
 import { formatTime, formatFullDateTime, lastTurnText, shortModelName } from '@/utils/format'
 import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
 import { PlanActionContext } from '@/utils/markdown-plan'
@@ -194,44 +192,30 @@ export const AssistantTurn = memo(function AssistantTurn({
     }),
     [turnIsOpen, onStartImplementing, isSwitchingInteractionMode],
   )
-  const segments = useMemo(() => groupToolRuns(blocks, { live: turnIsOpen }), [blocks, turnIsOpen])
-
-  const renderAt = (j: number) => {
-    const block = blocks[j]
-    const absoluteIdx = startIndex + j
-    const isLast = absoluteIdx === totalBlocks - 1
-    // Only the block currently receiving output is streaming. Earlier
-    // blocks of the same turn are finished the moment the next one opens —
-    // flagging them too gave every one of them a typewriter rAF loop with
-    // nothing to animate. `appendStreamed` only ever fills the last block
-    // of a kind, so the block taking deltas is always the trailing one.
-    // Compaction blocks live in `blocks` directly, so their active streaming
-    // state is indicated by `block.extra?.state === 'compacting'`.
-    const isCompactionStreaming = isWorking && block.type === 'compaction' && block.extra?.state === 'compacting'
-    const isStreaming = isCompactionStreaming || (isWorking && absoluteIdx >= finalizedCount && isLast)
-    return (
-      <div key={block.id}>
-        {renderBlock({
-          block,
-          isStreaming,
-          isLast,
-        })}
-      </div>
-    )
-  }
 
   return (
     <PlanActionContext.Provider value={planActionValue}>
       <div className="space-y-2">
-      {segments.map((segment) => {
-        if (segment.kind === 'block') return renderAt(segment.index)
-        const indices = Array.from({ length: segment.end - segment.start }, (_, k) => segment.start + k)
+      {blocks.map((block, j) => {
+        const absoluteIdx = startIndex + j
+        const isLast = absoluteIdx === totalBlocks - 1
+        // Only the block currently receiving output is streaming. Earlier
+        // blocks of the same turn are finished the moment the next one opens —
+        // flagging them too gave every one of them a typewriter rAF loop with
+        // nothing to animate. `appendStreamed` only ever fills the last block
+        // of a kind, so the block taking deltas is always the trailing one.
+        // Compaction blocks live in `blocks` directly, so their active streaming
+        // state is indicated by `block.extra?.state === 'compacting'`.
+        const isCompactionStreaming = isWorking && block.type === 'compaction' && block.extra?.state === 'compacting'
+        const isStreaming = isCompactionStreaming || (isWorking && absoluteIdx >= finalizedCount && isLast)
         return (
-          // Keyed by the first row, so a live group keeps its open state
-          // while finished calls join it.
-          <ToolRunGroup key={`group-${blocks[segment.start].id}`} summary={segment.summary}>
-            {indices.map(renderAt)}
-          </ToolRunGroup>
+          <div key={block.id}>
+            {renderBlock({
+              block,
+              isStreaming,
+              isLast,
+            })}
+          </div>
         )
       })}
       {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} showModel={showModel} />}

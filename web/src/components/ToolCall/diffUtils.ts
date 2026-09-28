@@ -273,3 +273,27 @@ export function getDiffStats(toolName: string, args: string, _result?: string): 
   }
   return null
 }
+
+export interface PatchFileStat {
+  path: string
+  kind: 'add' | 'update' | 'delete'
+  additions: number
+  deletions: number
+}
+
+/** Files a ``patch`` call touches, each with its own line counts. */
+export function patchFileStats(args: string | undefined): PatchFileStat[] {
+  let patchText: unknown
+  try {
+    patchText = args ? (JSON.parse(args) as { patch_text?: unknown } | null)?.patch_text : undefined
+  } catch {
+    return []
+  }
+  if (typeof patchText !== 'string') return []
+  return parsePatchText(patchText).map((diff) => ({
+    path: diff.moveTo ?? diff.path,
+    kind: diff.kind,
+    additions: diff.lines.filter((line) => line.type === 'added').length,
+    deletions: diff.lines.filter((line) => line.type === 'removed').length,
+  }))
+}

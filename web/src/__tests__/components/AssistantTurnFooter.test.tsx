@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { useContext } from "react"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AssistantTurn, AssistantTurnFooter } from "@/components/AssistantTurnFooter"
 import { PlanActionContext } from "@/utils/markdown-plan"
@@ -267,7 +267,7 @@ describe("AssistantTurn — onStartImplementing CTA", () => {
   })
 })
 
-describe("AssistantTurn — folded tool runs", () => {
+describe("AssistantTurn — tool calls", () => {
   const read = (id: string, path: string, done = true): ContentBlock => ({
     id, type: "tool", content: "", toolName: "read", toolArgs: JSON.stringify({ path }), toolDone: done, toolResult: done ? "ok" : undefined,
   })
@@ -293,25 +293,20 @@ describe("AssistantTurn — folded tool runs", () => {
     )
   }
 
-  it("folds a finished run into one Explored row that opens on click", () => {
+  it("renders every tool call on its own row, with nothing folded", () => {
     renderTurn(blocks)
 
-    const toggle = screen.getByRole("button", { name: "Explored · 2 reads, 1 search" })
-    expect(toggle.getAttribute("aria-expanded")).toBe("false")
-    expect(screen.queryByTestId("row-r1")).toBeNull()
-    expect(screen.getByTestId("row-intro")).toBeTruthy()
-    expect(screen.getByTestId("row-answer")).toBeTruthy()
-
-    fireEvent.click(toggle)
-    expect(screen.getByTestId("row-r1")).toBeTruthy()
-    expect(screen.getByTestId("row-g1")).toBeTruthy()
+    for (const id of ["intro", "r1", "r2", "g1", "answer"]) {
+      expect(screen.getByTestId(`row-${id}`)).toBeTruthy()
+    }
+    expect(screen.queryByRole("button", { name: /Explored/ })).toBeNull()
   })
 
-  it("keeps the call in flight and the newest finished one visible while the turn runs", () => {
+  it("shows every finished call while the turn runs", () => {
     renderTurn([read("r1", "a.ts"), read("r2", "b.ts"), read("r3", "c.ts"), read("r4", "d.ts", false)], { open: true })
 
-    expect(screen.getByRole("button", { name: "Explored · 2 reads" })).toBeTruthy()
-    expect(screen.getByTestId("row-r3")).toBeTruthy()
-    expect(screen.getByTestId("row-r4")).toBeTruthy()
+    for (const id of ["r1", "r2", "r3", "r4"]) {
+      expect(screen.getByTestId(`row-${id}`)).toBeTruthy()
+    }
   })
 })
