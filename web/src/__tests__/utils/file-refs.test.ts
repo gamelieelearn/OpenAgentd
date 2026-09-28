@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
-import { findFileRefs, parseFileHref, parseFileRef, workspaceRelativePath } from '@/utils/file-refs'
+import { findFileRefs, parseFileHref, parseFileRef, resolveWorkspaceRef, workspaceRelativePath } from '@/utils/file-refs'
 
 describe('parseFileRef — a whole code span', () => {
   it('reads a path with a line, a column, or a GitHub-style anchor', () => {
@@ -69,5 +69,44 @@ describe('workspaceRelativePath', () => {
     expect(workspaceRelativePath('/repository/a.ts', '/repo')).toBeNull()
     expect(workspaceRelativePath('../a.ts', '/repo')).toBeNull()
     expect(workspaceRelativePath('~/a.ts', '/repo')).toBeNull()
+  })
+})
+
+describe('resolveWorkspaceRef — which listed file a reference means', () => {
+  const files = [
+    'README.md',
+    'web/README.md',
+    'web/src/components/Button.tsx',
+    'web/src/components/IconButton.tsx',
+    'web/src/index.ts',
+    'app/src/index.ts',
+  ]
+
+  it('takes the file at that exact path', () => {
+    expect(resolveWorkspaceRef('README.md', files)).toEqual({ kind: 'file', path: 'README.md' })
+  })
+
+  it('finds a bare name or a partial path by its trailing segments', () => {
+    expect(resolveWorkspaceRef('Button.tsx', files)).toEqual({ kind: 'file', path: 'web/src/components/Button.tsx' })
+    expect(resolveWorkspaceRef('components/Button.tsx', files)).toEqual({ kind: 'file', path: 'web/src/components/Button.tsx' })
+  })
+
+  it('prefers the matching file this session touched most recently', () => {
+    const touched = ['app/src/index.ts', 'web/src/index.ts', 'web/README.md']
+
+    expect(resolveWorkspaceRef('src/index.ts', files, touched)).toEqual({ kind: 'file', path: 'app/src/index.ts' })
+    expect(resolveWorkspaceRef('README.md', files, touched)).toEqual({ kind: 'file', path: 'web/README.md' })
+  })
+
+  it('lists every match when several files fit and none was touched', () => {
+    expect(resolveWorkspaceRef('index.ts', files, ['web/src/components/Button.tsx'])).toEqual({
+      kind: 'ambiguous',
+      paths: ['web/src/index.ts', 'app/src/index.ts'],
+    })
+  })
+
+  it('reports a reference no listed file ends with', () => {
+    expect(resolveWorkspaceRef('Missing.tsx', files)).toEqual({ kind: 'missing' })
+    expect(resolveWorkspaceRef('ents/Button.tsx', files)).toEqual({ kind: 'missing' })
   })
 })

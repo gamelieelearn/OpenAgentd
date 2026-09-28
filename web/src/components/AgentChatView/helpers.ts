@@ -6,7 +6,9 @@
  */
 import { resolveApiUrl } from '@/api/client'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
+import { workspaceRelativePath } from '@/utils/file-refs'
 import type { SlashCommand } from '../InputComposer'
+import { patchFileStats } from '../ToolCall/diffUtils'
 
 /** Built-in slash commands always available, ahead of any user-defined ones. */
 export const BASE_SLASH_COMMANDS: SlashCommand[] = [
@@ -42,6 +44,46 @@ export function newestUserBlockId(blocks: readonly ContentBlock[], prompt: strin
     if (blocks[i].type === 'user' && blocks[i].content.trim() === text) return blocks[i].id
   }
   return undefined
+}
+
+/** ``read`` takes its path under any of these names. */
+const READ_PATH_KEYS = ['path', 'file_path', 'filename', 'filepath'] as const
+
+function toolPaths(block: ContentBlock): string[] {
+  if (block.type !== 'tool') return []
+  if (block.toolName === 'patch') return patchFileStats(block.toolArgs).map((file) => file.path)
+  if (block.toolName !== 'read' || !block.toolArgs) return []
+  try {
+    const args = JSON.parse(block.toolArgs) as Record<string, unknown> | null
+    const path = READ_PATH_KEYS.map((key) => args?.[key]).find((value) => typeof value === 'string')
+    return typeof path === 'string' ? [path] : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Workspace files the session's agents read or patched, newest first, each
+ * once. The lead's come before its members', since the reply being read is
+ * usually the lead's.
+ */
+export function sessionTouchedPaths(
+  streams: Readonly<Record<string, { blocks: readonly ContentBlock[]; currentBlocks: readonly ContentBlock[] }>>,
+  leadName: string | null,
+  workspace: string,
+): string[] {
+  const names = Object.keys(streams).sort((a, b) => Number(b === leadName) - Number(a === leadName))
+  const touched = new Set<string>()
+  for (const name of names) {
+    const blocks = [...streams[name].blocks, ...streams[name].currentBlocks]
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      for (const path of toolPaths(blocks[i])) {
+        const relative = workspaceRelativePath(path, workspace)
+        if (relative) touched.add(relative)
+      }
+    }
+  }
+  return [...touched]
 }
 
 export interface FilterSlashCommandsContext {

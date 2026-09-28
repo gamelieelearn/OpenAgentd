@@ -112,3 +112,27 @@ export function workspaceRelativePath(path: string, workspace: string | null): s
   }
   return parts.length > 0 ? parts.join('/') : null
 }
+
+export type WorkspaceRefMatch =
+  | { kind: 'file'; path: string }
+  | { kind: 'ambiguous'; paths: string[] }
+  | { kind: 'missing' }
+
+/**
+ * The listed file a workspace-relative ``path`` means. Models cite files by
+ * name alone or from a folder other than the root (``src/x.ts`` for
+ * ``web/src/x.ts``), so the reference is a hint matched against the listing's
+ * trailing segments. The newest match in ``touched`` (files this session
+ * read or patched) wins, because what the agent worked on is what it is
+ * talking about; then the exact path; then a match that is the only one.
+ */
+export function resolveWorkspaceRef(path: string, files: readonly string[], touched: readonly string[] = []): WorkspaceRefMatch {
+  const suffix = `/${path}`
+  const matches = files.filter((file) => file === path || file.endsWith(suffix))
+  if (matches.length === 0) return { kind: 'missing' }
+  const recent = touched.find((file) => matches.includes(file))
+  if (recent) return { kind: 'file', path: recent }
+  if (matches.includes(path)) return { kind: 'file', path }
+  if (matches.length === 1) return { kind: 'file', path: matches[0] }
+  return { kind: 'ambiguous', paths: matches }
+}

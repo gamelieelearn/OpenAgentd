@@ -449,7 +449,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     prompts; `⌥⌘↑` reaches earlier prompts in one press, loading them when
     they are not loaded yet.
   - `path:line` references in replies and tool output open the file at that
-    line in the review dock.
+    line in the review dock. A bare name or partial path (`Button.tsx`,
+    `src/app.ts` for `web/src/app.ts`) finds its file, preferring one the
+    session read or patched; when several files match, Quick Open opens
+    searching for the reference.
   - On desktop a timeline scrubber replaces the transcript's scrollbar and
     marks prompts, find matches, and a question waiting for you.
   - Reply footers add the turn's output tokens, or its cost when the model

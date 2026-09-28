@@ -44,17 +44,19 @@ import type { Dispatch, SetStateAction } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { listCodingWorkspaceFiles } from '@/api/client'
 import { queryKeys } from '@/queries'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useToastStore } from '@/stores/useToastStore'
-import { workspaceRelativePath, type FileRef } from '@/utils/file-refs'
+import { resolveWorkspaceRef, workspaceRelativePath, type FileRef } from '@/utils/file-refs'
 import { resolveSidebarCollapsed, SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT } from '@/lib/workbench-layout'
 import { useViewportAtLeast } from '@/hooks/use-viewport-width'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import { APP_EVENTS } from '@/lib/app-events'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { DockView, DockViewRequest } from '../WorkspacePanel/dock-tabs'
+import { sessionTouchedPaths } from './helpers'
 import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
 
 export type { DockView, DockViewRequest }
@@ -100,7 +102,10 @@ export interface UseOverlayStateResult {
   handleOpenWorkspaceDialog: () => void
   handleFileSelect: (file: WorkspaceFileInfo | null) => void
   handleMentionFileOpen: (path: string) => Promise<void>
-  /** Open a clicked ``path:line`` from the transcript, at its line. */
+  /**
+   * Open a clicked ``path:line`` from the transcript, at its line. A name or
+   * partial path finds its file; several matches open Quick Open to choose.
+   */
   handleFileRefOpen: (ref: FileRef) => Promise<void>
   closeMobileActionsMenu: () => void
   handleSetShowMobileActions: Dispatch<SetStateAction<boolean>>
@@ -228,33 +233,39 @@ export function useOverlayState({
     setFileViewer(file)
   }, [])
 
-  /** Show a workspace-relative file in the dock; false when it is not listed. */
-  const openWorkspaceFile = useCallback(async (cleanPath: string): Promise<boolean> => {
-    if (!workspace) return false
-    const current = fileViewer?.path === cleanPath ? fileViewer : null
-    if (current) {
-      setFileViewer(current)
-      setFileOpenKey((value) => value + 1)
-      setWorkspacePanel((value) => value ?? 'files')
-      return true
-    }
+  const showFile = useCallback((file: WorkspaceFileInfo) => {
+    setFileViewer(file)
+    setFileOpenKey((value) => value + 1)
+    setWorkspacePanel((value) => value ?? 'files')
+  }, [])
+
+  /** The workspace listing, or ``null`` when it cannot be fetched. */
+  const listWorkspaceFiles = useCallback(async (): Promise<WorkspaceFileInfo[] | null> => {
+    if (!workspace) return null
     try {
       const result = await queryClient.fetchQuery({
         queryKey: queryKeys.coding.files(workspace),
         queryFn: () => listCodingWorkspaceFiles(workspace),
         staleTime: 5_000,
       })
-      const file = result.files.find((item) => item.path === cleanPath)
-      if (!file) return false
-      setFileViewer(file)
-      setFileOpenKey((value) => value + 1)
-      setWorkspacePanel((value) => value ?? 'files')
-      return true
+      return result.files
     } catch {
       // Keep the current panel state; the panel query will surface listing errors.
-      return false
+      return null
     }
-  }, [fileViewer, queryClient, workspace])
+  }, [queryClient, workspace])
+
+  /** Show a workspace-relative file in the dock; false when it is not listed. */
+  const openWorkspaceFile = useCallback(async (cleanPath: string): Promise<boolean> => {
+    if (!workspace) return false
+    if (fileViewer?.path === cleanPath) {
+      showFile(fileViewer)
+      return true
+    }
+    const file = (await listWorkspaceFiles())?.find((item) => item.path === cleanPath)
+    if (file) showFile(file)
+    return Boolean(file)
+  }, [fileViewer, listWorkspaceFiles, showFile, workspace])
 
   const handleMentionFileOpen = useCallback(async (path: string) => {
     const cleanPath = path.split('#', 1)[0]
@@ -262,14 +273,24 @@ export function useOverlayState({
   }, [openWorkspaceFile])
 
   const handleFileRefOpen = useCallback(async (ref: FileRef) => {
-    const path = workspaceRelativePath(ref.path, workspace)
-    if (!path) return
-    if (!(await openWorkspaceFile(path))) {
-      useToastStore.getState().push({ tone: 'info', title: 'File not found', description: `${path} is not in this workspace.` })
+    const cited = workspace ? workspaceRelativePath(ref.path, workspace) : null
+    if (!workspace || !cited) return
+    const files = (await listWorkspaceFiles()) ?? []
+    const { leadName, agentStreams } = useAgentStore.getState()
+    const match = resolveWorkspaceRef(cited, files.map((file) => file.path), sessionTouchedPaths(agentStreams, leadName, workspace))
+    if (match.kind === 'ambiguous') {
+      closeOtherMobileOverlays('palette')
+      useUIStore.getState().openQuickOpen(ref.line ? `${cited}:${ref.line}` : cited)
       return
     }
-    if (ref.line) useFileRevealStore.getState().reveal(path, ref.line)
-  }, [openWorkspaceFile, workspace])
+    const file = match.kind === 'file' ? files.find((item) => item.path === match.path) : undefined
+    if (!file) {
+      useToastStore.getState().push({ tone: 'info', title: 'File not found', description: `No file in this workspace matches ${cited}.` })
+      return
+    }
+    showFile(file)
+    if (ref.line) useFileRevealStore.getState().reveal(file.path, ref.line)
+  }, [closeOtherMobileOverlays, listWorkspaceFiles, showFile, workspace])
 
   const closeMobileActionsMenu = useCallback(() => setShowMobileActions(false), [])
 
