@@ -442,7 +442,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Right-click a reply for Copy, Copy as Markdown, and Open Session as
     Markdown.
   - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your
-    prompts.
+    prompts; `⌥⌘↑` reaches earlier prompts in one press, loading them when
+    they are not loaded yet.
   - `path:line` references in replies and tool output open the file at that
     line in the review dock.
   - On desktop a timeline scrubber replaces the transcript's scrollbar and

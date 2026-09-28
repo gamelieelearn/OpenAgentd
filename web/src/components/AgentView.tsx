@@ -15,7 +15,7 @@
  * `AgentPane` for split/unified modes.
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
 import { useHotkeys } from '@tanstack/react-hotkeys'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
@@ -39,7 +39,7 @@ import { getPlatform } from '@/hooks/use-platform'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { ErrorCard } from './AgentView/ErrorCard'
-import { PROMPT_JUMP_MARGIN, promptElements, promptJumpTarget } from './AgentView/prompt-nav'
+import { isDirectUserBlock, PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
 import { ReplyMenu } from './AgentView/ReplyMenu'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
 import { loadSessionMarkdown, replyMarkdown, sessionFileName, shouldOpenReplyMenu } from './AgentView/message-menu'
@@ -52,11 +52,29 @@ import { applyTranscriptFindHighlight, clearTranscriptFindHighlight } from './Ag
 
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
-/** How long a smooth prompt jump is treated as still in flight. */
+/** How long a prompt jump is treated as still in flight. */
 const PROMPT_JUMP_MS = 700
 
-function isDirectUserBlock(block: ContentBlock): boolean {
-  return block.type === 'user' && !block.extra?.from_agent
+/**
+ * A previous-prompt press past the oldest rendered prompt, waiting for the
+ * turns it needs to render or load.
+ */
+interface OlderPromptJob {
+  sessionId: string | undefined
+  /** The first rendered block, and its top in content px, so the view can hold still as turns land above it. */
+  anchorId: string | null
+  anchorTop: number
+  /** Jump once the prompt renders; scrolling by hand or ↓ clears it. */
+  jump: boolean
+}
+
+/** ``el``'s top in the scroller's content, which scrolling does not change. */
+function contentTop(root: HTMLElement, el: HTMLElement): number {
+  return el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop
+}
+
+function blockElement(root: HTMLElement, id: string): HTMLElement | undefined {
+  return Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]')).find((el) => el.dataset.blockId === id)
 }
 
 function isProviderErrorBlock(block: ContentBlock): boolean {
@@ -544,7 +562,15 @@ export function AgentView({
     !liveTail.some((b) => b.type !== 'compaction') &&
     !visibleQuotaWait
 
+  // A jump just made; the next press steps on from its target.
+  const pendingJumpRef = useRef<{ id: string; until: number } | null>(null)
+  const olderJumpRef = useRef<OlderPromptJob | null>(null)
+
   const handleLoadOlderTopTrigger = useCallback(() => {
+    // A prompt jump owns the scroll position until it lands: revealing or
+    // loading turns above it now would restore the view out from under it.
+    const jump = pendingJumpRef.current
+    if (olderJumpRef.current || (jump && performance.now() < jump.until)) return
     onLoadOlderTopRef.current()
   }, [])
 
@@ -629,24 +655,99 @@ export function AgentView({
   }, [blocks.length, renderedTurnCount, scrollRef, attachedRef])
 
   // ── Prompt navigation ──────────────────────────────────────────────────────
-  // A smooth jump still scrolling; the next press steps on from its target.
-  const pendingJumpRef = useRef<{ id: string; until: number } | null>(null)
-
   const scrollPromptIntoView = useCallback((prompt: HTMLElement) => {
     const root = scrollRef.current
     if (!root) return
-    const top = prompt.getBoundingClientRect().top - root.getBoundingClientRect().top
-    const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    const view = root.getBoundingClientRect()
+    const distance = prompt.getBoundingClientRect().top - view.top - PROMPT_JUMP_MARGIN
+    // Past a couple of screens a smooth scroll only paints the turns in between.
+    const smooth = Math.abs(distance) <= 2 * view.height && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     attachedRef.current = false
-    root.scrollTo({ top: root.scrollTop + top - PROMPT_JUMP_MARGIN, behavior: smooth ? 'smooth' : 'auto' })
-    pendingJumpRef.current = smooth && prompt.dataset.promptId
+    root.scrollTo({ top: root.scrollTop + distance, behavior: smooth ? 'smooth' : 'auto' })
+    pendingJumpRef.current = prompt.dataset.promptId
       ? { id: prompt.dataset.promptId, until: performance.now() + PROMPT_JUMP_MS }
       : null
   }, [attachedRef, scrollRef])
 
+  /**
+   * Previous prompt when none is rendered above: find it in the loaded turns,
+   * else load pages until one holds it, then render only down to it and jump
+   * (see the layout effect below).
+   */
+  const requestOlderPrompt = useCallback(() => {
+    const pending = olderJumpRef.current
+    if (pending) {
+      pending.jump = true
+      return
+    }
+    const root = scrollRef.current
+    if (!root) return
+    const target = previousPromptTurn(turnItems, hiddenTurnCount)
+    if (target < 0 && !useAgentStore.getState().hasMore) {
+      // No earlier prompt at all: show whatever earlier turns remain.
+      onLoadOlderTopRef.current()
+      return
+    }
+    const anchor = root.querySelector<HTMLElement>('[data-block-id]')
+    const job: OlderPromptJob = {
+      sessionId,
+      anchorId: anchor?.dataset.blockId ?? null,
+      anchorTop: anchor ? contentTop(root, anchor) : 0,
+      jump: true,
+    }
+    olderJumpRef.current = job
+    // By the next frame every commit the job asked for has run.
+    const settle = () => requestAnimationFrame(() => {
+      if (olderJumpRef.current === job) olderJumpRef.current = null
+    })
+    if (target >= 0) {
+      setRenderedTurnCount((count) => Math.max(count, turnItems.length - target))
+      settle()
+      return
+    }
+    void useAgentStore.getState().loadOlderUntilPrompt().catch(() => false).then(settle)
+  }, [hiddenTurnCount, scrollRef, sessionId, turnItems])
+
+  // The turns a press asked for have rendered: hold the view where it was,
+  // then jump. Before paint, so neither the shift nor the reveal flashes.
+  useLayoutEffect(() => {
+    const job = olderJumpRef.current
+    const root = scrollRef.current
+    if (!job || !root) return
+    if (job.sessionId !== sessionId) {
+      olderJumpRef.current = null
+      return
+    }
+    const anchor = job.anchorId === null ? undefined : blockElement(root, job.anchorId)
+    if (anchor) {
+      const top = contentTop(root, anchor)
+      if (top !== job.anchorTop) root.scrollTop += top - job.anchorTop
+      job.anchorTop = top
+    }
+    if (!job.jump || job.anchorId === null) return
+    const target = previousPromptTurn(turnItems, turnIndexOfBlock(turnItems, job.anchorId))
+    if (target < 0) return
+    if (target < hiddenTurnCount) {
+      setRenderedTurnCount(turnItems.length - target)
+      return
+    }
+    const item = turnItems[target]
+    const id = item.kind === 'user' ? item.block.id : undefined
+    const prompt = promptElements(root).find((el) => el.dataset.promptId === id)
+    if (!prompt) return
+    olderJumpRef.current = null
+    scrollPromptIntoView(prompt)
+  }, [hiddenTurnCount, scrollPromptIntoView, scrollRef, sessionId, turnItems])
+
+  // Scrolling by hand while earlier turns load means the reader went elsewhere.
+  const cancelOlderJump = useCallback(() => {
+    if (olderJumpRef.current) olderJumpRef.current.jump = false
+  }, [])
+
   const jumpToPrompt = useCallback((direction: -1 | 1) => {
     const root = scrollRef.current
     if (!root) return
+    if (direction > 0) cancelOlderJump()
     const rootTop = root.getBoundingClientRect().top
     const prompts = promptElements(root)
     const pending = pendingJumpRef.current
@@ -663,8 +764,8 @@ export function AgentView({
     pendingJumpRef.current = null
     // Past the newest prompt is the live end; before the oldest, earlier turns.
     if (direction > 0) scrollToBottom('smooth')
-    else onLoadOlderTopRef.current()
-  }, [scrollPromptIntoView, scrollRef, scrollToBottom])
+    else requestOlderPrompt()
+  }, [cancelOlderJump, requestOlderPrompt, scrollPromptIntoView, scrollRef, scrollToBottom])
 
   const { os } = getPlatform()
   useHotkeys(
@@ -727,7 +828,7 @@ export function AgentView({
       />
     )}
     <div className="group/transcript relative flex min-h-0 flex-1 flex-col">
-    <div ref={scrollRef} className="oa-chat-scroll flex-1 overflow-y-auto">
+    <div ref={scrollRef} onWheel={cancelOlderJump} onTouchMove={cancelOlderJump} className="oa-chat-scroll flex-1 overflow-y-auto">
       <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
         {isEmpty && (
            emptyState ?? (
@@ -771,6 +872,7 @@ export function AgentView({
                    return (
                      <div
                        key={item.block.id}
+                       data-block-id={item.block.id}
                        data-find-block={isTranscriptFindableBlock(item.block.type) ? item.block.id : undefined}
                       data-prompt-id={isDirectUserBlock(item.block) ? item.block.id : undefined}
                      >
@@ -812,6 +914,7 @@ export function AgentView({
                      showModel={modelChangeStarts.has(item.startIndex)}
                       renderBlock={({ block, isStreaming }) => (
                        <div
+                         data-block-id={block.id}
                          data-find-block={isTranscriptFindableBlock(block.type) ? block.id : undefined}
                        >
                          <BlockRenderer

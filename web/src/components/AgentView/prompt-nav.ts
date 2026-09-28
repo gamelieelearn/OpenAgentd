@@ -1,16 +1,40 @@
 /**
- * Prompt navigation over the rendered transcript: which prompt a
- * previous/next jump lands on.
+ * Prompt navigation: which prompt a previous/next jump lands on, over the
+ * rendered transcript, and over the loaded turns when it is not rendered.
  *
  * Positions are prompt tops in px from the transcript's top edge, in
  * transcript order, so the rules stay testable without layout.
  */
+import type { ContentBlock } from '@/api/types'
+import type { TurnItem } from '@/utils/turns'
 
 /** Where a prompt lands, below the transcript's top edge, after a jump. */
 export const PROMPT_JUMP_MARGIN = 12
 
 /** Slack for sub-pixel layout, so a prompt already on the line counts as there. */
 const EPSILON = 2
+
+/** A prompt the user wrote, not an agent's report. */
+export function isDirectUserBlock(block: ContentBlock): boolean {
+  return block.type === 'user' && !block.extra?.from_agent
+}
+
+/**
+ * The turn holding block ``id``; -1 when it is not loaded. By block rather
+ * than by turn, because an older page can end inside a turn and merge into it.
+ */
+export function turnIndexOfBlock(items: readonly TurnItem[], id: string): number {
+  return items.findIndex((item) => (item.kind === 'user' ? item.block.id === id : item.blocks.some((b) => b.id === id)))
+}
+
+/** The nearest turn before ``before`` that is a prompt the user wrote; -1 when none is loaded. */
+export function previousPromptTurn(items: readonly TurnItem[], before: number): number {
+  for (let i = Math.min(before, items.length) - 1; i >= 0; i--) {
+    const item = items[i]
+    if (item.kind === 'user' && isDirectUserBlock(item.block)) return i
+  }
+  return -1
+}
 
 /** Rendered prompts the user wrote, in transcript order. */
 export function promptElements(root: HTMLElement): HTMLElement[] {

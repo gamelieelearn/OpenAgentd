@@ -90,3 +90,181 @@ describe('AgentView — prompt navigation', () => {
     expect(lastTop(scrollTo)).toBe(landing(500))
   })
 })
+
+/**
+ * Previous past the oldest rendered prompt. Prompts sit at the tops in
+ * ``TOPS`` (px below the scroller's top) whenever they are rendered, and any
+ * prompt not listed sits far below the view.
+ */
+describe('AgentView — previous prompt that is not loaded yet', () => {
+  let TOPS: Record<string, number> = {}
+  const originalRect = HTMLElement.prototype.getBoundingClientRect
+  const { loadOlderMessages, loadOlderUntilPrompt } = useAgentStore.getState()
+
+  function rect(top: number, height: number): DOMRect {
+    return { top, bottom: top + height, left: 0, right: 800, width: 800, height, x: 0, y: top, toJSON: () => ({}) } as DOMRect
+  }
+
+  beforeEach(() => {
+    TOPS = {}
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      if (this.classList.contains('oa-chat-scroll')) return rect(0, 600)
+      const id = this.dataset.promptId
+      if (id === undefined) return rect(0, 0)
+      return rect(TOPS[id] ?? 5_000, 40)
+    }
+  })
+
+  afterEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = originalRect
+    useAgentStore.setState({ hasMore: false, loadOlderMessages, loadOlderUntilPrompt })
+  })
+
+  const turn = (id: string): ContentBlock[] => [
+    { id, type: 'user', content: `prompt ${id}` },
+    { id: `${id}:a`, type: 'text', content: `answer ${id}` },
+  ]
+
+  function scroller(container: HTMLElement) {
+    const el = container.querySelector<HTMLElement>('.oa-chat-scroll')!
+    const scrollTo = mock((..._args: unknown[]) => {})
+    el.scrollTo = scrollTo as unknown as typeof el.scrollTo
+    // A transcript taller than its view, so the reader can scroll away from the end.
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => 20_000 })
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => 600 })
+    return { el, scrollTo }
+  }
+
+  function pressPrevious() {
+    fireEvent.keyDown(document, { key: 'ArrowUp', ctrlKey: true, altKey: true })
+  }
+
+  /** A scroll near the top, which on its own reveals or loads earlier turns. */
+  function scrollNearTop(el: HTMLElement) {
+    el.scrollTop = 100
+    act(() => {
+      fireEvent.scroll(el)
+    })
+  }
+
+  it('reveals only the earlier turns down to the nearest prompt, then lands on it', () => {
+    // 50 prompts are 100 turn items; the first 80 rendered leave p0–p9 hidden.
+    const blocks = Array.from({ length: 50 }, (_, i) => turn(`p${i}`)).flat()
+    TOPS = { p9: -300, p10: PROMPT_JUMP_MARGIN }
+    const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    const { el, scrollTo } = scroller(container)
+    expect(container.querySelector('[data-prompt-id="p9"]')).toBeNull()
+
+    pressPrevious()
+
+    expect(container.querySelector('[data-prompt-id="p9"]')).not.toBeNull()
+    expect(container.querySelector('[data-prompt-id="p8"]')).toBeNull()
+    expect(lastTop(scrollTo)).toBe(el.scrollTop - 300 - PROMPT_JUMP_MARGIN)
+  })
+
+  it('leaves the scroll-top reveal alone while the jump lands', () => {
+    const blocks = Array.from({ length: 50 }, (_, i) => turn(`p${i}`)).flat()
+    TOPS = { p9: -300, p10: PROMPT_JUMP_MARGIN }
+    const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    const { el } = scroller(container)
+
+    pressPrevious()
+    scrollNearTop(el)
+
+    // Revealing a whole step of turns mid-jump would move the view under it.
+    expect(container.querySelector('[data-prompt-id="p8"]')).toBeNull()
+  })
+
+  it('loads earlier pages in one call, then lands on the newest prompt among them', async () => {
+    TOPS = { u1: PROMPT_JUMP_MARGIN, older: -700 }
+    const view = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
+    const { el, scrollTo } = scroller(view.container)
+    // The store walks pages until one holds a prompt: here a prompt-less page
+    // (the rest of a long answer) and then the page with the prompt.
+    const older: ContentBlock[] = [...turn('older'), { id: 'older:a2', type: 'text', content: 'the rest of a long answer' }]
+    const loadOlderUntilPrompt = mock(async () => {
+      view.rerender(<AgentView blocks={[...older, ...BLOCKS]} currentBlocks={[]} isWorking={false} />)
+      useAgentStore.setState({ hasMore: false })
+      return true
+    })
+    const loadOlderPage = mock(async () => {})
+    useAgentStore.setState({ hasMore: true, loadOlderUntilPrompt, loadOlderMessages: loadOlderPage })
+
+    await act(async () => { pressPrevious() })
+
+    expect(loadOlderUntilPrompt).toHaveBeenCalledTimes(1)
+    expect(loadOlderPage).not.toHaveBeenCalled()
+    expect(lastTop(scrollTo)).toBe(el.scrollTop - 700 - PROMPT_JUMP_MARGIN)
+  })
+
+  it('reveals and lands on a prompt the page put outside the rendered turns', async () => {
+    // 40 prompts are 80 turn items, all rendered; the page lands above them, hidden.
+    const blocks = Array.from({ length: 40 }, (_, i) => turn(`q${i}`)).flat()
+    TOPS = { q0: PROMPT_JUMP_MARGIN, older: -400 }
+    const view = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    const { el, scrollTo } = scroller(view.container)
+    const loadOlderUntilPrompt = mock(async () => {
+      view.rerender(<AgentView blocks={[...turn('older'), ...blocks]} currentBlocks={[]} isWorking={false} />)
+      return true
+    })
+    useAgentStore.setState({ hasMore: true, loadOlderUntilPrompt })
+
+    await act(async () => { pressPrevious() })
+
+    expect(view.container.querySelector('[data-prompt-id="older"]')).not.toBeNull()
+    expect(lastTop(scrollTo)).toBe(el.scrollTop - 400 - PROMPT_JUMP_MARGIN)
+  })
+
+  it('gives up when no prompt arrives, rather than retrying', async () => {
+    TOPS = { u1: PROMPT_JUMP_MARGIN }
+    const { container } = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
+    const { scrollTo } = scroller(container)
+    const loadOlderUntilPrompt = mock(async () => false)
+    useAgentStore.setState({ hasMore: true, loadOlderUntilPrompt })
+
+    await act(async () => { pressPrevious() })
+    await act(async () => {})
+
+    expect(loadOlderUntilPrompt).toHaveBeenCalledTimes(1)
+    expect(scrollTo).not.toHaveBeenCalled()
+  })
+
+  it('holds the view as the page lands, and drops the jump when the reader scrolls by hand', async () => {
+    TOPS = { u1: PROMPT_JUMP_MARGIN, older: -400 }
+    const view = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
+    const { el, scrollTo } = scroller(view.container)
+    let finish = () => {}
+    const loadOlderUntilPrompt = mock(() => new Promise<boolean>((resolve) => {
+      finish = () => {
+        // The page pushes the first prompt 900px down.
+        TOPS = { ...TOPS, u1: PROMPT_JUMP_MARGIN + 900 }
+        view.rerender(<AgentView blocks={[...turn('older'), ...BLOCKS]} currentBlocks={[]} isWorking={false} />)
+        resolve(true)
+      }
+    }))
+    useAgentStore.setState({ hasMore: true, loadOlderUntilPrompt })
+    el.scrollTop = 2_000
+
+    act(() => pressPrevious())
+    fireEvent.wheel(el, { deltaY: -120 })
+    await act(async () => { finish() })
+
+    expect(loadOlderUntilPrompt).toHaveBeenCalledTimes(1)
+    expect(el.scrollTop).toBe(2_900)
+    expect(scrollTo).not.toHaveBeenCalled()
+  })
+
+  it('leaves the scroll-top load alone while the page loads', async () => {
+    TOPS = { u1: PROMPT_JUMP_MARGIN }
+    const { container } = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
+    const { el } = scroller(container)
+    const loadOlderUntilPrompt = mock(() => new Promise<boolean>(() => {}))
+    const loadOlderPage = mock(async () => {})
+    useAgentStore.setState({ hasMore: true, loadOlderUntilPrompt, loadOlderMessages: loadOlderPage })
+
+    act(() => pressPrevious())
+    scrollNearTop(el)
+
+    expect(loadOlderPage).not.toHaveBeenCalled()
+  })
+})
