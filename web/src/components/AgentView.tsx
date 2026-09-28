@@ -56,14 +56,21 @@ const TURN_RENDER_STEP = 80
 const PROMPT_JUMP_MS = 700
 
 /**
- * A previous-prompt press past the oldest rendered prompt, waiting for the
- * turns it needs to render or load.
+ * Earlier turns on their way in above the view, revealed or loaded. The view
+ * holds still by the first rendered block's top in content px until every
+ * reveal or load that asked for them has settled. There is one hold, shared,
+ * since two would each add the height that landed.
  */
-interface OlderPromptJob {
+interface ViewHold {
   sessionId: string | undefined
-  /** The first rendered block, and its top in content px, so the view can hold still as turns land above it. */
   anchorId: string | null
   anchorTop: number
+  /** Reveals and loads still settling. */
+  pending: number
+}
+
+/** A previous-prompt press past the oldest rendered prompt, waiting on a hold to land it. */
+interface OlderPromptJob {
   /** Jump once the prompt renders; scrolling by hand or ↓ clears it. */
   jump: boolean
 }
@@ -424,11 +431,9 @@ export function AgentView({
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
   const sessionInteractionMode = useAgentStore((s) => s.sessionInteractionMode)
-  const prevScrollHeightRef = useRef<number | null>(null)
   const loadingOlderRef = useRef(false)
   const hiddenTurnCountRef = useRef(0)
   const showEarlierTurnsRef = useRef<() => void>(() => {})
-  const pendingRestoreRef = useRef(false)
   const onLoadOlderTopRef = useRef<() => void>(() => {})
 
   // The store puts the prompt back in the composer via ``pendingDraft``.
@@ -565,6 +570,7 @@ export function AgentView({
   // A jump just made; the next press steps on from its target.
   const pendingJumpRef = useRef<{ id: string; until: number } | null>(null)
   const olderJumpRef = useRef<OlderPromptJob | null>(null)
+  const viewHoldRef = useRef<ViewHold | null>(null)
 
   const handleLoadOlderTopTrigger = useCallback(() => {
     // A prompt jump owns the scroll position until it lands: revealing or
@@ -613,28 +619,47 @@ export function AgentView({
     return () => useTranscriptFollowStore.setState({ jumpToLatest: null, unseen: null })
   }, [jumpToLatestInComposer, scrollToBottom])
 
-  const showEarlierTurns = useCallback(() => {
-    const el = scrollRef.current
-    if (el) {
-      prevScrollHeightRef.current = el.scrollHeight
-      pendingRestoreRef.current = true
+  /** Hold the view while earlier turns land above it; call the release once they have. */
+  const holdView = useCallback(() => {
+    const root = scrollRef.current
+    let hold = viewHoldRef.current
+    if (!hold) {
+      const anchor = root?.querySelector<HTMLElement>('[data-block-id]')
+      hold = {
+        sessionId,
+        anchorId: anchor?.dataset.blockId ?? null,
+        anchorTop: root && anchor ? contentTop(root, anchor) : 0,
+        pending: 0,
+      }
+      viewHoldRef.current = hold
     }
+    hold.pending += 1
+    const held = hold
+    // By the next frame every commit the reveal or load caused has run.
+    return () => requestAnimationFrame(() => {
+      held.pending -= 1
+      if (held.pending === 0 && viewHoldRef.current === held) viewHoldRef.current = null
+    })
+  }, [scrollRef, sessionId])
+
+  const showEarlierTurns = useCallback(() => {
+    const release = holdView()
     setRenderedTurnCount((count) => Math.min(turnItems.length, count + TURN_RENDER_STEP))
-  }, [scrollRef, turnItems.length])
+    release()
+  }, [holdView, turnItems.length])
 
   const handleLoadOlderTop = useCallback(() => {
     if (hiddenTurnCountRef.current > 0) {
       showEarlierTurns()
     } else if (useAgentStore.getState().hasMore && !loadingOlderRef.current) {
       loadingOlderRef.current = true
-      const el = scrollRef.current
-      if (el) prevScrollHeightRef.current = el.scrollHeight
-      pendingRestoreRef.current = true
+      const release = holdView()
       void useAgentStore.getState().loadOlderMessages().finally(() => {
         loadingOlderRef.current = false
+        release()
       })
     }
-  }, [scrollRef, showEarlierTurns])
+  }, [holdView, showEarlierTurns])
 
   // Keep the refs in sync so callbacks/listeners always see
   // the latest values without needing to re-register listeners.
@@ -643,16 +668,6 @@ export function AgentView({
     hiddenTurnCountRef.current = hiddenTurnCount
     showEarlierTurnsRef.current = showEarlierTurns
   })
-
-  // Restore scroll position after older messages are prepended.
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el || !pendingRestoreRef.current || prevScrollHeightRef.current === null) return
-    pendingRestoreRef.current = false
-    attachedRef.current = false
-    el.scrollTop = el.scrollHeight - prevScrollHeightRef.current
-    prevScrollHeightRef.current = null
-  }, [blocks.length, renderedTurnCount, scrollRef, attachedRef])
 
   // ── Prompt navigation ──────────────────────────────────────────────────────
   const scrollPromptIntoView = useCallback((prompt: HTMLElement) => {
@@ -680,52 +695,48 @@ export function AgentView({
       pending.jump = true
       return
     }
-    const root = scrollRef.current
-    if (!root) return
     const target = previousPromptTurn(turnItems, hiddenTurnCount)
     if (target < 0 && !useAgentStore.getState().hasMore) {
       // No earlier prompt at all: show whatever earlier turns remain.
       onLoadOlderTopRef.current()
       return
     }
-    const anchor = root.querySelector<HTMLElement>('[data-block-id]')
-    const job: OlderPromptJob = {
-      sessionId,
-      anchorId: anchor?.dataset.blockId ?? null,
-      anchorTop: anchor ? contentTop(root, anchor) : 0,
-      jump: true,
-    }
+    const job: OlderPromptJob = { jump: true }
     olderJumpRef.current = job
-    // By the next frame every commit the job asked for has run.
-    const settle = () => requestAnimationFrame(() => {
-      if (olderJumpRef.current === job) olderJumpRef.current = null
-    })
+    const release = holdView()
+    const settle = () => {
+      release()
+      requestAnimationFrame(() => {
+        if (olderJumpRef.current === job) olderJumpRef.current = null
+      })
+    }
     if (target >= 0) {
       setRenderedTurnCount((count) => Math.max(count, turnItems.length - target))
       settle()
       return
     }
     void useAgentStore.getState().loadOlderUntilPrompt().catch(() => false).then(settle)
-  }, [hiddenTurnCount, scrollRef, sessionId, turnItems])
+  }, [hiddenTurnCount, holdView, turnItems])
 
-  // The turns a press asked for have rendered: hold the view where it was,
-  // then jump. Before paint, so neither the shift nor the reveal flashes.
+  // Earlier turns landed: hold the view where it was, then make a pending
+  // ⌥⌘↑ jump. Before paint, so neither the shift nor the reveal flashes.
   useLayoutEffect(() => {
-    const job = olderJumpRef.current
+    const hold = viewHoldRef.current
     const root = scrollRef.current
-    if (!job || !root) return
-    if (job.sessionId !== sessionId) {
+    if (!hold || !root) return
+    if (hold.sessionId !== sessionId) {
+      viewHoldRef.current = null
       olderJumpRef.current = null
       return
     }
-    const anchor = job.anchorId === null ? undefined : blockElement(root, job.anchorId)
+    const anchor = hold.anchorId === null ? undefined : blockElement(root, hold.anchorId)
     if (anchor) {
       const top = contentTop(root, anchor)
-      if (top !== job.anchorTop) root.scrollTop += top - job.anchorTop
-      job.anchorTop = top
+      if (top !== hold.anchorTop) root.scrollTop += top - hold.anchorTop
+      hold.anchorTop = top
     }
-    if (!job.jump || job.anchorId === null) return
-    const target = previousPromptTurn(turnItems, turnIndexOfBlock(turnItems, job.anchorId))
+    if (!olderJumpRef.current?.jump || hold.anchorId === null) return
+    const target = previousPromptTurn(turnItems, turnIndexOfBlock(turnItems, hold.anchorId))
     if (target < 0) return
     if (target < hiddenTurnCount) {
       setRenderedTurnCount(turnItems.length - target)

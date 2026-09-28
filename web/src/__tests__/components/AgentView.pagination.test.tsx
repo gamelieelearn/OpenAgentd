@@ -10,8 +10,8 @@
  * NOTE: mock.module must appear before any store import (Bun module registry).
  */
 
-import { afterEach, describe, expect, it, mock } from "bun:test"
-import { act, cleanup, render } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import type { ContentBlock } from "@/api/types"
 
 // ── Store mock ────────────────────────────────────────────────────────────────
@@ -234,5 +234,71 @@ describe("AgentView — scroll-to-top pagination", () => {
     // The scroll-to-bottom button should be visible — user is mid-page, NOT snapped to bottom
     const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
     expect(btn).not.toBeNull()
+  })
+})
+
+/**
+ * Earlier turns landing above the view. Every block is 100px tall and they
+ * stack in DOM order, so turns landing above push the ones below down.
+ */
+describe("AgentView — earlier turns landing above the view", () => {
+  const originalRect = HTMLElement.prototype.getBoundingClientRect
+
+  function rect(top: number, height: number): DOMRect {
+    return { top, bottom: top + height, left: 0, right: 800, width: 800, height, x: 0, y: top, toJSON: () => ({}) } as DOMRect
+  }
+
+  beforeEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const scroller = this.closest<HTMLElement>(".oa-chat-scroll")
+      if (this === scroller) return rect(0, 500)
+      if (!scroller || this.dataset.blockId === undefined) return rect(0, 0)
+      const index = [...scroller.querySelectorAll("[data-block-id]")].indexOf(this)
+      return rect(index * 100 - scroller.scrollTop, 100)
+    }
+  })
+
+  afterEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = originalRect
+    mockLoadOlderMessages.mockImplementation(() => Promise.resolve())
+  })
+
+  /** The reader scrolled up by hand to ``scrollTop``. */
+  async function readAt(el: HTMLDivElement, scrollTop: number) {
+    setScrollProps(el, { scrollTop: 1500, scrollHeight: 5000, clientHeight: 500 })
+    await act(async () => {
+      el.dispatchEvent(new WheelEvent("wheel", { deltaY: -10, bubbles: true }))
+    })
+    await scrollTo(el, scrollTop)
+  }
+
+  it("keeps the view where the reader was when a page loads at the top", async () => {
+    storeState.hasMore = true
+    storeState.nextCursor = "cursor-1"
+    const blocks = makeTurns(3)
+    const { container, rerender } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    const el = getScrollEl(container)
+    // Two older turns are four blocks: 400px above what the reader sees.
+    mockLoadOlderMessages.mockImplementation(async () => {
+      rerender(<AgentView blocks={[...makeTurns(2, "old-"), ...blocks]} currentBlocks={[]} isWorking={false} />)
+    })
+
+    await readAt(el, 150)
+
+    expect(mockLoadOlderMessages).toHaveBeenCalledTimes(1)
+    expect(el.scrollTop).toBe(550)
+  })
+
+  it("keeps the view where the reader was when they show earlier turns", async () => {
+    // 45 turns are 90 items; the 80 rendered leave 10 items (10 blocks) hidden.
+    const { container } = render(<AgentView blocks={makeTurns(45)} currentBlocks={[]} isWorking={false} />)
+    const el = getScrollEl(container)
+    await readAt(el, 400)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Show 10 earlier turns" }))
+    })
+
+    expect(el.scrollTop).toBe(1400)
   })
 })
