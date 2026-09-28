@@ -184,10 +184,11 @@ function Dropdown({
     }
   }, [panelMounted, reposition])
 
-  // Outside click closes
+  // A click or focus outside closes: focus covers what a click cannot, such
+  // as a shortcut that opens a dialog, which takes focus, under the open menu.
   useEffect(() => {
     if (!open) return
-    const handler = (e: MouseEvent) => {
+    const handler = (e: Event) => {
       if (
         panelRef.current?.contains(e.target as Node) ||
         triggerRef.current?.contains(e.target as Node)
@@ -195,7 +196,11 @@ function Dropdown({
       setOpen(false)
     }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('focusin', handler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('focusin', handler)
+    }
   }, [open])
 
   // Escape closes
