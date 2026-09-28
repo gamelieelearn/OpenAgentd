@@ -814,9 +814,7 @@ export function AgentView({
       </div>
     )}
     <div ref={scrollRef} className="oa-chat-scroll flex-1 overflow-y-auto">
-      {/* The bottom padding includes ``--composer-clearance``, published by
-          the floating composer, so the newest reply scrolls clear of it. */}
-      <div ref={contentRef} className="mx-auto max-w-3xl px-3 pt-5 pb-[calc(var(--composer-clearance,0px)+1.25rem)] sm:px-4 sm:pt-6 sm:pb-[calc(var(--composer-clearance,0px)+1.5rem)]">
+      <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
         {isEmpty && (
            emptyState ?? (
              // Same weight as every other blank state (see `EmptyState`); the
@@ -965,9 +963,8 @@ export function AgentView({
         <button
           onClick={() => scrollToBottom('smooth')}
           // Centred by margin rather than a percentage translate (DESIGN.md:
-          // no transform-based layout) and lifted above the floating
-          // composer's clearance.
-          className="absolute inset-x-0 bottom-[max(4rem,calc(var(--composer-clearance,0px)+0.75rem))] z-10 mx-auto flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 motion-reduce:active:scale-100"
+          // no transform-based layout).
+          className="absolute inset-x-0 bottom-16 z-10 mx-auto flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 motion-reduce:active:scale-100"
           aria-label="Scroll to bottom"
         >
           <ChevronDown size={14} />

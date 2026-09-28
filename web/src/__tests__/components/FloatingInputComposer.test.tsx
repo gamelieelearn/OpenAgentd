@@ -472,10 +472,11 @@ describe('FloatingInputComposer — orientation change: portrait-mobile → land
   })
 })
 
-describe('FloatingInputComposer — transcript clearance', () => {
+describe('FloatingInputComposer — jump chip side', () => {
   const originalRect = HTMLElement.prototype.getBoundingClientRect
 
   beforeEach(() => {
+    useTranscriptFollowStore.setState({ unseen: 2, jumpToLatest: () => {} })
     // Happy DOM has no layout: give the bounds and the floating panel sizes.
     HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
       const height = this.dataset.testid === 'bounds'
@@ -488,32 +489,23 @@ describe('FloatingInputComposer — transcript clearance', () => {
     HTMLElement.prototype.getBoundingClientRect = originalRect
   })
 
-  const clearance = () => screen.getByTestId('bounds').style.getPropertyValue('--composer-clearance')
+  const chipSide = () => screen.getByRole('button', { name: 'Jump to latest, 2 new' }).dataset.side
 
-  it('reserves the bar height below the transcript at the docked position', () => {
+  it('keeps the chip above a docked bar', () => {
     render(<Harness />)
-    // 16px dock gap + 100px panel + 8px drag-handle overhang.
-    expect(clearance()).toBe('124px')
+    expect(chipSide()).toBe('above')
   })
 
-  it('reserves nothing once the bar is dragged up clear of the bottom', () => {
-    // Still in the lower half: the transcript runs to the bottom and the
-    // last lines show under the raised bar instead of leaving a 200px gap.
+  it('keeps the chip above a bar raised within the lower half', () => {
+    // 16px dock gap + 200px raise + 100px panel + 8px grip = 324px < 400px.
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: 0, y: -200 }))
     render(<Harness />)
-    expect(clearance()).toBe('0px')
+    expect(chipSide()).toBe('above')
   })
 
-  it('keeps reserving while the bar is only nudged off its dock', () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: 0, y: -40 }))
+  it('moves the chip below a bar dragged into the upper half', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: 0, y: -500 }))
     render(<Harness />)
-    // 16px dock gap + 40px raise + 100px panel + 8px drag-handle overhang.
-    expect(clearance()).toBe('164px')
-  })
-
-  it('reserves nothing on mobile, where the bar sits in the layout flow', () => {
-    mockIsMobile = true
-    render(<Harness />)
-    expect(clearance()).toBe('')
+    expect(chipSide()).toBe('below')
   })
 })

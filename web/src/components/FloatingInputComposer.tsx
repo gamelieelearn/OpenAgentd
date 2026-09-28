@@ -93,23 +93,20 @@ function clampOffset(offset: StoredOffset, panel: Size, bounds: Size): StoredOff
   }
 }
 
-// ── Transcript clearance ─────────────────────────────────────────────────────
+// ── Jump chip side ───────────────────────────────────────────────────────────
 
 const COMPOSER_BOTTOM_GAP = 16 // the wrapper's ``bottom-4``
 const DRAG_HANDLE_OVERHANG = 8 // the grip sits half above the panel
-const FLOAT_RAISE = 48 // about two transcript lines of room under the bar
 
 /**
- * Space the transcript keeps free at its bottom so the newest reply scrolls
- * clear of the floating bar. Derived from the stored offset rather than a live
- * rect, because framer is still springing towards a new offset when it
- * changes. A bar raised more than a couple of lines floats: the transcript runs
- * to the bottom and its last lines show under the bar, because reserving the
- * whole raised band leaves that much empty space below the last message.
+ * Whether the bar's top (grip included) sits in the upper half of the pane,
+ * where the jump chip moves below it. Derived from the stored offset rather
+ * than a live rect, because framer is still springing towards a new offset
+ * when it changes.
  */
-function composerClearance(panelHeight: number, offsetY: number): number {
-  if (panelHeight <= 0 || -offsetY > FLOAT_RAISE) return 0
-  return Math.round(COMPOSER_BOTTOM_GAP + panelHeight - offsetY + DRAG_HANDLE_OVERHANG)
+function isInUpperHalf(panelHeight: number, offsetY: number, boundsHeight: number): boolean {
+  if (panelHeight <= 0) return false
+  return COMPOSER_BOTTOM_GAP + panelHeight - offsetY + DRAG_HANDLE_OVERHANG > boundsHeight / 2
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -478,29 +475,26 @@ export const FloatingInputComposer = memo(
       }
     }, [isMobile, boundsRef, clampToVisibleBounds])
 
-    // Publish the clearance on the bounds element; the transcript inside it
-    // pads its bottom by ``--composer-clearance``.
     useEffect(() => {
       if (isMobile) return // the mobile bar sits in the layout flow
       const bounds = boundsRef.current
       const panel = panelRef.current
       if (!bounds || !panel) return
       const update = () => {
-        const panelHeight = panel.getBoundingClientRect().height
-        const px = composerClearance(panelHeight, offset.y)
-        bounds.style.setProperty('--composer-clearance', `${px}px`)
-        setJumpChipBelow(panelHeight > 0 && px === 0)
+        setJumpChipBelow(isInUpperHalf(
+          panel.getBoundingClientRect().height,
+          offset.y,
+          bounds.getBoundingClientRect().height,
+        ))
       }
       update()
       let resizeObserver: ResizeObserver | null = null
       if (typeof ResizeObserver !== 'undefined') {
         resizeObserver = new ResizeObserver(update)
+        resizeObserver.observe(bounds)
         resizeObserver.observe(panel)
       }
-      return () => {
-        resizeObserver?.disconnect()
-        bounds.style.removeProperty('--composer-clearance')
-      }
+      return () => resizeObserver?.disconnect()
     }, [isMobile, boundsRef, offset.y])
 
     const handleDragEnd = useCallback(
