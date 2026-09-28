@@ -177,10 +177,13 @@ impl Hook for StreamPublisherHook {
         let Some(choice) = chunk.choices.first() else {
             return;
         };
-        let metadata = match display_model.filter(|m| !m.is_empty()) {
-            Some(m) => json!({"model": m}),
-            None => json!({}),
-        };
+        let mut metadata = json!({});
+        if let Some(m) = display_model.filter(|m| !m.is_empty()) {
+            metadata["model"] = json!(m);
+        }
+        if let Some(t) = state.meta_str("thinking_level") {
+            metadata["thinking_level"] = json!(t);
+        }
         let d = &choice.delta;
         {
             let mut span = self.reasoning_span.lock().unwrap();

@@ -241,6 +241,7 @@ pub async fn spawn_subagent(
     let provider = factory(Some(&effective_model), kw).map_err(|e| SubagentError::General(e.to_string()))?;
     let mut agent = Agent::new(provider, &handle, &system_prompt, member_tools, Some(effective_model.clone()));
     agent.description = cfg.description.clone();
+    agent.thinking_level = effective_thinking.clone();
     let child = AgentSession::new(agent, Some(child_sid.clone()), Some(workspace.to_string()), pool.clone(), factory.clone(), Some(lead.to_string()));
 
     let clean_task = task.split_whitespace().collect::<Vec<_>>().join(" ");

@@ -848,6 +848,9 @@ impl AgentSession {
                 runtime_provider = Some((self.provider_factory)(Some(em), kw).map_err(provider_error_to_agent)?);
             }
         }
+        // A runtime provider carries only the session's level; the agent's
+        // own level applies only to the agent's own provider.
+        let thinking_level = if runtime_provider.is_some() { runtime_thinking.clone() } else { agent.thinking_level.clone() };
         let provider_for_hooks = runtime_provider.clone().unwrap_or_else(|| agent.provider.clone());
         let is_lead = self.parent_session_id.is_none();
 
@@ -896,6 +899,9 @@ impl AgentSession {
         let mut meta = Map::new();
         meta.insert("session_id".into(), json!(sid));
         meta.insert("interaction_mode".into(), json!(interaction));
+        if let Some(t) = thinking_level.filter(|t| !t.is_empty()) {
+            meta.insert("thinking_level".into(), json!(t));
+        }
         if opts.question_resume {
             meta.insert("question_resume".into(), json!(true));
         }

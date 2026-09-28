@@ -31,6 +31,8 @@ pub struct Agent {
     pub description: Option<String>,
     pub provider: Arc<dyn LlmProvider>,
     pub model_id: Option<String>,
+    /// The level `provider` was built with (agent config), if any.
+    pub thinking_level: Option<String>,
     pub system_prompt: String,
     pub tools: ToolSet,
     pub mcp_servers: Vec<String>,
@@ -55,6 +57,7 @@ impl Agent {
             description: None,
             provider,
             model_id,
+            thinking_level: None,
             system_prompt: system_prompt.to_string(),
             tools: set,
             mcp_servers: vec![],
@@ -516,6 +519,10 @@ impl Agent {
             extra.insert("duration_ms".into(), json!(round3(run_start.elapsed().as_secs_f64() * 1000.0)));
             let model_for_msg = effective.clone().or_else(|| active_model.clone());
             extra.insert("model".into(), model_for_msg.clone().map(Value::String).unwrap_or(Value::Null));
+            // Additive v3 key (see REPORT.md §3); v2 readers ignore it.
+            if let Some(t) = state.meta_str("thinking_level") {
+                extra.insert("thinking_level".into(), json!(t));
+            }
             if let Some(u) = &usage {
                 let ud = usage_to_dict(u, model_for_msg.as_deref());
                 extra.insert("usage".into(), ud.clone());

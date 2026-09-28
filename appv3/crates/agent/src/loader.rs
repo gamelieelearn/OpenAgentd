@@ -572,6 +572,7 @@ pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, fa
     };
     let mut agent = Agent::new(provider, &cfg.name, &system_prompt, tools, cfg.model.clone());
     agent.description = cfg.description.clone();
+    agent.thinking_level = cfg.thinking_level.clone().filter(|s| !s.is_empty());
     agent.mcp_servers = cfg.mcp.clone();
     if let Some(sp) = source_path {
         agent.source_path = Some(sp.to_path_buf());
@@ -633,6 +634,17 @@ mod tests {
         assert_eq!(parse_agent_md(&p).unwrap_err(), "Agent file 'code.md' is missing frontmatter block (---\\n...\\n---)");
         std::fs::write(&p, "---\nmodel: openai:x\n---\n").unwrap();
         assert!(validate_canonical_code_profile(&p).is_err());
+    }
+
+    #[test]
+    fn built_agent_knows_its_thinking_level() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("code.md");
+        let factory: ProviderFactory = Arc::new(|_, _| Ok(Arc::new(appv3_providers::mock::MockProvider::new(vec![])) as Arc<dyn LlmProvider>));
+        std::fs::write(&p, "---\nname: code\nmodel: openai:gpt-5\nthinking_level: high\n---\n\nHi\n").unwrap();
+        assert_eq!(rebuild_agent_from_disk(&p, &factory).unwrap().thinking_level.as_deref(), Some("high"));
+        std::fs::write(&p, "---\nname: code\nmodel: openai:gpt-5\n---\n\nHi\n").unwrap();
+        assert_eq!(rebuild_agent_from_disk(&p, &factory).unwrap().thinking_level, None);
     }
 
     #[test]
