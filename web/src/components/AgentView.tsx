@@ -3,7 +3,7 @@
  *
  * Renders a flat ContentBlock[] stream (finalized + live) with:
  * - type:'user'    → yellow user bubble
- * - type:'thinking' → collapsible thinking block
+ * - type:'thinking' → inline thinking trace
  * - type:'tool'    → tool call card
  * - type:'text'    → markdown prose
  *
@@ -265,7 +265,7 @@ interface AgentViewProps {
   jumpToLatestInComposer?: boolean
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, onRestore, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, findHit = false }: {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, onRestore, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen }: {
   block: ContentBlock
   isStreaming: boolean
   sessionId?: string
@@ -278,8 +278,6 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   onSwitchModel?: () => void
   latestMCPAppBlockIds?: Set<string>
   onMentionFileOpen?: (path: string) => void
-  /** Transcript find matched inside this block, so it must be visible. */
-  findHit?: boolean
 }) {
   switch (block.type) {
     case 'user': {
@@ -287,7 +285,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} onRestore={onRestore && !fromAgent ? () => onRestore(block.id) : undefined} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
     }
     case 'thinking':
-      return <Thinking content={block.content} isStreaming={isStreaming} durationMs={block.durationMs} forceOpen={findHit} />
+      return <Thinking content={block.content} isStreaming={isStreaming} />
     case 'compaction': {
       const state = block.extra?.state === 'compacting' ? 'compacting' : 'compacted'
       const error = Boolean(block.extra?.error)
@@ -871,7 +869,6 @@ export function AgentView({
                            onSwitchModel={block.id === endingErrorId ? errorSwitchModel : undefined}
                            latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
                            onMentionFileOpen={onMentionFileOpen}
-                           findHit={findHitBlockIds.has(block.id)}
                          />
                        </div>
                      )}

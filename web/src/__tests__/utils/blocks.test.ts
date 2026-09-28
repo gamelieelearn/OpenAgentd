@@ -139,31 +139,6 @@ describe("mergeBlocks", () => {
 // appendThinking
 // ---------------------------------------------------------------------------
 
-describe("thinking duration", () => {
-  it("stamps when a trace starts and freezes its length when prose follows", () => {
-    const t0 = Date.now()
-    const [thinking] = appendThinking([], "Let me think")
-    expect(thinking.startedAt).toBeGreaterThanOrEqual(t0)
-
-    const started: ContentBlock = { ...thinking, startedAt: t0 - 4_000 }
-    const [closed] = appendText([started], "Answer")
-    expect(closed.durationMs).toBeGreaterThanOrEqual(4_000)
-  })
-
-  it("freezes it when a tool call follows", () => {
-    const started: ContentBlock = { id: "th", type: "thinking", content: "Hmm", startedAt: Date.now() - 2_000 }
-    const [closed] = initTool([started], "read", "call-1")
-    expect(closed.durationMs).toBeGreaterThanOrEqual(2_000)
-  })
-
-  it("keeps growing the trace itself without freezing it", () => {
-    const started: ContentBlock = { id: "th", type: "thinking", content: "Hmm", startedAt: Date.now() - 2_000 }
-    const [grown] = appendThinking([started], ", more")
-    expect(grown.content).toBe("Hmm, more")
-    expect(grown.durationMs).toBeUndefined()
-  })
-})
-
 describe("appendThinking", () => {
   it("creates new thinking block when blocks is empty", () => {
     const result = appendThinking([], "hello");

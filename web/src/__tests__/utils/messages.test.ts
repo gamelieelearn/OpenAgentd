@@ -255,16 +255,6 @@ describe("parseAgentBlocks", () => {
     expect(blocks[0].usage).toEqual({ outputTokens: 40, costUsd: 0 });
   });
 
-  it("gives a persisted trace the time the model spent thinking", () => {
-    const blocks = parseAgentBlocks([makeMsg({
-      role: "assistant",
-      content: "answer",
-      reasoning_content: "thinking",
-      extra: { duration_ms: 9000, thinking_duration_ms: 4200 },
-    })]);
-    expect(blocks.find((b) => b.type === "thinking")?.durationMs).toBe(4200);
-  });
-
   it("derives text/thinking/tool block ids from the message id instead of a random one, so re-parsing the same message is idempotent", () => {
     // A random id per parse (generateBlockId()) meant the *same* persisted
     // message produced a *different* block id on every loadSession()/

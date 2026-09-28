@@ -435,8 +435,6 @@ run from the terminal (the native Rust binary since v3.0.0).
   and spacing together, up to 125%. Smaller settings keep the design size.
 - **A calmer transcript** `[v3.0.0]` — the chat reads as prompts and answers,
   with the work folded away until you want it:
-  - Thinking folds to "Thought for Ns" once done, and streams in a three-line
-    window.
   - Runs of read-only tool calls fold into one row, such as "Explored · 6
     reads, 3 searches". Edits, failures, and shell commands keep their own
     rows, and the agent's own text is never folded.

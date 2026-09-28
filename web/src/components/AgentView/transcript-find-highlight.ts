@@ -41,10 +41,6 @@ function collectTextNodes(root: Node, out: Text[]): void {
   if (root.nodeType !== Node.ELEMENT_NODE) return
   const el = root as Element
   if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') return
-  // Chrome that repeats a block's content (a collapsed row's title) would
-  // otherwise yield more marks than ``collectTranscriptFindMatches`` counts,
-  // and the active index would land on the wrong occurrence.
-  if (el.hasAttribute('data-find-skip')) return
   for (const child of Array.from(root.childNodes)) collectTextNodes(child, out)
 }
 

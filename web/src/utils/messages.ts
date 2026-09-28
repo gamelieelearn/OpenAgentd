@@ -60,14 +60,7 @@ function assistantBlocks(
   const blocks: ContentBlock[] = []
 
   if (msg.reasoning_content) {
-    const thinkingMs = (msg.extra as { thinking_duration_ms?: unknown } | null)?.thinking_duration_ms
-    blocks.push({
-      id: `${msg.id}:thinking`,
-      type: 'thinking',
-      content: msg.reasoning_content,
-      timestamp,
-      durationMs: typeof thinkingMs === 'number' ? thinkingMs : undefined,
-    })
+    blocks.push({ id: `${msg.id}:thinking`, type: 'thinking', content: msg.reasoning_content, timestamp })
   }
 
   const extra = msg.extra as {

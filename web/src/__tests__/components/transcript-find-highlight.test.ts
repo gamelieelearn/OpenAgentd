@@ -42,15 +42,4 @@ describe('applyTranscriptFindHighlight', () => {
     expect(root.querySelector('mark')).toBeNull()
     root.remove()
   })
-
-  it('skips chrome inside a block that repeats its content, e.g. a collapsed row title', () => {
-    const root = mount(
-      '<div data-find-block="th1"><button data-find-skip>Thought: world model</button><p>the world model</p></div>',
-    )
-    applyTranscriptFindHighlight(root, 'world', 0)
-    const marks = [...root.querySelectorAll('mark[data-transcript-find]')]
-    expect(marks).toHaveLength(1)
-    expect(marks[0]?.closest('p')).not.toBeNull()
-    root.remove()
-  })
 })
