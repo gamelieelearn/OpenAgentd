@@ -119,10 +119,10 @@ Use to stub an entire module before the component under test imports it.
 ```ts
 // Stub a child component to capture forwarded props
 let lastProps: Record<string, unknown> = {}
-mock.module('@/utils/LazyMarkdownBlock', () => ({
-  LazyMarkdownBlock: (props: Record<string, unknown>) => {
+mock.module('@/utils/markdown', () => ({
+  MarkdownBlock: (props: Record<string, unknown>) => {
     lastProps = props
-    return <div data-testid="lazy-markdown">{String(props.content ?? '')}</div>
+    return <div data-testid="markdown">{String(props.content ?? '')}</div>
   },
 }))
 
@@ -249,7 +249,7 @@ isStreaming = isWorking && absoluteBlockIndex >= finalizedCount
 
 - A block in `currentBlocks` (not yet flushed) is streaming when `isWorking=true`.
 - A block in `blocks` (finalized) is **never** streaming even if the agent is working on new content.
-- Components that receive `isStreaming` (e.g. `Thinking`, `CompactionDivider`, `LazyMarkdownBlock`) **must** have it forwarded — omitting it silently disables smooth-stream animation.
+- Components that receive `isStreaming` (e.g. `Thinking`, `CompactionDivider`, `MarkdownBlock`) **must** have it forwarded — omitting it silently disables smooth-stream animation.
 
 ---
 
