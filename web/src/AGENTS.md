@@ -43,7 +43,7 @@ duplicating them in this guide. Relevant tests live under
 - Keep table overflow on the `.oa-table-wrap` wrapper rather than applying
   block/overflow styles directly to `<table>`.
 - When adding a syntax grammar, update the shared highlighter tests and any
-  file-extension/text-file mappings used by the coding file viewer.
+  file-extension/text-file mappings used by the file viewer.
 
 ## State and tests
 

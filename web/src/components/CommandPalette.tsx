@@ -51,7 +51,7 @@ interface CommandPaletteProps {
 interface PaletteOverlayProps {
   commands: Command[]
   onClose: () => void
-  /** Raw workspace files (coding mode only). Filtered + capped inside. */
+  /** Raw workspace files (only with a workspace attached). Filtered + capped inside. */
   workspaceFiles?: WorkspaceFileInfo[]
   /**
    * The backend listing hit its own cap, so files the user knows exist may be

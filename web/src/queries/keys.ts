@@ -28,7 +28,7 @@ export const queryKeys = {
     files: (sessionId: string) => ['session', 'files', sessionId] as const,
     subagents: (sessionId: string) => ['session', 'subagents', sessionId] as const,
   },
-  // Coding-mode workspace sidebar — keyed by the absolute workspace path
+  // Workspace panel data — keyed by the absolute workspace path
   // (a single project may be shared across multiple sessions/tabs, so the
   // cache is keyed by path rather than session id). The reducer enqueues
   // ``coding_workspace`` invalidations on every file-mutating tool_end and

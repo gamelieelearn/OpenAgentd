@@ -8,7 +8,7 @@
 
 /* ─────────────────────────────────────────────────────────────
  * OpenAgentd — syntax highlighting (@tanstack/highlight)
- * The single highlighter for chat fences, the coding file viewer
+ * The single highlighter for chat fences, the file viewer
  * and the ToolCall shell command. Tokens are theme-aware via
  * var() references.
  * ───────────────────────────────────────────────────────────── */

@@ -5,7 +5,7 @@ import { agentRegistryQueryOptions } from '@/queries/agent-registry'
 
 const SESSION_PAGE_SIZE = 20
 
-/** Warm data needed by the coding workspace entry surface. */
+/** Warm data needed by the workspace entry surface. */
 export function preloadConnectedApp(client: QueryClient): void {
   // Warms the single /agent/agents entry read by both the home-page agent probe
   // and the chat header. See ``queries/agent-registry.ts``.

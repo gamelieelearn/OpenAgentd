@@ -2,15 +2,15 @@
  * useOverlayState — mobile/desktop panel & drawer state for AgentChatView.
  *
  * Owns every "big surface" toggle in the chat layout: the session
- * sidebar, the coding workspace panel + detached file viewer, the
+ * sidebar, the workspace panel + detached file viewer, the
  * workspace files panel, todos popover, mobile chat-actions
  * menu, and the mobile edge-swipe drawer controller that ties sidebar /
- * actions / coding-panel together as a single-open-at-a-time group.
+ * actions / workspace-panel together as a single-open-at-a-time group.
  *
  * ── Mobile single-overlay rule ──────────────────────────────────────────
  *
  * On mobile every large surface — the session sidebar, chat-actions menu,
- * coding workspace panel, session settings (agent capabilities), the
+ * workspace panel, session settings (agent capabilities), the
  * scheduler, todos, the files panel and the command palette
  * — is a full-screen or near-full-screen overlay. Having two open at once
  * is always a layering bug, so opening any one closes all the others.
@@ -20,7 +20,7 @@
  * two islands plus todos / files panel never coordinated across each
  * other. ``closeOtherMobileOverlays`` is the cross-island bridge.
  *
- * Mobile-only: sidebar / chat-actions / coding-panel are full-screen
+ * Mobile-only: sidebar / chat-actions / workspace-panel are full-screen
  * overlays that shouldn't stack — guarded behind ``isMobile``.
  * Todos / files / capabilities / scheduler / palette are shared surfaces
  * that must not stack on *either* platform, so those run unconditionally.
@@ -138,7 +138,7 @@ export function useOverlayState({
   const [workspacePanel, setWorkspacePanel] = useState<null | 'changed' | 'files'>(null)
   const [fileViewer, setFileViewer] = useState<WorkspaceFileInfo | null>(null)
   const [fileOpenKey, setFileOpenKey] = useState(0)
-  // Terminal is available in coding workspaces.
+  // Terminal is available once a workspace is attached.
   const [terminalOpenKey, setTerminalOpenKey] = useState(0)
   const handledTerminalOpenKeyRef = useRef(0)
   const [dockViewRequest, setDockViewRequest] = useState<DockViewRequest | null>(null)
@@ -361,7 +361,7 @@ export function useOverlayState({
 
   const handleToggleFilesPanel = handleWorkspaceFiles
 
-  // Open (or focus) a terminal — coding mode only for now. Ensures the
+  // Open (or focus) a terminal — needs an attached workspace. Ensures the
   // workspace panel is visible, then bumps the key so WorkspacePanel
   // focuses/opens its terminal tab (cwd = project).
   // terminal UI (kept simple; may return later behind its own entry point).
@@ -390,9 +390,9 @@ export function useOverlayState({
   // One controller owns every mobile drawer so only ONE can be open at a
   // time. The previous implementation tracked each drawer's open state in
   // isolation, which let a left-edge swipe open the sidebar while the
-  // right-side actions/coding panel was already open (and vice-versa).
+  // right-side actions/workspace panel was already open (and vice-versa).
   //
-  // Right-edge target depends on context: in a coding workspace it opens
+  // Right-edge target depends on context: with a workspace attached it opens
   // the workspace panel (changed files / tree); otherwise the chat-actions
   // menu. Left-edge always opens the session sidebar.
   const workspacePanelOpenForSwipe = Boolean(workspace)

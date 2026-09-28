@@ -1,6 +1,6 @@
 /**
  * TerminalTabButton — tab chip for a terminal session in
- * WorkspacePanel (terminal is coding-mode only for now).
+ * WorkspacePanel (terminal needs an attached workspace).
  *
  * Desktop: right-click opens a small menu (Rename / Close).
  * Mobile: long-press opens the same choice as a bottom sheet — no native

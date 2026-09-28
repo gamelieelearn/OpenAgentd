@@ -2,7 +2,7 @@
  * mobileOverlays — the single-overlay rule for the mobile chat layout.
  *
  * On mobile every large surface (session sidebar, chat-actions menu,
- * coding workspace panel, session settings, scheduler, todos, files panel,
+ * workspace panel, session settings, scheduler, todos, files panel,
  * command palette) is a full-screen or near-full-screen overlay. Two open
  * at once is always a layering bug, so opening any one closes the rest.
  *

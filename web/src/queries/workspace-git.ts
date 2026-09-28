@@ -1,5 +1,5 @@
 /**
- * Shared query options for the coding workspace's git diff endpoints.
+ * Shared query options for the workspace git diff endpoints.
  *
  * The review dock reads the same diffs from several places — the Changes
  * list, full-height diff tabs, the inline commit expansion, and commit tabs.

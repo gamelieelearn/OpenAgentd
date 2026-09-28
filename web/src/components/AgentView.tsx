@@ -241,7 +241,7 @@ interface AgentViewProps {
   lastError?: string | null
   /** Optional slot rendered in place of the default mascot empty state. */
   emptyState?: React.ReactNode
-  /** Open a mentioned workspace file in the coding workspace sidebar. */
+  /** Open a mentioned workspace file in the file viewer. */
   onMentionFileOpen?: (path: string) => void
   /** Opens ``path:line`` references in replies and tool output. */
   fileRefOpener?: FileRefOpener

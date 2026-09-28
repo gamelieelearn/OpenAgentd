@@ -1,6 +1,6 @@
 /**
- * useCommandPalette — Command Palette assembly, coding-mode palette file
- * search, view-mode cycling, and the window-level keyboard shortcut map.
+ * useCommandPalette — Command Palette assembly, workspace file search,
+ * view-mode cycling, and the window-level keyboard shortcut map.
  *
  * These are grouped together because most of the shortcut handlers (view
  * cycling, palette toggle, workspace files, sidebar/terminal toggles) are
@@ -121,7 +121,7 @@ export function useCommandPalette({
     readonly unknown[]
   >({
     // Must cache the *full* response, not a narrowed { files } object — the
-    // coding file tree reads the same entry. See ``workspace-files.ts``.
+    // workspace file tree reads the same entry. See ``workspace-files.ts``.
     ...quickOpenQueryOptions,
     enabled: quickOpenOpen && hasQuickOpenWorkspace,
     staleTime: WORKSPACE_FILES_STALE_MS,
@@ -147,8 +147,6 @@ export function useCommandPalette({
       { hotkey: hotkeyOf(APP_SHORTCUTS.tasks), callback: handleToggleTasks, options: { enabled: Boolean(sessionIdState), meta: { name: 'Todos' } } },
       { hotkey: hotkeyOf(APP_SHORTCUTS.quickOpen), callback: handleToggleQuickOpen, options: { enabled: !isMobile && hasQuickOpenWorkspace, meta: { name: 'Quick Open' } } },
       { hotkey: hotkeyOf(APP_SHORTCUTS.commandPalette), callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
-      // Mod+B belongs to the general sidebar. Only the coding sidebar owns this
-      // registration when coding mode is active, preventing duplicate handlers.
       { hotkey: hotkeyOf(APP_SHORTCUTS.sidebar), callback: handleSidebarToggle, options: { meta: { name: 'Sidebar' } } },
       {
         hotkey: hotkeyOf(APP_SHORTCUTS.focusChat),

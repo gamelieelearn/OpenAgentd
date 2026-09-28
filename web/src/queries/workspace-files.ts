@@ -8,8 +8,8 @@
  * workspace/session rather than fetching its own copy.
  *
  * Consumers: `WorkspaceFilesPanel` (artifacts tree), `WorkspacePanel`
- * (coding file tree), the InputComposer `@`-mention picker (`useFileRefsQuery`), and
- * the coding command palette (`useCommandPalette`).
+ * (file tree), the InputComposer `@`-mention picker (`useFileRefsQuery`), and
+ * the command palette (`useCommandPalette`).
  *
  * Two invariants these factories exist to enforce:
  *
@@ -46,7 +46,7 @@ export function workspaceFilesQueryOptions(sessionId: string) {
   }
 }
 
-/** `GET /agent/workspace/files/list` — coding-mode workspace. */
+/** `GET /agent/workspace/files/list` — files of an attached workspace. */
 export function workspaceFileListQueryOptions(workspace: string) {
   return {
     queryKey: queryKeys.coding.files(workspace),

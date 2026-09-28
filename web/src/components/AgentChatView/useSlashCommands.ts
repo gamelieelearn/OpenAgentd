@@ -26,7 +26,7 @@ import { filterBaseSlashCommands, attachmentToFile } from './helpers'
 import { stopTurn } from './heldMessages'
 
 export interface UseSlashCommandsArgs {
-  /** Coding workspace path, or `null` while no workspace is attached. */
+  /** Workspace path, or `null` while no workspace is attached. */
   agentWorkspace: string | null
   inputRef: RefObject<InputComposerHandle | null>
   handleNewSession: () => void

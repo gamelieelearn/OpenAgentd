@@ -68,7 +68,7 @@ export function useDockTabs({
   // Chat workspaces have no Git review tab — the root is not a repository.
   const defaultTabId = chatWorkspace ? '' : REVIEW_TAB_ID
   const [tabs, setTabs] = useState<DockTab[]>(chatWorkspace ? [] : [REVIEW_TAB])
-  // A panel mounted for a coding workspace can be re-used for a chat one, so
+  // A panel mounted for a project workspace can be re-used for a chat one, so
   // filter the review tab out of the strip rather than only skipping it at
   // construction time.
   const visibleTabs = chatWorkspace ? tabs.filter((tab) => tab.type !== 'review') : tabs

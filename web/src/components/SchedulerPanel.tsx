@@ -14,7 +14,7 @@ import { TaskListPane } from './SchedulerPanel/TaskListPane'
 interface SchedulerPanelProps {
   open: boolean
   onClose: () => void
-  /** Workspace inherited from the surrounding coding chat view. */
+  /** Workspace inherited from the surrounding chat view. */
   contextWorkspace?: string | null
 }
 

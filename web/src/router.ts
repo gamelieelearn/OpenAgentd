@@ -11,7 +11,7 @@ const rootRoute = createRootRoute({
 })
 
 // Tauri's packaged asset URL may surface as /index.html before the root
-// effect canonicalizes it. Render Coding immediately instead of flashing the
+// effect canonicalizes it. Render the app immediately instead of flashing the
 // not-found screen on a first desktop launch.
 const packagedIndexRoute = createRoute({
   getParentRoute: () => rootRoute,

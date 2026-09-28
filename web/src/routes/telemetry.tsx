@@ -1,7 +1,7 @@
 /**
  * /telemetry — kept for deep links (``?days=30&traceId=…&session=…``) and
  * restored routes. Telemetry is an overlay now: open it with the requested
- * view and hand the URL back to the coding workspace.
+ * view and hand the URL back to the workspace.
  */
 import { useEffect } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'

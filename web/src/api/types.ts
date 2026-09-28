@@ -494,7 +494,7 @@ export interface SnippetRenderResponse {
  * Workspace paths the server's snapshot restore touched during a
  * ``undo`` / ``redo`` command. Empty lists mean the restore had no
  * filesystem effect (or no snapshot was recorded) — the client uses
- * that as a signal to skip the Coding Workspace cache invalidation
+ * that as a signal to skip the workspace cache invalidation
  * entirely, saving a full ``git diff`` fetch on a 30k-file workspace.
  */
 export interface ChangedPaths {

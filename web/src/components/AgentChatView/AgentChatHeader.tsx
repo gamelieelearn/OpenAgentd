@@ -91,7 +91,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   const isChatWorkspace = isChatWorkspacePath(workspace, chatWorkspace)
   const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : ''
   // The tooltip exists to disambiguate a truncated basename (two workspaces can
-  // share one), so it keeps revealing the real path for coding workspaces —
+  // share one), so it keeps revealing the real path for project workspaces —
   // but never the home path for chat, whose label is already unambiguous.
   const workspaceTooltip = isChatWorkspace ? workspaceName : workspace
   const dockOpen = workspacePanel !== null
@@ -108,7 +108,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
       }`}
     >
         <div className={`mr-1 flex h-full min-w-0 shrink items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
-          {/* Toggles the desktop coding sidebar, or the drawer on mobile. */}
+          {/* Toggles the desktop sidebar, or the drawer on mobile. */}
           <Tooltip>
             <TooltipTrigger
               render={

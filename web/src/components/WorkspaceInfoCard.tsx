@@ -1,8 +1,8 @@
 /**
- * WorkspaceInfoCard — coding-mode empty-state placeholder.
+ * WorkspaceInfoCard — workspace empty-state placeholder.
  *
  * Rendered inside ``AgentView`` (via the ``emptyState`` slot) when the user
- * is in coding mode and hasn't sent a message yet: the workspace name and
+ * has a workspace open and hasn't sent a message yet: the workspace name and
  * path, then its most recently active sessions so picking up earlier work is
  * one click. The branch and change counts live in the header.
  *

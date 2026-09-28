@@ -12,8 +12,8 @@
  *     ThemeToggle. On desktop those live in the status bar.
  *
  * The 64 px icon rail from the previous design is gone — workspace
- * navigation now lives inline so the sidebar matches the coding workspace's
- * single-column shape. ``activeWorkspace`` is the workspace driving
+ * navigation now lives inline in a single column. ``activeWorkspace`` is
+ * the workspace driving
  * the current chat; ``expandedWorkspaces`` is local UI state for which rows are
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.

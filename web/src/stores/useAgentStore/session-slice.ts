@@ -93,7 +93,7 @@ function hasVisibleBlocks(stream: AgentStream | undefined): boolean {
 // new turn is optimistically appended (sendMessage) or streamed in (SSE
 // deltas) to `currentBlocks` *while the fetch is in flight* — e.g. a
 // background reconciliation from the global `session_turn_completed` event,
-// a foreground-resume resync, or a stale coding-workspace re-render — that
+// a foreground-resume resync, or a stale workspace re-render — that
 // content postdates the snapshot and will not appear in `history` yet.
 // Unconditionally clearing `currentBlocks` on resolve would then discard it
 // permanently (nothing replays it back unless the caller also reconnects

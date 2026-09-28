@@ -125,8 +125,8 @@ function AgentLayoutBase() {
   // doing it here (instead of waiting for the async ``loadSession``
   // round-trip in ``AgentChatView``) closes the race window where the
   // first turn's tool events would otherwise see ``_workspace = null``
-  // and invalidate the wrong query key, leaving the Coding Workspace
-  // sidebar Files / Diff panels stale until the next manual refresh.
+  // and invalidate the wrong query key, leaving the workspace panel's
+  // Files / Diff views stale until the next manual refresh.
   useLayoutEffect(() => {
     useAgentStore.setState((state) => {
       state._workspace = workspace ?? null

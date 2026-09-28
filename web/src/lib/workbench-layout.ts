@@ -1,5 +1,5 @@
 /**
- * Workbench layout geometry for the desktop coding cockpit.
+ * Workbench layout geometry for the desktop app.
  *
  * Pure functions only — the persisted values live in ``useLayoutStore`` and
  * the measured widths come from the shell. Keeping the math here lets the

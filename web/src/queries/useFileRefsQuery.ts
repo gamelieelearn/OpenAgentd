@@ -1,7 +1,7 @@
 /**
  * Workspace file/folder list for the InputComposer's @-mention picker.
  *
- * Hits the coding workspace endpoint:
+ * Hits the workspace files endpoint:
  *   GET /api/agent/workspace/files/list?workspace=...
  *
  * Both return a flat list of files (max 5,000, gitignore-aware). Folder entries

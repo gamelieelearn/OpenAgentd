@@ -166,7 +166,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const { isMacOverlay } = usePlatform()
   const storeWorkspace = useAgentStore((s) => s._workspace)
   const effectiveWorkspace = workspace || storeWorkspace
-  // Chat sessions run on the same screen as coding workspaces but the root is
+  // Chat sessions run on the same screen as project workspaces but the root is
   // not a repository: labels read "Chat" and the dock has no Git tab.
   const chatWorkspace = useChatWorkspace()
   const isChatWorkspace = isChatWorkspacePath(effectiveWorkspace, chatWorkspace)
@@ -365,7 +365,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     return leadAgent?.summary_trigger_tokens
   }, [sessionModel, registryData, leadAgent])
   // Workspace file/folder list for the InputComposer's @-mention picker.
-  // Fetched lazily when a coding workspace is available.
+  // Fetched lazily once a workspace is attached.
   const { refs: fileRefs } = useFileRefsQuery({
     workspace,
     enabled: fileRefsEnabled && Boolean(workspace),
@@ -559,7 +559,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         onOpenActiveSessions={handleOpenActiveSessions}
       />
 
-      {/* Body row — sidebar (or coding rail) + main content column. On
+      {/* Body row — sidebar + main content column. On
           mobile the Sidebar is position:fixed (overlay drawer), so it
           takes no space here and the main column is always full-width. */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -755,7 +755,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           />
         ) : null}
         </main>
-        {/* Review dock — coding workspace only.
+        {/* Review dock — only with a workspace attached.
             Desktop: in-flow sibling sized as a ratio of this center region,
             or an overlay across it when maximized / the window is narrow.
             Mobile: fixed full-screen overlay from the right. */}

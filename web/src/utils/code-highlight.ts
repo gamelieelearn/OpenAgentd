@@ -386,7 +386,7 @@ export function tokenizeCode(code: string, language?: string): Array<HighlightTo
 /**
  * Highlight a whole file, returning one HTML string per source line.
  *
- * The coding file viewer renders a line-number gutter, so it needs the markup
+ * The file viewer renders a line-number gutter, so it needs the markup
  * pre-split by line — and unlike splitting a highlighter's output on ``\n``,
  * ``renderTokens`` cuts tokens at line boundaries, so a block comment or
  * triple-quoted string yields balanced markup on every line it covers rather

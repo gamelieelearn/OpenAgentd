@@ -34,7 +34,7 @@ interface UseAgentCommandsArgs {
   // Session
   handleNewSession: () => void
 
-  /** Coding mode with an attached workspace only — opens the terminal tab. */
+  /** Attached workspace only — opens the terminal tab. */
   handleOpenTerminal: () => void
   handleFindInTranscript: () => void
   /** Opens the review dock if needed and toggles it over the chat column. */
