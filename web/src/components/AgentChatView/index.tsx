@@ -686,6 +686,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                     <WorkspaceInfoCard
                       workspace={effectiveWorkspace}
                       chatWorkspace={isChatWorkspace}
+                      currentSessionId={sessionIdState}
                     />
                   </div>
                 ) : undefined

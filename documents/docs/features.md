@@ -914,7 +914,9 @@ agent against it.
   `⌘F` instead of opening the palette or transcript find `[v3.0.0]`.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
-  agent-selection fallback.
+  agent-selection fallback. Since `[v3.0.0]` the card shows the workspace
+  name and path, then its recent sessions by last activity (status, title,
+  age) to reopen with a click; the branch and changes moved to the header.
 - **Sessions ≥ 100 messages load completely with scroll preserved** `[v1.9.0]`.
 
 ---

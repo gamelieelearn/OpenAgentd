@@ -2,48 +2,39 @@
  * WorkspaceInfoCard — coding-mode empty-state placeholder.
  *
  * Rendered inside ``AgentView`` (via the ``emptyState`` slot) when the user
- * is in coding mode and hasn't sent a message yet. Replaces the generic
- * "what's on your mind?" mascot with concrete context about the workspace
- * the agent is bound to: name, path, git branch, dirty counts, last commit.
+ * is in coding mode and hasn't sent a message yet: the workspace name and
+ * path, then its most recently active sessions so picking up earlier work is
+ * one click. The branch and change counts live in the header.
  *
  * The chat workspace renders a chat variant instead: its root is the user's
- * home directory, so the path, git branch, and dirty counts are noise (and
- * the path would just echo the account name). Pass ``chatWorkspace`` to get
- * that variant — it also skips the git status request entirely.
- *
- * Backed by ``GET /api/agent/workspace/status``. Fetched once on mount;
- * manual refresh via the button — no polling.
+ * home directory, so the path would just echo the account name. Pass
+ * ``chatWorkspace`` to get that variant — it skips the session list too.
  */
 
-import { useQuery } from '@tanstack/react-query'
-import { formatDistanceToNowStrict } from 'date-fns'
-import { Folder, GitBranch, MessageCircle, RefreshCw } from 'lucide-react'
-import { formatFullDateTime } from '@/utils/format'
+import { Folder, MessageCircle } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
 
-import { getCodingWorkspaceStatus } from '@/api/client'
-import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { queryKeys } from '@/queries'
+import { useCodingWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
+import { useUnreadStore } from '@/stores/useUnreadStore'
+import { formatCompactRelative } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
+import { applySessionSelection } from './CodingSidebar.sessions'
+import { SessionStatusMark, sessionStatus } from './CodingSidebar/SessionStatusMark'
 
 interface Props {
   workspace: string
   /** True when ``workspace`` is the chat root (see ``useChatWorkspace``). */
   chatWorkspace?: boolean
+  /** The empty session on screen; left out of the recent list. */
+  currentSessionId?: string | null
 }
 
-export function WorkspaceInfoCard({ workspace, chatWorkspace = false }: Props) {
-  const { data, isLoading, isError, isFetching, refetch } = useQuery({
-    queryKey: queryKeys.coding.status(workspace),
-    queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace, signal),
-    // Chat has no repository to report on, so the git-shaped request is
-    // skipped rather than rendered as "Not a git repository".
-    enabled: !chatWorkspace,
-    // Workspace status is informational and can be reused across route
-    // transitions; cache briefly to avoid duplicate git status probes when
-    // coding views remount for the same workspace.
-    staleTime: 30_000,
-  })
+export function WorkspaceInfoCard({ workspace, chatWorkspace = false, currentSessionId = null }: Props) {
+  const navigate = useNavigate()
+  const unreadIds = useUnreadStore((state) => state.ids)
+  // Same key as the sidebar's workspace list, so this adds no request there.
+  const { data } = useCodingWorkspaceSessionsQuery(workspace, !chatWorkspace)
 
   if (chatWorkspace) {
     return (
@@ -61,9 +52,11 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false }: Props) {
     )
   }
 
-  const name = data?.name ?? workspaceLabel(workspace)
-  const dirty = data?.dirty
-  const dirtyTotal = dirty ? dirty.staged + dirty.unstaged + dirty.untracked : 0
+  const name = workspaceLabel(workspace)
+  const recent = (data?.pages.flatMap((page) => page.data) ?? [])
+    .filter((session) => session.id !== currentSessionId && !session.parent_session_id)
+    .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
+  const now = new Date()
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-4">
@@ -86,86 +79,30 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false }: Props) {
         <TooltipContent>{workspace}</TooltipContent>
       </Tooltip>
 
-      {isLoading ? (
-        <p className="mt-3 text-xs text-(--color-text-subtle)">Loading…</p>
-      ) : isError ? (
-        <div className="mt-3 flex items-center gap-2">
-          <p className="text-xs text-(--color-error)">Could not load workspace status</p>
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            disabled={isFetching}
-            onClick={() => { void refetch() }}
-            aria-label="Retry workspace status"
-          >
-            <RefreshCw className={isFetching ? 'animate-spin' : ''} aria-hidden="true" />
-            Retry
-          </Button>
-        </div>
-      ) : data?.is_git_repo ? (
-        <div className="mt-3 space-y-2 text-xs">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {data.branch && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="inline-flex items-center gap-1 text-(--color-text-2)">
-                      <GitBranch size={11} aria-hidden="true" />
-                      <span className="font-mono">{data.branch}</span>
-                    </span>
-                  }
-                />
-                <TooltipContent>Current branch</TooltipContent>
-              </Tooltip>
-            )}
-            {dirty && dirtyTotal > 0 ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="font-mono text-(--color-text-muted)">
-                      {dirty.staged > 0 && <span className="text-(--color-success)">+{dirty.staged}</span>}
-                      {dirty.staged > 0 && (dirty.unstaged > 0 || dirty.untracked > 0) && ' '}
-                      {dirty.unstaged > 0 && <span className="text-(--color-warning)">~{dirty.unstaged}</span>}
-                      {dirty.unstaged > 0 && dirty.untracked > 0 && ' '}
-                      {dirty.untracked > 0 && <span className="text-(--color-text-subtle)">?{dirty.untracked}</span>}
-                    </span>
-                  }
-                />
-                <TooltipContent>staged · unstaged · untracked</TooltipContent>
-              </Tooltip>
-            ) : (
-              <span className="text-(--color-text-subtle)">clean</span>
-            )}
-          </div>
-
-          {data.head && (
-            <div className="flex items-baseline gap-2 text-(--color-text-muted)">
-              <span className="font-mono text-(--color-text-2)">{data.head.sha}</span>
-              <Tooltip className="min-w-0 flex-1">
-                <TooltipTrigger
-                  className="min-w-0 flex-1"
-                  render={<span className="min-w-0 flex-1 truncate">{data.head.subject}</span>}
-                />
-                <TooltipContent>{data.head.subject}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="shrink-0 text-(--color-text-subtle)">
-                      {formatDistanceToNowStrict(new Date(data.head.timestamp * 1000), { addSuffix: true })}
-                    </span>
-                  }
-                />
-                <TooltipContent>{formatFullDateTime(new Date(data.head.timestamp * 1000))}</TooltipContent>
-              </Tooltip>
-            </div>
-          )}
-        </div>
-      ) : (
-        <p className="mt-3 text-xs text-(--color-text-subtle)">Not a git repository</p>
+      {recent.length > 0 && (
+        <section aria-label="Recent sessions" className="mt-4">
+          <h3 className="mb-1 px-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-(--color-text-subtle)">
+            Recent sessions
+          </h3>
+          <ul className="space-y-px">
+            {recent.map((session) => (
+              <li key={session.id}>
+                <button
+                  type="button"
+                  onClick={() => applySessionSelection({ session, workspacePath: workspace, navigate })}
+                  className="flex h-(--spacing-list-row) w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text)"
+                >
+                  <SessionStatusMark status={sessionStatus(session, unreadIds.includes(session.id))} />
+                  <span className="min-w-0 flex-1 truncate font-medium">{session.title || 'Untitled'}</span>
+                  <span className="shrink-0 font-mono text-[11px] text-(--color-text-subtle)">
+                    {formatCompactRelative(session.updated_at, now)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
-
     </div>
   )
 }
