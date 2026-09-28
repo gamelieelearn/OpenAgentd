@@ -178,7 +178,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const dragHandlers = useTauriDrag()
   const inputRef = useRef<InputComposerHandle>(null)
   const mainColumnRef = useRef<HTMLDivElement>(null)
-  const focusComposer = useCallback(() => inputRef.current?.focus(), [])
+  // Handing focus back from the dock must not summon a collapsed composer.
+  const returnFocusToComposer = useCallback(() => inputRef.current?.focus({ expand: false }), [])
 
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
   const [isSwitchingInteractionMode, setIsSwitchingInteractionMode] = useState(false)
@@ -475,7 +476,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     covered: chatCoveredByDock,
     enabled: !isMobile,
     isInDock: isInReviewDock,
-    onReturn: focusComposer,
+    onReturn: returnFocusToComposer,
   })
 
   const handleStartImplementing = useCallback(async () => {

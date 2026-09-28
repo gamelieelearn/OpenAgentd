@@ -265,6 +265,26 @@ describe('FloatingInputComposer', () => {
     expect(document.activeElement).toBe(textarea)
   })
 
+  it('takes focus without expanding when asked to, e.g. back from the dock', async () => {
+    const ref = createRef<InputComposerHandle>()
+    function FocusHarness() {
+      const boundsRef = useRef<HTMLDivElement>(null)
+      return (
+        <div ref={boundsRef} style={{ position: 'relative', width: 1200, height: 800 }}>
+          <FloatingInputComposer ref={ref} boundsRef={boundsRef} onSubmit={() => {}} />
+        </div>
+      )
+    }
+    render(<FocusHarness />)
+
+    act(() => ref.current?.focus({ expand: false }))
+    await act(nextFrame)
+
+    const expandButton = screen.getByRole('button', { name: 'Expand input bar' })
+    expect(document.activeElement).toBe(expandButton)
+    expect(screen.getByLabelText('Message input').getAttribute('disabled')).not.toBeNull()
+  })
+
   it('minimizes when Escape is pressed while the input is focused', async () => {
     const user = userEvent.setup()
     render(<Harness />)

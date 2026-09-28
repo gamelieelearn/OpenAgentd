@@ -43,8 +43,10 @@ interface ReturnFocusOptions {
 
 /**
  * Call ``onReturn`` when the dock closes with focus inside it (it may still be
- * animating out) or stranded, and when it stops covering the chat while focus
- * is stranded. Focus the user moved elsewhere, such as the header toggle, stays.
+ * animating out), and when a dock that covered the chat closes or uncovers it
+ * while focus is stranded. Focus the user moved elsewhere, such as the header
+ * toggle, stays — and so does focus on ``<body>`` beside a side-by-side dock:
+ * it sat there before the dock opened, so the dock stranded nothing.
  */
 export function useReturnFocusFromDock({ open, covered, enabled, isInDock, onReturn }: ReturnFocusOptions) {
   const previousRef = useRef({ open, covered })
@@ -61,6 +63,7 @@ export function useReturnFocusFromDock({ open, covered, enabled, isInDock, onRet
     if (!closed && !uncovered) return
     const active = document.activeElement
     const leavingDock = closed && active !== null && callbacksRef.current.isInDock(active)
-    if (leavingDock || isFocusStranded()) callbacksRef.current.onReturn()
+    const strandedByDock = previous.covered && isFocusStranded()
+    if (leavingDock || strandedByDock) callbacksRef.current.onReturn()
   }, [open, covered, enabled])
 }

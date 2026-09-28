@@ -166,7 +166,11 @@ export interface InputComposerProps {
 }
 
 export interface InputComposerHandle {
-  focus: () => void
+  /**
+   * ``expand: false`` leaves a collapsed floating bar collapsed, focusing its
+   * Expand button instead — for handing focus back rather than summoning it.
+   */
+  focus: (options?: { expand?: boolean }) => void
   setValue: (text: string) => void
   /** ``paragraph`` puts a blank line, rather than a space, before the text. */
   appendValue: (text: string, options?: { paragraph?: boolean }) => void
@@ -262,6 +266,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     })
   }, [mentionRanges])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const expandButtonRef = useRef<HTMLButtonElement>(null)
   const isMobile = useIsMobile()
   const { os } = usePlatform()
   const prefersReducedMotion = useReducedMotion()
@@ -388,7 +393,10 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   }, [setMentionRange, setSnippetRange])
 
   useImperativeHandle(ref, () => ({
-    focus: () => textareaRef.current?.focus(),
+    focus: (options) => {
+      const target = options?.expand === false && minimized ? expandButtonRef.current : textareaRef.current
+      target?.focus()
+    },
     setValue: (text: string) => {
       setValue(text)
       resetDraftState()
@@ -691,6 +699,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
   const chatEl = minimized ? (
     <button
+      ref={expandButtonRef}
       type="button"
       onClick={(e) => { stopClick(e); handleExpand() }}
       aria-label="Expand input bar"

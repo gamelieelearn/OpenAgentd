@@ -197,7 +197,11 @@ export const FloatingInputComposer = memo(
     }, [])
 
     useImperativeHandle(ref, () => ({
-      focus: () => {
+      focus: (options) => {
+        if (options?.expand === false) {
+          innerRef.current?.focus(options)
+          return
+        }
         expand()
         requestAnimationFrame(() => innerRef.current?.focus())
       },

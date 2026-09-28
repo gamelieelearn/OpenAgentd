@@ -84,6 +84,22 @@ describe('useReturnFocusFromDock', () => {
     expect(onReturn).not.toHaveBeenCalled()
   })
 
+  it('leaves focus on <body> alone when a side-by-side dock closes, e.g. ⌘D twice', () => {
+    const onReturn = mock(() => {})
+    const { rerender } = render(<ReturnHarness open covered={false} onReturn={onReturn} />)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    rerender(<ReturnHarness open={false} covered={false} onReturn={onReturn} />)
+    expect(onReturn).not.toHaveBeenCalled()
+  })
+
+  it('returns focus stranded under a covering dock when it closes', () => {
+    const onReturn = mock(() => {})
+    const { rerender } = render(<ReturnHarness open covered onReturn={onReturn} />)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    rerender(<ReturnHarness open={false} covered={false} onReturn={onReturn} />)
+    expect(onReturn).toHaveBeenCalledTimes(1)
+  })
+
   it('only rescues stranded focus when the dock stops covering the chat but stays open', () => {
     const onReturn = mock(() => {})
     const { rerender } = render(<ReturnHarness open covered onReturn={onReturn} />)
