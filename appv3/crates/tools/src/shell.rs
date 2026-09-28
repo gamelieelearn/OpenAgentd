@@ -408,6 +408,22 @@ impl Drop for GroupGuard {
     }
 }
 
+/// Streams pending live output to the sink every [`STREAM_INTERVAL`].
+/// Dropping it stops the timer and hands over what is still pending, both
+/// when the command ends and when the call is dropped because the user
+/// stopped the turn (the timer task would otherwise outlive the call).
+struct LiveFlusher<F: Fn()> {
+    task: tokio::task::JoinHandle<()>,
+    flush: F,
+}
+
+impl<F: Fn()> Drop for LiveFlusher<F> {
+    fn drop(&mut self) {
+        self.task.abort();
+        (self.flush)();
+    }
+}
+
 pub struct ShellTool;
 
 #[async_trait]
@@ -496,14 +512,17 @@ impl Tool for ShellTool {
                 }
             }
         };
-        let flusher = {
-            let flush = flush.clone();
-            tokio::spawn(async move {
-                loop {
-                    tokio::time::sleep(STREAM_INTERVAL).await;
-                    flush();
-                }
-            })
+        let live = LiveFlusher {
+            task: {
+                let flush = flush.clone();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(STREAM_INTERVAL).await;
+                        flush();
+                    }
+                })
+            },
+            flush,
         };
         let read_all = {
             let collector = collector.clone();
@@ -550,8 +569,7 @@ impl Tool for ShellTool {
                 tokio::time::timeout(POST_KILL_WAIT, child.wait()).await.ok().and_then(|r| r.ok())
             }
         };
-        flusher.abort();
-        flush();
+        drop(live);
         group_guard.armed = false;
         let (code, signal) = match status {
             Some(s) => {
@@ -674,5 +692,41 @@ mod tests {
         let out = ShellTool.run(&c, serde_json::json!({"command": sleep, "timeout_seconds": 1})).await.unwrap();
         let ToolOutput::Text(t) = out else { panic!() };
         assert!(t.starts_with("[Timed out after 1s]\n\n(No output before timeout)\n\n<shell_metadata>"), "{t}");
+    }
+
+    /// A call dropped mid-command (the user stopped the turn) hands its
+    /// pending output to the sink and leaves no live-output timer behind.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn dropped_call_flushes_its_output_and_stops_streaming() {
+        let d = tempfile::tempdir().unwrap();
+        let marker = d.path().join("printed");
+        let seen = Arc::new(Mutex::new(String::new()));
+        let sink: crate::OutputSink = {
+            let seen = seen.clone();
+            Arc::new(move |t: String| seen.lock().unwrap().push_str(&t))
+        };
+        let mut c = ctx(d.path());
+        c.output = Some(sink.clone());
+        let command = format!("echo started; touch '{}'; sleep 30", marker.display());
+        {
+            let run = ShellTool.run(&c, serde_json::json!({"command": command}));
+            tokio::pin!(run);
+            let printed = async {
+                while !marker.exists() {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                // Let the reader pick the line up from the pipe.
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            };
+            tokio::select! {
+                _ = &mut run => panic!("the command should still be running"),
+                _ = tokio::time::timeout(Duration::from_secs(20), printed) => {}
+            }
+        }
+        assert_eq!(seen.lock().unwrap().trim(), "started");
+        drop(c);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(Arc::strong_count(&sink), 1, "a live-output timer outlived the call");
     }
 }

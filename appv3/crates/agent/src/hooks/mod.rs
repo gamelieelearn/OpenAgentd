@@ -120,6 +120,11 @@ pub trait Hook: Send + Sync {
     }
     /// Post-execution half of `wrap_tool_call` (runs innermost-first).
     async fn after_tool(&self, _ctx: &RunContext, _meta: &SharedMeta, _tc: &ToolCall, _scope: &mut ToolCallScope, _result: &mut String) {}
+    /// A call still running when the user stopped the turn was dropped;
+    /// `result` is the tool message recorded in its place (the output it
+    /// had streamed, then a "Cancelled by user" note). `after_tool` never
+    /// runs for such a call.
+    async fn on_tool_cancelled(&self, _ctx: &RunContext, _tc: &ToolCall, _result: &str, _duration_ms: Option<f64>) {}
 }
 
 pub type HookRef = Arc<dyn Hook>;

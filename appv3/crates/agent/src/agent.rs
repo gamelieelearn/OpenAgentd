@@ -12,11 +12,14 @@ use appv3_tools::{DeniedPaths, Suspension, ToolContext, ToolRef, ToolSet};
 use futures::stream::{FuturesUnordered, StreamExt};
 use serde_json::{json, Map, Value};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 pub const MAX_AGENT_ITERATIONS: usize = 5000;
 pub const MAX_CONCURRENT_TOOLS: usize = 10;
+/// Most streamed output a cancelled call keeps (its tail), well under the
+/// tool-result offload threshold.
+const CANCELLED_OUTPUT_MAX_BYTES: usize = 16_384;
 pub const ASK_USER: &str = "ask_user";
 pub const ASK_LEAD: &str = "ask_lead";
 pub const ASK_MERGED_INTO_PRIMARY: &str = "Merged into your other ask_user call — the user sees a single card with every question.";
@@ -96,6 +99,64 @@ enum Dispatch {
     Suspended,
 }
 
+/// A dispatched call's progress, kept outside its future: when the user
+/// stops the turn the future is dropped, and this is what is left of it.
+#[derive(Default)]
+struct ToolProgress {
+    started: Mutex<Option<Instant>>,
+    /// Tail of the streamed output, and how many bytes fell off its front.
+    output: Mutex<(String, usize)>,
+}
+
+impl ToolProgress {
+    fn start(&self) {
+        *self.started.lock().unwrap() = Some(Instant::now());
+    }
+
+    fn record(&self, text: &str) {
+        let mut out = self.output.lock().unwrap();
+        out.0.push_str(text);
+        // Trim in batches; `cancelled` cuts to the exact size.
+        if out.0.len() > 2 * CANCELLED_OUTPUT_MAX_BYTES {
+            let cut = tail_start(&out.0, CANCELLED_OUTPUT_MAX_BYTES);
+            out.0.drain(..cut);
+            out.1 += cut;
+        }
+    }
+
+    /// `(duration_ms, tool message)` for a call dropped by a stop: the
+    /// output it streamed, then how long it ran. A call that never started
+    /// (still queued for a slot) is just "Cancelled by user."
+    fn cancelled(&self) -> (Option<f64>, String) {
+        let Some(started) = *self.started.lock().unwrap() else {
+            return (None, "Cancelled by user.".into());
+        };
+        let elapsed = started.elapsed().as_secs_f64();
+        let note = format!("Cancelled by user after {elapsed:.1} seconds.");
+        let out = self.output.lock().unwrap();
+        let cut = tail_start(&out.0, CANCELLED_OUTPUT_MAX_BYTES);
+        let tail = out.0[cut..].trim_end();
+        let omitted = out.1 + cut;
+        let text = if tail.trim().is_empty() {
+            note
+        } else if omitted > 0 {
+            format!("...output truncated ({omitted} bytes omitted)...\n{tail}\n\n{note}")
+        } else {
+            format!("{tail}\n\n{note}")
+        };
+        (Some(round3(elapsed * 1000.0)), text)
+    }
+}
+
+/// Byte offset where the last `max` bytes of `s` start (on a char boundary).
+fn tail_start(s: &str, max: usize) -> usize {
+    let mut cut = s.len().saturating_sub(max);
+    while !s.is_char_boundary(cut) {
+        cut += 1;
+    }
+    cut
+}
+
 fn round3(x: f64) -> f64 {
     appv3_core::pymath::py_round(x, 3)
 }
@@ -173,14 +234,15 @@ impl Agent {
         base: &ToolContext,
         tc: &ToolCall,
         sem: &tokio::sync::Semaphore,
+        progress: Option<&Arc<ToolProgress>>,
     ) -> Result<ToolRunResult, Suspension> {
         let _permit = sem.acquire().await.ok();
         let Some(o) = hooks.iter().find_map(|h| h.as_otel()) else {
-            return self.run_tool_inner(ctx, meta, hooks, tools, base, tc).await;
+            return self.run_tool_inner(ctx, meta, hooks, tools, base, tc, progress).await;
         };
         let span = o.start_tool_span(ctx, tc);
         let t0 = Instant::now();
-        let r = appv3_core::otel::scope(Some(span.ctx()), self.run_tool_inner(ctx, meta, hooks, tools, base, tc)).await;
+        let r = appv3_core::otel::scope(Some(span.ctx()), self.run_tool_inner(ctx, meta, hooks, tools, base, tc, progress)).await;
         use crate::hooks::otel::ToolOutcome;
         match &r {
             Ok(res) => o.end_tool_span(&span, &tc.function.name, t0, ToolOutcome::Ok(&res.text)),
@@ -194,6 +256,7 @@ impl Agent {
         r
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn run_tool_inner(
         &self,
         ctx: &RunContext,
@@ -202,12 +265,27 @@ impl Agent {
         tools: &ToolSet,
         base: &ToolContext,
         tc: &ToolCall,
+        progress: Option<&Arc<ToolProgress>>,
     ) -> Result<ToolRunResult, Suspension> {
+        if let Some(p) = progress {
+            p.start();
+        }
         let mut scope = ToolCallScope { ui_id: tc.id.clone(), started: Instant::now(), output: None, duration_ms: None, mcp_app: None };
         for h in hooks {
             if let Err(text) = h.before_tool(ctx, meta, tc, &mut scope).await {
                 return Ok(ToolRunResult { text: format!("Error: {text}"), parts: None, mcp_app: None, duration_ms: None });
             }
+        }
+        // Tee streamed output into the progress record, so a stop mid-call
+        // still reports what the tool printed.
+        if let Some(p) = progress.cloned() {
+            let sink = scope.output.take();
+            scope.output = Some(Arc::new(move |text: String| {
+                p.record(&text);
+                if let Some(sink) = &sink {
+                    sink(text);
+                }
+            }));
         }
         let mode = meta.lock().unwrap().get("interaction_mode").and_then(|v| v.as_str()).map(String::from);
         let exec = |call: ToolCall| {
@@ -499,12 +577,14 @@ impl Agent {
             }
             let base_ctx = &base_ctx;
             let mut results: Vec<Option<Result<ToolRunResult, Suspension>>> = (0..other_calls.len()).map(|_| None).collect();
+            let progress: Vec<Arc<ToolProgress>> = other_calls.iter().map(|_| Arc::default()).collect();
             {
                 let mut futs: FuturesUnordered<_> = other_calls
                     .iter()
+                    .zip(&progress)
                     .enumerate()
-                    .map(|(i, tc)| {
-                        let fut = self.run_tool(&ctx, &meta, &hooks, &run_tools, base_ctx, tc, &sem);
+                    .map(|(i, (tc, p))| {
+                        let fut = self.run_tool(&ctx, &meta, &hooks, &run_tools, base_ctx, tc, &sem, Some(p));
                         async move { (i, fut.await) }
                     })
                     .collect();
@@ -524,9 +604,20 @@ impl Agent {
                     }
                 }
             }
-            for (tc, r) in other_calls.iter().zip(results) {
+            // Leaving the block above dropped any call a stop interrupted.
+            for ((tc, r), p) in other_calls.iter().zip(results).zip(&progress) {
                 match r {
-                    None => state.messages.push(tool_msg(tc, "Cancelled by user.")),
+                    None => {
+                        let (duration_ms, text) = p.cancelled();
+                        for h in &hooks {
+                            h.on_tool_cancelled(&ctx, tc, &text, duration_ms).await;
+                        }
+                        let mut m = tool_msg(tc, &text);
+                        if let (Some(d), ChatMessage::Tool { meta, .. }) = (duration_ms, &mut m) {
+                            meta.extra = Some(Map::from_iter([("duration_ms".to_string(), json!(d))]));
+                        }
+                        state.messages.push(m);
+                    }
                     Some(Err(_)) => {
                         // A non-ask tool suspending is unexpected; record it like v2's gather error (dropped).
                         tracing::error!("tool_gather_error error=unexpected suspension tool={}", tc.function.name);
@@ -565,7 +656,7 @@ impl Agent {
                     }
                 }
                 Self::sync(opts.checkpointer, &ctx, &mut state).await;
-                match self.run_tool(&ctx, &meta, &hooks, &run_tools, base_ctx, &primary, &sem).await {
+                match self.run_tool(&ctx, &meta, &hooks, &run_tools, base_ctx, &primary, &sem, None).await {
                     Err(Suspension::Question { question_id, session_id }) => {
                         let s = json!({"question_id": question_id, "session_id": session_id, "tool_call_id": primary.id});
                         state.meta_set("question_suspended", s);

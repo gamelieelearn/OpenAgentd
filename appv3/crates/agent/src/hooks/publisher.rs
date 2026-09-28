@@ -270,6 +270,12 @@ impl Hook for StreamPublisherHook {
         self.push(events::tool_end(&self.agent, Some(&end_id), &tc.function.name, r, Some(metadata)));
     }
 
+    async fn on_tool_cancelled(&self, _ctx: &RunContext, tc: &ToolCall, result: &str, duration_ms: Option<f64>) {
+        let end_id = self.resolver.lock().unwrap().resolve_end(&tc.id);
+        let metadata = duration_ms.map(|ms| json!({"duration_ms": ms}));
+        self.push(events::tool_end(&self.agent, Some(&end_id), &tc.function.name, Some(result), metadata));
+    }
+
     async fn on_rate_limit(&self, _ctx: &RunContext, retry_after: i64, attempt: i64, max_attempts: i64) {
         self.push(events::rate_limit(retry_after, attempt, max_attempts));
     }

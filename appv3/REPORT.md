@@ -474,6 +474,13 @@ explicitly.
   attempts and then resumes the turn at most 3 times before failing with
   `ProviderConnectionError`; that resume layer is gone. HTTP errors keep
   v2's exponential backoff.
+- **Cancelled tool calls** (`agent/src/agent.rs`): a call still running when
+  the user stops the turn records the output it had streamed (its last
+  16 KiB) followed by `Cancelled by user after N seconds.`, stores
+  `duration_ms`, and ends with a `tool_end` frame carrying that text. v2
+  records a bare `Cancelled by user.` and sends no `tool_end`. A call that
+  never started keeps v2's text. The shell tool also flushes pending live
+  output and stops its streaming timer when its call is dropped.
 - **`todo_manage` clear:** `clear` without a status removes every task
   (`tools/src/todo.rs`; the `status` description in
   `contract/tool_definitions.json` says so). v2 defaults to `finished`, so

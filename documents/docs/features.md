@@ -659,6 +659,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   cancels the agent, in-flight model/tool work, direct shell
   commands, and session-owned background shell processes before the request
   returns. Queued and late mailbox work cannot restart the stopped turn.
+  A tool that was still running keeps the output it had streamed, followed by
+  "Cancelled by user after N seconds.", both in its card and in what the
+  agent sees next turn `[v3.0.0]`.
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.
