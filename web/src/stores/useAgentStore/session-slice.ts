@@ -7,7 +7,7 @@ import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { toPendingQuestion } from './sse-reducer'
 import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, AgentStore } from './types'
-import type { ContentBlock, MessageResponse, SessionInteractionMode } from '@/api/types'
+import type { ContentBlock, MessageResponse, SessionHistoryResponse, SessionInteractionMode } from '@/api/types'
 
 function revertBoundaryTime(session: { revert?: { message_id?: string; created_at?: string } | null; messages: MessageResponse[] }): number | null {
   if (!session.revert) return null
@@ -37,6 +37,30 @@ function messagesBeforeRevert(session: { revert?: { message_id?: string } | null
     }
   }
   return messagesBeforeTime(session.messages, revertBoundaryTime(session))
+}
+
+/** Prepend one older history page to the lead and member streams. */
+function prependOlderPage(draft: AgentStore, history: SessionHistoryResponse, revertTime: number | null) {
+  draft.hasMore = history.has_more
+  draft.nextCursor = history.next_cursor
+  const prepend = (stream: AgentStream, messages: MessageResponse[]) => {
+    // Claim results orphaned by the page boundary: the newer page may hold a
+    // tool result whose call row is in this older page.
+    const orphans = { ...(stream._orphanToolResults ?? {}) }
+    const older = applyOrphanToolResults(parseAgentBlocks(messagesBeforeTime(messages, revertTime), orphans), orphans)
+    stream.blocks = [...older, ...stream.blocks]
+    stream._orphanToolResults = orphans
+  }
+  const lead = draft.leadName ? draft.agentStreams[draft.leadName] : undefined
+  if (lead) prepend(lead, history.lead.messages)
+  // Usage is NOT accumulated here: `loadSession` restores the authoritative
+  // full-session total from the server, so older pages carry nothing new to
+  // add. Accumulating the page's messages would double-count the cost/tokens
+  // the server total already includes.
+  for (const member of history.members) {
+    const stream = draft.agentStreams[member.name]
+    if (stream) prepend(stream, member.messages)
+  }
 }
 
 function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[]) {
@@ -1162,39 +1186,14 @@ export const createSessionSlice: StateCreator<
   },
 
   loadOlderMessages: async () => {
-    const { sessionId, nextCursor, hasMore, leadName, _leadRevertTime, _loadingOlder } = get()
+    const { sessionId, nextCursor, hasMore, _leadRevertTime, _loadingOlder } = get()
     if (!sessionId || !hasMore || !nextCursor || _loadingOlder) return
     set((draft) => { draft._loadingOlder = true })
     try {
       const history = await sessionHistory(sessionId, nextCursor)
       set((draft) => {
         draft._loadingOlder = false
-        draft.hasMore = history.has_more
-        draft.nextCursor = history.next_cursor
-        if (leadName && draft.agentStreams[leadName]) {
-          const filtered = messagesBeforeTime(history.lead.messages, _leadRevertTime)
-          const leadStream = draft.agentStreams[leadName]
-          // Claim results orphaned by the page boundary: the newer page may
-          // hold a tool result whose call row is in this older page.
-          const orphans = { ...(leadStream._orphanToolResults ?? {}) }
-          const older = applyOrphanToolResults(parseAgentBlocks(filtered, orphans), orphans)
-          leadStream.blocks = [...older, ...leadStream.blocks]
-          leadStream._orphanToolResults = orphans
-          // Usage is NOT accumulated here: `loadSession` restores the
-          // authoritative full-session total from the server, so older pages
-          // carry nothing new to add. Accumulating the page's messages would
-          // double-count the cost/tokens the server total already includes.
-        }
-        history.members.forEach((member) => {
-          if (draft.agentStreams[member.name]) {
-            const filtered = messagesBeforeTime(member.messages, _leadRevertTime)
-            const memberStream = draft.agentStreams[member.name]
-            const orphans = { ...(memberStream._orphanToolResults ?? {}) }
-            const older = applyOrphanToolResults(parseAgentBlocks(filtered, orphans), orphans)
-            memberStream.blocks = [...older, ...memberStream.blocks]
-            memberStream._orphanToolResults = orphans
-          }
-        })
+        prependOlderPage(draft, history, _leadRevertTime)
       })
     } catch (err) {
       set((draft) => { draft._loadingOlder = false })

@@ -188,6 +188,13 @@ export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
   return acc
 }
 
+/** The agent a user-role row came from, if an agent (not the user) sent it. */
+function userMessageSender(msg: MessageResponse): string | undefined {
+  // Me normalise DB extra: support both old (from_agents: string[]) and new (from_agent: string) formats
+  const rawExtra = msg.extra as { routing?: { from_agent?: string; from_agents?: string[] }; from_agent?: string; from_agents?: string[] } | null
+  return rawExtra?.from_agent ?? rawExtra?.routing?.from_agent ?? rawExtra?.from_agents?.[0] ?? rawExtra?.routing?.from_agents?.[0]
+}
+
 /**
  * Parse DB messages into a flat ContentBlock[] for the agent view.
  * User messages → type:'user' block (rendered as user bubble inline)
@@ -223,9 +230,7 @@ export function parseAgentBlocks(
     }
 
     if (msg.role === 'user') {
-      // Me normalise DB extra: support both old (from_agents: string[]) and new (from_agent: string) formats
-      const rawExtra = msg.extra as { routing?: { from_agent?: string; from_agents?: string[] }; from_agent?: string; from_agents?: string[] } | null
-      const fromAgent = rawExtra?.from_agent ?? rawExtra?.routing?.from_agent ?? rawExtra?.from_agents?.[0] ?? rawExtra?.routing?.from_agents?.[0]
+      const fromAgent = userMessageSender(msg)
       const extra = { ...(msg.extra ?? {}) }
       if (fromAgent) extra.from_agent = fromAgent
       const timestamp = msg.created_at ? new Date(msg.created_at) : new Date()
