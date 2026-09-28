@@ -381,8 +381,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   500 KB limit, since mentioned files are read inline rather than uploaded.
 - **Composer history navigation** `[v1.32.0, v3.0.0]` — when the input is empty,
   `↑` / `↓` walks previous user prompts from the current chat plus local
-  submissions. The transcript scrolls to each recalled prompt, and back to the
-  latest message when you walk out to an empty draft.
+  submissions; sub-agent reports are left out. The transcript scrolls to each
+  recalled prompt, and back to the latest message when you walk out to an
+  empty draft.
 - **Clickable URLs in user message bubbles** `[v1.77.0]` — plain-text URLs typed
   or pasted into a user message are rendered as tappable links; style matches
   agent response links.

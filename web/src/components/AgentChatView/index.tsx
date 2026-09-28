@@ -66,7 +66,7 @@ import { useOverlayState } from './useOverlayState'
 import { useSessionBootstrap } from './useSessionBootstrap'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
-import { newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
+import { composerHistoryPrompts, newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
 import { deliverFromComposer, stopTurn, useReleaseHeldMessages } from './heldMessages'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
@@ -331,12 +331,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const leadBlocks = useAgentStore((s) => (
     s.leadName ? s.agentStreams[s.leadName]?.blocks ?? EMPTY_BLOCKS : EMPTY_BLOCKS
   ))
-  const historyPrompts = useMemo(() => (
-    [...leadBlocks]
-      .reverse()
-      .filter((block) => block.type === 'user' && block.content.trim())
-      .map((block) => block.content)
-  ), [leadBlocks])
+  const historyPrompts = useMemo(() => composerHistoryPrompts(leadBlocks), [leadBlocks])
   // ↑/↓ recall in the composer shows the recalled prompt in the transcript;
   // walking back out to an empty draft returns to the live end, as ⌥⌘↓ past
   // the newest prompt does. Reads blocks at call time to stay stable.

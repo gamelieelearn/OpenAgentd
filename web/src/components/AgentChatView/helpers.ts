@@ -6,6 +6,7 @@
  */
 import { resolveApiUrl } from '@/api/client'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
+import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
 import { workspaceRelativePath } from '@/utils/file-refs'
 import type { SlashCommand } from '../InputComposer'
 import { patchFileStats } from '../ToolCall/diffUtils'
@@ -35,13 +36,26 @@ export function parseBuiltInSlashCommand(content: string): string | null {
 }
 
 /**
+ * What composer ↑/↓ steps through, newest first: prompts the user wrote.
+ * Sub-agent reports arrive as ``user`` blocks too, but recalling one would
+ * put another agent's words in the user's mouth.
+ */
+export function composerHistoryPrompts(blocks: readonly ContentBlock[]): string[] {
+  const prompts: string[] = []
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (isDirectUserBlock(blocks[i]) && blocks[i].content.trim()) prompts.push(blocks[i].content)
+  }
+  return prompts
+}
+
+/**
  * The newest user block with ``prompt``'s text, compared trimmed as composer
  * history dedupes it, so a recalled prompt maps to the one it came from.
  */
 export function newestUserBlockId(blocks: readonly ContentBlock[], prompt: string): string | undefined {
   const text = prompt.trim()
   for (let i = blocks.length - 1; i >= 0; i--) {
-    if (blocks[i].type === 'user' && blocks[i].content.trim() === text) return blocks[i].id
+    if (isDirectUserBlock(blocks[i]) && blocks[i].content.trim() === text) return blocks[i].id
   }
   return undefined
 }
