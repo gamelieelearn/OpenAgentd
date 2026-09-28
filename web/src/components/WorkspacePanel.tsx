@@ -1,5 +1,5 @@
 /**
- * CodingWorkspacePanel — the review dock.
+ * WorkspacePanel — the review dock.
  *
  * Editor-style tab strip (Git review, file previews, full-height diffs,
  * commits, terminals, and on desktop the agent Tasks and Schedule views)
@@ -51,33 +51,33 @@ import {
   type DiffFileSection,
   collectChangedFiles,
   collectDiffSections,
-} from './CodingWorkspacePanel/diff-helpers'
-import type { ParsedGraphLine } from './CodingWorkspacePanel/CommitDetail'
-import { GitReviewSubPanel } from './CodingWorkspacePanel/GitReviewSubPanel'
-import { CommitHistorySubPanel } from './CodingWorkspacePanel/CommitHistorySubPanel'
-import { TerminalSubPanel } from './CodingWorkspacePanel/TerminalSubPanel'
-import { FilePreviewSubPanel } from './CodingWorkspacePanel/FilePreviewSubPanel'
-import { DiffTabView } from './CodingWorkspacePanel/DiffTabView'
-import { CommitTabView } from './CodingWorkspacePanel/CommitTabView'
-import { TasksTabView } from './CodingWorkspacePanel/TasksTabView'
+} from './WorkspacePanel/diff-helpers'
+import type { ParsedGraphLine } from './WorkspacePanel/CommitDetail'
+import { GitReviewSubPanel } from './WorkspacePanel/GitReviewSubPanel'
+import { CommitHistorySubPanel } from './WorkspacePanel/CommitHistorySubPanel'
+import { TerminalSubPanel } from './WorkspacePanel/TerminalSubPanel'
+import { FilePreviewSubPanel } from './WorkspacePanel/FilePreviewSubPanel'
+import { DiffTabView } from './WorkspacePanel/DiffTabView'
+import { CommitTabView } from './WorkspacePanel/CommitTabView'
+import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { SchedulerDockView } from './SchedulerPanel/SchedulerDockView'
-import { DockTabBar } from './CodingWorkspacePanel/DockTabBar'
-import { DockActionMenus, type CommitActionTarget } from './CodingWorkspacePanel/DockActionMenus'
-import { useGitActions } from './CodingWorkspacePanel/useGitActions'
-import { useDockTabs } from './CodingWorkspacePanel/useDockTabs'
+import { DockTabBar } from './WorkspacePanel/DockTabBar'
+import { DockActionMenus, type CommitActionTarget } from './WorkspacePanel/DockActionMenus'
+import { useGitActions } from './WorkspacePanel/useGitActions'
+import { useDockTabs } from './WorkspacePanel/useDockTabs'
 import {
   type GitSubTab,
   GitViewToolbar,
   gitViewPanelId,
   gitViewTabId,
-} from './CodingWorkspacePanel/GitViewToolbar'
+} from './WorkspacePanel/GitViewToolbar'
 import {
   type DockView,
   type DockViewRequest,
   REVIEW_TAB_ID,
   basename,
   resolveFileTabInfo,
-} from './CodingWorkspacePanel/dock-tabs'
+} from './WorkspacePanel/dock-tabs'
 
 export type { ChangedFileStatus, ChangedFileInfo, DiffFileSection }
 
@@ -99,7 +99,7 @@ function parseGraph(graph: string): ParsedGraphLine[] {
   })
 }
 
-export function CodingWorkspacePanel({
+export function WorkspacePanel({
   workspace,
   open,
   mobile = false,

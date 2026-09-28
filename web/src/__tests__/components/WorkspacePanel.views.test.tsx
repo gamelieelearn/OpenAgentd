@@ -13,7 +13,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
 import type { ScheduledTaskResponse, TodoItem } from '@/api/types'
-import type { DockView, DockViewRequest } from '@/components/CodingWorkspacePanel/dock-tabs'
+import type { DockView, DockViewRequest } from '@/components/WorkspacePanel/dock-tabs'
 
 // lucide-react stays real: the Schedule tab pulls in the whole scheduler tree.
 const WORKSPACE = '/repo/project'
@@ -83,11 +83,11 @@ interface RenderOptions {
 }
 
 async function renderPanel(options: RenderOptions = {}) {
-  const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+  const { WorkspacePanel } = await import('@/components/WorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const element = (opts: RenderOptions) => (
     <QueryClientProvider client={queryClient}>
-      <CodingWorkspacePanel
+      <WorkspacePanel
         workspace={WORKSPACE}
         open
         viewRequest={opts.request ?? null}

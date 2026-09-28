@@ -1,5 +1,5 @@
 /**
- * Terminal tabs in CodingWorkspacePanel — multi-instance + persistence.
+ * Terminal tabs in WorkspacePanel — multi-instance + persistence.
  *
  * Sessions live in useTerminalStore (module-level), so tabs must:
  *  - open a numbered session per "New terminal" action,
@@ -64,20 +64,20 @@ beforeEach(() => {
 afterEach(cleanup)
 
 async function renderPanel(terminalOpenKey = 0) {
-  const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+  const { WorkspacePanel } = await import('@/components/WorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   let result: ReturnType<typeof render>
   await act(async () => {
     result = render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open terminalOpenKey={terminalOpenKey} />
+        <WorkspacePanel workspace={WORKSPACE} open terminalOpenKey={terminalOpenKey} />
       </QueryClientProvider>,
     )
   })
   return result!
 }
 
-describe('CodingWorkspacePanel terminal tabs', () => {
+describe('WorkspacePanel terminal tabs', () => {
   it('terminalOpenKey bump opens a store-backed session and tab', async () => {
     await renderPanel(1)
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
@@ -124,7 +124,7 @@ describe('CodingWorkspacePanel terminal tabs', () => {
 
   it('closing a terminal tab and reopening panel keeps terminal closed', async () => {
     const handledRef = { current: 0 }
-    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
     // Open terminal via terminalOpenKey bump = 1
@@ -132,7 +132,7 @@ describe('CodingWorkspacePanel terminal tabs', () => {
     await act(async () => {
       view = render(
         <QueryClientProvider client={queryClient}>
-          <CodingWorkspacePanel
+          <WorkspacePanel
             workspace={WORKSPACE}
             open
             terminalOpenKey={1}
@@ -157,7 +157,7 @@ describe('CodingWorkspacePanel terminal tabs', () => {
     await act(async () => {
       render(
         <QueryClientProvider client={queryClient}>
-          <CodingWorkspacePanel
+          <WorkspacePanel
             workspace={WORKSPACE}
             open
             terminalOpenKey={1}

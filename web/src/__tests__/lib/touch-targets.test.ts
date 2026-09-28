@@ -7,7 +7,7 @@ import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { DOCK_ROW_ACTION_CLASS, dockTabCloseClass } from '@/components/CodingWorkspacePanel/dock-tab-styles'
+import { DOCK_ROW_ACTION_CLASS, dockTabCloseClass } from '@/components/WorkspacePanel/dock-tab-styles'
 
 const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
 

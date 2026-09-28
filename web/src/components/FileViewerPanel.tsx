@@ -652,7 +652,7 @@ export function DiffPreview({ diff, autoScroll = true }: { diff: string; autoScr
   )
 }
 
-export function CodingFilePreviewContent({
+export function FilePreviewContent({
   workspace,
   file,
   onAddComment,

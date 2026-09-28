@@ -7,7 +7,7 @@
  * every entry). Every consumer must therefore share one cache entry per
  * workspace/session rather than fetching its own copy.
  *
- * Consumers: `WorkspaceFilesPanel` (artifacts tree), `CodingWorkspacePanel`
+ * Consumers: `WorkspaceFilesPanel` (artifacts tree), `WorkspacePanel`
  * (coding file tree), the InputComposer `@`-mention picker (`useFileRefsQuery`), and
  * the coding command palette (`useCommandPalette`).
  *

@@ -3,7 +3,7 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
-import { CodingFilePreviewContent } from '@/components/CodingFileViewerPanel'
+import { FilePreviewContent } from '@/components/FileViewerPanel'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 
@@ -20,17 +20,17 @@ afterEach(() => {
   globalThis.fetch = originalFetch
 })
 
-describe('CodingFilePreviewContent — revealing a line', () => {
+describe('FilePreviewContent — revealing a line', () => {
   it('selects the requested line once the file loads, and consumes the request', async () => {
     useFileRevealStore.getState().reveal('src/main.ts', 3)
-    render(<CodingFilePreviewContent workspace="/repo" file={FILE} />)
+    render(<FilePreviewContent workspace="/repo" file={FILE} />)
 
     expect(await screen.findByRole('button', { name: 'Add comment for line 3' })).toBeTruthy()
     expect(useFileRevealStore.getState().request).toBeNull()
   })
 
   it('reveals a line in a file that is already open, clamped to its length', async () => {
-    render(<CodingFilePreviewContent workspace="/repo" file={FILE} />)
+    render(<FilePreviewContent workspace="/repo" file={FILE} />)
     await screen.findByRole('button', { name: 'Select line 4' })
 
     act(() => useFileRevealStore.getState().reveal('src/main.ts', 99))
@@ -39,7 +39,7 @@ describe('CodingFilePreviewContent — revealing a line', () => {
 
   it('leaves a request for another file alone', async () => {
     useFileRevealStore.getState().reveal('src/other.ts', 2)
-    render(<CodingFilePreviewContent workspace="/repo" file={FILE} />)
+    render(<FilePreviewContent workspace="/repo" file={FILE} />)
     await screen.findByRole('button', { name: 'Select line 4' })
 
     expect(screen.queryByRole('button', { name: /^Add comment/ })).toBeNull()

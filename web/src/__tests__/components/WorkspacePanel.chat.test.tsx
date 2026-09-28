@@ -1,5 +1,5 @@
 /**
- * Chat workspaces in CodingWorkspacePanel.
+ * Chat workspaces in WorkspacePanel.
  *
  * The chat root is the user's home directory and usually not a git repo, so
  * the dock must not present a Git review tab (or spend git probes on it) while
@@ -54,12 +54,12 @@ beforeEach(() => {
 afterEach(cleanup)
 
 async function renderPanel(chatWorkspace: boolean) {
-  const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+  const { WorkspacePanel } = await import('@/components/WorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel
+        <WorkspacePanel
           workspace={WORKSPACE}
           open
           chatWorkspace={chatWorkspace}
@@ -69,7 +69,7 @@ async function renderPanel(chatWorkspace: boolean) {
   })
 }
 
-describe('CodingWorkspacePanel chat workspace', () => {
+describe('WorkspacePanel chat workspace', () => {
   it('drops the Git tab and never probes git for a chat root', async () => {
     await renderPanel(true)
 
@@ -95,11 +95,11 @@ describe('CodingWorkspacePanel chat workspace', () => {
   it('brings the Git tab back when the open dock moves from Chat to a project', async () => {
     // The dock stays open across workspace switches, so the same panel
     // instance receives the new workspace.
-    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const panel = (workspace: string, chatWorkspace: boolean) => (
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={workspace} open chatWorkspace={chatWorkspace} />
+        <WorkspacePanel workspace={workspace} open chatWorkspace={chatWorkspace} />
       </QueryClientProvider>
     )
     let rerender: (ui: React.ReactElement) => void = () => {}

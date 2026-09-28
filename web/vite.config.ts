@@ -102,7 +102,7 @@ export default defineConfig({
             { name: "motion", test: /node_modules[\\/]framer-motion[\\/]/, priority: 90 },
             // Syntax highlighting — separate from "markdown" because the app
             // shell statically imports the highlighter (ToolCall shell
-            // commands, CodingFileViewerPanel) as well as the markdown
+            // commands, FileViewerPanel) as well as the markdown
             // renderer.
             { name: "syntax", test: /node_modules[\\/]@tanstack[\\/]highlight[\\/]/, priority: 85 },
             // Do not force the markdown dependency graph into a named group:

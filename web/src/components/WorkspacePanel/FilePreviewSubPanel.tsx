@@ -1,6 +1,6 @@
 import { Download } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { CodingFilePreviewContent, CopyButton, canCopyFileContents } from '../CodingFileViewerPanel'
+import { FilePreviewContent, CopyButton, canCopyFileContents } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
 import { formatBytes } from '@/utils/format'
@@ -57,7 +57,7 @@ export function FilePreviewSubPanel({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <CodingFilePreviewContent workspace={workspace} file={file} onAddComment={onAddComment} />
+        <FilePreviewContent workspace={workspace} file={file} onAddComment={onAddComment} />
       </div>
     </div>
   )

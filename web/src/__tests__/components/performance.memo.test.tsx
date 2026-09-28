@@ -6,7 +6,7 @@
  * - `AssistantTurnFooter`: `useCallback` on handleCopy — stable across re-renders.
  * - `TodosPopover`: `sortedTodos` with `useMemo` — sort order is correct and
  *   stable regardless of the input array reference changing.
- * - `CodingFileViewerPanel/TextPreview`: `lines` memoized — the same content
+ * - `FileViewerPanel/TextPreview`: `lines` memoized — the same content
  *   string produces the same line array, and selection state changes don't
  *   corrupt the rendered text.
  * - `Sidebar`: `dateGroups` with `useMemo` — group labels are deterministic.

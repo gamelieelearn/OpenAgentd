@@ -9,7 +9,7 @@
  * plain text rather than throwing. Adding a bundled grammar costs ~100 bytes
  * gzipped; adding a hand-written one costs a pattern table and its tests.
  *
- * This is the app's only highlighter — chat fences, ``CodingFileViewerPanel``
+ * This is the app's only highlighter — chat fences, ``FileViewerPanel``
  * and the ``ToolCall`` shell command all resolve their grammars here, so a
  * language added below lights up in every one of those surfaces at once.
  */

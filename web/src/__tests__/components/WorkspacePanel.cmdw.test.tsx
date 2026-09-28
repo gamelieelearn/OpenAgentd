@@ -84,12 +84,12 @@ function buildKeyEvent(key: string, opts: { ctrlKey?: boolean; metaKey?: boolean
 }
 
 async function renderWithOpenFileTab() {
-  const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+  const { WorkspacePanel } = await import('@/components/WorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel
+        <WorkspacePanel
           workspace={WORKSPACE}
           open
           selectedFilePath={readme.path}
@@ -105,18 +105,18 @@ async function renderWithOpenFileTab() {
   )
 }
 
-describe('CodingWorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () => {
+describe('WorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () => {
   it('calls onFileSelect(null) on Ctrl+W so the parent clears its file state (prevents re-open bug)', async () => {
     // Regression: Cmd+W only cleared local tab state but never notified the
     // parent. When the panel was closed then reopened the parent still held
     // codingFileViewer, so the tab was immediately re-opened on mount.
-    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const onFileSelect = mock(() => {})
     await act(async () => {
       render(
         <QueryClientProvider client={queryClient}>
-          <CodingWorkspacePanel
+          <WorkspacePanel
             workspace={WORKSPACE}
             open
             selectedFilePath={readme.path}
@@ -142,12 +142,12 @@ describe('CodingWorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () =>
   it('reports the neighbour file to the parent when closing lands on another file tab', async () => {
     // Closing one of two file tabs leaves the other file on screen, so the
     // parent must keep a file selected (Git list highlight, mention reuse).
-    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const onFileSelect = mock(() => {})
     const renderPanel = (path: string, openKey: number) => (
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel
+        <WorkspacePanel
           workspace={WORKSPACE}
           open
           selectedFilePath={path}
@@ -200,12 +200,12 @@ describe('CodingWorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () =>
 
   it('does nothing when the Git review tab is active (no file tab to close)', async () => {
     // Render without a pre-opened file tab — the Git tab is active
-    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () => {
       render(
         <QueryClientProvider client={queryClient}>
-          <CodingWorkspacePanel
+          <WorkspacePanel
             workspace={WORKSPACE}
             open
           />

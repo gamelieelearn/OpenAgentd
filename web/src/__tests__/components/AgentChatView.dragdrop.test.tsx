@@ -56,8 +56,8 @@ mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
-mock.module('@/components/CodingWorkspacePanel', () => ({
-  CodingWorkspacePanel: ({ onClose }: { onClose: () => void }) => (
+mock.module('@/components/WorkspacePanel', () => ({
+  WorkspacePanel: ({ onClose }: { onClose: () => void }) => (
     <aside data-testid="coding-workspace-panel">
       <button type="button" onClick={onClose}>Close workspace panel</button>
     </aside>

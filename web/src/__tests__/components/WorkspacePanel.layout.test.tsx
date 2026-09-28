@@ -53,12 +53,12 @@ beforeEach(() => {
 afterEach(cleanup)
 
 async function renderPanel({ centerWidth = 1000, mobile = false } = {}) {
-  const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+  const { WorkspacePanel } = await import('@/components/WorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open centerWidth={centerWidth} mobile={mobile} />
+        <WorkspacePanel workspace={WORKSPACE} open centerWidth={centerWidth} mobile={mobile} />
       </QueryClientProvider>,
     )
   })
@@ -105,7 +105,7 @@ describe('Review dock layout', () => {
   })
 
   it('measures the center element it is given so the shell need not re-render on resize', async () => {
-    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const centerRef: { current: HTMLDivElement | null } = { current: null }
     const attach = (node: HTMLDivElement | null) => {
@@ -116,7 +116,7 @@ describe('Review dock layout', () => {
       render(
         <QueryClientProvider client={queryClient}>
           <div ref={attach}>
-            <CodingWorkspacePanel workspace={WORKSPACE} open centerRef={centerRef} />
+            <WorkspacePanel workspace={WORKSPACE} open centerRef={centerRef} />
           </div>
         </QueryClientProvider>,
       )

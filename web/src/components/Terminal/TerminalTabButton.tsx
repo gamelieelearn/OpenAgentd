@@ -1,6 +1,6 @@
 /**
  * TerminalTabButton — tab chip for a terminal session in
- * CodingWorkspacePanel (terminal is coding-mode only for now).
+ * WorkspacePanel (terminal is coding-mode only for now).
  *
  * Desktop: right-click opens a small menu (Rename / Close).
  * Mobile: long-press opens the same choice as a bottom sheet — no native
@@ -26,7 +26,7 @@ import {
   dockTabButtonClass,
   dockTabClass,
   dockTabCloseClass,
-} from '@/components/CodingWorkspacePanel/dock-tab-styles'
+} from '@/components/WorkspacePanel/dock-tab-styles'
 import { softHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { useTerminalStore, type TerminalSessionMeta } from '@/stores/useTerminalStore'

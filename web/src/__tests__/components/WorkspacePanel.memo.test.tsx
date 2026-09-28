@@ -67,11 +67,11 @@ afterEach(cleanup)
 
 describe('Review dock list memoization', () => {
   it('does not re-render changed-file rows when only the dock width changes', async () => {
-    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const panel = (centerWidth: number) => (
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open centerWidth={centerWidth} />
+        <WorkspacePanel workspace={WORKSPACE} open centerWidth={centerWidth} />
       </QueryClientProvider>
     )
     let rerender: (ui: React.ReactElement) => void = () => {}

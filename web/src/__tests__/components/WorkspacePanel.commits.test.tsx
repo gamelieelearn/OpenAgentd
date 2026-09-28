@@ -83,7 +83,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 async function renderCommitsTab(mobile = false) {
-  const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+  const { WorkspacePanel } = await import('@/components/WorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
   // Pre-set store to commits sub-tab so the history query fires immediately.
@@ -92,7 +92,7 @@ async function renderCommitsTab(mobile = false) {
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel
+        <WorkspacePanel
           workspace={WORKSPACE}
           open
           mobile={mobile}
@@ -104,7 +104,7 @@ async function renderCommitsTab(mobile = false) {
   return { queryClient }
 }
 
-describe('CodingWorkspacePanel – commit body expand/collapse', () => {
+describe('WorkspacePanel – commit body expand/collapse', () => {
   it('keeps the Commits list on the current branch even when Tree has All branches enabled', async () => {
     // Regression: the persisted "All branches" toggle lives only on the Tree
     // sub-tab but used to leak into the Commits list, where it can't be seen
@@ -271,7 +271,7 @@ describe('CodingWorkspacePanel – commit body expand/collapse', () => {
   })
 })
 
-describe('CodingWorkspacePanel – commit actions (undo/revert)', () => {
+describe('WorkspacePanel – commit actions (undo/revert)', () => {
   it('opens commit actions context menu on right click on desktop, showing undo and revert buttons', async () => {
     await renderCommitsTab(false)
 
@@ -399,7 +399,7 @@ function makeFetch(ahead: number | null, behind: number | null = null) {
 
 async function renderWithCommitsSubtab(ahead: number | null, behind: number | null = null) {
   globalThis.fetch = makeFetch(ahead, behind)
-  const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+  const { WorkspacePanel } = await import('@/components/WorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
   // Start on commits subtab so the trigger label shows the badge
@@ -408,7 +408,7 @@ async function renderWithCommitsSubtab(ahead: number | null, behind: number | nu
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel
+        <WorkspacePanel
           workspace={WORKSPACE}
           open
           mobile={false}
@@ -421,7 +421,7 @@ async function renderWithCommitsSubtab(ahead: number | null, behind: number | nu
 }
 
 
-describe('CodingWorkspacePanel – commits_ahead badge', () => {
+describe('WorkspacePanel – commits_ahead badge', () => {
   beforeEach(() => {
     useGitPanelStore.setState({ workspaces: {} })
   })
@@ -457,7 +457,7 @@ describe('CodingWorkspacePanel – commits_ahead badge', () => {
     // and confirming history was never called, then switch to commits and check.
     const user = userEvent.setup()
     globalThis.fetch = makeFetch(2)
-    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
     useGitPanelStore.getState().setSubTab(WORKSPACE, 'changes')
@@ -465,7 +465,7 @@ describe('CodingWorkspacePanel – commits_ahead badge', () => {
     await act(async () => {
       render(
         <QueryClientProvider client={queryClient}>
-          <CodingWorkspacePanel
+          <WorkspacePanel
             workspace={WORKSPACE}
             open
             mobile={false}

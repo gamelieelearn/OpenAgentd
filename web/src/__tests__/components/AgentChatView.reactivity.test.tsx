@@ -42,7 +42,7 @@ mock.module('@/stores/useSettingsStore', () => ({ useSettingsStore: () => () => 
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
-mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: () => null }))
+mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
 mock.module('@/components/AppFooter', () => ({ AppFooter: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({

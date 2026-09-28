@@ -241,6 +241,6 @@ function AgentLayoutBase() {
   )
 }
 
-export function CodingLayout() {
+export function AppLayout() {
   return <AgentLayoutBase />
 }

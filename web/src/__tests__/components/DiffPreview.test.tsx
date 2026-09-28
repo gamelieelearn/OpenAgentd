@@ -43,7 +43,7 @@ function contentRows(container: HTMLElement): Array<[string, string]> {
 }
 
 async function renderDiff(diff: string) {
-  const { DiffPreview } = await import('@/components/CodingFileViewerPanel')
+  const { DiffPreview } = await import('@/components/FileViewerPanel')
   return render(<DiffPreview diff={diff} />)
 }
 

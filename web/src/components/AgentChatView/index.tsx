@@ -48,7 +48,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { type InputComposerHandle } from '../InputComposer'
 import { FloatingInputComposer } from '../FloatingInputComposer'
 import { AppFooter } from '../AppFooter'
-import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
+import { WorkspacePanel } from '../WorkspacePanel'
 import { workspaceLabel } from '@/utils/workspace'
 import { workspaceRelativePath } from '@/utils/file-refs'
 import type {
@@ -761,7 +761,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             Mobile: fixed full-screen overlay from the right. */}
         <AnimatePresence initial={false}>
           {workspace && codingPanel !== null && (
-            <CodingWorkspacePanel
+            <WorkspacePanel
               key="review-dock"
               workspace={workspace}
               open

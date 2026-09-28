@@ -92,12 +92,12 @@ beforeEach(() => {
 afterEach(cleanup)
 
 async function renderPanel(onFileSelect = mock(() => {}), ready: RegExp | string = /diff for src\/app\.ts/) {
-  const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+  const { WorkspacePanel } = await import('@/components/WorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   await act(async () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open onFileSelect={onFileSelect} />
+        <WorkspacePanel workspace={WORKSPACE} open onFileSelect={onFileSelect} />
       </QueryClientProvider>,
     )
   })

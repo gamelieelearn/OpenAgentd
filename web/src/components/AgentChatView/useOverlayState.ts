@@ -54,7 +54,7 @@ import { useViewportAtLeast } from '@/hooks/use-viewport-width'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import { APP_EVENTS } from '@/lib/app-events'
 import type { WorkspaceFileInfo } from '@/api/types'
-import type { DockView, DockViewRequest } from '../CodingWorkspacePanel/dock-tabs'
+import type { DockView, DockViewRequest } from '../WorkspacePanel/dock-tabs'
 import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
 
 export type { DockView, DockViewRequest }
@@ -362,7 +362,7 @@ export function useOverlayState({
   const handleToggleFilesPanel = handleWorkspaceFiles
 
   // Open (or focus) a terminal — coding mode only for now. Ensures the
-  // workspace panel is visible, then bumps the key so CodingWorkspacePanel
+  // workspace panel is visible, then bumps the key so WorkspacePanel
   // focuses/opens its terminal tab (cwd = project).
   // terminal UI (kept simple; may return later behind its own entry point).
   const handleOpenTerminal = useCallback(() => {

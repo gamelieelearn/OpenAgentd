@@ -95,22 +95,22 @@ beforeEach(() => {
 afterEach(cleanup)
 
 async function renderWorkspacePanel(onFileSelect = mock(() => {}), selectedFilePath: string | null = null, mobile = false) {
-  const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+  const { WorkspacePanel } = await import('@/components/WorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   let renderResult: ReturnType<typeof render> | null = null
   await act(async () => {
     renderResult = render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open selectedFilePath={selectedFilePath} onFileSelect={onFileSelect} mobile={mobile} />
+        <WorkspacePanel workspace={WORKSPACE} open selectedFilePath={selectedFilePath} onFileSelect={onFileSelect} mobile={mobile} />
       </QueryClientProvider>,
     )
   })
-  return { CodingWorkspacePanel, queryClient, renderResult: renderResult! }
+  return { WorkspacePanel, queryClient, renderResult: renderResult! }
 }
 
 /** Render a dock file tab (toolbar + preview) on its own. */
 async function renderViewer(file: WorkspaceFileInfo = readme, onAddComment = mock(() => {})) {
-  const { FilePreviewSubPanel } = await import('@/components/CodingWorkspacePanel/FilePreviewSubPanel')
+  const { FilePreviewSubPanel } = await import('@/components/WorkspacePanel/FilePreviewSubPanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   await act(async () => {
     render(
@@ -133,7 +133,7 @@ describe('Coding workspace two-layer file preview', () => {
 
   it('reopens the selected file tab when the open key changes', async () => {
     const onFileSelect = mock(() => {})
-    const { CodingWorkspacePanel, queryClient, renderResult } = await renderWorkspacePanel(onFileSelect, readmePath)
+    const { WorkspacePanel, queryClient, renderResult } = await renderWorkspacePanel(onFileSelect, readmePath)
 
     await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
     await userEvent.setup().click(screen.getByRole('button', { name: /git/i }))
@@ -141,7 +141,7 @@ describe('Coding workspace two-layer file preview', () => {
 
     renderResult.rerender(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open selectedFilePath={readmePath} selectedFileOpenKey={1} onFileSelect={onFileSelect} />
+        <WorkspacePanel workspace={WORKSPACE} open selectedFilePath={readmePath} selectedFileOpenKey={1} onFileSelect={onFileSelect} />
       </QueryClientProvider>,
     )
 

@@ -1,7 +1,7 @@
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 import { Root, NotFound } from './routes/__root'
-import { CodingLayout } from './routes/cockpit'
+import { AppLayout } from './routes/cockpit'
 import { SchedulerPage } from './routes/scheduler'
 import { TelemetryPage } from './routes/telemetry'
 
@@ -16,7 +16,7 @@ const rootRoute = createRootRoute({
 const packagedIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/index.html',
-  component: CodingLayout,
+  component: AppLayout,
 })
 
 // The one screen: / is a new session, /<id> a session. A pathless layout so
@@ -24,7 +24,7 @@ const packagedIndexRoute = createRoute({
 const appLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'app',
-  component: CodingLayout,
+  component: AppLayout,
 })
 const newSessionRoute = createRoute({
   getParentRoute: () => appLayoutRoute,

@@ -74,12 +74,12 @@ afterEach(cleanup)
 
 describe('Changes tab counters', () => {
   it('counts removed/added lines whose content starts with -- or ++', async () => {
-    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () => {
       render(
         <QueryClientProvider client={queryClient}>
-          <CodingWorkspacePanel workspace={WORKSPACE} open />
+          <WorkspacePanel workspace={WORKSPACE} open />
         </QueryClientProvider>,
       )
     })
