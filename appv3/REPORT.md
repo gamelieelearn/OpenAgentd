@@ -465,6 +465,11 @@ explicitly.
   `agent/tests/thinking_duration.rs`). It is an extra key in the existing
   JSON column, not a schema change. v2 never writes it, and the web client
   shows "Thought" without a duration when it is absent.
+- **`todo_manage` clear:** `clear` without a status removes every task
+  (`tools/src/todo.rs`; the `status` description in
+  `contract/tool_definitions.json` says so). v2 defaults to `finished`, so
+  agents resetting the board for a new plan left the old plan's pending and
+  in-progress tasks behind.
 - **Active sessions filter:** `GET /api/agent/sessions?active=true` returns
   every top-level session that is running or waiting on a question, as one
   page (`next_cursor: null`, `has_more: false`), newest first. `limit` and

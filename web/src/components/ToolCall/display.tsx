@@ -104,11 +104,17 @@ function formatTodoAction(action: Record<string, unknown>): string {
   if (type === 'claim') return `claim ${taskId ?? 'todo'}`
   if (type === 'delete') return `delete ${taskId ?? 'todo'}`
   if (type === 'read') return 'read todos'
-  if (type === 'clear') {
-    const statuses = Array.isArray(action.statuses) ? action.statuses.map(String).join('/') : ''
-    return `clear ${statuses || 'finished'} todos`.trim()
-  }
+  if (type === 'clear') return `clear ${clearScope(action)} todos`
   return type ? `${type} ${taskId ?? ''}`.trim() : JSON.stringify(action)
+}
+
+/** Which todos a `clear` removes: a bare clear empties the board. */
+function clearScope(action: Record<string, unknown>): string {
+  const status = str(action, 'status')
+  if (status) return status
+  // Older boards filtered with a `statuses` list.
+  const statuses = Array.isArray(action.statuses) ? action.statuses.map(String).join('/') : ''
+  return statuses || 'all'
 }
 
 function formatSchedule(parsed: Record<string, unknown>): string | null {
@@ -401,7 +407,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       return { header: 'Reading todos…', headerTitle: 'Reading todos…', formattedArgs: null }
     }
     if (actions.length === 1 && firstAction === 'clear') {
-      return { header: 'Clearing finished todos…', headerTitle: 'Clearing finished todos…', formattedArgs: null }
+      const header = `Clearing ${clearScope(first)} todos…`
+      return { header, headerTitle: header, formattedArgs: null }
     }
     if (actions.length === 1 && firstAction === 'claim') {
       const taskId = str(first, 'task_id')

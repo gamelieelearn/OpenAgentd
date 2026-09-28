@@ -729,11 +729,18 @@ describe("ToolCall — todo_manage display", () => {
 
   it("shows concise clear summary", async () => {
     const user = userEvent.setup()
-    const args = JSON.stringify({ actions: [{ action: "clear", statuses: ["completed"] }] })
+    const args = JSON.stringify({ actions: [{ action: "clear", status: "finished" }] })
     render(<ToolCall name="todo_manage" args={args} done={false} />)
 
     expect(getHeader("Clearing finished todos…")).toBeTruthy()
     await user.click(screen.getByRole("button"))
+  })
+
+  it("reads a bare clear as clearing every todo", () => {
+    const args = JSON.stringify({ actions: [{ action: "clear" }] })
+    render(<ToolCall name="todo_manage" args={args} done={false} />)
+
+    expect(getHeader("Clearing all todos…")).toBeTruthy()
   })
 })
 

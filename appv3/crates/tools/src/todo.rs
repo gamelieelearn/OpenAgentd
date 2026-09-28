@@ -152,13 +152,11 @@ fn parse_action(v: &Value, idx: usize, errs: &mut Vec<String>) -> Option<Action>
                 return None;
             }
         }
-        "clear" => {
-            if status.is_none() {
-                status = Some("finished".into());
-            } else if !matches!(status.as_deref(), Some("completed" | "cancelled" | "finished")) {
-                fail(errs, "status for clear must be 'completed', 'cancelled', or 'finished'");
-                return None;
-            }
+        // No status clears the whole board (v2 defaulted to "finished",
+        // which left an abandoned plan's unfinished tasks behind).
+        "clear" if status.is_some() && !matches!(status.as_deref(), Some("completed" | "cancelled" | "finished")) => {
+            fail(errs, "status for clear must be 'completed', 'cancelled', or 'finished'");
+            return None;
         }
         _ => {}
     }
@@ -213,12 +211,11 @@ pub fn apply(path: &Path, actions: &[Value]) -> Result<String, ToolError> {
                 log.push(if items.len() < before { format!("deleted {tid}") } else { format!("unknown {tid}") });
             }
             "clear" => {
-                let st = a.status.clone().unwrap_or_else(|| "finished".into());
                 let before = items.len();
-                if st == "finished" {
-                    items.retain(|i| !matches!(i["status"].as_str(), Some("completed" | "cancelled")));
-                } else {
-                    items.retain(|i| i["status"] != st.as_str());
+                match a.status.as_deref() {
+                    None => items.clear(),
+                    Some("finished") => items.retain(|i| !matches!(i["status"].as_str(), Some("completed" | "cancelled"))),
+                    Some(st) => items.retain(|i| i["status"] != st),
                 }
                 log.push(format!("cleared {} tasks", before - items.len()));
             }
@@ -285,9 +282,28 @@ mod tests {
         assert_eq!(out, "updated task_1; unknown task_9");
         let out = apply(&p, &[json!({"action": "read"})]).unwrap();
         assert_eq!(out, "[task_1] [completed] a\n[task_2] [pending] b");
-        let out = apply(&p, &[json!({"action": "clear"})]).unwrap();
+        let out = apply(&p, &[json!({"action": "clear", "status": "completed"})]).unwrap();
         assert_eq!(out, "cleared 1 tasks");
         let raw = std::fs::read_to_string(&p).unwrap();
         assert!(raw.starts_with("{\n  \"counter\": 2,"));
+    }
+
+    /// A bare `clear` empties the board, so a new plan never inherits the
+    /// unfinished tasks of an abandoned one. A status narrows it.
+    #[test]
+    fn clear_without_status_removes_every_task() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join(TODOS_FILENAME);
+        let board = [
+            json!({"action": "create", "content": "done", "status": "completed"}),
+            json!({"action": "create", "content": "dropped", "status": "cancelled"}),
+            json!({"action": "create", "content": "doing", "status": "in_progress"}),
+            json!({"action": "create", "content": "next"}),
+        ];
+        apply(&p, &board).unwrap();
+        assert_eq!(apply(&p, &[json!({"action": "clear", "status": "finished"})]).unwrap(), "cleared 2 tasks");
+        assert_eq!(apply(&p, &[json!({"action": "read"})]).unwrap(), "[task_3] [in_progress] doing\n[task_4] [pending] next");
+        assert_eq!(apply(&p, &[json!({"action": "clear"}), json!({"action": "create", "content": "fresh"})]).unwrap(), "cleared 2 tasks; created task_5");
+        assert_eq!(apply(&p, &[json!({"action": "read"})]).unwrap(), "[task_5] [pending] fresh");
     }
 }

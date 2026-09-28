@@ -374,7 +374,7 @@
                   ],
                   "type": "string",
                   "default": null,
-                  "description": "Task state: 'pending' (queued), 'in_progress' (currently active, max 1), 'completed' (verified), or 'cancelled'. For action='clear', status filters which tasks to remove ('finished' removes completed and cancelled)."
+                  "description": "Task state: 'pending' (queued), 'in_progress' (currently active, max 1), 'completed' (verified), or 'cancelled'. For action='clear', omit status to remove every task, or set it to remove only tasks in that state ('finished' removes completed and cancelled)."
                 }
               },
               "required": [

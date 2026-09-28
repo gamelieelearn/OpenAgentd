@@ -579,7 +579,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   `note`) and providing fallback toolsets and default instructions when omitted from disk.
 - **Clean taskboard checklist** `[v1.127.0, updated v2.1.0]` — the todo taskboard
   serves as a flat, user-readable checklist of tasks and statuses (`pending`,
-  `in_progress`, `completed`, `cancelled`).
+  `in_progress`, `completed`, `cancelled`). A `clear` without a status empties
+  the board, so a new plan no longer inherits the unfinished tasks of an
+  abandoned one; `clear` with a status still removes only those `[v3.0.0]`.
 - **High-throughput chat persistence engine** `[v2.0.0]` — remodeled `session_messages`
   onto derived state (`seq` + `kind` + `pinned`) with partial SQL indexing,
   single-allocation checkpointers, and SQL-level compaction keep-tail calculation.
