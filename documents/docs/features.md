@@ -226,8 +226,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   the toast, resuming with the remaining time once it clears, so a toast can no
   longer disappear mid-read.
 - **Floating surfaces keep content visible** `[v3.0.0]` — the transcript leaves
-  room under the floating composer, so the latest reply is never hidden behind
-  it. On desktop,
+  room under the docked floating composer, so the latest reply is never hidden
+  behind it; once the bar is dragged up, the transcript runs to the bottom
+  instead of leaving empty space under the last message. On desktop,
   toasts, the update card, and the language-tools prompt stack in one
   bottom-right column above the status bar instead of overlapping each other.
 - **Categorized stream & execution error handling** `[v1.133.0]` — provider stream

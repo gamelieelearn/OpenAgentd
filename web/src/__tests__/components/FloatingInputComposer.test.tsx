@@ -496,10 +496,19 @@ describe('FloatingInputComposer — transcript clearance', () => {
     expect(clearance()).toBe('124px')
   })
 
-  it('reserves nothing once the bar is dragged into the upper half', () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: 0, y: -500 }))
+  it('reserves nothing once the bar is dragged up clear of the bottom', () => {
+    // Still in the lower half: the transcript runs to the bottom and the
+    // last lines show under the raised bar instead of leaving a 200px gap.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: 0, y: -200 }))
     render(<Harness />)
     expect(clearance()).toBe('0px')
+  })
+
+  it('keeps reserving while the bar is only nudged off its dock', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: 0, y: -40 }))
+    render(<Harness />)
+    // 16px dock gap + 40px raise + 100px panel + 8px drag-handle overhang.
+    expect(clearance()).toBe('164px')
   })
 
   it('reserves nothing on mobile, where the bar sits in the layout flow', () => {

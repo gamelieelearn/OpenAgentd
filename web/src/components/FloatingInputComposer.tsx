@@ -97,18 +97,19 @@ function clampOffset(offset: StoredOffset, panel: Size, bounds: Size): StoredOff
 
 const COMPOSER_BOTTOM_GAP = 16 // the wrapper's ``bottom-4``
 const DRAG_HANDLE_OVERHANG = 8 // the grip sits half above the panel
+const FLOAT_RAISE = 48 // about two transcript lines of room under the bar
 
 /**
  * Space the transcript keeps free at its bottom so the newest reply scrolls
  * clear of the floating bar. Derived from the stored offset rather than a live
  * rect, because framer is still springing towards a new offset when it
- * changes. A bar dragged into the upper half no longer covers the newest
- * reply, so it reserves nothing.
+ * changes. A bar raised more than a couple of lines floats: the transcript runs
+ * to the bottom and its last lines show under the bar, because reserving the
+ * whole raised band leaves that much empty space below the last message.
  */
-function composerClearance(panelHeight: number, offsetY: number, boundsHeight: number): number {
-  if (panelHeight <= 0) return 0
-  const clearance = COMPOSER_BOTTOM_GAP + panelHeight - offsetY + DRAG_HANDLE_OVERHANG
-  return clearance > boundsHeight / 2 ? 0 : Math.round(clearance)
+function composerClearance(panelHeight: number, offsetY: number): number {
+  if (panelHeight <= 0 || -offsetY > FLOAT_RAISE) return 0
+  return Math.round(COMPOSER_BOTTOM_GAP + panelHeight - offsetY + DRAG_HANDLE_OVERHANG)
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -486,7 +487,7 @@ export const FloatingInputComposer = memo(
       if (!bounds || !panel) return
       const update = () => {
         const panelHeight = panel.getBoundingClientRect().height
-        const px = composerClearance(panelHeight, offset.y, bounds.getBoundingClientRect().height)
+        const px = composerClearance(panelHeight, offset.y)
         bounds.style.setProperty('--composer-clearance', `${px}px`)
         setJumpChipBelow(panelHeight > 0 && px === 0)
       }
@@ -494,7 +495,6 @@ export const FloatingInputComposer = memo(
       let resizeObserver: ResizeObserver | null = null
       if (typeof ResizeObserver !== 'undefined') {
         resizeObserver = new ResizeObserver(update)
-        resizeObserver.observe(bounds)
         resizeObserver.observe(panel)
       }
       return () => {
