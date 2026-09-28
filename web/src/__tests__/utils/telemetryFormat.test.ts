@@ -5,9 +5,22 @@ import {
   formatMs,
   formatPercent,
   formatShortId,
+  formatTps,
   formatUsd,
   timeAgo,
 } from '@/utils/telemetryFormat'
+
+describe('formatTps', () => {
+  it('reads as tokens per second, one decimal only when slow', () => {
+    expect(formatTps(54.4)).toBe('54 tok/s')
+    expect(formatTps(7.25)).toBe('7.3 tok/s')
+  })
+
+  it('returns a dash when nothing was measured', () => {
+    expect(formatTps(0)).toBe('-')
+    expect(formatTps(Number.NaN)).toBe('-')
+  })
+})
 
 describe('formatInt', () => {
   it('adds thousands separators', () => {

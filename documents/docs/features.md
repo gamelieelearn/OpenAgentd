@@ -1414,6 +1414,12 @@ Everything stays local. No third-party telemetry SaaS.
   and a turn opens to its facts (workspace, model, duration, tokens, cost),
   **Copy trace ID**, **Open session**, and the span waterfall. Turns record their
   workspace from v3.0.0; older turns show as **Not recorded**.
+- **Model speed in telemetry** `[v3.0.0]` — every streamed model call records
+  its time to first token and its output speed in tokens per second. The
+  overview shows the median first token (with p95) and the median output speed
+  (with the slowest 5%), each model row shows its median of both, and a
+  model-call span lists them. Calls recorded earlier count toward everything
+  else but not toward speed.
 - **Sub-agents in session telemetry** `[v3.0.0]` — a session's telemetry view
   counts the sub-agent sessions it started in its spend, turns, and tokens, and
   says how many. The Sessions card lists each sub-agent under its session (in

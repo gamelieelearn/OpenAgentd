@@ -6,7 +6,7 @@
 import { useMemo, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import type { SpanDetail } from '@/api/client'
-import { formatInt, formatMs, formatShortId, formatUsd } from '@/utils/telemetryFormat'
+import { formatInt, formatMs, formatShortId, formatTps, formatUsd } from '@/utils/telemetryFormat'
 import { formatFullDateTime } from '@/utils/format'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
@@ -37,6 +37,7 @@ export function SpanDetailPanel({
     () => extractEstimatedCost(span.attributes),
     [span.attributes],
   )
+  const speed = useMemo(() => extractSpeed(span.attributes), [span.attributes])
 
   return (
     <aside className={`flex shrink-0 flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) ${fullWidth ? 'w-full' : 'w-96'}`}>
@@ -73,6 +74,8 @@ export function SpanDetailPanel({
             }
           />
           <Kv label="Duration" value={formatMs(span.duration_ms)} />
+          {speed.firstChunkMs !== null && <Kv label="First token" value={formatMs(speed.firstChunkMs)} />}
+          {speed.tokensPerSecond !== null && <Kv label="Output speed" value={formatTps(speed.tokensPerSecond)} />}
           <Kv label="Started" value={formatFullDateTime(new Date(span.start_ms))} />
           <Kv label="Span ID" value={formatShortId(span.span_id)} mono />
           <Kv
@@ -139,6 +142,19 @@ function extractEstimatedCost(attrs: Record<string, unknown>): number | null {
   const raw = attrs['gen_ai.usage.estimated_cost_usd']
   const n = typeof raw === 'number' ? raw : Number(raw)
   return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/** Streaming speed the backend records on `chat` spans; `null` when absent. */
+function extractSpeed(attrs: Record<string, unknown>): { firstChunkMs: number | null; tokensPerSecond: number | null } {
+  const positive = (raw: unknown) => {
+    const n = typeof raw === 'number' ? raw : Number(raw)
+    return raw !== undefined && raw !== null && Number.isFinite(n) && n > 0 ? n : null
+  }
+  const firstChunkS = positive(attrs['gen_ai.response.time_to_first_chunk'])
+  return {
+    firstChunkMs: firstChunkS === null ? null : firstChunkS * 1000,
+    tokensPerSecond: positive(attrs['openagentd.response.output_tokens_per_second']),
+  }
 }
 
 /**

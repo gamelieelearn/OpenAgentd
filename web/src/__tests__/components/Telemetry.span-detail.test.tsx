@@ -54,6 +54,29 @@ describe('SpanDetailPanel', () => {
     expect(screen.queryByText('Estimated cost')).toBeNull()
   })
 
+  it('shows how fast a model call started and streamed', () => {
+    render(
+      <SpanDetailPanel
+        span={span({
+          'gen_ai.response.time_to_first_chunk': 0.8234,
+          'openagentd.response.output_tokens_per_second': 61.7,
+        })}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('First token')).toBeTruthy()
+    expect(screen.getByText('823 ms')).toBeTruthy()
+    expect(screen.getByText('Output speed')).toBeTruthy()
+    expect(screen.getByText('62 tok/s')).toBeTruthy()
+  })
+
+  it('omits speed rows for spans without them', () => {
+    render(<SpanDetailPanel span={span({ 'gen_ai.usage.input_tokens': 1000 })} onClose={() => {}} />)
+    expect(screen.queryByText('First token')).toBeNull()
+    expect(screen.queryByText('Output speed')).toBeNull()
+  })
+
   it('lists only attributes the span set', () => {
     render(
       <SpanDetailPanel

@@ -119,6 +119,12 @@ export interface Headline {
   failedTurns: number
   turnP50: number
   turnP95: number
+  /** Time to first streamed output of an LLM call (ms); 0 when unmeasured. */
+  ttftP50: number
+  ttftP95: number
+  /** Output tokens per second: median and the slow 5th percentile. */
+  tpsP50: number
+  tpsP5: number
   inputTokens: number
   outputTokens: number
   cachePercent: number
@@ -135,6 +141,10 @@ export function headline(summary: ObservabilitySummary): Headline {
     failedTurns,
     turnP50: latency.turn_p50,
     turnP95: latency.turn_p95,
+    ttftP50: latency.ttft_p50 ?? 0,
+    ttftP95: latency.ttft_p95 ?? 0,
+    tpsP50: summary.output_tps?.p50 ?? 0,
+    tpsP5: summary.output_tps?.p5 ?? 0,
     inputTokens: totals.input_tokens,
     outputTokens: totals.output_tokens,
     cachePercent: totals.cache_percent,

@@ -12,7 +12,7 @@ import type { ObservabilitySummary, SessionUsage } from '@/api/client'
 import { SectionCard, SectionCardHeader, SectionCardRows } from '@/components/ui/section-card'
 import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { cn } from '@/lib/utils'
-import { formatCompact, formatMs, formatPercent, formatSpend, timeAgo } from '@/utils/telemetryFormat'
+import { formatCompact, formatMs, formatPercent, formatSpend, formatTps, timeAgo } from '@/utils/telemetryFormat'
 import { modelName, nestSessions, sessionKey, sessionName, sharePct, workspaceName } from './model'
 
 type WorkspaceRow = NonNullable<ObservabilitySummary['by_workspace']>[number]
@@ -231,21 +231,26 @@ export function ModelsCard({
         <p className="px-3 py-6 text-center text-xs text-(--color-text-muted)">No model calls in this range.</p>
       ) : (
         <SectionCardRows>
-          {rows.map((row) => (
-            <BreakdownRow
-              key={row.provider_model}
-              label={<span className="font-mono font-medium">{modelName(row.provider_model)}</span>}
-              detail={row.provider}
-              metrics={[
-                { value: `${formatPercent(row.cache_percent)} cached`, tone: 'muted' },
-                { value: `${formatCompact(row.calls)} ${row.calls === 1 ? 'call' : 'calls'}`, tone: 'muted' },
-                { value: formatSpend(row.estimated_cost_usd) },
-              ]}
-              share={byCost ? sharePct(row.estimated_cost_usd, totalSpend) : sharePct(row.calls, totalCalls)}
-              onSelect={filterable.has(row.provider_model) ? () => onSelect(row.provider_model) : undefined}
-              selectHint="show only turns on this model"
-            />
-          ))}
+          {rows.map((row) => {
+            // Speed only where it was measured (older spans lack it).
+            const metrics: Metric[] = []
+            if ((row.ttft_p50_ms ?? 0) > 0) metrics.push({ value: `TTFT ${formatMs(row.ttft_p50_ms ?? 0)}`, tone: 'muted' })
+            if ((row.output_tps_p50 ?? 0) > 0) metrics.push({ value: formatTps(row.output_tps_p50 ?? 0), tone: 'muted' })
+            metrics.push({ value: `${formatPercent(row.cache_percent)} cached`, tone: 'muted' })
+            metrics.push({ value: `${formatCompact(row.calls)} ${row.calls === 1 ? 'call' : 'calls'}`, tone: 'muted' })
+            metrics.push({ value: formatSpend(row.estimated_cost_usd) })
+            return (
+              <BreakdownRow
+                key={row.provider_model}
+                label={<span className="font-mono font-medium">{modelName(row.provider_model)}</span>}
+                detail={row.provider}
+                metrics={metrics}
+                share={byCost ? sharePct(row.estimated_cost_usd, totalSpend) : sharePct(row.calls, totalCalls)}
+                onSelect={filterable.has(row.provider_model) ? () => onSelect(row.provider_model) : undefined}
+                selectHint="show only turns on this model"
+              />
+            )
+          })}
         </SectionCardRows>
       )}
     </SectionCard>

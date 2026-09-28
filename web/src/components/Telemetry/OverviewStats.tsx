@@ -1,10 +1,11 @@
 /**
- * Headline strip: the five numbers a user checks first. Spend, turns (and
- * how many failed), typical turn time, token volume, and how much of the
- * prompt came from cache (the main cost lever).
+ * Headline strip: the numbers a user checks first. Spend, turns (and how
+ * many failed), typical turn time, how fast models start answering and
+ * stream, token volume, and how much of the prompt came from cache (the
+ * main cost lever).
  */
 import { cn } from '@/lib/utils'
-import { formatCompact, formatMs, formatPercent, formatSpend } from '@/utils/telemetryFormat'
+import { formatCompact, formatMs, formatPercent, formatSpend, formatTps } from '@/utils/telemetryFormat'
 import type { Headline } from './model'
 
 function Stat({
@@ -35,14 +36,15 @@ export function OverviewStats({ data }: { data: Headline }) {
   return (
     <dl
       aria-label="Overview"
-      className="grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-(--color-border) bg-(--color-border) md:grid-cols-5"
+      className="grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-(--color-border) bg-(--color-border) md:grid-cols-4 lg:grid-cols-7"
     >
       <Stat
         label="Spend"
         value={formatSpend(data.spend)}
         detail={data.turns > 0 ? `${formatSpend(data.spendPerTurn)} per turn` : 'Estimated from model pricing'}
-        // Five cells on a two-column phone grid: the lead stat spans the row.
-        className="col-span-2 md:col-span-1"
+        // Seven cells: the lead stat spans a row so the two- and four-column
+        // grids fill evenly.
+        className="col-span-2 lg:col-span-1"
       />
       <Stat
         label="Turns"
@@ -51,6 +53,16 @@ export function OverviewStats({ data }: { data: Headline }) {
         detailTone={data.failedTurns > 0 ? 'error' : 'muted'}
       />
       <Stat label="Median turn" value={formatMs(data.turnP50)} detail={`p95 ${formatMs(data.turnP95)}`} />
+      <Stat
+        label="First token"
+        value={formatMs(data.ttftP50)}
+        detail={data.ttftP50 > 0 ? `p95 ${formatMs(data.ttftP95)}` : 'Not measured in this range'}
+      />
+      <Stat
+        label="Output speed"
+        value={formatTps(data.tpsP50)}
+        detail={data.tpsP50 > 0 ? `5% under ${formatTps(data.tpsP5)}` : 'Not measured in this range'}
+      />
       <Stat
         label="Tokens"
         value={formatCompact(data.inputTokens + data.outputTokens)}

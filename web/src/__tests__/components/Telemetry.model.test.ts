@@ -131,6 +131,16 @@ describe('telemetry model', () => {
     expect(headline(summary({ totals: { ...summary().totals, turns: 0 } })).spendPerTurn).toBe(0)
   })
 
+  it('carries streaming speed, zero on backends that do not report it', () => {
+    const h = headline(summary({
+      latency_ms: { turn_p50: 1200, turn_p95: 4000, llm_p50: 600, llm_p95: 1500, ttft_p50: 700, ttft_p95: 2400 },
+      output_tps: { p50: 55, p5: 18 },
+    }))
+    expect([h.ttftP50, h.ttftP95, h.tpsP50, h.tpsP5]).toEqual([700, 2400, 55, 18])
+    const old = headline(summary())
+    expect([old.ttftP50, old.ttftP95, old.tpsP50, old.tpsP5]).toEqual([0, 0, 0, 0])
+  })
+
   it('sharePct never returns NaN or exceeds 100', () => {
     expect(sharePct(1, 0)).toBe(0)
     expect(sharePct(0, 10)).toBe(0)

@@ -66,6 +66,12 @@ export function formatMs(n: number): string {
   return `${(n / 1000).toFixed(1)} s`
 }
 
+/** Output speed in tokens per second; a hyphen when nothing was measured. */
+export function formatTps(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '-'
+  return `${n.toFixed(n < 10 ? 1 : 0)} tok/s`
+}
+
 /**
  * Compact "5s ago" / "3m ago" label.  Pure function on (past, now) so tests
  * can pass an explicit `now` instead of freezing the clock.

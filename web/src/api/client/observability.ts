@@ -68,7 +68,15 @@ export interface ObservabilitySummary {
     turn_p95: number
     llm_p50: number
     llm_p95: number
+    /** Time to the first streamed output of an LLM call. Absent on older backends. */
+    ttft_p50?: number
+    ttft_p95?: number
   }
+  /**
+   * Output tokens per second while LLM calls streamed: the median and the
+   * slow tail (5th percentile). Absent on older backends; 0 when unmeasured.
+   */
+  output_tps?: { p50: number; p5: number }
   daily_turns: Array<{
     day: string
     turns: number
@@ -88,6 +96,10 @@ export interface ObservabilitySummary {
     cache_percent: number
     estimated_cost_usd: number
     p95_ms: number
+    /** Median time to first output (ms); absent on older backends, 0 when unmeasured. */
+    ttft_p50_ms?: number
+    /** Median output tokens per second; absent on older backends, 0 when unmeasured. */
+    output_tps_p50?: number
   }>
   cache_by_step: Array<{
     step: string

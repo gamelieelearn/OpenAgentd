@@ -39,13 +39,14 @@ function summaryFixture(overrides: Partial<ObservabilitySummary> = {}): Observab
       estimated_cost_usd: 0.4213,
       errors: 1,
     },
-    latency_ms: { turn_p50: 8200, turn_p95: 31_000, llm_p50: 2100, llm_p95: 6400 },
+    latency_ms: { turn_p50: 8200, turn_p95: 31_000, llm_p50: 2100, llm_p95: 6400, ttft_p50: 850, ttft_p95: 3200 },
+    output_tps: { p50: 62.4, p5: 21 },
     daily_turns: [
       { day: '2026-05-22', turns: 2, errors: 0, estimated_cost_usd: 0.12 },
       { day: '2026-05-26', turns: 4, errors: 1, estimated_cost_usd: 0.3013 },
     ],
     by_model: [
-      { provider: 'openai', model: 'gpt-5', provider_model: 'openai:gpt-5', calls: 7, input_tokens: 40_000, output_tokens: 3000, cached_tokens: 20_000, cache_write_tokens: 0, cache_percent: 50, estimated_cost_usd: 0.4, p95_ms: 6000 },
+      { provider: 'openai', model: 'gpt-5', provider_model: 'openai:gpt-5', calls: 7, input_tokens: 40_000, output_tokens: 3000, cached_tokens: 20_000, cache_write_tokens: 0, cache_percent: 50, estimated_cost_usd: 0.4, p95_ms: 6000, ttft_p50_ms: 1400, output_tps_p50: 48 },
       { provider: 'openai', model: 'gpt-5-mini', provider_model: 'openai:gpt-5-mini', calls: 2, input_tokens: 2000, output_tokens: 100, cached_tokens: 1000, cache_write_tokens: 0, cache_percent: 50, estimated_cost_usd: 0.0213, p95_ms: 900 },
     ],
     cache_by_step: [],
@@ -217,6 +218,26 @@ describe('TelemetryView overview', () => {
     expect(screen.getByText('Models')).toBeTruthy()
     expect(await screen.findAllByRole('button', { name: /^Open turn from/ })).toHaveLength(2)
     expect(screen.getByRole('button', { name: /failed$/ })).toBeTruthy()
+  })
+
+  it('shows time to first token and output speed, overall and per model', async () => {
+    useHandlers()
+    renderView()
+
+    const overview = await screen.findByLabelText('Overview')
+    expect(within(overview).getByText('First token')).toBeTruthy()
+    expect(within(overview).getByText('850 ms')).toBeTruthy()
+    expect(within(overview).getByText('p95 3.2 s')).toBeTruthy()
+    expect(within(overview).getByText('Output speed')).toBeTruthy()
+    expect(within(overview).getByText('62 tok/s')).toBeTruthy()
+    expect(within(overview).getByText('5% under 21 tok/s')).toBeTruthy()
+
+    const gpt = screen.getByRole('button', { name: /show only turns on this model/ })
+    const mini = screen.getByText('gpt-5-mini').closest('div') as HTMLElement
+    expect(within(gpt).getByText('TTFT 1.4 s')).toBeTruthy()
+    expect(within(gpt).getByText('48 tok/s')).toBeTruthy()
+    // Not measured for this model: no empty cells.
+    expect(within(mini).queryByText(/tok\/s/)).toBeNull()
   })
 
   it('clicking a workspace narrows every request and hides the redundant card', async () => {
