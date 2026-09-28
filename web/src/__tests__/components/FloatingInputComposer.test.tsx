@@ -4,6 +4,7 @@ import { render, screen, cleanup, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FloatingInputComposer } from '@/components/FloatingInputComposer'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import type { InputComposerHandle } from '@/components/InputComposer'
 
 let mockIsMobile = false
@@ -51,6 +52,7 @@ afterEach(cleanup)
 beforeEach(() => {
   localStorage.clear()
   useAgentStore.setState({ _pendingMessages: [] })
+  useTranscriptFollowStore.setState({ unseen: null, jumpToLatest: null })
   mockIsMobile = false
 })
 
@@ -60,7 +62,7 @@ function nextFrame(): Promise<void> {
 
 // Test harness — provides a bounds container with a stable, measurable size.
 function Harness(props: {
-  onSubmit?: (message: string, files?: File[]) => void
+  onSubmit?: (message: string, files?: File[], mentions?: string[], delivery?: string) => void
   onStop?: () => void
   placeholder?: string
   exposeFocus?: boolean
@@ -187,6 +189,15 @@ describe('FloatingInputComposer', () => {
     expect(textarea.getAttribute('placeholder')).toBe('Ask the team…')
   })
 
+  it('collapses to Attach, Expand and Send', () => {
+    render(<Harness />)
+
+    expect(screen.getByRole('button', { name: 'Attach file' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeTruthy()
+    expect(screen.queryByText('Code')).toBeNull()
+  })
+
   it('keeps the collapsed strip available while streaming', () => {
     render(<Harness isStreaming onStop={() => {}} />)
 
@@ -213,6 +224,16 @@ describe('FloatingInputComposer', () => {
 
     const panel = wrapper!.firstElementChild as HTMLElement
     expect(panel.className).toContain('pointer-events-auto')
+  })
+
+  it('carries the jump-to-latest chip on the moving panel', () => {
+    useTranscriptFollowStore.setState({ unseen: 2, jumpToLatest: () => {} })
+    render(<Harness />)
+
+    const chip = screen.getByRole('button', { name: 'Jump to latest, 2 new' })
+    const handle = screen.getByRole('button', { name: /drag input bar/i })
+    const panel = (handle.closest('div.absolute') as HTMLElement).firstElementChild as HTMLElement
+    expect(panel.contains(chip)).toBe(true)
   })
 
   it('does not render queued messages inside the floating composer', () => {
@@ -242,6 +263,26 @@ describe('FloatingInputComposer', () => {
 
     expect(textarea.getAttribute('disabled')).toBeNull()
     expect(document.activeElement).toBe(textarea)
+  })
+
+  it('takes focus without expanding when asked to, e.g. back from the dock', async () => {
+    const ref = createRef<InputComposerHandle>()
+    function FocusHarness() {
+      const boundsRef = useRef<HTMLDivElement>(null)
+      return (
+        <div ref={boundsRef} style={{ position: 'relative', width: 1200, height: 800 }}>
+          <FloatingInputComposer ref={ref} boundsRef={boundsRef} onSubmit={() => {}} />
+        </div>
+      )
+    }
+    render(<FocusHarness />)
+
+    act(() => ref.current?.focus({ expand: false }))
+    await act(nextFrame)
+
+    const expandButton = screen.getByRole('button', { name: 'Expand input bar' })
+    expect(document.activeElement).toBe(expandButton)
+    expect(screen.getByLabelText('Message input').getAttribute('disabled')).not.toBeNull()
   })
 
   it('minimizes when Escape is pressed while the input is focused', async () => {
@@ -316,6 +357,18 @@ describe('FloatingInputComposer', () => {
 
     expect(textarea.getAttribute('disabled')).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+  })
+
+  it('passes how a mid-turn message should be delivered on to its owner', async () => {
+    const user = userEvent.setup()
+    const onSubmit = mock((..._args: unknown[]) => {})
+    render(<Harness isStreaming onStop={() => {}} onSubmit={onSubmit} />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
+    await user.type(screen.getByRole('textbox', { name: 'Message input' }), 'then run the tests')
+    await user.keyboard('{Alt>}{Enter}{/Alt}')
+
+    expect(onSubmit.mock.calls[0]).toEqual(['then run the tests', undefined, undefined, 'after-turn'])
   })
 
 })
@@ -436,5 +489,43 @@ describe('FloatingInputComposer — orientation change: portrait-mobile → land
     // Still fully expanded on mobile — no Expand button, textarea present.
     expect(screen.queryByRole('button', { name: 'Expand input bar' })).toBeNull()
     expect(screen.getByRole('textbox', { name: 'Message input' })).toBeTruthy()
+  })
+})
+
+describe('FloatingInputComposer — jump chip side', () => {
+  const originalRect = HTMLElement.prototype.getBoundingClientRect
+
+  beforeEach(() => {
+    useTranscriptFollowStore.setState({ unseen: 2, jumpToLatest: () => {} })
+    // Happy DOM has no layout: give the bounds and the floating panel sizes.
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const height = this.dataset.testid === 'bounds'
+        ? 800
+        : this.className.includes('pointer-events-auto') ? 100 : 0
+      return { x: 0, y: 0, top: 0, left: 0, right: 0, bottom: height, width: 0, height, toJSON: () => ({}) } as DOMRect
+    }
+  })
+  afterEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = originalRect
+  })
+
+  const chipSide = () => screen.getByRole('button', { name: 'Jump to latest, 2 new' }).dataset.side
+
+  it('keeps the chip above a docked bar', () => {
+    render(<Harness />)
+    expect(chipSide()).toBe('above')
+  })
+
+  it('keeps the chip above a bar raised within the lower half', () => {
+    // 16px dock gap + 200px raise + 100px panel + 8px grip = 324px < 400px.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: 0, y: -200 }))
+    render(<Harness />)
+    expect(chipSide()).toBe('above')
+  })
+
+  it('moves the chip below a bar dragged into the upper half', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: 0, y: -500 }))
+    render(<Harness />)
+    expect(chipSide()).toBe('below')
   })
 })

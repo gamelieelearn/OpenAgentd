@@ -40,15 +40,20 @@ describe('parseDeepLinkUrl', () => {
     const res = parseDeepLinkUrl('openagentd://cockpit/sess-999')
     expect(res).toEqual({
       kind: 'navigate',
-      path: '/coding/sess-999',
+      path: '/sess-999',
     })
   })
 
   it('accepts the isolated development app scheme', () => {
     expect(parseDeepLinkUrl('openagentd-dev://coding/dev-session')).toEqual({
       kind: 'navigate',
-      path: '/coding/dev-session',
+      path: '/dev-session',
     })
+  })
+
+  it('opens a new session for a link without a session id', () => {
+    expect(parseDeepLinkUrl('openagentd://coding')).toEqual({ kind: 'navigate', path: '/' })
+    expect(parseDeepLinkUrl('openagentd://session/')).toEqual({ kind: 'navigate', path: '/' })
   })
 })
 

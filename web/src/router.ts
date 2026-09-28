@@ -1,52 +1,63 @@
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
-import { lazyRouteComponent } from '@tanstack/react-router'
 import { z } from 'zod'
 import { Root, NotFound } from './routes/__root'
-import { CodingLayout } from './routes/cockpit'
+import { AppLayout } from './routes/cockpit'
+import { SchedulerPage } from './routes/scheduler'
+import { TelemetryPage } from './routes/telemetry'
 
 const rootRoute = createRootRoute({
   component: Root,
   notFoundComponent: NotFound,
 })
 
-// / → Coding workspace
-const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/',
-  beforeLoad: () => {
-    throw redirect({ to: '/coding' })
-  },
-})
-
 // Tauri's packaged asset URL may surface as /index.html before the root
-// effect canonicalizes it. Render Coding immediately instead of flashing the
+// effect canonicalizes it. Render the app immediately instead of flashing the
 // not-found screen on a first desktop launch.
 const packagedIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/index.html',
-  component: CodingLayout,
+  component: AppLayout,
 })
 
-// /coding layout — coding mode without query-string mode state
-const codingLayoutRoute = createRoute({
+// The one screen: / is a new session, /<id> a session. A pathless layout so
+// switching sessions keeps the chat view mounted.
+const appLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/coding',
-  component: CodingLayout,
+  id: 'app',
+  component: AppLayout,
 })
-const codingIndexRoute = createRoute({
-  getParentRoute: () => codingLayoutRoute,
+const newSessionRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
   path: '/',
   component: () => null,
 })
-const codingSessionRoute = createRoute({
-  getParentRoute: () => codingLayoutRoute,
+const sessionRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
   path: '$sessionId',
   component: () => null,
+})
+
+// Links from older builds (bookmarks, notifications, other windows) used a
+// /coding prefix; they redirect and render nothing of their own.
+const legacyCodingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/coding',
+  beforeLoad: () => {
+    throw redirect({ to: '/', replace: true })
+  },
+})
+const legacyCodingSessionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/coding/$sessionId',
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: '/$sessionId', params: { sessionId: params.sessionId }, replace: true })
+  },
 })
 
 const telemetrySearchSchema = z.object({
   days: z.number().optional(),
   traceId: z.string().optional(),
+  session: z.string().optional(),
 })
 
 const schedulerSearchSchema = z.object({
@@ -54,12 +65,12 @@ const schedulerSearchSchema = z.object({
   task: z.string().optional(),
 })
 
-// /telemetry — standalone observability page (span aggregates & latency)
+// /telemetry — deep-link shim: opens the telemetry overlay, then /
 const telemetryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/telemetry',
   validateSearch: (search) => telemetrySearchSchema.parse(search),
-  component: lazyRouteComponent(() => import('./routes/telemetry'), 'TelemetryPage'),
+  component: TelemetryPage,
 })
 
 // /scheduler — standalone scheduler page (manage scheduled tasks)
@@ -67,13 +78,14 @@ const schedulerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/scheduler',
   validateSearch: (search) => schedulerSearchSchema.parse(search),
-  component: lazyRouteComponent(() => import('./routes/scheduler'), 'SchedulerPage'),
+  component: SchedulerPage,
 })
 
 const routeTree = rootRoute.addChildren([
-  indexRoute,
   packagedIndexRoute,
-  codingLayoutRoute.addChildren([codingIndexRoute, codingSessionRoute]),
+  appLayoutRoute.addChildren([newSessionRoute, sessionRoute]),
+  legacyCodingRoute,
+  legacyCodingSessionRoute,
   telemetryRoute,
   schedulerRoute,
 ])

@@ -331,7 +331,7 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(copyBtn).toBeTruthy()
   })
 
-  it("does not show copy button when timestamp is not provided", () => {
+  it("still offers copy when the prompt has no timestamp yet", () => {
     const content = "Test message"
     const blocks: ContentBlock[] = [
       {
@@ -344,9 +344,8 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
 
-    // Copy button should not be present
-    const copyBtn = screen.queryByLabelText("Copy message")
-    expect(copyBtn).toBeNull()
+    // Copy does not depend on the metadata row's contents.
+    expect(screen.getByLabelText("Copy message")).toBeTruthy()
   })
 
   it("copies message content to clipboard when copy button is clicked", async () => {
@@ -409,7 +408,7 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(timeSpan.closest("div")?.className).toContain("opacity-100")
   })
 
-  it("shows the model from user message metadata on hover", async () => {
+  it("leaves the model out of the prompt's hover row; the answer's footer names it", async () => {
     const user = userEvent.setup()
     const blocks: ContentBlock[] = [
       {
@@ -422,16 +421,10 @@ describe("AgentView — UserBubble collapse feature", () => {
     ]
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
-    const modelLabel = screen.getByText("claude-sonnet-4.5")
-    expect(modelLabel.closest("div")?.className).toContain("opacity-0")
+    await user.hover(container.querySelector("div[class*='group']")!)
 
-    const groupDiv = container.querySelector("div[class*='group']")
-    await user.hover(groupDiv!)
-
-    expect(modelLabel.closest("div")?.className).toContain("opacity-100")
-    // The shortened model name is shown as plain text — no hover tooltip with
-    // the full provider-prefixed id (removed as redundant).
-    expect(screen.queryByRole("tooltip")).toBeNull()
+    expect(screen.queryByText("claude-sonnet-4.5")).toBeNull()
+    expect(screen.getByText("12:00")).toBeTruthy()
   })
 
   it("does not show a model label for legacy user messages without metadata", async () => {

@@ -1,4 +1,4 @@
-/** TanStack Query hook for the coding-workspace snippet picker. */
+/** TanStack Query hook for the workspace snippet picker. */
 import { useQuery } from '@tanstack/react-query'
 
 import { listSnippets } from '@/api/client'

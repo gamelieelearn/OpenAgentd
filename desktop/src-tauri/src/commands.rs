@@ -7,7 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::{
-    backend_log_path, AppState, BackendMode, BackendStartGuard, SIDECAR_HANDSHAKE_TIMEOUT,
+    backend_log_path, AppState, BackendMode, BackendReady, BackendStartGuard, SIDECAR_HANDSHAKE_TIMEOUT,
 };
 use crate::sidecar::Sidecar;
 use crate::config::{
@@ -409,15 +409,6 @@ pub async fn app_use_bundled_backend(
         guard.as_mut().is_some_and(|sidecar| sidecar.is_alive())
     };
 
-    #[derive(Clone, Serialize)]
-    struct BackendReady {
-        port: u16,
-        version: String,
-        base_url: String,
-        token: Option<String>,
-        sidecar_running: bool,
-    }
-
     let backend_ready = if sidecar_alive {
         state
             .backend_failed
@@ -436,47 +427,7 @@ pub async fn app_use_bundled_backend(
             sidecar_running: true,
         }
     } else {
-        let mut start_guard = BackendStartGuard::try_acquire(
-            state.backend_starting.clone(),
-            state.backend_failed.clone(),
-        )
-        .ok_or_else(|| "bundled backend is already starting".to_string())?;
-        let mut sidecar = if let Some(token) = existing_token.as_deref() {
-            Sidecar::spawn_with_desktop_token(&app, Some(token)).map_err(|e| format!("{e:#}"))?
-        } else {
-            Sidecar::spawn(&app).map_err(|e| format!("{e:#}"))?
-        };
-        let handshake = match sidecar.read_handshake(SIDECAR_HANDSHAKE_TIMEOUT).await {
-            Ok(handshake) => handshake,
-            Err(e) => {
-                sidecar
-                    .shutdown_with_grace(Duration::from_millis(750))
-                    .await;
-                return Err(format!("{e:#}"));
-            }
-        };
-        let base = format!("http://127.0.0.1:{}", handshake.port);
-        if let Err(e) = wait_for_health(&base, 60, Duration::from_millis(250)).await {
-            sidecar
-                .shutdown_with_grace(Duration::from_millis(750))
-                .await;
-            return Err(format!("{e:#}"));
-        }
-
-        let token = handshake.token.clone();
-        let _ = state.sidecar.lock().await.replace(sidecar);
-        let _ = state.desktop_token.lock().await.replace(token.clone());
-        let _ = state.backend_base_url.lock().await.replace(base.clone());
-        update_tray_status(&app, "Status: Running");
-        start_guard.complete();
-
-        BackendReady {
-            port: handshake.port,
-            version: handshake.version,
-            base_url: base,
-            token: Some(token),
-            sidecar_running: true,
-        }
+        start_bundled_sidecar(&app).await?
     };
 
     state
@@ -504,6 +455,55 @@ pub async fn app_use_bundled_backend(
         .emit_to(window.label(), "backend-ready", backend_ready)
         .ok();
     Ok(())
+}
+
+/// Spawn the bundled sidecar (reusing the desktop token, so open windows
+/// stay authenticated), wait until it is healthy, and store it as the
+/// bundled backend. Shared by "use bundled backend" and the crash watcher.
+pub async fn start_bundled_sidecar(app: &AppHandle) -> Result<BackendReady, String> {
+    let state: tauri::State<'_, AppState> = app.state();
+    let existing_token = state.desktop_token.lock().await.clone();
+    let mut start_guard = BackendStartGuard::try_acquire(
+        state.backend_starting.clone(),
+        state.backend_failed.clone(),
+    )
+    .ok_or_else(|| "bundled backend is already starting".to_string())?;
+    let mut sidecar = if let Some(token) = existing_token.as_deref() {
+        Sidecar::spawn_with_desktop_token(app, Some(token)).map_err(|e| format!("{e:#}"))?
+    } else {
+        Sidecar::spawn(app).map_err(|e| format!("{e:#}"))?
+    };
+    let handshake = match sidecar.read_handshake(SIDECAR_HANDSHAKE_TIMEOUT).await {
+        Ok(handshake) => handshake,
+        Err(e) => {
+            sidecar
+                .shutdown_with_grace(Duration::from_millis(750))
+                .await;
+            return Err(format!("{e:#}"));
+        }
+    };
+    let base = format!("http://127.0.0.1:{}", handshake.port);
+    if let Err(e) = wait_for_health(&base, 60, Duration::from_millis(250)).await {
+        sidecar
+            .shutdown_with_grace(Duration::from_millis(750))
+            .await;
+        return Err(format!("{e:#}"));
+    }
+
+    let token = handshake.token.clone();
+    let _ = state.sidecar.lock().await.replace(sidecar);
+    let _ = state.desktop_token.lock().await.replace(token.clone());
+    let _ = state.backend_base_url.lock().await.replace(base.clone());
+    update_tray_status(app, "Status: Running");
+    start_guard.complete();
+
+    Ok(BackendReady {
+        port: handshake.port,
+        version: handshake.version,
+        base_url: base,
+        token: Some(token),
+        sidecar_running: true,
+    })
 }
 
 #[tauri::command]

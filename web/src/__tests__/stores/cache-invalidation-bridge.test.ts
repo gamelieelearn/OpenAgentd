@@ -104,6 +104,14 @@ describe('applyCacheInvalidations', () => {
     expect(call.queryKey).toEqual(['todos', 'sid-xyz'])
   })
 
+  it('maps `plan` event to the exact key ["plan", sessionId]', () => {
+    const client = makeMockClient()
+    applyCacheInvalidations(client, [{ kind: 'plan', sessionId: 'sid-plan' }])
+    expect(client.invalidateQueries).toHaveBeenCalledTimes(1)
+    const call = client.invalidateQueries.mock.calls[0][0] as { queryKey: readonly unknown[] }
+    expect(call.queryKey).toEqual(['plan', 'sid-plan'])
+  })
+
   // ── Multiple-event drains ───────────────────────────────────────────────
 
   it('processes a batch of events in order, one invalidateQueries call per event', () => {

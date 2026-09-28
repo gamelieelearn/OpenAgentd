@@ -87,10 +87,10 @@ it('uses narrow-layout-safe dialog markup', () => {
 it('renders as a non-blocking floating card that does not interfere with chat', () => {
   const { container } = render(<LspInstallPrompt />)
 
+  // Placement belongs to the shared FloatingNotices column; the card itself
+  // only has to stay click-through outside its panel.
   const aside = container.querySelector('aside')
-  expect(aside).toHaveClass('mobile-safe-floating')
   expect(aside).toHaveClass('pointer-events-none')
-  expect(aside).toHaveClass('fixed')
 
   const dialog = screen.getByRole('dialog')
   expect(dialog).toHaveClass('pointer-events-auto')

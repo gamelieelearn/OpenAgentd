@@ -1,4 +1,4 @@
-export { useHealthQuery } from './useHealthQuery'
+export { useHealthQuery, useServerCapability, CAPABILITY } from './useHealthQuery'
 export { useAgentsQuery } from './useAgentsQuery'
 export { useAgentStatusQuery } from './useAgentStatusQuery'
 export {

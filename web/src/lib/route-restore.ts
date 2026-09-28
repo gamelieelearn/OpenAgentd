@@ -14,7 +14,11 @@ export function closestRestorableRoute(route: string): string {
   const pathOnly = pathMatch?.[0] ?? trimmed
   const suffix = trimmed.slice(pathOnly.length)
   if (pathOnly === '/index.html') return `/${suffix}`
-  if (pathOnly === '/cockpit' || pathOnly.startsWith('/cockpit/')) return `/coding${suffix}`
+  if (pathOnly === '/cockpit' || pathOnly.startsWith('/cockpit/')) return `/${suffix}`
+  // Saved by builds that served sessions under /coding.
+  if (pathOnly === '/coding' || pathOnly.startsWith('/coding/')) {
+    return `/${pathOnly.slice('/coding/'.length)}${suffix}`
+  }
   if (pathOnly.startsWith('/settings')) return '/'
   return trimmed
 }

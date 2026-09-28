@@ -1,0 +1,362 @@
+//! `read` — port of `filesystem/read.py` + `handlers.py`.
+
+use crate::args::Args;
+use crate::{outline, Tool, ToolContext, ToolError, ToolOutput, ToolResult};
+use appv3_providers::ContentBlock;
+use async_trait::async_trait;
+use base64::Engine;
+use serde_json::Value;
+use std::path::Path;
+
+pub const MAX_READ_BYTES: usize = 5_242_880;
+pub const MAX_CONTEXT_CHARS: usize = 50_000;
+pub const MAX_LINE_CHARS: usize = 2_000;
+pub const MAX_IMAGE_BYTES: u64 = 10_485_760;
+
+const IMAGE_EXT: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".ico", ".tiff", ".tif"];
+const DOC_EXT: &[&str] = &[".pdf", ".docx"];
+
+pub fn ext_of(p: &Path) -> String {
+    p.extension().map(|e| format!(".{}", e.to_string_lossy().to_lowercase())).unwrap_or_default()
+}
+
+pub fn classify_file(p: &Path) -> &'static str {
+    let e = ext_of(p);
+    if IMAGE_EXT.contains(&e.as_str()) {
+        "image"
+    } else if DOC_EXT.contains(&e.as_str()) {
+        "document"
+    } else {
+        "text"
+    }
+}
+
+pub fn image_mime(p: &Path) -> String {
+    match ext_of(p).as_str() {
+        ".png" => "image/png",
+        ".jpg" | ".jpeg" => "image/jpeg",
+        ".gif" => "image/gif",
+        ".webp" => "image/webp",
+        ".bmp" => "image/bmp",
+        ".svg" => "image/svg+xml",
+        ".ico" => "image/vnd.microsoft.icon",
+        ".tiff" | ".tif" => "image/tiff",
+        ".pdf" => "application/pdf",
+        ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        _ => "application/octet-stream",
+    }
+    .to_string()
+}
+
+fn py_len(s: &str) -> usize {
+    s.chars().count()
+}
+
+pub(crate) fn fmt_thousands(n: usize) -> String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+pub fn cap_long_lines(text: &str) -> String {
+    if text.is_empty() || py_len(text) <= MAX_LINE_CHARS {
+        return text.to_string();
+    }
+    let trailing = text.ends_with('\n');
+    let body = if trailing { &text[..text.len() - 1] } else { text };
+    let capped: Vec<String> = body
+        .split('\n')
+        .map(|l| {
+            if py_len(l) > MAX_LINE_CHARS {
+                format!("{}… (line truncated to {} chars)", l.chars().take(MAX_LINE_CHARS).collect::<String>(), MAX_LINE_CHARS)
+            } else {
+                l.to_string()
+            }
+        })
+        .collect();
+    capped.join("\n") + if trailing { "\n" } else { "" }
+}
+
+fn cap_for_context(text: &str, rel: &str) -> String {
+    let n = py_len(text);
+    if n <= MAX_CONTEXT_CHARS {
+        return text.to_string();
+    }
+    let preview: String = text.chars().take(MAX_CONTEXT_CHARS).collect();
+    format!(
+        "{}\n\n[read output truncated for LLM context: {rel} is {} characters; shown first {}. Use offset and limit to read a smaller line range, or shell tools such as grep/sed/head/tail for targeted inspection.]",
+        preview.trim_end(),
+        fmt_thousands(n),
+        fmt_thousands(MAX_CONTEXT_CHARS)
+    )
+}
+
+/// Decode as UTF-8, else Latin-1 (v2 behaviour).
+pub fn decode_text(raw: &[u8]) -> String {
+    match std::str::from_utf8(raw) {
+        Ok(s) => s.to_string(),
+        Err(_) => raw.iter().map(|b| *b as char).collect(),
+    }
+}
+
+/// Python `str.splitlines(keepends=True)`.
+pub fn splitlines_keepends(text: &str) -> Vec<&str> {
+    let mut out = vec![];
+    let mut start = 0;
+    let bytes: Vec<(usize, char)> = text.char_indices().collect();
+    let mut i = 0;
+    while i < bytes.len() {
+        let (idx, c) = bytes[i];
+        let is_break = matches!(c, '\n' | '\r' | '\x0b' | '\x0c' | '\x1c' | '\x1d' | '\x1e' | '\u{85}' | '\u{2028}' | '\u{2029}');
+        if is_break {
+            let mut end = idx + c.len_utf8();
+            if c == '\r' && i + 1 < bytes.len() && bytes[i + 1].1 == '\n' {
+                end += 1;
+                i += 1;
+            }
+            out.push(&text[start..end]);
+            start = end;
+        }
+        i += 1;
+    }
+    if start < text.len() {
+        out.push(&text[start..]);
+    }
+    out
+}
+
+pub fn read_text(resolved: &Path, rel: &str, offset: i64, limit: Option<i64>) -> std::io::Result<String> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(resolved)?;
+    let mut raw = Vec::new();
+    (&mut f).take((MAX_READ_BYTES + 1) as u64).read_to_end(&mut raw)?;
+    if raw.len() > MAX_READ_BYTES {
+        tracing::warn!("file_read_truncated path={} size={}", resolved.display(), raw.len());
+        raw.truncate(MAX_READ_BYTES);
+    }
+    let text = decode_text(&raw);
+    if offset == 1 && limit.is_none() {
+        return Ok(cap_for_context(&cap_long_lines(&text), rel));
+    }
+    let lines = splitlines_keepends(&text);
+    let total = lines.len();
+    let start = (offset - 1).max(0) as usize;
+    if start >= total {
+        return Ok(format!("[no content: offset {offset} is past the end of {rel}, which has {total} lines]"));
+    }
+    let end = match limit {
+        None => total,
+        Some(l) => total.min(start + l as usize),
+    };
+    let header = format!("[{}-{}/{}]\n", start + 1, end, total);
+    let body = cap_long_lines(&lines[start..end].concat());
+    Ok(cap_for_context(&(header + &body), rel))
+}
+
+pub fn format_directory(resolved: &Path) -> std::io::Result<String> {
+    let mut entries: Vec<(bool, String, u64)> = std::fs::read_dir(resolved)?
+        .filter_map(|e| e.ok())
+        .map(|e| {
+            let p = e.path();
+            let is_file = p.is_file();
+            let size = if is_file { std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0) } else { 0 };
+            (is_file, e.file_name().to_string_lossy().to_string(), size)
+        })
+        .collect();
+    entries.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
+    if entries.is_empty() {
+        return Ok("(empty directory)".into());
+    }
+    Ok(entries.iter().map(|(f, n, s)| if *f { format!("[f] {n}  ({s} bytes)") } else { format!("[d] {n}/") }).collect::<Vec<_>>().join("\n"))
+}
+
+pub fn handle_image(resolved: &Path, rel: &str) -> Result<ToolOutput, ToolError> {
+    let size = std::fs::metadata(resolved)?.len();
+    if size > MAX_IMAGE_BYTES {
+        return Err(ToolError::Execution(format!("Image '{rel}' is {} KB — exceeds the {} KB limit for vision input.", size / 1024, MAX_IMAGE_BYTES / 1024)));
+    }
+    let raw = std::fs::read(resolved)?;
+    Ok(ToolOutput::Parts {
+        parts: vec![
+            ContentBlock::text(format!("[Image: {rel}]")),
+            ContentBlock::ImageData { data: base64::engine::general_purpose::STANDARD.encode(raw), media_type: image_mime(resolved) },
+        ],
+        mcp_app: None,
+    })
+}
+
+/// Documents (PDF, DOCX) → Markdown via `anydoc`, like v2's `handle_document`.
+///
+/// A PDF with no extractable text layer (a scan) fails with `NeedsOcr`; the
+/// raw bytes then go to a vision model instead. Encryption is reported as
+/// itself, because neither a retry nor a vision model can read it.
+pub fn handle_document(resolved: &Path, rel: &str) -> Result<ToolOutput, ToolError> {
+    let mt = image_mime(resolved);
+    let size = std::fs::metadata(resolved)?.len();
+    if size > MAX_IMAGE_BYTES {
+        return Ok(ToolOutput::Parts {
+            parts: vec![ContentBlock::text(format!(
+                "[Document: {rel}] ({mt}, {} bytes)\nFile exceeds the {} KB limit for processing.",
+                fmt_thousands(size as usize),
+                MAX_IMAGE_BYTES / 1024
+            ))],
+            mcp_app: None,
+        });
+    }
+    let raw = std::fs::read(resolved)?;
+    let converted = match crate::web::convert_document(&raw) {
+        Ok(md) => Some(md),
+        Err(anydoc::ConvertError::Encrypted) => {
+            tracing::info!("document_encrypted path={rel} size={}", raw.len());
+            return Ok(ToolOutput::Parts {
+                parts: vec![ContentBlock::text(format!(
+                    "[Document: {rel}] ({mt}, {} bytes)\nThe document is encrypted or password-protected, so its text cannot be extracted.",
+                    fmt_thousands(raw.len())
+                ))],
+                mcp_app: None,
+            });
+        }
+        Err(e) => {
+            tracing::debug!("document_conversion_failed path={rel} error={e}");
+            None
+        }
+    };
+    if let Some(md) = converted.filter(|m| !m.is_empty()) {
+        return Ok(ToolOutput::Parts { parts: vec![ContentBlock::text(format!("[Document: {rel}]\n{md}"))], mcp_app: None });
+    }
+    if ext_of(resolved) == ".pdf" {
+        tracing::info!("document_pdf_vision_fallback path={rel} size={}", raw.len());
+        return Ok(ToolOutput::Parts {
+            parts: vec![
+                ContentBlock::text(format!("[Document: {rel}] (PDF — raw, text extraction failed)")),
+                ContentBlock::ImageData { data: base64::engine::general_purpose::STANDARD.encode(&raw), media_type: "application/pdf".into() },
+            ],
+            mcp_app: None,
+        });
+    }
+    Ok(ToolOutput::Parts {
+        parts: vec![ContentBlock::text(format!(
+            "[Document: {rel}] ({mt}, {} bytes)\nUnable to extract text. File may be corrupted or in an unsupported format.",
+            fmt_thousands(raw.len())
+        ))],
+        mcp_app: None,
+    })
+}
+
+pub struct ReadTool;
+
+#[async_trait]
+impl Tool for ReadTool {
+    fn name(&self) -> &str {
+        "read"
+    }
+    async fn run(&self, ctx: &ToolContext, args: Value) -> ToolResult {
+        let mut a = Args::new("read", &args);
+        let path = a.req_str(&["path", "file_path", "filename", "filepath"]);
+        // offset/limit validators: strip non-digits from strings, clamp to >=1
+        let offset = match a.raw(&["offset"]) {
+            None | Some(Value::Null) => 1,
+            Some(Value::String(s)) => {
+                let d: String = s.chars().filter(|c| c.is_ascii_digit()).collect();
+                d.parse::<i64>().map(|n| n.max(1)).unwrap_or(1)
+            }
+            Some(_) => a.opt_int(&["offset"], Some(1), None).unwrap_or(1),
+        };
+        let limit = match a.raw(&["limit"]) {
+            None | Some(Value::Null) => None,
+            Some(Value::String(s)) if s.is_empty() || s.trim().eq_ignore_ascii_case("all") => None,
+            Some(Value::String(s)) => {
+                let d: String = s.chars().filter(|c| c.is_ascii_digit()).collect();
+                d.parse::<i64>().ok().map(|n| n.max(1))
+            }
+            Some(_) => a.opt_int(&["limit"], Some(1), None),
+        };
+        let outline_flag = a.bool_or(&["outline"], false);
+        a.finish()?;
+
+        let denied = ctx.denied.clone();
+        tokio::task::spawn_blocking(move || -> ToolResult {
+            let resolved = denied.validate_path(&path)?;
+            let rel = denied.display_path(&resolved);
+            if !resolved.exists() {
+                return Err(ToolError::Execution(format!("File not found: {rel}")));
+            }
+            if resolved.is_dir() {
+                return Ok(ToolOutput::Text(format_directory(&resolved)?));
+            }
+            if !resolved.is_file() {
+                return Err(ToolError::Execution(format!("Path is not a regular file: {rel}")));
+            }
+            if outline_flag {
+                return Ok(ToolOutput::Text(outline::generate_file_outline(&resolved, &rel)?));
+            }
+            match classify_file(&resolved) {
+                "image" => handle_image(&resolved, &rel),
+                "document" => handle_document(&resolved, &rel),
+                _ => Ok(ToolOutput::Text(read_text(&resolved, &rel, offset, limit)?)),
+            }
+        })
+        .await
+        .map_err(ToolError::exec)?
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn paginates_like_v2() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("a.txt");
+        std::fs::write(&p, "l1\nl2\nl3\n").unwrap();
+        assert_eq!(read_text(&p, "a.txt", 1, None).unwrap(), "l1\nl2\nl3\n");
+        assert_eq!(read_text(&p, "a.txt", 2, Some(1)).unwrap(), "[2-2/3]\nl2\n");
+        assert_eq!(read_text(&p, "a.txt", 9, None).unwrap(), "[no content: offset 9 is past the end of a.txt, which has 3 lines]");
+    }
+
+    use crate::web::tests::{minimal_docx, minimal_pdf};
+
+    fn doc(name: &str, bytes: &[u8]) -> (String, bool) {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join(name);
+        std::fs::write(&p, bytes).unwrap();
+        let ToolOutput::Parts { parts, .. } = handle_document(&p, name).unwrap() else { panic!("parts") };
+        let text = parts.iter().filter_map(|b| if let ContentBlock::Text { text, .. } = b { Some(text.clone()) } else { None }).collect::<Vec<_>>().join("\n");
+        let has_pdf = parts.iter().any(|b| matches!(b, ContentBlock::ImageData { media_type, .. } if media_type == "application/pdf"));
+        (text, has_pdf)
+    }
+
+    #[test]
+    fn pdf_and_docx_convert_to_text() {
+        let (t, raw) = doc("report.pdf", &minimal_pdf("Hello Anydoc World", false));
+        assert!(t.starts_with("[Document: report.pdf]\n") && t.contains("Hello Anydoc World"), "{t}");
+        assert!(!raw, "converted text must not also send the raw bytes");
+        let (t, _) = doc("notes.docx", &minimal_docx("Hello from DOCX"));
+        assert_eq!(t, "[Document: notes.docx]\nHello from DOCX");
+    }
+
+    #[test]
+    fn unreadable_pdf_falls_back_to_vision_and_other_formats_report_failure() {
+        // No text layer (here: not a PDF at all) → the raw bytes go to a vision model.
+        let (t, raw) = doc("scan.pdf", b"%PDF-1.4\nnot really a pdf");
+        assert_eq!(t, "[Document: scan.pdf] (PDF — raw, text extraction failed)");
+        assert!(raw);
+        let (t, raw) = doc("broken.docx", b"this is not a docx at all");
+        assert!(t.contains("Unable to extract text. File may be corrupted or in an unsupported format."), "{t}");
+        assert!(!raw);
+    }
+
+    #[test]
+    fn encrypted_document_says_it_is_password_protected() {
+        let (t, raw) = doc("payroll.pdf", &minimal_pdf("secret", true));
+        assert!(t.contains("The document is encrypted or password-protected"), "{t}");
+        assert!(!raw);
+    }
+}

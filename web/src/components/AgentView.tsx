@@ -3,7 +3,7 @@
  *
  * Renders a flat ContentBlock[] stream (finalized + live) with:
  * - type:'user'    → yellow user bubble
- * - type:'thinking' → collapsible thinking block
+ * - type:'thinking' → inline thinking trace
  * - type:'tool'    → tool call card
  * - type:'text'    → markdown prose
  *
@@ -15,24 +15,36 @@
  * `AgentPane` for split/unified modes.
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo, memo, lazy, Suspense } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
+import { useHotkeys } from '@tanstack/react-hotkeys'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
-import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
-import { ChevronDown, ChevronUp, AlertCircle, Clock } from 'lucide-react'
+import { MarkdownBlock } from '@/utils/markdown'
+import { ChevronDown, ChevronUp, Clock } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
-const MCPAppResult = lazy(() => import('./MCPAppResult').then((module) => ({ default: module.MCPAppResult })))
+import { MCPAppResult } from './MCPAppResult'
+import { TimelineScrubber } from './AgentView/TimelineScrubber'
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
-import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
-import { hasPlanContent, latestDirectUserBlockIdFromParts, liveBlockTail } from '@/utils/blocks'
+import { appendCurrentTurns, getVisibleTurnWindow, modelChangeTurnStarts, partitionTurns } from '@/utils/turns'
+import { countBlocksAfter, hasPlanContent, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
+import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
+import { getPlatform } from '@/hooks/use-platform'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
+import { ErrorCard } from './AgentView/ErrorCard'
+import { isDirectUserBlock, PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
+import { ReplyMenu } from './AgentView/ReplyMenu'
+import { FileRefContext, type FileRefOpener } from './FileRefLink'
+import { loadSessionMarkdown, replyMarkdown, sessionFileName, shouldOpenReplyMenu } from './AgentView/message-menu'
+import { FileLightbox, type FileLightboxItem } from './FileLightbox'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { TranscriptFind } from './AgentView/TranscriptFind'
@@ -41,9 +53,53 @@ import { applyTranscriptFindHighlight, clearTranscriptFindHighlight } from './Ag
 
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
+/** How long a prompt jump is treated as still in flight. */
+const PROMPT_JUMP_MS = 700
 
-function isDirectUserBlock(block: ContentBlock): boolean {
-  return block.type === 'user' && !block.extra?.from_agent
+/**
+ * Earlier turns on their way in above the view, revealed or loaded. The view
+ * holds still by the first rendered block's top in content px until every
+ * reveal or load that asked for them has settled. There is one hold, shared,
+ * since two would each add the height that landed.
+ */
+interface ViewHold {
+  sessionId: string | undefined
+  anchorId: string | null
+  anchorTop: number
+  /** Reveals and loads still settling. */
+  pending: number
+}
+
+/** A prompt jump waiting on a hold for the turns it needs to render or load. */
+interface PendingPromptJump {
+  /** The block to land on; ``null`` for the nearest prompt above the first rendered turn (⌥⌘↑). */
+  targetId: string | null
+  /** Jump once the prompt renders; scrolling by hand or ↓ clears it. */
+  jump: boolean
+}
+
+/** ``el``'s top in the scroller's content, which scrolling does not change. */
+function contentTop(root: HTMLElement, el: HTMLElement): number {
+  return el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop
+}
+
+function blockElement(root: HTMLElement, id: string): HTMLElement | undefined {
+  return Array.from(root.querySelectorAll<HTMLElement>('[data-block-id]')).find((el) => el.dataset.blockId === id)
+}
+
+function isProviderErrorBlock(block: ContentBlock): boolean {
+  if (block.type !== 'provider_status') return false
+  const status = block.extra?.status
+  return status === 'error' || status === 'exhausted' || block.extra?.category === 'provider'
+}
+
+/** The provider error a turn ended on, if it ended on one. */
+function endingProviderError(blocks: ContentBlock[]): ContentBlock | undefined {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (isBlankContentBlock(blocks[i])) continue
+    return isProviderErrorBlock(blocks[i]) ? blocks[i] : undefined
+  }
+  return undefined
 }
 
 /** True for a `thinking`/`text` block that has streamed in only whitespace
@@ -211,10 +267,18 @@ interface AgentViewProps {
   lastError?: string | null
   /** Optional slot rendered in place of the default mascot empty state. */
   emptyState?: React.ReactNode
-  /** Open a mentioned workspace file in the coding workspace sidebar. */
+  /** Open a mentioned workspace file in the file viewer. */
   onMentionFileOpen?: (path: string) => void
+  /** Opens ``path:line`` references in replies and tool output. */
+  fileRefOpener?: FileRefOpener
   /** Callback to switch to Code mode and start implementation of a proposed plan. */
   onStartImplementing?: () => void
+  /** Quote selected plan text into the composer (lead sessions only). */
+  onCommentOnPlan?: (quote: string) => void
+  /** Resend the latest prompt; offered under the latest finished answer. */
+  onRetry?: () => void
+  /** Pick another model; offered with Retry on the error a turn ended with. */
+  onSwitchModel?: () => void
   /** True when interaction mode is actively transitioning to Code mode. */
   isSwitchingInteractionMode?: boolean
   findOpen?: boolean
@@ -223,14 +287,31 @@ interface AgentViewProps {
   onFindQueryChange?: (query: string) => void
   onFindClose?: () => void
   onFindActiveIndexChange?: (index: number) => void
+  /**
+   * The floating composer carries the jump-to-latest chip, so the transcript
+   * publishes its follow state instead of drawing its own button.
+   */
+  jumpToLatestInComposer?: boolean
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void }) {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, onRestore, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen }: {
+  block: ContentBlock
+  isStreaming: boolean
+  sessionId?: string
+  /** Rewind to a prompt the user wrote; ignored for agent reports. */
+  onEdit?: (blockId: string) => void
+  /** Undo the turns after this prompt; the caller omits it for the latest. */
+  onRestore?: (blockId: string) => void
+  /** Error actions; the caller passes them to the error a turn ended with only. */
+  onRetry?: () => void
+  onSwitchModel?: () => void
+  latestMCPAppBlockIds?: Set<string>
+  onMentionFileOpen?: (path: string) => void
+}) {
   switch (block.type) {
     case 'user': {
-      const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
       const fromAgent = typeof block.extra?.from_agent === 'string' ? block.extra.from_agent : null
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} onRestore={onRestore && !fromAgent ? () => onRestore(block.id) : undefined} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
@@ -249,18 +330,16 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
     }
     case 'provider_status': {
       const status = block.extra?.status
-      const title = (block.extra?.title as string) || (status === 'error' || status === 'exhausted' ? 'Provider Error' : undefined)
       const customMsg = block.extra?.message as string | undefined
 
-      if (status === 'error' || status === 'exhausted' || block.extra?.category === 'provider') {
+      if (isProviderErrorBlock(block)) {
         return (
-          <div className="my-2 rounded-md border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs">
-            <div className="flex items-center gap-1.5 font-medium text-(--color-error)">
-              <AlertCircle size={14} className="shrink-0" />
-              <span>{title || 'Provider Error'}</span>
-            </div>
-            <p className="mt-1 text-(--color-error)/90 leading-relaxed break-words">{customMsg || block.content}</p>
-          </div>
+          <ErrorCard
+            title={(block.extra?.title as string) || 'Provider Error'}
+            message={customMsg || block.content}
+            onRetry={onRetry}
+            onSwitchModel={onSwitchModel}
+          />
         )
       }
 
@@ -279,7 +358,11 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       if (status === 'retrying') {
         const delayText = typeof delay === 'number' ? ` Waiting ${delay.toFixed(1)}s.` : ''
         const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
-        message = `Retrying ${String(model ?? 'model')} (${String(attempt ?? '?')}/${String(maxAttempts ?? '?')})${errorText}.${delayText}`
+        // Dropped connections retry without a budget until the network is back.
+        const progress = typeof maxAttempts === 'number'
+          ? `${String(attempt ?? '?')}/${maxAttempts}`
+          : `attempt ${String(attempt ?? '?')}`
+        message = `Retrying ${String(model ?? 'model')} (${progress})${errorText}.${delayText}`
       }
       return <p className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }
@@ -299,9 +382,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
           />
           {block.toolDone && Boolean(mcpApp) && latestMCPAppBlockIds?.has(block.id) ? (
             <div className="mt-2">
-              <Suspense fallback={<p role="status" className="min-h-24 text-xs text-(--color-text-muted)">Loading interactive tool result...</p>}>
-                <MCPAppResult mcpApp={mcpApp as never} sessionId={sessionId} toolCallId={block.toolCallId} />
-              </Suspense>
+              <MCPAppResult mcpApp={mcpApp as never} sessionId={sessionId} toolCallId={block.toolCallId} />
             </div>
           ) : null}
         </div>
@@ -313,14 +394,14 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       if (sleepPrefix !== null) {
         return (
           <div>
-            {sleepPrefix && <LazyMarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
+            {sleepPrefix && <MarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
             <p className="text-xs text-(--color-text-subtle) italic">— idle —</p>
           </div>
         )
       }
       return (
         <div>
-          <LazyMarkdownBlock content={block.content} sessionId={sessionId} isStreaming={isStreaming} />
+          <MarkdownBlock content={block.content} sessionId={sessionId} isStreaming={isStreaming} />
         </div>
       )
     }
@@ -339,7 +420,11 @@ export function AgentView({
   lastError,
   emptyState,
   onMentionFileOpen,
+  fileRefOpener,
   onStartImplementing,
+  onCommentOnPlan,
+  onRetry,
+  onSwitchModel,
   isSwitchingInteractionMode = false,
   findOpen = false,
   findQuery = '',
@@ -347,28 +432,77 @@ export function AgentView({
   onFindQueryChange,
   onFindClose,
   onFindActiveIndexChange,
+  jumpToLatestInComposer = false,
 }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
   const sessionInteractionMode = useAgentStore((s) => s.sessionInteractionMode)
-  const prevScrollHeightRef = useRef<number | null>(null)
   const loadingOlderRef = useRef(false)
   const hiddenTurnCountRef = useRef(0)
   const showEarlierTurnsRef = useRef<() => void>(() => {})
-  const pendingRestoreRef = useRef(false)
   const onLoadOlderTopRef = useRef<() => void>(() => {})
 
-  const handleRevert = useCallback(() => {
-    void useAgentStore.getState().undoAgent().then(async (response) => {
-      const message = response?.message
-      if (!message || message.role !== 'user' || message.is_summary) return
-      window.dispatchEvent(
-        new CustomEvent('undo:restore-draft', {
-          detail: { content: message.content ?? '', attachments: message.attachments ?? [] },
-        }),
-      )
-    })
+  // The store puts the prompt back in the composer via ``pendingDraft``.
+  const handleEdit = useCallback((blockId: string) => {
+    void useAgentStore.getState().revertToMessage(blockId)
   }, [])
+  const editHandler = isTurnOpen ? undefined : handleEdit
+  // Restoring to a prompt rewinds to the next one the user wrote, which
+  // leaves this prompt's answer, and the workspace as it ended, in place.
+  const nextPromptIds = useMemo(() => {
+    const next = new Map<string, string>()
+    let later: string | undefined
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (!isDirectUserBlock(blocks[i])) continue
+      if (later) next.set(blocks[i].id, later)
+      later = blocks[i].id
+    }
+    return next
+  }, [blocks])
+  const handleRestore = useCallback((blockId: string) => {
+    const next = nextPromptIds.get(blockId)
+    if (next) void useAgentStore.getState().revertToMessage(next, { restoreDraft: false })
+  }, [nextPromptIds])
+
+  const [replyMenu, setReplyMenu] = useState<{ at: { x: number; y: number }; markdown: string } | null>(null)
+  const handleReplyContextMenu = useCallback((event: React.MouseEvent, turnBlocks: ContentBlock[]) => {
+    if (event.defaultPrevented || !shouldOpenReplyMenu(event.target, window.getSelection()?.toString() ?? '')) return
+    event.preventDefault()
+    const blockId = event.target instanceof Element
+      ? event.target.closest('[data-find-block]')?.getAttribute('data-find-block') ?? null
+      : null
+    setReplyMenu({ at: { x: event.clientX, y: event.clientY }, markdown: replyMarkdown(turnBlocks, blockId) })
+  }, [])
+
+  // The document opens at once, "Loading…" until every earlier page is in.
+  const [sessionDoc, setSessionDoc] = useState<FileLightboxItem | null>(null)
+  const sessionDocRequest = useRef(0)
+  const sessionDocUrl = useRef<string | null>(null)
+  const releaseSessionDocUrl = useCallback(() => {
+    if (sessionDocUrl.current) URL.revokeObjectURL(sessionDocUrl.current)
+    sessionDocUrl.current = null
+  }, [])
+  useEffect(() => releaseSessionDocUrl, [releaseSessionDocUrl])
+  const openSessionDoc = useCallback(() => {
+    const request = ++sessionDocRequest.current
+    const name = sessionFileName(useAgentStore.getState().sessionTitle)
+    releaseSessionDocUrl()
+    setSessionDoc({ type: 'text', src: '', name })
+    void loadSessionMarkdown().then((markdown) => {
+      if (sessionDocRequest.current !== request) return
+      if (markdown === null) {
+        setSessionDoc(null)
+        return
+      }
+      sessionDocUrl.current = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown' }))
+      setSessionDoc({ type: 'text', src: sessionDocUrl.current, name, textContent: markdown })
+    })
+  }, [releaseSessionDocUrl])
+  const closeSessionDoc = useCallback(() => {
+    sessionDocRequest.current += 1
+    releaseSessionDocUrl()
+    setSessionDoc(null)
+  }, [releaseSessionDocUrl])
 
   // Live blocks not yet folded into `blocks`, deduped against confirmed ids.
   // Both scroll bookkeeping and turn partitioning below read from this same
@@ -384,16 +518,34 @@ export function AgentView({
   const clampedFindIndex = findMatches.length === 0
     ? 0
     : ((findActiveIndex % findMatches.length) + findMatches.length) % findMatches.length
+  const findHitBlockIds = useMemo(() => new Set(findMatches.map((match) => match.blockId)), [findMatches])
+  const readerTranscript = useDisplayPrefsStore((s) => s.transcriptStyle === 'reader')
+  const findBlockIds = useMemo(() => [...findHitBlockIds], [findHitBlockIds])
+  const activeFindBlockId = findMatches[clampedFindIndex]?.blockId ?? null
   const totalLen = blocks.length + liveTail.length
-  const latestUserBlockId = useMemo(
-    () => latestDirectUserBlockIdFromParts(blocks, currentBlocks),
-    [blocks, currentBlocks],
-  )
   const finalizedTurnItems = useMemo(() => partitionTurns(blocks), [blocks])
   const turnItems = useMemo(
     () => appendCurrentTurns(finalizedTurnItems, blocks.length, liveTail),
     [blocks.length, liveTail, finalizedTurnItems],
   )
+  const modelChangeStarts = useMemo(() => modelChangeTurnStarts(turnItems), [turnItems])
+  // Retry rewinds the latest prompt, so it is only honest when nothing but
+  // that prompt's own answer, if any, follows a prompt the user wrote.
+  const lastTurnItem = turnItems[turnItems.length - 1]
+  const promptBeforeLastTurn = turnItems[turnItems.length - 2]
+  const latestPrompt = lastTurnItem?.kind === 'user' ? lastTurnItem
+    : lastTurnItem?.kind === 'assistant' && promptBeforeLastTurn?.kind === 'user' ? promptBeforeLastTurn
+    : undefined
+  const canRetry = Boolean(onRetry) && !isTurnOpen && latestPrompt !== undefined && isDirectUserBlock(latestPrompt.block)
+  // A failed turn offers its way forward on the failure itself: the card for
+  // a failure the transcript does not show, else the error the turn ended on.
+  const trailingBlocks = lastTurnItem?.kind === 'assistant' ? lastTurnItem.blocks : []
+  const showsLastError = Boolean(isError && lastError) && !trailingBlocks.some(
+    (b) => isProviderErrorBlock(b) && (b.extra?.message === lastError || b.content === lastError),
+  )
+  const endingErrorId = isTurnOpen || showsLastError ? undefined : endingProviderError(trailingBlocks)?.id
+  const errorRetry = canRetry ? onRetry : undefined
+  const errorSwitchModel = isTurnOpen ? undefined : onSwitchModel
   const { hiddenTurnCount, visibleTurnItems } = useMemo(
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
     [renderedTurnCount, turnItems],
@@ -422,7 +574,16 @@ export function AgentView({
     !liveTail.some((b) => b.type !== 'compaction') &&
     !visibleQuotaWait
 
+  // A jump just made; the next press steps on from its target.
+  const pendingJumpRef = useRef<{ id: string; until: number } | null>(null)
+  const promptJumpRef = useRef<PendingPromptJump | null>(null)
+  const viewHoldRef = useRef<ViewHold | null>(null)
+
   const handleLoadOlderTopTrigger = useCallback(() => {
+    // A prompt jump owns the scroll position until it lands: revealing or
+    // loading turns above it now would restore the view out from under it.
+    const jump = pendingJumpRef.current
+    if (promptJumpRef.current || (jump && performance.now() < jump.until)) return
     onLoadOlderTopRef.current()
   }, [])
 
@@ -442,28 +603,70 @@ export function AgentView({
     onLoadOlderTop: handleLoadOlderTopTrigger,
   })
 
-  const showEarlierTurns = useCallback(() => {
-    const el = scrollRef.current
-    if (el) {
-      prevScrollHeightRef.current = el.scrollHeight
-      pendingRestoreRef.current = true
+  // ── Follow state for the composer's jump chip ─────────────────────────────
+  // Counted from the newest block when the reader scrolled away, so earlier
+  // messages loading in above never read as new.
+  const followAnchorRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!jumpToLatestInComposer) return
+    if (!showScrollBtn) {
+      followAnchorRef.current = null
+      if (useTranscriptFollowStore.getState().unseen !== null) useTranscriptFollowStore.setState({ unseen: null })
+      return
     }
+    followAnchorRef.current ??= searchableBlocks[searchableBlocks.length - 1]?.id ?? ''
+    const counted = countBlocksAfter(searchableBlocks, followAnchorRef.current)
+    // A reconcile can swap the anchor's id; keep the last count then.
+    const unseen = counted ?? useTranscriptFollowStore.getState().unseen ?? 0
+    if (useTranscriptFollowStore.getState().unseen !== unseen) useTranscriptFollowStore.setState({ unseen })
+  }, [jumpToLatestInComposer, searchableBlocks, showScrollBtn])
+  useEffect(() => {
+    if (!jumpToLatestInComposer) return
+    useTranscriptFollowStore.setState({ jumpToLatest: () => scrollToBottom('smooth') })
+    return () => useTranscriptFollowStore.setState({ jumpToLatest: null, unseen: null })
+  }, [jumpToLatestInComposer, scrollToBottom])
+
+  /** Hold the view while earlier turns land above it; call the release once they have. */
+  const holdView = useCallback(() => {
+    const root = scrollRef.current
+    let hold = viewHoldRef.current
+    if (!hold) {
+      const anchor = root?.querySelector<HTMLElement>('[data-block-id]')
+      hold = {
+        sessionId,
+        anchorId: anchor?.dataset.blockId ?? null,
+        anchorTop: root && anchor ? contentTop(root, anchor) : 0,
+        pending: 0,
+      }
+      viewHoldRef.current = hold
+    }
+    hold.pending += 1
+    const held = hold
+    // By the next frame every commit the reveal or load caused has run.
+    return () => requestAnimationFrame(() => {
+      held.pending -= 1
+      if (held.pending === 0 && viewHoldRef.current === held) viewHoldRef.current = null
+    })
+  }, [scrollRef, sessionId])
+
+  const showEarlierTurns = useCallback(() => {
+    const release = holdView()
     setRenderedTurnCount((count) => Math.min(turnItems.length, count + TURN_RENDER_STEP))
-  }, [scrollRef, turnItems.length])
+    release()
+  }, [holdView, turnItems.length])
 
   const handleLoadOlderTop = useCallback(() => {
     if (hiddenTurnCountRef.current > 0) {
       showEarlierTurns()
     } else if (useAgentStore.getState().hasMore && !loadingOlderRef.current) {
       loadingOlderRef.current = true
-      const el = scrollRef.current
-      if (el) prevScrollHeightRef.current = el.scrollHeight
-      pendingRestoreRef.current = true
+      const release = holdView()
       void useAgentStore.getState().loadOlderMessages().finally(() => {
         loadingOlderRef.current = false
+        release()
       })
     }
-  }, [scrollRef, showEarlierTurns])
+  }, [holdView, showEarlierTurns])
 
   // Keep the refs in sync so callbacks/listeners always see
   // the latest values without needing to re-register listeners.
@@ -473,15 +676,174 @@ export function AgentView({
     showEarlierTurnsRef.current = showEarlierTurns
   })
 
-  // Restore scroll position after older messages are prepended.
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el || !pendingRestoreRef.current || prevScrollHeightRef.current === null) return
-    pendingRestoreRef.current = false
+  // ── Prompt navigation ──────────────────────────────────────────────────────
+  const scrollPromptIntoView = useCallback((prompt: HTMLElement) => {
+    const root = scrollRef.current
+    if (!root) return
+    const view = root.getBoundingClientRect()
+    const distance = prompt.getBoundingClientRect().top - view.top - PROMPT_JUMP_MARGIN
+    // Past a couple of screens a smooth scroll only paints the turns in between.
+    const smooth = Math.abs(distance) <= 2 * view.height && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     attachedRef.current = false
-    el.scrollTop = el.scrollHeight - prevScrollHeightRef.current
-    prevScrollHeightRef.current = null
-  }, [blocks.length, renderedTurnCount, scrollRef, attachedRef])
+    root.scrollTo({ top: root.scrollTop + distance, behavior: smooth ? 'smooth' : 'auto' })
+    pendingJumpRef.current = prompt.dataset.promptId
+      ? { id: prompt.dataset.promptId, until: performance.now() + PROMPT_JUMP_MS }
+      : null
+  }, [attachedRef, scrollRef])
+
+  /** Start a jump that lands once a reveal or load renders its turns; call the result when that has settled. */
+  const beginPromptJump = useCallback((targetId: string | null) => {
+    const job: PendingPromptJump = { targetId, jump: true }
+    promptJumpRef.current = job
+    const release = holdView()
+    return () => {
+      release()
+      requestAnimationFrame(() => {
+        if (promptJumpRef.current === job) promptJumpRef.current = null
+      })
+    }
+  }, [holdView])
+
+  /**
+   * Previous prompt when none is rendered above: find it in the loaded turns,
+   * else load pages until one holds it, then render only down to it and jump
+   * (see the layout effect below).
+   */
+  const requestOlderPrompt = useCallback(() => {
+    const pending = promptJumpRef.current
+    if (pending) {
+      pending.jump = true
+      return
+    }
+    const target = previousPromptTurn(turnItems, hiddenTurnCount)
+    if (target < 0 && !useAgentStore.getState().hasMore) {
+      // No earlier prompt at all: show whatever earlier turns remain.
+      onLoadOlderTopRef.current()
+      return
+    }
+    const settle = beginPromptJump(null)
+    if (target >= 0) {
+      setRenderedTurnCount((count) => Math.max(count, turnItems.length - target))
+      settle()
+      return
+    }
+    void useAgentStore.getState().loadOlderUntilPrompt().catch(() => false).then(settle)
+  }, [beginPromptJump, hiddenTurnCount, turnItems])
+
+  // Earlier turns landed: hold the view where it was, then make a pending
+  // prompt jump. Before paint, so neither the shift nor the reveal flashes.
+  useLayoutEffect(() => {
+    const hold = viewHoldRef.current
+    const root = scrollRef.current
+    if (!hold || !root) return
+    if (hold.sessionId !== sessionId) {
+      viewHoldRef.current = null
+      promptJumpRef.current = null
+      return
+    }
+    const anchor = hold.anchorId === null ? undefined : blockElement(root, hold.anchorId)
+    if (anchor) {
+      const top = contentTop(root, anchor)
+      if (top !== hold.anchorTop) root.scrollTop += top - hold.anchorTop
+      hold.anchorTop = top
+    }
+    const jump = promptJumpRef.current
+    if (!jump?.jump) return
+    const target = jump.targetId !== null
+      ? turnIndexOfBlock(turnItems, jump.targetId)
+      : hold.anchorId === null ? -1 : previousPromptTurn(turnItems, turnIndexOfBlock(turnItems, hold.anchorId))
+    if (target < 0) return
+    if (target < hiddenTurnCount) {
+      setRenderedTurnCount(turnItems.length - target)
+      return
+    }
+    const item = turnItems[target]
+    const id = jump.targetId ?? (item.kind === 'user' ? item.block.id : undefined)
+    const prompt = id === undefined ? undefined : blockElement(root, id)
+    if (!prompt) return
+    promptJumpRef.current = null
+    scrollPromptIntoView(prompt)
+  }, [hiddenTurnCount, scrollPromptIntoView, scrollRef, sessionId, turnItems])
+
+  // Scrolling by hand while earlier turns load means the reader went elsewhere.
+  const cancelPromptJump = useCallback(() => {
+    if (promptJumpRef.current) promptJumpRef.current.jump = false
+  }, [])
+
+  /** Bring a loaded prompt into view by block id, rendering down to it when it is hidden. */
+  const showPrompt = useCallback((id: string) => {
+    const root = scrollRef.current
+    if (!root) return
+    cancelPromptJump()
+    const rendered = blockElement(root, id)
+    if (rendered) {
+      scrollPromptIntoView(rendered)
+      return
+    }
+    const index = turnIndexOfBlock(turnItems, id)
+    if (index < 0 || index >= hiddenTurnCount) return
+    const settle = beginPromptJump(id)
+    setRenderedTurnCount((count) => Math.max(count, turnItems.length - index))
+    settle()
+  }, [beginPromptJump, cancelPromptJump, hiddenTurnCount, scrollPromptIntoView, scrollRef, turnItems])
+
+  // The composer's ↑/↓ recall shows the prompt it recalled.
+  const showPromptRef = useRef(showPrompt)
+  useEffect(() => {
+    showPromptRef.current = showPrompt
+  })
+  useEffect(() => {
+    useTranscriptFollowStore.setState({ showPrompt: (id) => showPromptRef.current(id) })
+    return () => useTranscriptFollowStore.setState({ showPrompt: null })
+  }, [])
+
+  const jumpToPrompt = useCallback((direction: -1 | 1) => {
+    const root = scrollRef.current
+    if (!root) return
+    if (direction > 0) cancelPromptJump()
+    const rootTop = root.getBoundingClientRect().top
+    const prompts = promptElements(root)
+    const pending = pendingJumpRef.current
+    const from = pending && performance.now() < pending.until
+      ? prompts.findIndex((el) => el.dataset.promptId === pending.id)
+      : -1
+    const index = from >= 0
+      ? from + direction
+      : promptJumpTarget(prompts.map((el) => el.getBoundingClientRect().top - rootTop), PROMPT_JUMP_MARGIN, direction)
+    if (index >= 0 && index < prompts.length) {
+      scrollPromptIntoView(prompts[index])
+      return
+    }
+    pendingJumpRef.current = null
+    // Past the newest prompt is the live end; before the oldest, earlier turns.
+    if (direction > 0) scrollToBottom('smooth')
+    else requestOlderPrompt()
+  }, [cancelPromptJump, requestOlderPrompt, scrollPromptIntoView, scrollRef, scrollToBottom])
+
+  // The mobile chat actions step prompts without a keyboard.
+  const jumpToPromptRef = useRef(jumpToPrompt)
+  useEffect(() => {
+    jumpToPromptRef.current = jumpToPrompt
+  })
+  useEffect(() => {
+    useTranscriptFollowStore.setState({ jumpToPrompt: (direction) => jumpToPromptRef.current(direction) })
+    return () => useTranscriptFollowStore.setState({ jumpToPrompt: null })
+  }, [])
+
+  const { os } = getPlatform()
+  useHotkeys(
+    [
+      { hotkey: hotkeyOf(APP_SHORTCUTS.previousPrompt), callback: () => jumpToPrompt(-1), options: { meta: { name: 'Previous prompt' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.nextPrompt), callback: () => jumpToPrompt(1), options: { meta: { name: 'Next prompt' } } },
+    ],
+    {
+      target: typeof document === 'undefined' ? null : document,
+      platform: os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux',
+      preventDefault: true,
+      stopPropagation: false,
+      ignoreInputs: false,
+    },
+  )
 
   const cycleFind = useCallback((delta: number) => {
     if (findMatches.length === 0) return
@@ -515,6 +877,7 @@ export function AgentView({
   }, [attachedRef, clampedFindIndex, findOpen, findQuery, scrollRef])
 
   return (
+    <FileRefContext.Provider value={fileRefOpener ?? null}>
     <div className="relative flex min-h-0 flex-1 flex-col">
     {findOpen && (
       <TranscriptFind
@@ -527,7 +890,8 @@ export function AgentView({
         onClose={() => onFindClose?.()}
       />
     )}
-    <div ref={scrollRef} className="oa-chat-scroll flex-1 overflow-y-auto">
+    <div className="group/transcript relative flex min-h-0 flex-1 flex-col">
+    <div ref={scrollRef} onWheel={cancelPromptJump} onTouchMove={cancelPromptJump} className="oa-chat-scroll flex-1 overflow-y-auto">
       <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
         {isEmpty && (
            emptyState ?? (
@@ -571,13 +935,16 @@ export function AgentView({
                    return (
                      <div
                        key={item.block.id}
+                       data-block-id={item.block.id}
                        data-find-block={isTranscriptFindableBlock(item.block.type) ? item.block.id : undefined}
+                      data-prompt-id={isDirectUserBlock(item.block) ? item.block.id : undefined}
                      >
                        <BlockRenderer
                          block={item.block}
                          isStreaming={false}
                          sessionId={sessionId}
-                         onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
+                         onEdit={editHandler}
+                         onRestore={!isTurnOpen && nextPromptIds.has(item.block.id) ? handleRestore : undefined}
                          latestMCPAppBlockIds={mcpAppResourceUri(item.block) ? latestMCPAppBlockIds : undefined}
                          onMentionFileOpen={onMentionFileOpen}
                        />
@@ -592,8 +959,13 @@ export function AgentView({
                     sessionInteractionMode === 'plan' &&
                     hasPlanContent(item.blocks)
                  return (
+                   <div
+                     // Keyed by the first block alone: an older page shifts every
+                     // startIndex, and a key built on it remounted every reply.
+                     key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}
+                     onContextMenu={(event) => handleReplyContextMenu(event, item.blocks)}
+                   >
                    <AssistantTurn
-                     key={`turn-${item.startIndex}-${item.blocks[0]?.id ?? k}`}
                      blocks={item.blocks}
                      startIndex={item.startIndex}
                      finalizedCount={blocks.length}
@@ -603,22 +975,29 @@ export function AgentView({
                       totalBlocks={totalLen}
                       size="roomy"
                       onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
+                      onCommentOnPlan={onCommentOnPlan}
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
+                     showModel={modelChangeStarts.has(item.startIndex)}
+                     reader={readerTranscript}
+                     findHitBlockIds={readerTranscript ? findHitBlockIds : undefined}
                       renderBlock={({ block, isStreaming }) => (
                        <div
+                         data-block-id={block.id}
                          data-find-block={isTranscriptFindableBlock(block.type) ? block.id : undefined}
                        >
                          <BlockRenderer
                            block={block}
                            isStreaming={isStreaming}
                            sessionId={sessionId}
-                           onRevert={isDirectUserBlock(block) && block.id === latestUserBlockId ? handleRevert : undefined}
+                           onRetry={block.id === endingErrorId ? errorRetry : undefined}
+                           onSwitchModel={block.id === endingErrorId ? errorSwitchModel : undefined}
                            latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
                            onMentionFileOpen={onMentionFileOpen}
                          />
                        </div>
                      )}
                    />
+                   </div>
                  )
                 })}
 
@@ -646,26 +1025,43 @@ export function AgentView({
 
             <PendingMessageQueue />
 
-            {isError && lastError && (
-             <div className="mt-3 rounded-sm border border-(--color-error) bg-(--color-error-subtle) px-3 py-2">
-               <p className="text-xs text-(--color-error)">{lastError}</p>
-             </div>
-           )}
+            {showsLastError && lastError && (
+              <ErrorCard message={lastError} onRetry={errorRetry} onSwitchModel={errorSwitchModel} />
+            )}
 
            <div ref={anchorRef} data-chat-scroll-anchor aria-hidden="true" />
          </div>
       </div>
     </div>
-    {showScrollBtn && (
+    <TimelineScrubber
+      scrollRef={scrollRef}
+      contentRef={contentRef}
+      findBlockIds={findBlockIds}
+      activeFindBlockId={activeFindBlockId}
+    />
+    </div>
+    {showScrollBtn && !jumpToLatestInComposer && (
         <button
           onClick={() => scrollToBottom('smooth')}
-          className="absolute bottom-16 left-1/2 z-10 flex h-7 w-7 -translate-x-1/2 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 motion-reduce:active:scale-100"
+          // Centred by margin rather than a percentage translate (DESIGN.md:
+          // no transform-based layout).
+          className="absolute inset-x-0 bottom-16 z-10 mx-auto flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 motion-reduce:active:scale-100"
           aria-label="Scroll to bottom"
         >
           <ChevronDown size={14} />
         </button>
 
     )}
+    {replyMenu && (
+      <ReplyMenu
+        at={replyMenu.at}
+        markdown={replyMenu.markdown}
+        onOpenSession={openSessionDoc}
+        onDismiss={() => setReplyMenu(null)}
+      />
+    )}
+    {sessionDoc && <FileLightbox items={[sessionDoc]} isOpen onClose={closeSessionDoc} />}
     </div>
+    </FileRefContext.Provider>
   )
 }

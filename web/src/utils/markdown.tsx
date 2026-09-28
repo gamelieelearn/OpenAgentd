@@ -16,9 +16,11 @@ import { apiUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
 import { ImageLightbox } from '@/components/ImageLightbox'
 import { CodeBlock } from '@/components/CodeBlock'
+import { FileRefCode, MarkdownLink } from '@/components/FileRefLink'
 import { tokenizeCode } from '@/utils/code-highlight'
 import { MermaidBlock } from '@/utils/MermaidBlock'
 import { isVideoSrc } from '@/utils/workspace'
+import { useSmoothStream } from '@/hooks/useSmoothStream'
 import {
   MathBlock,
   MathSpan,
@@ -598,6 +600,9 @@ export const MarkdownTable = memo(function MarkdownTable(
  * rewritten to the backend media proxy so agents can reference files they
  * wrote into the workspace (e.g. ``![chart](chart.png)``).  All rendered
  * images open a full-screen lightbox on click.
+ *
+ * While ``isStreaming``, the text is eased in with ``useSmoothStream`` so a
+ * chunky stream reads as steady typing.
  */
 export const MarkdownBlock = memo(function MarkdownBlock({
   content,
@@ -608,6 +613,9 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   sessionId?: string
   isStreaming?: boolean
 }) {
+  const smoothedContent = useSmoothStream(content, isStreaming)
+  const displayContent = isStreaming ? smoothedContent : content
+
   // Me: the ``components`` map MUST be referentially stable across renders.
   // If we rebuild it inline every render, the renderer treats each call
   // as a new custom-component type and unmounts+remounts every ``<img>`` /
@@ -651,6 +659,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
           if (children.startsWith(MATH_BLOCK_SENTINEL)) {
             return <MathBlock math={children.slice(MATH_BLOCK_SENTINEL.length)} />
           }
+          return <FileRefCode {...props}>{children}</FileRefCode>
         }
         return <code {...props}>{children}</code>
       },
@@ -661,9 +670,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
       th: ({ children, ...props }: React.HTMLAttributes<HTMLTableCellElement>) => (
         <th {...props}>{renderCellWithBr(children)}</th>
       ),
-      a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-        <a {...props} target="_blank" rel="noopener noreferrer" />
-      ),
+      a: MarkdownLink,
       img: ({ src, alt, title }: React.ImgHTMLAttributes<HTMLImageElement>) => (
         <MarkdownImage
           rawSrc={typeof src === 'string' ? src : undefined}
@@ -682,8 +689,8 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   // Me: fixNestedFences is pure; memoize so we don't re-walk the whole
   // string on scroll-triggered parent re-renders either.
   const fixedContent = useMemo(
-    () => fixNestedFences(normalizeProposedPlanTags(content)),
-    [content],
+    () => fixNestedFences(normalizeProposedPlanTags(displayContent)),
+    [displayContent],
   )
   const renderedContent = useMemo(
     () => isStreaming ? markClosedStreamingMermaidFences(fixedContent) : fixedContent,

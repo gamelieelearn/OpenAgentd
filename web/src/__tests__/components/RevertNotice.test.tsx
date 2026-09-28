@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { RevertNotice } from '@/components/RevertNotice'
 
 describe('RevertNotice', () => {
-  it('calls onRedo when clicking "/redo to restore"', async () => {
+  it('calls onRedo when clicking "Redo"', async () => {
     const user = userEvent.setup()
     const onRedo = mock(() => {})
 
@@ -16,12 +16,21 @@ describe('RevertNotice', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '/redo to restore' }))
+    await user.click(screen.getByRole('button', { name: 'Redo' }))
 
     expect(onRedo).toHaveBeenCalledTimes(1)
   })
 
-  it('calls onRedoAll when clicking "/redo-all"', async () => {
+  it('explains that Redo restores only the next undone message', async () => {
+    const user = userEvent.setup()
+    render(<RevertNotice count={2} onRedo={() => {}} onRedoAll={() => {}} />)
+
+    await user.hover(screen.getByRole('button', { name: 'Redo' }))
+
+    expect((await screen.findByRole('tooltip')).textContent).toContain('next undone message')
+  })
+
+  it('calls onRedoAll when clicking "Redo all"', async () => {
     const user = userEvent.setup()
     const onRedo = mock(() => {})
     const onRedoAll = mock(() => {})
@@ -38,7 +47,7 @@ describe('RevertNotice', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '/redo-all' }))
+    await user.click(screen.getByRole('button', { name: 'Redo all' }))
 
     expect(onRedoAll).toHaveBeenCalledTimes(1)
     expect(onRedo).not.toHaveBeenCalled()

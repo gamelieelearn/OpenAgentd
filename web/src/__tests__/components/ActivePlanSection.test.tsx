@@ -1,0 +1,46 @@
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { ActivePlanSection } from '@/components/ActivePlanSection'
+import type { SessionPlan } from '@/api/types'
+
+const PLAN: SessionPlan = { content: '## Summary\nShip the plan file.', updated_at: new Date(Date.now() - 5 * 60_000).toISOString() }
+
+const realCreate = URL.createObjectURL
+const realRevoke = URL.revokeObjectURL
+const revoke = mock(() => {})
+
+beforeAll(() => {
+  URL.createObjectURL = mock(() => 'blob:plan') as unknown as typeof URL.createObjectURL
+  URL.revokeObjectURL = revoke as unknown as typeof URL.revokeObjectURL
+})
+afterAll(() => {
+  URL.createObjectURL = realCreate
+  URL.revokeObjectURL = realRevoke
+})
+afterEach(cleanup)
+
+describe('ActivePlanSection', () => {
+  it('shows when the plan last changed', () => {
+    render(<ActivePlanSection plan={PLAN} onClear={() => {}} />)
+    expect(screen.getByText('Plan')).toBeTruthy()
+    expect(screen.getByText('5m')).toBeTruthy()
+  })
+
+  it('opens the plan as a document and releases it on close', () => {
+    render(<ActivePlanSection plan={PLAN} onClear={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: 'View plan' }))
+    expect(screen.getByRole('dialog', { name: 'File preview: plan.md' })).toBeTruthy()
+    expect(screen.getByText(/Ship the plan file\./)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close preview' }))
+    expect(screen.queryByRole('dialog', { name: 'File preview: plan.md' })).toBeNull()
+    expect(revoke).toHaveBeenCalledWith('blob:plan')
+  })
+
+  it('clears the plan', () => {
+    const onClear = mock(() => {})
+    render(<ActivePlanSection plan={PLAN} onClear={onClear} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Clear plan' }))
+    expect(onClear).toHaveBeenCalledTimes(1)
+  })
+})

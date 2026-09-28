@@ -1,0 +1,18 @@
+[package]
+name = "appv3-terminal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+appv3-tools.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+portable-pty.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["signal", "process"] }
+
+[dev-dependencies]
+appv3-core.workspace = true

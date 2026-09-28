@@ -3,6 +3,7 @@ import fuzzysort from 'fuzzysort'
 import { Check, ChevronDown, Copy, EyeOff, Loader2 } from 'lucide-react'
 import type { ModelCostInfo } from '@/api/client'
 import { SearchBar } from '@/components/ui/search-bar'
+import { CONTEXT_MENU_ITEM_CLASS, ContextMenu } from '@/components/ui/context-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
@@ -305,29 +306,17 @@ function ModelRow({
 
       {/* Context menu */}
       {actionsPoint && (
-        <div
-          className="fixed inset-0 z-[70]"
-          onClick={() => setActionsPoint(null)}
-          onContextMenu={(e) => { e.preventDefault(); setActionsPoint(null) }}
-        >
-          <div
-            role="menu"
-            aria-label={`Actions for ${qualifiedId}`}
-            className="fixed min-w-40 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md text-xs text-(--color-text)"
-            style={{ left: actionsPoint.x, top: actionsPoint.y }}
-            onClick={(e) => e.stopPropagation()}
+        <ContextMenu at={actionsPoint} label={`Actions for ${qualifiedId}`} onDismiss={() => setActionsPoint(null)} layerClassName="z-[70]">
+          <button
+            type="button"
+            role="menuitem"
+            className={CONTEXT_MENU_ITEM_CLASS}
+            onClick={() => { setActionsPoint(null); void onCopy(qualifiedId) }}
           >
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
-              onClick={() => { setActionsPoint(null); void onCopy(qualifiedId) }}
-            >
-              <Copy size={12} aria-hidden="true" />
-              Copy model ID
-            </button>
-          </div>
-        </div>
+            <Copy size={12} aria-hidden="true" />
+            Copy model ID
+          </button>
+        </ContextMenu>
       )}
     </li>
   )

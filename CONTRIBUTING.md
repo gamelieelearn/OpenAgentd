@@ -43,15 +43,17 @@ git clone https://github.com/<your-fork>/openagentd.git
 cd openagentd
 
 # 2. Install deps
-uv sync
 bun install --cwd web
 
-# 3. Start the backend (creates local config and built-in agents)
+# 3. Start the backend (needs cargo; creates local config and built-in agents)
 make run
 
 # 4. (Optional) Start the web UI in a separate terminal
 cd web && bun dev
 ```
+
+`make dev` runs steps 3 and 4 together. The end-of-life Python backend is still
+available with `uv sync` and `make run-v2` / `make dev-v2`.
 
 Use Settings to configure providers and `openagentd --help` for the current CLI surface.
 
@@ -61,13 +63,17 @@ Use Settings to configure providers and `openagentd --help` for the current CLI 
 
 ```
 openagentd/
-├── app/                    # FastAPI backend
+├── appv3/                  # Rust backend (shipped): API, agent runtime, CLI
+│   ├── crates/             # core, db, api, agent, tools, providers, cli, …
+│   └── contract/           # Data shared with other surfaces (SSE events, …)
+├── app/                    # End-of-life v2 FastAPI backend
 │   ├── agent/              # Agent loop, hooks, providers, tools, teams
 │   ├── api/                # Routes (thin — logic lives in services/)
 │   ├── core/               # Config, DB, middleware, logging
 │   ├── models/             # SQLModel DB schemas
 │   └── services/           # Business logic, stream_store
 ├── web/                    # React 19 frontend (Vite + Bun)
+├── desktop/, mobile/       # Tauri shells (desktop bundles the appv3 binary)
 ├── tests/                  # pytest test suite
 ├── documents/              # Feature catalogue and assets
 │   └── docs/               # Version-cited shipped features
@@ -91,16 +97,26 @@ Key design rules:
 ### Change validation policy
 
 Use [`make verify`](Makefile) for the portable pre-merge contract, or its
-focused `verify-backend`, `verify-web`, `verify-docs`, and `verify-version`
-targets when only one surface changed. Native targets require local platform
-dependencies. Check the nearest `AGENTS.md` before changing a subsystem.
+focused `verify-v3`, `verify-backend`, `verify-web`, `verify-docs`, and
+`verify-version` targets when only one surface changed. Native targets require
+local platform dependencies. Check the nearest `AGENTS.md` before changing a
+subsystem.
 
-### Backend
+### Backend (v3, Rust)
+
+```bash
+make run                                 # start server on :8000
+make dev                                 # server + web UI (Vite :5173)
+make verify-v3                           # fmt check, clippy -D warnings, tests
+cargo test --manifest-path appv3/Cargo.toml -p appv3-api   # one crate
+```
+
+### Backend (v2, Python)
 
 ```bash
 uv sync                                  # install / sync Python deps
-make run                                 # start server on :8000
-make dev                                 # with auto-reload
+make run-v2                              # start server on :8000
+make dev-v2                              # with auto-reload
 
 uv run ruff check app/ tests/            # lint
 uv run ruff check app/ tests/ --fix      # auto-fix

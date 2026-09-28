@@ -6,9 +6,10 @@ name: Release Desktop
 #   - Windows x64 (.msi)
 #   - Linux x64  (.AppImage, .deb)
 #
+# Each app bundles the native appv3 backend (sidecar-bundle/bin/openagentd).
 # Outputs are attached to the GitHub Release matching `app/version.txt`
 # (tag ``v<X.Y.Z>`` — the same tag ``release.yml`` creates for the
-# wheel/sdist). Run ``release.yml`` first so the tag + release exist,
+# CLI archives). Run ``release.yml`` first so the tag + release exist,
 # then ``release-desktop.yml`` appends the desktop installers via
 # ``gh release upload --clobber``. If the order is reversed, this
 # workflow creates the release itself (see the publish step's
@@ -60,7 +61,7 @@ jobs:
       - id: version
         # Use the same ``v<X.Y.Z>`` tag as ``release.yml``. Both
         # workflows publish into one release so the artefact set
-        # (wheel + sdist + .dmg + .msi + .deb) lives under one tag the user
+        # (CLI archives + .dmg + .msi + .deb) live under one tag the user
         # can compare-link to. The publish job below uploads with
         # ``--clobber`` so it does not matter which workflow runs first.
         run: |
@@ -124,10 +125,6 @@ jobs:
         if: matrix.platform == 'linux'
         run: echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
 
-      - uses: astral-sh/setup-uv@v10.1.0
-        with:
-          enable-cache: true
-
       - uses: oven-sh/setup-bun@v2
 
       - uses: dtolnay/rust-toolchain@stable
@@ -155,7 +152,9 @@ jobs:
       - name: Cache cargo registry + target
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: desktop/src-tauri
+          workspaces: |
+            desktop/src-tauri
+            appv3
           key: ${{ matrix.platform }}-${{ matrix.arch }}
           # Keep every downloaded ``.crate`` archive, not just the crates that
           # are dependencies of the current lockfile. The default (``false``)
@@ -222,13 +221,26 @@ jobs:
 
       # Platform icon assets are generated and committed under
       # desktop/src-tauri/icons; release runners consume them directly.
-      - name: Build Python sidecar bundle
+      #
+      # Same steps as `make -C desktop sidecar TARGET=…` (Windows runners
+      # have no GNU make): the fat-LTO appv3 binary staged as
+      # sidecar-bundle/bin/openagentd, which sidecar.rs spawns.
+      - name: Build backend sidecar (appv3)
         shell: bash
         run: |
-          python3 scripts/build_sidecar.py \
-            --root . \
-            --out desktop/sidecar-bundle \
-            --python-version 3.14
+          set -euo pipefail
+          target="${{ matrix.rust_target }}"
+          exe=""
+          [ "${{ matrix.platform }}" = "windows" ] && exe=".exe"
+          cargo build --locked --profile dist --manifest-path appv3/Cargo.toml -p appv3-cli --target "$target"
+          rm -rf desktop/sidecar-bundle
+          mkdir -p desktop/sidecar-bundle/bin
+          cp "appv3/target/$target/dist/openagentd$exe" "desktop/sidecar-bundle/bin/openagentd$exe"
+          if [ -z "$exe" ]; then strip "desktop/sidecar-bundle/bin/openagentd"; fi
+          VERSION=$(tr -d '[:space:]' < app/version.txt)
+          reported=$("desktop/sidecar-bundle/bin/openagentd$exe" --version | tr -d '\r')
+          [ "$reported" = "openagentd v$VERSION" ] || { echo "sidecar version mismatch: $reported"; exit 1; }
+          du -sh desktop/sidecar-bundle
 
       - name: Import Apple signing certificate
         if: matrix.platform == 'macos' && env.APPLE_CERTIFICATE != ''
@@ -422,10 +434,10 @@ jobs:
       - name: Create or update GitHub release
         # Releases land on the shared ``v<X.Y.Z>`` tag. If
         # ``release.yml`` already created the release with the
-        # canonical notes + wheel/sdist, we append our installers
+        # canonical notes + CLI archives, we append our installers
         # via ``upload --clobber``. If we ran first, we create the
         # release with a minimal title; ``release.yml`` will then
-        # ``upload`` the wheel + sdist on top.
+        # ``upload`` the CLI archives on top.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

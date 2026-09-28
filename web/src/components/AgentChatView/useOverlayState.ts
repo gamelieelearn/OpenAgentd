@@ -2,15 +2,15 @@
  * useOverlayState — mobile/desktop panel & drawer state for AgentChatView.
  *
  * Owns every "big surface" toggle in the chat layout: the session
- * sidebar, the coding workspace panel + detached file viewer, the
+ * sidebar, the workspace panel + detached file viewer, the
  * workspace files panel, todos popover, mobile chat-actions
  * menu, and the mobile edge-swipe drawer controller that ties sidebar /
- * actions / coding-panel together as a single-open-at-a-time group.
+ * actions / workspace-panel together as a single-open-at-a-time group.
  *
  * ── Mobile single-overlay rule ──────────────────────────────────────────
  *
  * On mobile every large surface — the session sidebar, chat-actions menu,
- * coding workspace panel, session settings (agent capabilities), the
+ * workspace panel, session settings (agent capabilities), the
  * scheduler, todos, the files panel and the command palette
  * — is a full-screen or near-full-screen overlay. Having two open at once
  * is always a layering bug, so opening any one closes all the others.
@@ -20,20 +20,46 @@
  * two islands plus todos / files panel never coordinated across each
  * other. ``closeOtherMobileOverlays`` is the cross-island bridge.
  *
- * Mobile-only: sidebar / chat-actions / coding-panel are full-screen
+ * Mobile-only: sidebar / chat-actions / workspace-panel are full-screen
  * overlays that shouldn't stack — guarded behind ``isMobile``.
  * Todos / files / capabilities / scheduler / palette are shared surfaces
  * that must not stack on *either* platform, so those run unconditionally.
+ *
+ * ── Desktop dock views ──────────────────────────────────────────────────
+ *
+ * On desktop with a workspace, the agent task list and the scheduler open
+ * as review-dock tabs instead of the popover / overlay. The request mirrors
+ * the terminal pattern: a keyed request plus a parent-owned "handled" ref, so
+ * a dock that mounts in response still honours it, and a later ⌘D does not
+ * replay it. The dock reports its active view back so a second press of the
+ * same shortcut hides the dock (VS Code's panel toggle).
+ *
+ * Phones with a workspace open the scheduler in the dock sheet as well: it
+ * is full-screen either way, and the sheet adds swipe-to-close and the
+ * Changes / Files / Terminal tabs. Tasks stay in the popover there, the one
+ * surface that leaves the chat visible while the agent works.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { listCodingWorkspaceFiles } from '@/api/client'
 import { queryKeys } from '@/queries'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { useUIStore } from '@/stores/useUIStore'
+import { useLayoutStore } from '@/stores/useLayoutStore'
+import { useFileRevealStore } from '@/stores/useFileRevealStore'
+import { useToastStore } from '@/stores/useToastStore'
+import { resolveWorkspaceRef, workspaceRelativePath, type FileRef } from '@/utils/file-refs'
+import { resolveSidebarCollapsed, SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT } from '@/lib/workbench-layout'
+import { useViewportAtLeast } from '@/hooks/use-viewport-width'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
+import { APP_EVENTS } from '@/lib/app-events'
 import type { WorkspaceFileInfo } from '@/api/types'
+import type { DockView, DockViewRequest } from '../WorkspacePanel/dock-tabs'
+import { sessionTouchedPaths } from './helpers'
 import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
+
+export type { DockView, DockViewRequest }
 
 export interface UseOverlayStateArgs {
   isMobile: boolean
@@ -47,35 +73,51 @@ export interface UseOverlayStateArgs {
 export interface UseOverlayStateResult {
   mobileSidebarOpen: boolean
   setMobileSidebarOpen: Dispatch<SetStateAction<boolean>>
-  codingPanel: null | 'changed' | 'files'
-  setCodingPanel: Dispatch<SetStateAction<null | 'changed' | 'files'>>
-  codingFileViewer: WorkspaceFileInfo | null
-  setCodingFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
-  codingFileViewerDetached: boolean
-  setCodingFileViewerDetached: Dispatch<SetStateAction<boolean>>
-  codingFileOpenKey: number
-  setCodingFileOpenKey: Dispatch<SetStateAction<number>>
+  workspacePanel: null | 'changed' | 'files'
+  setWorkspacePanel: Dispatch<SetStateAction<null | 'changed' | 'files'>>
+  fileViewer: WorkspaceFileInfo | null
+  setFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
+  fileOpenKey: number
+  setFileOpenKey: Dispatch<SetStateAction<number>>
   terminalOpenKey: number
   handledTerminalOpenKeyRef: React.RefObject<number>
-  codingSidebarCollapsed: boolean
-  setCodingSidebarCollapsed: Dispatch<SetStateAction<boolean>>
+  dockViewRequest: DockViewRequest | null
+  handledDockViewKeyRef: React.RefObject<number>
+  /** Dock view tab currently focused in the mounted dock, else ``null``. */
+  dockActiveView: DockView | null
+  setDockActiveView: Dispatch<SetStateAction<DockView | null>>
+  /** True when tasks / scheduler open as dock tabs (desktop + workspace). */
+  dockViewsEnabled: boolean
+  /** True when the scheduler opens as a dock tab (any platform + workspace). */
+  schedulerInDock: boolean
+  sidebarCollapsed: boolean
+  setSidebarCollapsed: Dispatch<SetStateAction<boolean>>
   openWorkspaceDialogKey: number
   showTodos: boolean
   showMobileActions: boolean
 
   closeOtherMobileOverlays: (keep: MobileOverlay) => void
   handleWorkspaceFiles: () => void
-  handleCodingSidebarToggle: () => void
+  handleSidebarToggle: () => void
   handleOpenWorkspaceDialog: () => void
-  handleCodingFileSelect: (file: WorkspaceFileInfo | null) => void
+  handleFileSelect: (file: WorkspaceFileInfo | null) => void
   handleMentionFileOpen: (path: string) => Promise<void>
+  /**
+   * Open a clicked ``path:line`` from the transcript, at its line. A name or
+   * partial path finds its file; several matches open Quick Open to choose.
+   */
+  handleFileRefOpen: (ref: FileRef) => Promise<void>
   closeMobileActionsMenu: () => void
   handleSetShowMobileActions: Dispatch<SetStateAction<boolean>>
   handleToggleAgentCapabilities: () => void
   handleToggleScheduler: () => void
   handleTogglePalette: () => void
+  /** Open Session Settings to pick another model. */
+  handleSwitchModel: () => void
   handleToggleQuickOpen: () => void
   handleSetShowTodos: Dispatch<SetStateAction<boolean>>
+  /** ⌘T, the header Tasks button, and the palette's Task List command. */
+  handleToggleTasks: () => void
   handleToggleFilesPanel: () => void
   handleOpenTerminal: () => void
   closeAllDrawers: () => void
@@ -85,7 +127,7 @@ export interface UseOverlayStateResult {
   edgeSwipeHandlers: EdgeSwipeHandlers
   sidebarDragOffset: number | null
   actionsDragOffset: number | null
-  codingPanelDragOffset: number | null
+  workspacePanelDragOffset: number | null
 }
 
 export function useOverlayState({
@@ -98,22 +140,41 @@ export function useOverlayState({
 }: UseOverlayStateArgs): UseOverlayStateResult {
   const queryClient = useQueryClient()
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [codingPanel, setCodingPanel] = useState<null | 'changed' | 'files'>(null)
-  const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
-  const [codingFileViewerDetached, setCodingFileViewerDetached] = useState(false)
-  const [codingFileOpenKey, setCodingFileOpenKey] = useState(0)
-  // Terminal is available in coding workspaces.
+  const [workspacePanel, setWorkspacePanel] = useState<null | 'changed' | 'files'>(null)
+  const [fileViewer, setFileViewer] = useState<WorkspaceFileInfo | null>(null)
+  const [fileOpenKey, setFileOpenKey] = useState(0)
+  // Terminal is available once a workspace is attached.
   const [terminalOpenKey, setTerminalOpenKey] = useState(0)
   const handledTerminalOpenKeyRef = useRef(0)
-  const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
+  const [dockViewRequest, setDockViewRequest] = useState<DockViewRequest | null>(null)
+  const handledDockViewKeyRef = useRef(0)
+  const [dockActiveView, setDockActiveView] = useState<DockView | null>(null)
+  const dockViewsEnabled = !isMobile && Boolean(workspace)
+  const schedulerInDock = Boolean(workspace)
+  // Desktop sidebar collapse is persisted in the layout store. Until the user
+  // toggles it once, wide windows open with the sidebar expanded.
+  const storedSidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed)
+  const wideViewport = useViewportAtLeast(SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT)
+  const sidebarCollapsed = resolveSidebarCollapsed(storedSidebarCollapsed, wideViewport)
+  const setSidebarCollapsed = useCallback<Dispatch<SetStateAction<boolean>>>((value) => {
+    useLayoutStore.getState().setSidebarCollapsed(
+      value,
+      resolveSidebarCollapsed(useLayoutStore.getState().sidebarCollapsed, wideViewport),
+    )
+  }, [wideViewport])
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
   const [showMobileActions, setShowMobileActions] = useState(false)
 
   useEffect(() => {
-    setCodingFileViewer(null)
-    setCodingFileViewerDetached(false)
+    setFileViewer(null)
   }, [workspace])
+
+  // Maximize is a per-opening affordance: closing the dock always restores
+  // the chat so the next ⌘D opens side by side.
+  useEffect(() => {
+    if (workspacePanel === null) useLayoutStore.getState().setDockMaximized(false)
+  }, [workspacePanel])
 
   useEffect(() => {
     if (isMobile) {
@@ -123,12 +184,11 @@ export function useOverlayState({
 
   const closeOtherMobileOverlays = useCallback((keep: MobileOverlay) => {
     const toClose = new Set(overlaysToClose(keep))
-    if (isMobile && (toClose.has('sidebar') || toClose.has('actions') || toClose.has('coding-panel'))) {
+    if (isMobile && (toClose.has('sidebar') || toClose.has('actions') || toClose.has('workspace-panel'))) {
       setMobileSidebarOpen(false)
       setShowMobileActions(false)
-      setCodingPanel(null)
-      setCodingFileViewer(null)
-      setCodingFileViewerDetached(false)
+      setWorkspacePanel(null)
+      setFileViewer(null)
     }
     if (toClose.has('todos')) setShowTodos(false)
     const ui = useUIStore.getState()
@@ -142,22 +202,18 @@ export function useOverlayState({
 
   const handleWorkspaceFiles = useCallback(() => {
     if (workspace) {
-        if (isMobile) { setMobileSidebarOpen(false); closeOtherMobileOverlays('coding-panel') }
-        setCodingPanel((value) => {
-          const next = value === null ? 'changed' : null
-          if (next === null) setCodingFileViewerDetached(false)
-          return next
-        })
+        if (isMobile) { setMobileSidebarOpen(false); closeOtherMobileOverlays('workspace-panel') }
+        setWorkspacePanel((value) => (value === null ? 'changed' : null))
       } else {
-        setCodingSidebarCollapsed(false)
+        setSidebarCollapsed(false)
         setOpenWorkspaceDialogKey((value) => value + 1)
       }
-  }, [closeOtherMobileOverlays, isMobile, workspace])
+  }, [closeOtherMobileOverlays, isMobile, setSidebarCollapsed, workspace])
 
-  const handleCodingSidebarToggle = useCallback(() => {
+  const handleSidebarToggle = useCallback(() => {
     if (isMobile) {
-      setCodingPanel(null)
-      setCodingFileViewer(null)
+      setWorkspacePanel(null)
+      setFileViewer(null)
       setMobileSidebarOpen((value) => {
         const next = !value
         if (next) closeOtherMobileOverlays('sidebar')
@@ -165,48 +221,77 @@ export function useOverlayState({
       })
       return
     }
-    setCodingSidebarCollapsed((value) => !value)
-  }, [closeOtherMobileOverlays, isMobile])
+    setSidebarCollapsed((value) => !value)
+  }, [closeOtherMobileOverlays, isMobile, setSidebarCollapsed])
 
   const handleOpenWorkspaceDialog = useCallback(() => {
-    setCodingSidebarCollapsed(false)
+    setSidebarCollapsed(false)
     setOpenWorkspaceDialogKey((value) => value + 1)
+  }, [setSidebarCollapsed])
+
+  const handleFileSelect = useCallback((file: WorkspaceFileInfo | null) => {
+    setFileViewer(file)
   }, [])
 
-  const handleCodingFileSelect = useCallback((file: WorkspaceFileInfo | null) => {
-    setCodingFileViewer(file)
-    setCodingFileViewerDetached(false)
+  const showFile = useCallback((file: WorkspaceFileInfo) => {
+    setFileViewer(file)
+    setFileOpenKey((value) => value + 1)
+    setWorkspacePanel((value) => value ?? 'files')
   }, [])
 
-  const handleMentionFileOpen = useCallback(async (path: string) => {
-    if (!workspace) return
-    const cleanPath = path.split('#', 1)[0]
-    if (!cleanPath) return
-    const current = codingFileViewer?.path === cleanPath ? codingFileViewer : null
-    if (current) {
-      setCodingFileViewer(current)
-      setCodingFileViewerDetached(false)
-      setCodingFileOpenKey((value) => value + 1)
-      setCodingPanel((value) => value ?? 'files')
-      return
-    }
+  /** The workspace listing, or ``null`` when it cannot be fetched. */
+  const listWorkspaceFiles = useCallback(async (): Promise<WorkspaceFileInfo[] | null> => {
+    if (!workspace) return null
     try {
       const result = await queryClient.fetchQuery({
         queryKey: queryKeys.coding.files(workspace),
         queryFn: () => listCodingWorkspaceFiles(workspace),
         staleTime: 5_000,
       })
-      const file = result.files.find((item) => item.path === cleanPath)
-      if (file) {
-        setCodingFileViewer(file)
-        setCodingFileViewerDetached(false)
-        setCodingFileOpenKey((value) => value + 1)
-        setCodingPanel((value) => value ?? 'files')
-      }
+      return result.files
     } catch {
       // Keep the current panel state; the panel query will surface listing errors.
+      return null
     }
-  }, [codingFileViewer, queryClient, workspace])
+  }, [queryClient, workspace])
+
+  /** Show a workspace-relative file in the dock; false when it is not listed. */
+  const openWorkspaceFile = useCallback(async (cleanPath: string): Promise<boolean> => {
+    if (!workspace) return false
+    if (fileViewer?.path === cleanPath) {
+      showFile(fileViewer)
+      return true
+    }
+    const file = (await listWorkspaceFiles())?.find((item) => item.path === cleanPath)
+    if (file) showFile(file)
+    return Boolean(file)
+  }, [fileViewer, listWorkspaceFiles, showFile, workspace])
+
+  const handleMentionFileOpen = useCallback(async (path: string) => {
+    const cleanPath = path.split('#', 1)[0]
+    if (cleanPath) await openWorkspaceFile(cleanPath)
+  }, [openWorkspaceFile])
+
+  const handleFileRefOpen = useCallback(async (ref: FileRef) => {
+    const cited = workspace ? workspaceRelativePath(ref.path, workspace) : null
+    if (!workspace || !cited) return
+    const files = (await listWorkspaceFiles()) ?? []
+    const { leadName, agentStreams } = useAgentStore.getState()
+    const match = resolveWorkspaceRef(cited, files.map((file) => file.path), sessionTouchedPaths(agentStreams, leadName, workspace))
+    if (match.kind === 'ambiguous') {
+      closeOtherMobileOverlays('palette')
+      const lines = ref.line ? `:${ref.line}${ref.endLine ? `-${ref.endLine}` : ''}` : ''
+      useUIStore.getState().openQuickOpen(`${cited}${lines}`)
+      return
+    }
+    const file = match.kind === 'file' ? files.find((item) => item.path === match.path) : undefined
+    if (!file) {
+      useToastStore.getState().push({ tone: 'info', title: 'File not found', description: `No file in this workspace matches ${cited}.` })
+      return
+    }
+    showFile(file)
+    if (ref.line) useFileRevealStore.getState().reveal(file.path, ref.line, ref.endLine)
+  }, [closeOtherMobileOverlays, listWorkspaceFiles, showFile, workspace])
 
   const closeMobileActionsMenu = useCallback(() => setShowMobileActions(false), [])
 
@@ -229,15 +314,48 @@ export function useOverlayState({
     toggleAgentCapabilities()
   }, [closeOtherMobileOverlays, toggleAgentCapabilities])
 
+  // Second press of the same view's shortcut hides the dock; otherwise the
+  // dock opens (if needed) and focuses that view's tab.
+  const toggleDockView = useCallback((view: DockView) => {
+    if (workspacePanel !== null && dockActiveView === view) {
+      setWorkspacePanel(null)
+      return
+    }
+    closeOtherMobileOverlays('workspace-panel')
+    setWorkspacePanel((value) => value ?? 'changed')
+    setDockViewRequest((prev) => ({ view, key: (prev?.key ?? 0) + 1 }))
+  }, [closeOtherMobileOverlays, workspacePanel, dockActiveView])
+
   const handleToggleScheduler = useCallback(() => {
+    if (schedulerInDock) {
+      toggleDockView('schedule')
+      return
+    }
     if (!useUIStore.getState().schedulerOpen) closeOtherMobileOverlays('scheduler')
     toggleScheduler()
-  }, [closeOtherMobileOverlays, toggleScheduler])
+  }, [closeOtherMobileOverlays, schedulerInDock, toggleDockView, toggleScheduler])
+
+  const handleOpenScheduler = useCallback(() => {
+    if (schedulerInDock) {
+      closeOtherMobileOverlays('workspace-panel')
+      setWorkspacePanel((value) => value ?? 'changed')
+      setDockViewRequest((prev) => ({ view: 'schedule', key: (prev?.key ?? 0) + 1 }))
+      return
+    }
+    if (useUIStore.getState().schedulerOpen) return
+    closeOtherMobileOverlays('scheduler')
+    toggleScheduler()
+  }, [closeOtherMobileOverlays, schedulerInDock, toggleScheduler])
 
   const handleTogglePalette = useCallback(() => {
     if (!useUIStore.getState().paletteOpen) closeOtherMobileOverlays('palette')
     togglePalette()
   }, [closeOtherMobileOverlays, togglePalette])
+
+  // Session Settings holds the model picker, focused when it opens.
+  const handleSwitchModel = useCallback(() => {
+    if (!useUIStore.getState().agentCapabilitiesOpen) handleToggleAgentCapabilities()
+  }, [handleToggleAgentCapabilities])
 
   const handleToggleQuickOpen = useCallback(() => {
     if (!useUIStore.getState().quickOpenOpen) closeOtherMobileOverlays('palette')
@@ -252,29 +370,54 @@ export function useOverlayState({
     })
   }, [closeOtherMobileOverlays])
 
+  const handleToggleTasks = useCallback(() => {
+    if (dockViewsEnabled) toggleDockView('tasks')
+    else handleSetShowTodos((value) => !value)
+  }, [dockViewsEnabled, handleSetShowTodos, toggleDockView])
+
+  // The fallback popover must not linger when the dock takes over (e.g. a
+  // workspace attaches while it is open on desktop).
+  useEffect(() => {
+    if (dockViewsEnabled) setShowTodos(false)
+  }, [dockViewsEnabled])
+
   const handleToggleFilesPanel = handleWorkspaceFiles
 
-  // Open (or focus) a terminal — coding mode only for now. Ensures the
-  // workspace panel is visible, then bumps the key so CodingWorkspacePanel
+  // Open (or focus) a terminal — needs an attached workspace. Ensures the
+  // workspace panel is visible, then bumps the key so WorkspacePanel
   // focuses/opens its terminal tab (cwd = project).
   // terminal UI (kept simple; may return later behind its own entry point).
   const handleOpenTerminal = useCallback(() => {
     if (!workspace) return
-    setCodingPanel((prev) => prev ?? 'files')
+    setWorkspacePanel((prev) => prev ?? 'files')
     setTerminalOpenKey((k) => k + 1)
   }, [workspace])
+
+  // Native menu items for actions without a keyboard shortcut.
+  useEffect(() => {
+    const routes: [string, () => void][] = [
+      [APP_EVENTS.toggleScheduler, handleToggleScheduler],
+      [APP_EVENTS.openScheduler, handleOpenScheduler],
+      [APP_EVENTS.openWorkspace, handleOpenWorkspaceDialog],
+      [APP_EVENTS.openTerminal, handleOpenTerminal],
+    ]
+    for (const [event, handler] of routes) window.addEventListener(event, handler)
+    return () => {
+      for (const [event, handler] of routes) window.removeEventListener(event, handler)
+    }
+  }, [handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleToggleScheduler])
 
   // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
   //
   // One controller owns every mobile drawer so only ONE can be open at a
   // time. The previous implementation tracked each drawer's open state in
   // isolation, which let a left-edge swipe open the sidebar while the
-  // right-side actions/coding panel was already open (and vice-versa).
+  // right-side actions/workspace panel was already open (and vice-versa).
   //
-  // Right-edge target depends on context: in a coding workspace it opens
+  // Right-edge target depends on context: with a workspace attached it opens
   // the workspace panel (changed files / tree); otherwise the chat-actions
   // menu. Left-edge always opens the session sidebar.
-  const codingPanelOpenForSwipe = Boolean(workspace)
+  const workspacePanelOpenForSwipe = Boolean(workspace)
 
   // Single source of truth for "what is open right now". Closing routes to
   // whichever drawer the id names, so swipe-to-close hits the right one.
@@ -282,44 +425,43 @@ export function useOverlayState({
     ? 'sidebar'
     : showMobileActions
       ? 'actions'
-      : codingPanel !== null
-        ? 'coding-panel'
+      : workspacePanel !== null
+        ? 'workspace-panel'
         : null
 
   const closeAllDrawers = useCallback(() => {
     setMobileSidebarOpen(false)
     setShowMobileActions(false)
-    setCodingPanel(null)
-    setCodingFileViewer(null)
-    setCodingFileViewerDetached(false)
+    setWorkspacePanel(null)
+    setFileViewer(null)
   }, [])
 
   const openLeftDrawer = useCallback(() => {
     // Opening the sidebar must vacate every other overlay first.
     closeOtherMobileOverlays('sidebar')
     setShowMobileActions(false)
-    setCodingPanel(null)
-    setCodingFileViewer(null)
+    setWorkspacePanel(null)
+    setFileViewer(null)
     setMobileSidebarOpen(true)
   }, [closeOtherMobileOverlays])
 
   const openRightDrawer = useCallback(() => {
     // Opening a right drawer must vacate the sidebar + other overlays first.
     setMobileSidebarOpen(false)
-    if (codingPanelOpenForSwipe) {
-      closeOtherMobileOverlays('coding-panel')
+    if (workspacePanelOpenForSwipe) {
+      closeOtherMobileOverlays('workspace-panel')
       setShowMobileActions(false)
-      setCodingPanel((value) => value ?? 'changed')
+      setWorkspacePanel((value) => value ?? 'changed')
     } else {
       closeOtherMobileOverlays('actions')
       setShowMobileActions(true)
     }
-  }, [closeOtherMobileOverlays, codingPanelOpenForSwipe])
+  }, [closeOtherMobileOverlays, workspacePanelOpenForSwipe])
 
   const { handlers: edgeSwipeHandlers, drag: edgeSwipeDrag } = useEdgeSwipe({
     activeDrawer,
     left: { id: 'sidebar', open: openLeftDrawer },
-    right: { id: codingPanelOpenForSwipe ? 'coding-panel' : 'actions', open: openRightDrawer },
+    right: { id: workspacePanelOpenForSwipe ? 'workspace-panel' : 'actions', open: openRightDrawer },
     close: closeAllDrawers,
   })
 
@@ -327,40 +469,47 @@ export function useOverlayState({
   // finger. Each drawer reads only its own id; null when not being dragged.
   const sidebarDragOffset = edgeSwipeDrag?.drawerId === 'sidebar' ? edgeSwipeDrag.offset : null
   const actionsDragOffset = edgeSwipeDrag?.drawerId === 'actions' ? edgeSwipeDrag.offset : null
-  const codingPanelDragOffset = edgeSwipeDrag?.drawerId === 'coding-panel' ? edgeSwipeDrag.offset : null
+  const workspacePanelDragOffset = edgeSwipeDrag?.drawerId === 'workspace-panel' ? edgeSwipeDrag.offset : null
 
   return {
     mobileSidebarOpen,
     setMobileSidebarOpen,
-    codingPanel,
-    setCodingPanel,
-    codingFileViewer,
-    setCodingFileViewer,
-    codingFileViewerDetached,
-    setCodingFileViewerDetached,
-    codingFileOpenKey,
-    setCodingFileOpenKey,
+    workspacePanel,
+    setWorkspacePanel,
+    fileViewer,
+    setFileViewer,
+    fileOpenKey,
+    setFileOpenKey,
     terminalOpenKey,
     handledTerminalOpenKeyRef,
-    codingSidebarCollapsed,
-    setCodingSidebarCollapsed,
+    dockViewRequest,
+    handledDockViewKeyRef,
+    dockActiveView,
+    setDockActiveView,
+    dockViewsEnabled,
+    schedulerInDock,
+    sidebarCollapsed,
+    setSidebarCollapsed,
     openWorkspaceDialogKey,
     showTodos,
     showMobileActions,
 
     closeOtherMobileOverlays,
     handleWorkspaceFiles,
-    handleCodingSidebarToggle,
+    handleSidebarToggle,
     handleOpenWorkspaceDialog,
-    handleCodingFileSelect,
+    handleFileSelect,
     handleMentionFileOpen,
+    handleFileRefOpen,
     closeMobileActionsMenu,
     handleSetShowMobileActions,
     handleToggleAgentCapabilities,
     handleToggleScheduler,
     handleTogglePalette,
+    handleSwitchModel,
     handleToggleQuickOpen,
     handleSetShowTodos,
+    handleToggleTasks,
     handleToggleFilesPanel,
     handleOpenTerminal,
     closeAllDrawers,
@@ -370,6 +519,6 @@ export function useOverlayState({
     edgeSwipeHandlers,
     sidebarDragOffset,
     actionsDragOffset,
-    codingPanelDragOffset,
+    workspacePanelDragOffset,
   }
 }

@@ -1,12 +1,40 @@
 # Makefile for openagentd
 
 .PHONY: all run dev dev-lan kill-dev-ports test coverage verify verify-backend verify-web verify-docs verify-version verify-native verify-shell-core verify-desktop verify-mobile scenarios scenarios-chat scenarios-mentions scenarios-questions scenarios-lsp scenarios-performance health health-json prompt-budget prompt-budget-json migrate revision build-web icons build dist clean help
+.PHONY: run-v2 dev-v2 run-v3 dev-v3 run3 dev3 build-v3 verify-v3
 
 # Default target
 all: test
 
-run: ## Start the API server only (no reload, no frontend; :8000)
+# `server serve` defaults to production paths; keep source checkouts on the
+# project-local development data unless APP_ENV is set explicitly.
+run: ## Start the API server only (v3 Rust backend, no frontend; :8000)
+	APP_ENV=$${APP_ENV:-development} cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --port 8000
+
+run-v3: run ## Alias for run
+
+run3: run
+
+run-v2: ## Start the end-of-life v2 Python API server (no reload, no frontend; :8000)
 	uv run uvicorn app.server:app
+
+dev: kill-dev-ports ## Start the v3 backend (:8000) and frontend (Vite :5173) together
+	@trap 'kill 0' INT TERM EXIT; \
+	(APP_ENV=$${APP_ENV:-development} cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --port 8000 2>&1 | sed 's/^/[api] /') & \
+	(while ! nc -z 127.0.0.1 8000 2>/dev/null; do sleep 0.1; done; cd web && bun dev 2>&1 | sed 's/^/[web] /') & \
+	wait
+
+dev-v3: dev ## Alias for dev
+
+dev3: dev
+
+build-v3: ## Build optimized OpenAgentd v3 release binary
+	cargo build --release --manifest-path appv3/Cargo.toml -p appv3-cli
+
+verify-v3: ## Check and test all appv3 Rust crates
+	cargo fmt --all --check --manifest-path appv3/Cargo.toml
+	cargo clippy --manifest-path appv3/Cargo.toml --all-targets -- -D warnings
+	cargo test --manifest-path appv3/Cargo.toml --all-targets
 
 kill-dev-ports: ## Stop processes listening on dev ports (:8000, :5173)
 	@command -v lsof >/dev/null 2>&1 || { echo "error: 'lsof' not found"; exit 1; }
@@ -28,13 +56,13 @@ kill-dev-ports: ## Stop processes listening on dev ports (:8000, :5173)
 		fi; \
 	done
 
-dev: kill-dev-ports ## Start backend (:8000 + reload) and frontend (Vite :5173) together
+dev-v2: kill-dev-ports ## Start the v2 Python backend (:8000 + reload) and frontend (Vite :5173) together
 	@trap 'kill 0' INT TERM EXIT; \
 	(uv run uvicorn app.server:app --reload --reload-dir app 2>&1 | sed 's/^/[api] /') & \
 	(cd web && bun dev 2>&1 | sed 's/^/[web] /') & \
 	wait
 
-dev-lan: kill-dev-ports ## Start backend (:8000 + reload) and frontend (Vite :5173) together, accessible on LAN
+dev-lan: kill-dev-ports ## Start the v2 Python backend (:8000 + reload) and frontend (Vite :5173) on the LAN without a key
 	@trap 'kill 0' INT TERM EXIT; \
 	(API_ALLOW_INSECURE_LAN=true API_HOST=0.0.0.0 API_PORT=8000 API_RELOAD=true uv run python -m app.server 2>&1 | sed 's/^/[api] /') & \
 	(cd web && bun dev --host 0.0.0.0 2>&1 | sed 's/^/[web] /') & \
@@ -46,7 +74,7 @@ test: ## Run tests
 coverage: ## Run tests with coverage report (terminal + htmlcov/)
 	uv run pytest --cov=app --cov-report=term-missing:skip-covered --cov-report=html tests/
 
-verify: verify-backend verify-web verify-docs verify-version ## Run the portable pre-merge contract
+verify: verify-v3 verify-backend verify-web verify-docs verify-version ## Run the portable pre-merge contract
 
 verify-backend: ## Lint, format-check, type-check, and test the Python backend
 	uv run ruff check app/ tests/
@@ -140,4 +168,4 @@ clean: ## Remove build and cache artifacts
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 
 help: ## Show this help message
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'

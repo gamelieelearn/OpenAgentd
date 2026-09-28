@@ -5,8 +5,11 @@
  * every hook that needs them can import without pulling in extra deps.
  */
 import { resolveApiUrl } from '@/api/client'
-import type { MessageAttachment } from '@/api/types'
+import type { ContentBlock, MessageAttachment } from '@/api/types'
+import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
+import { workspaceRelativePath } from '@/utils/file-refs'
 import type { SlashCommand } from '../InputComposer'
+import { patchFileStats } from '../ToolCall/diffUtils'
 
 /** Built-in slash commands always available, ahead of any user-defined ones. */
 export const BASE_SLASH_COMMANDS: SlashCommand[] = [
@@ -32,6 +35,71 @@ export function parseBuiltInSlashCommand(content: string): string | null {
   return BUILT_IN_SLASH_COMMAND_IDS.has(command) ? command : null
 }
 
+/**
+ * What composer ↑/↓ steps through, newest first: prompts the user wrote.
+ * Sub-agent reports arrive as ``user`` blocks too, but recalling one would
+ * put another agent's words in the user's mouth.
+ */
+export function composerHistoryPrompts(blocks: readonly ContentBlock[]): string[] {
+  const prompts: string[] = []
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (isDirectUserBlock(blocks[i]) && blocks[i].content.trim()) prompts.push(blocks[i].content)
+  }
+  return prompts
+}
+
+/**
+ * The newest user block with ``prompt``'s text, compared trimmed as composer
+ * history dedupes it, so a recalled prompt maps to the one it came from.
+ */
+export function newestUserBlockId(blocks: readonly ContentBlock[], prompt: string): string | undefined {
+  const text = prompt.trim()
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (isDirectUserBlock(blocks[i]) && blocks[i].content.trim() === text) return blocks[i].id
+  }
+  return undefined
+}
+
+/** ``read`` takes its path under any of these names. */
+const READ_PATH_KEYS = ['path', 'file_path', 'filename', 'filepath'] as const
+
+function toolPaths(block: ContentBlock): string[] {
+  if (block.type !== 'tool') return []
+  if (block.toolName === 'patch') return patchFileStats(block.toolArgs).map((file) => file.path)
+  if (block.toolName !== 'read' || !block.toolArgs) return []
+  try {
+    const args = JSON.parse(block.toolArgs) as Record<string, unknown> | null
+    const path = READ_PATH_KEYS.map((key) => args?.[key]).find((value) => typeof value === 'string')
+    return typeof path === 'string' ? [path] : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Workspace files the session's agents read or patched, newest first, each
+ * once. The lead's come before its members', since the reply being read is
+ * usually the lead's.
+ */
+export function sessionTouchedPaths(
+  streams: Readonly<Record<string, { blocks: readonly ContentBlock[]; currentBlocks: readonly ContentBlock[] }>>,
+  leadName: string | null,
+  workspace: string,
+): string[] {
+  const names = Object.keys(streams).sort((a, b) => Number(b === leadName) - Number(a === leadName))
+  const touched = new Set<string>()
+  for (const name of names) {
+    const blocks = [...streams[name].blocks, ...streams[name].currentBlocks]
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      for (const path of toolPaths(blocks[i])) {
+        const relative = workspaceRelativePath(path, workspace)
+        if (relative) touched.add(relative)
+      }
+    }
+  }
+  return [...touched]
+}
+
 export interface FilterSlashCommandsContext {
   isAgentWorking?: boolean
   revertedCount?: number
@@ -44,7 +112,7 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
   const isWorking = ctx.isAgentWorking ?? false
   const revertedCount = ctx.revertedCount ?? 0
   const hasVisible = ctx.hasVisibleMessages ?? false
-  const isCoding = ctx.hasWorkspace ?? false
+  const inWorkspace = ctx.hasWorkspace ?? false
 
   return BASE_SLASH_COMMANDS.filter((cmd) => {
     switch (cmd.id) {
@@ -57,7 +125,7 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
       case 'redo-all':
         return revertedCount > 0 && !isWorking
       case 'init':
-        return isCoding
+        return inWorkspace
       case 'new':
         return true
       default:

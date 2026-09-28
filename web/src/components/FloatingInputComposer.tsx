@@ -1,11 +1,17 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
-import { InputComposer, type FileRef, type InputComposerHandle, type SlashCommand, type SnippetCommand } from './InputComposer'
+import {
+  InputComposer,
+  type FileRef,
+  type InputComposerHandle,
+  type SendDelivery,
+  type SlashCommand,
+  type SnippetCommand,
+} from './InputComposer'
+import { JumpToLatestChip } from './JumpToLatestChip'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { getPlatform } from '@/hooks/use-platform'
-import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 
 // ── Storage ──────────────────────────────────────────────────────────────────
@@ -87,11 +93,27 @@ function clampOffset(offset: StoredOffset, panel: Size, bounds: Size): StoredOff
   }
 }
 
+// ── Jump chip side ───────────────────────────────────────────────────────────
+
+const COMPOSER_BOTTOM_GAP = 16 // the wrapper's ``bottom-4``
+const DRAG_HANDLE_OVERHANG = 8 // the grip sits half above the panel
+
+/**
+ * Whether the bar's top (grip included) sits in the upper half of the pane,
+ * where the jump chip moves below it. Derived from the stored offset rather
+ * than a live rect, because framer is still springing towards a new offset
+ * when it changes.
+ */
+function isInUpperHalf(panelHeight: number, offsetY: number, boundsHeight: number): boolean {
+  if (panelHeight <= 0) return false
+  return COMPOSER_BOTTOM_GAP + panelHeight - offsetY + DRAG_HANDLE_OVERHANG > boundsHeight / 2
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 interface FloatingInputComposerProps {
   boundsRef: React.RefObject<HTMLElement | null>
-  onSubmit: (message: string, files?: File[], mentions?: string[]) => void
+  onSubmit: (message: string, files?: File[], mentions?: string[], delivery?: SendDelivery) => void
   onStop?: () => void
   onSlashCommand?: (id: string) => void
   onSnippetCommand?: (id: string) => Promise<string | null> | string | null
@@ -113,6 +135,7 @@ interface FloatingInputComposerProps {
   onRedo?: () => void
   onRedoAll?: () => void
   historyPrompts?: string[]
+  onHistoryRecall?: (prompt: string | null) => void
   value?: string
   onValueChange?: (value: string) => void
 }
@@ -136,6 +159,8 @@ export const FloatingInputComposer = memo(
     const [offset, setOffset] = useState<StoredOffset>(() => loadOffset())
     const [renderSuggestionsBelow, setRenderSuggestionsBelow] = useState(false)
     const [suggestionsOpen, setSuggestionsOpen] = useState(false)
+    // A bar dragged into the upper half keeps the jump chip below it.
+    const [jumpChipBelow, setJumpChipBelow] = useState(false)
 
     // ── Minimize-on-blur (desktop only) ──────────────────────────────────
     // The bar collapses to the slim action strip after the
@@ -173,7 +198,11 @@ export const FloatingInputComposer = memo(
     }, [])
 
     useImperativeHandle(ref, () => ({
-      focus: () => {
+      focus: (options) => {
+        if (options?.expand === false) {
+          innerRef.current?.focus(options)
+          return
+        }
         expand()
         requestAnimationFrame(() => innerRef.current?.focus())
       },
@@ -183,9 +212,9 @@ export const FloatingInputComposer = memo(
         if (text) expand()
         innerRef.current?.setValue(text)
       },
-      appendValue: (text: string) => {
+      appendValue: (text: string, options?: { paragraph?: boolean }) => {
         if (text) expand()
-        innerRef.current?.appendValue(text)
+        innerRef.current?.appendValue(text, options)
       },
       insertText: (text: string) => {
         if (text) expand()
@@ -248,8 +277,8 @@ export const FloatingInputComposer = memo(
 
     const onSubmitRef = useRef(inputProps.onSubmit)
     useEffect(() => { onSubmitRef.current = inputProps.onSubmit })
-    const handleSubmit = useCallback((message: string, files?: File[], mentions?: string[]) => {
-      onSubmitRef.current(message, files, mentions)
+    const handleSubmit = useCallback((message: string, files?: File[], mentions?: string[], delivery?: SendDelivery) => {
+      onSubmitRef.current(message, files, mentions, delivery)
       // Only collapse on desktop — on mobile the bar is always fully visible
       // and calling minimize() here drifts the `minimized` state flag to
       // `true`, which causes the bar to snap collapsed if the viewport later
@@ -261,38 +290,23 @@ export const FloatingInputComposer = memo(
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current)
     }, [])
 
-    // ── Global summon shortcut: ⌘I on macOS, Ctrl+I elsewhere ────────
-     // Brings the composer back to the foreground from any focus
-     // context. If the bar is collapsed it expands; either way the
-     // textarea takes focus so the user can immediately start typing.
-     // Mobile is excluded — the soft keyboard owns focus there and a
-     // window-level shortcut would never fire from a virtual keyboard.
-     useEffect(() => {
-       if (isMobile) return
-       const { os } = getPlatform()
-       const onKeyDown = (e: KeyboardEvent) => {
-         const target = e.target
-         const isComposerTarget = target instanceof Node && panelRef.current?.contains(target)
-         if (e.key === 'Escape' && isComposerTarget) {
-           e.preventDefault()
-           minimize()
-           return
-         }
-         // ``e.key`` is the printed character so the check is layout
-         // safe; we accept upper- and lower-case to cover Caps Lock.
-         if ((e.key === 'i' || e.key === 'I') && isPrimaryShortcut(e, os)) {
-           // Don't fight with browser-native Ctrl/⌘+I in editable
-           // surfaces *outside* our composer (e.g. a Markdown editor
-           // mounted somewhere on the page). The composer's textarea
-           // doesn't use italics so summoning while focus is already
-           // there is harmless and just refocuses.
-           e.preventDefault()
-           expand()
-         }
-       }
-       window.addEventListener('keydown', onKeyDown)
-       return () => window.removeEventListener('keydown', onKeyDown)
-     }, [isMobile, expand, minimize])
+    // ── Escape inside the composer collapses it ───────────────────────
+    // The ⌘I / Ctrl+I summon shortcut is owned by ``useCommandPalette``
+    // (focusChat), which reaches this component through the imperative
+    // ``focus()`` handle — so it also expands the bar.
+    useEffect(() => {
+      if (isMobile) return
+      const onKeyDown = (e: KeyboardEvent) => {
+        const target = e.target
+        const isComposerTarget = target instanceof Node && panelRef.current?.contains(target)
+        if (e.key === 'Escape' && isComposerTarget) {
+          e.preventDefault()
+          minimize()
+        }
+      }
+      window.addEventListener('keydown', onKeyDown)
+      return () => window.removeEventListener('keydown', onKeyDown)
+    }, [isMobile, minimize])
 
     // ── Global paste: expand + forward when bar is minimized ─────────────
     // When the floating bar is collapsed (minimized) and the user hits
@@ -466,6 +480,28 @@ export const FloatingInputComposer = memo(
       }
     }, [isMobile, boundsRef, clampToVisibleBounds])
 
+    useEffect(() => {
+      if (isMobile) return // the mobile bar sits in the layout flow
+      const bounds = boundsRef.current
+      const panel = panelRef.current
+      if (!bounds || !panel) return
+      const update = () => {
+        setJumpChipBelow(isInUpperHalf(
+          panel.getBoundingClientRect().height,
+          offset.y,
+          bounds.getBoundingClientRect().height,
+        ))
+      }
+      update()
+      let resizeObserver: ResizeObserver | null = null
+      if (typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver(update)
+        resizeObserver.observe(bounds)
+        resizeObserver.observe(panel)
+      }
+      return () => resizeObserver?.disconnect()
+    }, [isMobile, boundsRef, offset.y])
+
     const handleDragEnd = useCallback(
       (_e: unknown, info: { offset: { x: number; y: number } }) => {
         const bounds = boundsRef.current
@@ -509,8 +545,9 @@ export const FloatingInputComposer = memo(
           // content change (e.g. attachment/action buttons mounting or
           // unmounting), which flickers. A solid fill is cheaper, flicker-free,
           // and more legible over scrolling chat content.
-          className="pointer-events-auto border-t border-(--color-border) bg-(--bg-page) px-3 pb-safe pt-2"
+          className="pointer-events-auto relative border-t border-(--color-border) bg-(--bg-page) px-3 pb-safe pt-2"
         >
+          <JumpToLatestChip />
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
           <InputComposer
             ref={setInputRefs}
@@ -569,9 +606,10 @@ export const FloatingInputComposer = memo(
           // suppressing. Re-derive with `spring()` from framer-motion before
           // flagging this again.
           transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-          className="pointer-events-auto w-full"
+          className="pointer-events-auto relative w-full"
           style={{ touchAction: 'none' }}
         >
+        <JumpToLatestChip below={jumpChipBelow} />
         <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
         <div className={effectiveMinimized ? '' : 'px-3'}>
           <InputComposer

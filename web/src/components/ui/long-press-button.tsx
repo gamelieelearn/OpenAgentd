@@ -57,6 +57,8 @@ function LongPressButton({
       className={cn(
         variant != null ? buttonVariants({ variant, size }) : undefined,
         'data-pressing:scale-[0.97]',
+        // A held row must open the app's action sheet, not iOS's callout.
+        enabled && '[-webkit-touch-callout:none]',
         className,
       )}
       onPointerDown={(event) => { onPointerDown?.(event); longPress.onPointerDown(event) }}

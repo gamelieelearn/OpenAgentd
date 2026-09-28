@@ -14,18 +14,18 @@
  * Invariants we verify:
  *
  *   - Shortcut strings match the platform's primary-modifier label.
- *   - ``dispatchShortcutKey(key, os)``-style commands actually dispatch
- *     a keydown event with ``ctrlKey: true`` and ``metaKey: false`` on
- *     this non-mac test platform, so the global shortcut handler (which
- *     uses ``isPrimaryShortcut``) fires.
+ *   - Commands call their shell handler directly rather than
+ *     synthesizing a keydown.
  *   - The list is *built each render* — re-running the hook with new
  *     inputs returns the new commands (no stale closures).
-   *   - The view-cycle command carries the ⌘⇧V / Ctrl+Shift+V shortcut.
  */
 import { describe, it, expect, afterEach, mock } from "bun:test"
-import { renderHook, cleanup } from "@testing-library/react"
+import { act, renderHook, cleanup } from "@testing-library/react"
 import { useAgentCommands } from "@/components/AgentChatView/useAgentCommands"
 import { useSettingsStore } from "@/stores/useSettingsStore"
+import { useUIStore } from "@/stores/useUIStore"
+import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
+import { THEME_STORAGE_KEY } from "@/lib/theme"
 import type { Command } from "@/components/CommandPalette"
 
 afterEach(cleanup)
@@ -35,17 +35,13 @@ function makeArgs(overrides: Partial<Parameters<typeof useAgentCommands>[0]> = {
   const noop = () => {}
   return {
     toggleAgentCapabilities: noop,
-    setShowTodos: noop,
+    toggleTasks: noop,
+    toggleScheduler: noop,
     handleWorkspaceFiles: noop,
-    handleCodingSidebarToggle: noop,
+    handleSidebarToggle: noop,
     handleOpenTerminal: noop,
     handleNewSession: noop,
     handleFindInTranscript: noop,
-    // navigate is only called inside action lambdas; tests that need
-    // it pass their own spy.
-    navigate: mock(() => Promise.resolve()) as unknown as Parameters<
-      typeof useAgentCommands
-    >[0]["navigate"],
     ...overrides,
   }
 }
@@ -67,7 +63,7 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(byId(result.current, "agent-info").shortcut).toBe("Ctrl+Shift+A")
     expect(byId(result.current, "todos").shortcut).toBe("Ctrl+T")
     expect(byId(result.current, "workspace-files").shortcut).toBe("Ctrl+D")
-    expect(byId(result.current, "scheduled-tasks").shortcut).toBe("Ctrl+S")
+    expect(byId(result.current, "scheduled-tasks").shortcut).toBeUndefined()
     expect(byId(result.current, "collapse-sidebar").shortcut).toBe("Ctrl+B")
     expect(byId(result.current, "go-settings").shortcut).toBe("Ctrl+,")
     expect(byId(result.current, "new-chat").label).toBe("New Session")
@@ -75,56 +71,44 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(byId(result.current, "find-transcript").label).toBe("Find in Transcript")
     expect(result.current.find((c) => c.id === "go-home")).toBeUndefined()
   })
+
+  it("lists Maximize Review Dock only when a dock handler is provided", () => {
+    const noDock = renderHook(() => useAgentCommands(makeArgs()))
+    expect(noDock.result.current.find((c) => c.id === "maximize-dock")).toBeUndefined()
+
+    const toggle = mock(() => {})
+    const withDock = renderHook(() => useAgentCommands(makeArgs({ handleToggleDockMaximized: toggle })))
+    const cmd = byId(withDock.result.current, "maximize-dock")
+    expect(cmd.shortcut).toBe("Ctrl+Shift+D")
+    cmd.action()
+    expect(toggle).toHaveBeenCalledTimes(1)
+  })
+
+  it("Task List runs the shared tasks toggle (dock tab or popover)", () => {
+    const toggleTasks = mock(() => {})
+    const { result } = renderHook(() => useAgentCommands(makeArgs({ toggleTasks })))
+    byId(result.current, "todos").action()
+    expect(toggleTasks).toHaveBeenCalledTimes(1)
+  })
 })
 
 // ════════════════════════════════════════════════════════════════════════════
-//  dispatchShortcutKey — synthetic event shape
+//  Direct handlers — no synthetic key events
 // ════════════════════════════════════════════════════════════════════════════
-describe("useAgentCommands — dispatchShortcutKey synthetic events", () => {
-  it("collapse-sidebar invokes its direct toggle handler", () => {
-    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+describe("useAgentCommands — direct handlers", () => {
+  it("scheduled-tasks runs the shell's scheduler toggle without a key event", () => {
+    const toggleScheduler = mock(() => {})
+    const { result } = renderHook(() => useAgentCommands(makeArgs({ toggleScheduler })))
     const captured: KeyboardEvent[] = []
-    const listener = (e: Event) => captured.push(e as KeyboardEvent)
-    window.addEventListener("keydown", listener)
-    try {
-      byId(result.current, "collapse-sidebar").action()
-    } finally {
-      window.removeEventListener("keydown", listener)
-    }
-  })
-
-  it("scheduled-tasks dispatches a primary-modifier 's' keydown", () => {
-    const { result } = renderHook(() => useAgentCommands(makeArgs()))
-    const captured: KeyboardEvent[] = []
-    const listener = (e: Event) => captured.push(e as KeyboardEvent)
-    window.addEventListener("keydown", listener)
+    const handler = (e: Event) => captured.push(e as KeyboardEvent)
+    document.addEventListener("keydown", handler)
     try {
       byId(result.current, "scheduled-tasks").action()
     } finally {
-      window.removeEventListener("keydown", listener)
+      document.removeEventListener("keydown", handler)
     }
-    expect(captured.length).toBe(1)
-    expect(captured[0].key).toBe("s")
-    expect(captured[0].ctrlKey).toBe(true)
-    expect(captured[0].metaKey).toBe(false)
-  })
-
-  it("dispatched events would trigger a Ctrl-only useKeyboardShortcuts handler", () => {
-    // Integration smoke check: on this non-mac test platform the global
-    // handler expects ``e.ctrlKey && !e.metaKey`` so our synthetic events
-    // must satisfy exactly that predicate.
-    const { result } = renderHook(() => useAgentCommands(makeArgs()))
-    const captured: KeyboardEvent[] = []
-    const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && !e.metaKey) captured.push(e)
-    }
-    window.addEventListener("keydown", handler)
-    try {
-      byId(result.current, "scheduled-tasks").action()
-    } finally {
-      window.removeEventListener("keydown", handler)
-    }
-    expect(captured.map((e) => e.key)).toEqual(["s"])
+    expect(toggleScheduler).toHaveBeenCalledTimes(1)
+    expect(captured).toHaveLength(0)
   })
 
   it("collapse-sidebar does not dispatch a synthetic event", () => {
@@ -141,6 +125,26 @@ describe("useAgentCommands — dispatchShortcutKey synthetic events", () => {
   })
 })
 
+// ════════════════════════════════════════════════════════════════════════════
+//  Reload Window — desktop only (⌘R has no accelerator there)
+// ════════════════════════════════════════════════════════════════════════════
+describe("useAgentCommands — reload-window", () => {
+  const tauriWindow = window as unknown as { __TAURI_INTERNALS__?: unknown }
+  afterEach(() => { delete tauriWindow.__TAURI_INTERNALS__ })
+
+  it("is absent in the browser, which has its own reload", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    expect(result.current.find((c) => c.id === "reload-window")).toBeUndefined()
+  })
+
+  it("is listed inside the desktop app", () => {
+    tauriWindow.__TAURI_INTERNALS__ = {}
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    const cmd = byId(result.current, "reload-window")
+    expect(cmd.label).toBe("Reload Window")
+    expect(cmd.shortcut).toBeUndefined()
+  })
+})
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Open Terminal command
@@ -172,14 +176,35 @@ describe("useAgentCommands — navigation", () => {
     expect(openSettings).toHaveBeenCalledWith("agents")
   })
 
-  it("go-telemetry navigates to '/telemetry'", () => {
-    const navigate = mock(() => Promise.resolve())
-    const { result } = renderHook(() =>
-      useAgentCommands(
-        makeArgs({ navigate: navigate as unknown as Parameters<typeof useAgentCommands>[0]["navigate"] }),
-      ),
-    )
+  it("go-telemetry opens the telemetry overlay", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
     byId(result.current, "go-telemetry").action()
-    expect(navigate).toHaveBeenCalledWith({ to: "/telemetry" })
+    expect(useUIStore.getState().telemetryOpen).toBe(true)
+    useUIStore.getState().closeTelemetry()
+  })
+
+  it("offers each theme and applies the one chosen", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    expect(["theme-system", "theme-light", "theme-dark"].map((id) => byId(result.current, id).label))
+      .toEqual(["Theme: System", "Theme: Light", "Theme: Dark"])
+
+    byId(result.current, "theme-dark").action()
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark")
+    expect(document.documentElement.classList.contains("dark")).toBe(true)
+    localStorage.removeItem(THEME_STORAGE_KEY)
+  })
+
+  it("toggles reader mode, saying which mode it is in", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs()))
+    const toggle = () => byId(result.current, "toggle-reader-mode")
+    expect(toggle().label).toBe("Toggle Reader Mode")
+    expect(toggle().description).toMatch(/^Fold each turn/)
+
+    act(() => toggle().action())
+    expect(useDisplayPrefsStore.getState().transcriptStyle).toBe("reader")
+    expect(toggle().description).toMatch(/^Reader mode is on/)
+
+    act(() => toggle().action())
+    expect(useDisplayPrefsStore.getState().transcriptStyle).toBe("detailed")
   })
 })

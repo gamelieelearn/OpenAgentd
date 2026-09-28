@@ -24,6 +24,22 @@ export interface DesktopNotificationResult {
 const ENABLED_KEY = 'oa-desktop-notifications-enabled'
 let permissionRequested = false
 
+/**
+ * Session each mobile notification opens when tapped, by notification id.
+ * The mobile shell has no click-aware notification command, and the iOS
+ * plugin reports a tap with the notification's id but not its ``extra`` data,
+ * so the session is remembered here. Capped; the oldest entry goes first.
+ */
+const tapSessions = new Map<number, string>()
+const MAX_TAP_SESSIONS = 50
+
+export interface DesktopNotificationOptions {
+  /** Skip the window-focus check; the user's notification setting still applies. */
+  force?: boolean
+  /** The notification is about the session on screen; mobile skips it while visible. */
+  sessionOnScreen?: boolean
+}
+
 function formatNotificationError(err: unknown): string {
   if (err instanceof Error) return err.message
   if (typeof err === 'string') return err
@@ -54,7 +70,7 @@ export function setDesktopNotificationsEnabled(enabled: boolean): void {
   window.localStorage.setItem(ENABLED_KEY, String(enabled))
 }
 
-async function shouldNotify(options: { force?: boolean } = {}): Promise<DesktopNotificationResult | null> {
+async function shouldNotify(options: DesktopNotificationOptions = {}): Promise<DesktopNotificationResult | null> {
   if (!isTauriRuntime()) {
     return { status: 'unsupported', message: 'Native app notifications only work in the Tauri app.' }
   }
@@ -62,7 +78,13 @@ async function shouldNotify(options: { force?: boolean } = {}): Promise<DesktopN
     return { status: 'disabled', message: 'App notifications are disabled.' }
   }
   if (options.force) return null
-  if (isMobileTauriRuntime()) return null
+  if (isMobileTauriRuntime()) {
+    // iOS pauses a backgrounded app's JavaScript, so most mobile notifications
+    // are sent while the app is open. Skip only the one repeating the screen.
+    return options.sessionOnScreen && document.visibilityState === 'visible'
+      ? { status: 'disabled', message: 'Mobile notifications are skipped for the session on screen.' }
+      : null
+  }
 
   try {
     const { getCurrentWindow } = await import('@tauri-apps/api/window')
@@ -81,9 +103,21 @@ async function shouldNotify(options: { force?: boolean } = {}): Promise<DesktopN
   }
 }
 
+/** Plugin options for a mobile notification, remembering the session it opens. */
+function mobileNotificationOptions(payload: DesktopNotificationPayload) {
+  // Random rather than counted: iOS replaces a delivered notification that
+  // reuses an identifier, and a counter would restart at every launch.
+  const id = 1 + Math.floor(Math.random() * 0x7ffffffe)
+  if (payload.sessionId) {
+    tapSessions.set(id, payload.sessionId)
+    if (tapSessions.size > MAX_TAP_SESSIONS) tapSessions.delete(tapSessions.keys().next().value!)
+  }
+  return { id, title: payload.title, body: payload.body, group: `openagentd-${payload.kind}` }
+}
+
 export async function sendDesktopNotification(
   payload: DesktopNotificationPayload,
-  options: { force?: boolean } = {},
+  options: DesktopNotificationOptions = {},
 ): Promise<DesktopNotificationResult> {
   const skipped = await shouldNotify(options)
   if (skipped) return skipped
@@ -99,14 +133,19 @@ export async function sendDesktopNotification(
       return { status: 'permission-denied', message: 'OS notification permission was not granted.' }
     }
     const { invoke } = await import('@tauri-apps/api/core')
-    await invoke('show_desktop_notification', {
-      payload: {
-        kind: payload.kind,
-        ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
-        title: payload.title,
-        body: payload.body,
-      },
-    })
+    if (isMobileTauriRuntime()) {
+      // show_desktop_notification exists only in the desktop shell.
+      await invoke('plugin:notification|notify', { options: mobileNotificationOptions(payload) })
+    } else {
+      await invoke('show_desktop_notification', {
+        payload: {
+          kind: payload.kind,
+          ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
+          title: payload.title,
+          body: payload.body,
+        },
+      })
+    }
     return { status: 'sent', message: 'Native notification sent.' }
   } catch (err) {
     console.warn('desktop notification failed', err)
@@ -114,5 +153,25 @@ export async function sendDesktopNotification(
       status: 'error',
       message: formatNotificationError(err),
     }
+  }
+}
+
+/**
+ * Call ``onSession`` with the session of a tapped mobile notification.
+ * Desktop clicks arrive from the shell as ``desktop-notification-clicked``,
+ * so this listens only in the mobile app. Resolves to an unsubscribe.
+ */
+export async function listenForNotificationTaps(onSession: (sessionId: string) => void): Promise<() => void> {
+  if (!isMobileTauriRuntime()) return () => {}
+  const { onAction } = await import('@tauri-apps/plugin-notification')
+  const listener = await onAction((event) => {
+    // Typed upstream as the send options; iOS sends { actionId, notification: { id, ... } }.
+    const { actionId, notification } = event as unknown as { actionId?: unknown; notification?: { id?: unknown } }
+    if (actionId !== 'tap' || typeof notification?.id !== 'number') return
+    const sessionId = tapSessions.get(notification.id)
+    if (sessionId) onSession(sessionId)
+  })
+  return () => {
+    void listener.unregister()
   }
 }

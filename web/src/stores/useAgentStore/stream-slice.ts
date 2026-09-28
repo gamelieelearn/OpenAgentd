@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand'
 import { postAgentChat, postAgentCommand, agentStream } from '@/api/client'
-import { applyQuestionResolution, applyRevertBoundary, markRestartPending } from './helpers'
+import { applyQuestionResolution, applyRevertBoundary, isDirectUserBlock, markRestartPending } from './helpers'
 import {
   applySSEDeltaBatch,
   createSSEHandler,
@@ -70,6 +70,7 @@ export type StreamSlice = Pick<
   | 'cacheInvalidations'
   | 'compactAgent'
   | 'undoAgent'
+  | 'revertToMessage'
   | 'redoAgent'
   | 'redoAllAgent'
   | 'pendingDraft'
@@ -140,7 +141,7 @@ export const createStreamSlice: StateCreator<
     }
   },
 
-  undoAgent: async () => {
+  undoAgent: async ({ restoreDraft = true } = {}) => {
     const { sessionId, _sessionGeneration: generation, _workspace: workspace } = get()
     if (!sessionId) {
       set((draft) => { draft.error = 'No active session to undo' })
@@ -174,7 +175,7 @@ export const createStreamSlice: StateCreator<
             boundaryContent: response.message?.content ?? null,
           })
         })
-        if (response.message?.role === 'user' && !response.message.is_summary) {
+        if (restoreDraft && response.message?.role === 'user' && !response.message.is_summary) {
           draft.pendingDraft = {
             content: response.message.content ?? '',
             attachments: response.message.attachments ?? [],
@@ -189,6 +190,40 @@ export const createStreamSlice: StateCreator<
       })
       return undefined
     }
+  },
+
+  revertToMessage: async (blockId, { restoreDraft = true } = {}) => {
+    const leadBlocks = () => {
+      const { leadName, agentStreams } = get()
+      return (leadName ? agentStreams[leadName]?.blocks : undefined) ?? []
+    }
+    const blocks = leadBlocks()
+    const index = blocks.findIndex((block) => block.id === blockId)
+    const target = blocks[index]
+    if (!target || !isDirectUserBlock(target)) return null
+    if (get().isAgentWorking) {
+      set((draft) => { draft.error = 'Cannot edit while agents are working — /stop first' })
+      return null
+    }
+    // The server only steps back one prompt (or compaction) per undo, so walk
+    // there. Every later prompt is an undo target, which bounds the loop even
+    // if a response is not the boundary we expect.
+    const steps = blocks.slice(index).filter((b) => isDirectUserBlock(b) || b.type === 'compaction').length
+    for (let step = 0; step < steps; step += 1) {
+      const response = await get().undoAgent({ restoreDraft: false })
+      if (!response) return null
+      if (!leadBlocks().some((block) => block.id === blockId)) break
+    }
+    if (leadBlocks().some((block) => block.id === blockId)) return null
+    if (restoreDraft) {
+      set((draft) => {
+        // ``@path`` mentions come back from the restored text; restoring their
+        // attachments too would send each file twice.
+        const attachments = (target.attachments ?? []).filter((att) => att.source !== 'mention')
+        draft.pendingDraft = { content: target.content, attachments }
+      })
+    }
+    return target
   },
 
   consumePendingDraft: () => {

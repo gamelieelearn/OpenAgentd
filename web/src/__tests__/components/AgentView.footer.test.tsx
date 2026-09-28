@@ -3,11 +3,13 @@ import { fireEvent, render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentView } from "@/components/AgentView"
 import { useAgentStore } from "@/stores/useAgentStore"
+import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
 import type { ContentBlock } from "@/api/types"
 
 afterEach(() => {
   cleanup()
   useAgentStore.setState({ sessionId: null, _pendingMessages: [] })
+  useDisplayPrefsStore.setState({ transcriptStyle: "detailed" })
 })
 
 // Mock lucide-react icons to avoid SVG issues in Happy DOM
@@ -47,6 +49,31 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────
+
+describe("AgentView — reader transcript", () => {
+  const blocks = [
+    makeUserBlock("u1", "Fix it"),
+    makeThinkingBlock("t1", "Looking around."),
+    { ...makeToolBlock("r1", "read"), toolArgs: '{"path":"src/a.ts"}', toolResult: "x" },
+    makeTextBlock("a1", "Fixed."),
+  ]
+
+  it("folds a turn's work behind one row when reader mode is on", () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: "reader" })
+    renderStream({ blocks })
+
+    expect(screen.getByText("Fixed.")).toBeTruthy()
+    expect(screen.queryByText("Looking around.")).toBeNull()
+    expect(screen.getByRole("button", { name: /^1 read/ }).getAttribute("aria-expanded")).toBe("false")
+  })
+
+  it("shows every step in the default detailed transcript", () => {
+    renderStream({ blocks })
+
+    expect(screen.getByText("Looking around.")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /^1 read/ })).toBeNull()
+  })
+})
 
 describe("AgentView — mentioned files", () => {
   it("hides mention-generated attachment cards", () => {
@@ -670,5 +697,53 @@ describe("AgentView — AssistantFooter", () => {
       })
       expect(container.textContent).toContain("Reasoning line one\n\nReasoning line two")
     })
+  })
+})
+
+describe("AgentView — footer model label", () => {
+  function answer(id: string, model: string): ContentBlock {
+    return { id, type: "text", content: `answer ${id}`, extra: { model } }
+  }
+
+  it("names the model on the first answer and again only when it changes", () => {
+    const { container } = renderStream({
+      blocks: [
+        makeUserBlock("u1", "one"),
+        answer("a1", "openai:gpt-5"),
+        makeUserBlock("u2", "two"),
+        answer("a2", "openai:gpt-5"),
+        makeUserBlock("u3", "three"),
+        answer("a3", "anthropic:claude-opus-4"),
+      ],
+      currentBlocks: [],
+      isWorking: false,
+    })
+
+    const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
+    expect(labels).toEqual(["gpt-5", "claude-opus-4"])
+  })
+
+  it("names the thinking level beside the model, and again when only the level changes", () => {
+    const leveled = (id: string, model: string, level: string): ContentBlock => ({
+      ...answer(id, model),
+      extra: { model, thinking_level: level },
+    })
+    const { container } = renderStream({
+      blocks: [
+        makeUserBlock("u1", "one"),
+        leveled("a1", "openai:gpt-5", "high"),
+        makeUserBlock("u2", "two"),
+        leveled("a2", "openai:gpt-5", "high"),
+        makeUserBlock("u3", "three"),
+        leveled("a3", "openai:gpt-5", "low"),
+        makeUserBlock("u4", "four"),
+        answer("a4", "openai:gpt-5"),
+      ],
+      currentBlocks: [],
+      isWorking: false,
+    })
+
+    const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
+    expect(labels).toEqual(["gpt-5 · high", "gpt-5 · low", "gpt-5"])
   })
 })

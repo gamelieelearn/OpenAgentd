@@ -7,9 +7,9 @@
  * every entry). Every consumer must therefore share one cache entry per
  * workspace/session rather than fetching its own copy.
  *
- * Consumers: `WorkspaceFilesPanel` (artifacts tree), `CodingWorkspacePanel`
- * (coding file tree), the InputComposer `@`-mention picker (`useFileRefsQuery`), and
- * the coding command palette (`useCommandPalette`).
+ * Consumers: `WorkspaceFilesPanel` (artifacts tree), `WorkspacePanel`
+ * (file tree), the InputComposer `@`-mention picker (`useFileRefsQuery`), and
+ * the command palette (`useCommandPalette`).
  *
  * Two invariants these factories exist to enforce:
  *
@@ -46,8 +46,8 @@ export function workspaceFilesQueryOptions(sessionId: string) {
   }
 }
 
-/** `GET /agent/workspace/files/list` — coding-mode workspace. */
-export function codingWorkspaceFilesQueryOptions(workspace: string) {
+/** `GET /agent/workspace/files/list` — files of an attached workspace. */
+export function workspaceFileListQueryOptions(workspace: string) {
   return {
     queryKey: queryKeys.coding.files(workspace),
     queryFn: ({ signal }: { signal: AbortSignal }): Promise<CodingWorkspaceFilesResponse> =>

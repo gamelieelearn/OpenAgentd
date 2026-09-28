@@ -1,0 +1,56 @@
+[package]
+name = "appv3-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rayon = "1"
+dunce.workspace = true
+appv3-core.workspace = true
+appv3-providers.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+ignore.workspace = true
+regex.workspace = true
+shlex.workspace = true
+tempfile = "3"
+reqwest.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+sha2.workspace = true
+base64 = "0.22"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+fancy-regex = "0.14"
+memchr = "2"
+globset = "0.4"
+os_pipe = "1"
+# HTML → Markdown for web_fetch. 0.5.3 is the last release on html5ever 0.36,
+# which `trafilatura` and `scraper` share (one HTML parser in the binary).
+htmd = "=0.5.3"
+markup5ever_rcdom = "0.36"
+html5ever = "0.36"
+encoding_rs = "0.8"
+scraper = "0.25"
+# Main-content extraction for web_fetch (port of go-trafilatura, the Go port
+# of the Python library v2 uses). No default features: its Markdown converter
+# is replaced by htmd + our code-block handlers.
+trafilatura = { version = "=0.3.0", default-features = false }
+unicode-normalization = "0.1"
+# PDF/DOCX → Markdown for `read` and `web_fetch`: the same Rust crate v2's
+# `firecrawl-anydoc` wheel wraps.
+anydoc = "=0.2.4"
+# Not used directly: pins anydoc's PDF engine to the version v2's anydoc 0.2.4
+# wheel was built with, so PDF text is byte-identical to v2.
+pdf-inspector = "=1.14.2"
+urlencoding = "2"
+toml = "0.9"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["signal", "process", "fs"] }

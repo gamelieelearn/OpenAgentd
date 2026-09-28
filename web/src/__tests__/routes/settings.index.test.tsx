@@ -10,8 +10,11 @@ import '@testing-library/jest-dom'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { queryKeys } from '@/queries'
+import { THEME_STORAGE_KEY } from '@/lib/theme'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => () => {},
@@ -20,7 +23,7 @@ mock.module('@tanstack/react-router', () => ({
 import { SettingsHubPage } from '@/components/settings/pages/settings.index'
 import { SETTINGS_SECTIONS } from '@/components/settings/sections'
 
-function renderHub(health?: { status: string; version: string }) {
+function renderHub(health?: { status: string; version: string; capabilities?: string[] }) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
@@ -100,9 +103,18 @@ describe('SettingsHubPage — mobile preferences', () => {
   it('renders a preferences link for every section without a mobile tab', () => {
     renderHub({ status: 'ok', version: '1.2.3' })
 
-    for (const section of SETTINGS_SECTIONS.filter((s) => !s.mobileTab)) {
+    for (const section of SETTINGS_SECTIONS.filter((s) => !s.mobileTab && !s.capability)) {
       expect(screen.getByText(section.label)).toBeInTheDocument()
     }
+  })
+
+  it('shows capability-gated sections only when the backend advertises them', () => {
+    const v2 = renderHub({ status: 'ok', version: '2.26.0' })
+    expect(screen.queryByText('Plugins')).toBeNull()
+    v2.unmount()
+
+    renderHub({ status: 'ok', version: '3.0.0', capabilities: ['api.plugins'] })
+    expect(screen.getByText('Plugins')).toBeInTheDocument()
   })
 
   it('does not link to sections that already have a mobile tab', () => {
@@ -130,5 +142,40 @@ describe('SettingsHubPage — community links', () => {
     expect(screen.getByText(/community & support/i)).toBeInTheDocument()
     expect(screen.getByText(/discord server/i)).toBeInTheDocument()
     expect(screen.getByText(/facebook group/i)).toBeInTheDocument()
+  })
+})
+
+describe('SettingsHubPage — appearance', () => {
+  afterEach(() => localStorage.removeItem(THEME_STORAGE_KEY))
+
+  it('picks the theme from the Appearance section', async () => {
+    const user = userEvent.setup()
+    renderHub()
+
+    const theme = screen.getByRole('group', { name: 'Theme' })
+    expect(screen.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Dark' }))
+
+    expect(theme.contains(screen.getByRole('button', { name: 'Dark' }))).toBe(true)
+    expect(screen.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true')
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+  })
+
+  it('switches the transcript to reader mode from the Appearance section', async () => {
+    const user = userEvent.setup()
+    renderHub()
+
+    const transcript = screen.getByRole('group', { name: 'Transcript' })
+    const reader = screen.getByRole('button', { name: 'Reader' })
+    expect(transcript.contains(reader)).toBe(true)
+    expect(screen.getByRole('button', { name: 'Detailed' })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(reader)
+
+    expect(reader).toHaveAttribute('aria-pressed', 'true')
+    expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
+    useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
   })
 })

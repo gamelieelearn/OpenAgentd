@@ -1,0 +1,113 @@
+import { describe, expect, it } from 'bun:test'
+
+import type { ContentBlock } from '@/api/types'
+import { readerSegments, summarizeWork, turnChangedFiles, workSummaryDetail } from '@/components/ReaderTurn/segments'
+
+const text = (id: string, content = 'prose'): ContentBlock => ({ id, type: 'text', content })
+const thinking = (id: string): ContentBlock => ({ id, type: 'thinking', content: 'hmm' })
+function tool(id: string, toolName: string, args: unknown = {}, extra: Partial<ContentBlock> = {}): ContentBlock {
+  return { id, type: 'tool', content: '', toolName, toolArgs: JSON.stringify(args), toolDone: true, toolResult: 'ok', ...extra }
+}
+function patch(id: string, lines: string[], extra: Partial<ContentBlock> = {}): ContentBlock {
+  return tool(id, 'patch', { patch_text: ['*** Begin Patch', ...lines, '*** End Patch'].join('\n') }, extra)
+}
+/** No ``ask_user`` card is waiting on the user. */
+const settled = () => false
+
+describe('readerSegments — what folds behind the work summary', () => {
+  it('folds thinking, tool calls, and narration; the text after the last work is the answer', () => {
+    const blocks = [thinking('t1'), tool('r1', 'read'), text('n1', 'Let me check the tests.'), tool('s1', 'shell'), text('a1'), text('a2')]
+
+    expect(readerSegments(blocks, settled)).toEqual([
+      { kind: 'work', indices: [0, 1, 2, 3] },
+      { kind: 'block', index: 4 },
+      { kind: 'block', index: 5 },
+    ])
+  })
+
+  it('leaves a turn with no work as it is', () => {
+    expect(readerSegments([text('a1'), text('a2')], settled)).toEqual([{ kind: 'block', index: 0 }, { kind: 'block', index: 1 }])
+  })
+
+  it('keeps what the user must see or act on out of the fold, in order', () => {
+    const blocks = [
+      { id: 'c1', type: 'compaction', content: 'summary' } as ContentBlock,
+      tool('r1', 'read'),
+      tool('q1', 'ask_user'),
+      tool('m1', 'weather', {}, { extra: { mcp_app: { uri: 'ui://w' } } }),
+      tool('s1', 'shell'),
+      text('a1'),
+      { id: 'e1', type: 'provider_status', content: 'boom', extra: { status: 'error' } } as ContentBlock,
+    ]
+
+    expect(readerSegments(blocks, (block) => block.id === 'q1')).toEqual([
+      { kind: 'block', index: 0 },
+      { kind: 'work', indices: [1, 4] },
+      { kind: 'block', index: 2 },
+      { kind: 'block', index: 3 },
+      { kind: 'block', index: 5 },
+      { kind: 'block', index: 6 },
+    ])
+  })
+
+  it('folds a question once it no longer waits on the user', () => {
+    const blocks = [tool('r1', 'read'), text('n1', 'One thing first.'), tool('q1', 'ask_user'), tool('s1', 'shell'), text('a1')]
+
+    expect(readerSegments(blocks, settled)).toEqual([{ kind: 'work', indices: [0, 1, 2, 3] }, { kind: 'block', index: 4 }])
+  })
+
+  it('folds text a live turn has since followed with more work', () => {
+    expect(readerSegments([text('n1'), tool('s1', 'shell', {}, { toolDone: false })], settled)).toEqual([{ kind: 'work', indices: [0, 1] }])
+  })
+})
+
+describe('summarizeWork', () => {
+  it('counts each kind of step, and failures', () => {
+    const blocks = [
+      thinking('t1'),
+      tool('r1', 'read'), tool('r2', 'read'),
+      tool('g1', 'grep'), tool('g2', 'glob'), tool('w1', 'web_search'),
+      tool('f1', 'web_fetch'),
+      tool('s1', 'shell', {}, { toolResult: '[Failed — exit code 1]\nnope' }),
+      patch('p1', ['*** Update File: a.ts', '@@', '-a', '+b']),
+      tool('d1', 'delegate'),
+      text('n1'),
+    ]
+
+    const summary = summarizeWork(blocks)
+
+    expect(summary).toEqual({ reads: 2, searches: 3, fetches: 1, commands: 1, edits: 1, other: 1, failed: 1, thought: true })
+    expect(workSummaryDetail(summary)).toBe('2 reads, 3 searches, 1 fetch, 1 command, 1 edit, 1 other')
+  })
+
+  it('says nothing about steps for a trace that only thought', () => {
+    expect(workSummaryDetail(summarizeWork([thinking('t1')]))).toBe('')
+  })
+})
+
+describe('turnChangedFiles — what the turn edited', () => {
+  it('sums each file across the turn, in the order first touched', () => {
+    const blocks = [
+      patch('p1', ['*** Update File: web/src/a.ts', '@@', '-x', '+y', '+z', '*** Add File: web/src/new.ts', '+one']),
+      patch('p2', ['*** Update File: web/src/a.ts', '@@', '-y', '+w', '*** Update File: web/src/new.ts', '@@', '+two']),
+      patch('p3', ['*** Delete File: old.md']),
+    ]
+
+    expect(turnChangedFiles(blocks)).toEqual([
+      { path: 'web/src/a.ts', status: 'M', additions: 3, deletions: 2 },
+      { path: 'web/src/new.ts', status: 'A', additions: 2, deletions: 0 },
+      { path: 'old.md', status: 'D', additions: 0, deletions: 0 },
+    ])
+  })
+
+  it('drops a file the turn created and deleted, and skips failed or running patches', () => {
+    const blocks = [
+      patch('p1', ['*** Add File: tmp.txt', '+x']),
+      patch('p2', ['*** Delete File: tmp.txt']),
+      patch('p3', ['*** Update File: a.ts', '@@', '+x'], { toolResult: 'Error: hunk did not apply' }),
+      patch('p4', ['*** Update File: b.ts', '@@', '+x'], { toolDone: false }),
+    ]
+
+    expect(turnChangedFiles(blocks)).toEqual([])
+  })
+})

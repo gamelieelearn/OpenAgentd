@@ -1,7 +1,7 @@
 /**
- * Display helpers for the /telemetry page.
+ * Display helpers for the telemetry overlay.
  *
- * Split out of `routes/telemetry.tsx` so the module only exports components
+ * Kept out of the components so those modules only export components
  * (required for React Fast Refresh) and so the helpers are easy to unit-test.
  */
 
@@ -33,6 +33,23 @@ export function formatUsd(n: number): string {
   return usdFmt.format(n)
 }
 
+const usd2Fmt = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+/**
+ * Spend at a glance: cents for normal amounts, four decimals below a cent so
+ * cheap turns do not all read as "$0.00".
+ */
+export function formatSpend(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '$0.00'
+  if (n < 0.01) return `$${n.toFixed(4)}`
+  return usd2Fmt.format(n)
+}
+
 export function formatPercent(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return '0%'
   return `${n.toFixed(n >= 10 ? 0 : 1)}%`
@@ -44,9 +61,15 @@ export function formatPercent(n: number): string {
  * to seconds with one decimal.
  */
 export function formatMs(n: number): string {
-  if (n === 0) return '-'
+  if (!Number.isFinite(n) || n <= 0) return '-'
   if (n < 1000) return `${n.toFixed(0)} ms`
   return `${(n / 1000).toFixed(1)} s`
+}
+
+/** Output speed in tokens per second; a hyphen when nothing was measured. */
+export function formatTps(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '-'
+  return `${n.toFixed(n < 10 ? 1 : 0)} tok/s`
 }
 
 /**

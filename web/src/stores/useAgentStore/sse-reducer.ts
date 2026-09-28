@@ -22,10 +22,19 @@ import {
   extractToolPaths,
 } from './helpers'
 import type { CacheInvalidation, AgentError, AgentStore } from './types'
-import type { ContentBlock, PendingQuestion, QuestionItem } from '@/api/types'
+import type { ContentBlock, PendingQuestion, QuestionItem, SSEEventType } from '@/api/types'
 
 type Setter = (fn: (draft: AgentStore) => void) => void
 type Getter = () => AgentStore
+
+/**
+ * Session-stream events the reducer deliberately drops, with the reason.
+ * Every other contract event needs a `case` below (`sse-contract.test.ts`).
+ */
+export const IGNORED_SSE_EVENTS: Partial<Record<SSEEventType, string>> = {
+  rate_limit: 'always followed by a provider_status "retrying" event carrying the same retry_after, which the UI renders',
+  permission_asked: 'tools are auto-allowed; the event is an announcement for API clients that implement approvals',
+}
 
 /**
  * Coerce the ``question_asked`` payload into ``QuestionItem[]``.
@@ -133,6 +142,7 @@ function appendStreamingText(
   kind: BufferedTextKind,
   text: string,
   model?: string | null,
+  thinkingLevel?: string | null,
 ) {
   const name = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
   ensureAgent(draft, name)
@@ -155,7 +165,9 @@ function appendStreamingText(
     const last = stream.currentBlocks[stream.currentBlocks.length - 1]
     if (last?.type === 'text') {
       if (!last.startedAt) last.startedAt = Date.now()
-      if (model) last.extra = { ...(last.extra ?? {}), model }
+      if (model) {
+        last.extra = { ...(last.extra ?? {}), model, ...(thinkingLevel ? { thinking_level: thinkingLevel } : {}) }
+      }
     }
   }
 }
@@ -181,14 +193,14 @@ function applyBufferedSSEDelta(draft: AgentStore, event: BufferedSSEDelta) {
   const d = event.data
   const agentName = (d.agent as string) || draft.leadName || Object.keys(draft.agentStreams)[0] || 'openagentd'
   if (event.type === 'message' || event.type === 'thinking') {
+    const metadata = d.metadata as Record<string, unknown> | undefined
     appendStreamingText(
       draft,
       agentName,
       event.type,
       d.text as string,
-      typeof (d.metadata as Record<string, unknown> | undefined)?.model === 'string'
-        ? ((d.metadata as Record<string, unknown>).model as string)
-        : null,
+      typeof metadata?.model === 'string' ? metadata.model : null,
+      typeof metadata?.thinking_level === 'string' ? metadata.thinking_level : null,
     )
     return
   }
@@ -387,7 +399,16 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (!agent || !status) break
         set((draft) => {
           ensureAgent(draft, agent)
-          draft.agentStreams[agent].currentBlocks.push({
+          const blocks = draft.agentStreams[agent].currentBlocks
+          const last = blocks[blocks.length - 1]
+          // A call waiting out a network drop retries every few seconds
+          // for as long as it takes: update one notice instead of stacking.
+          if (status === 'retrying' && last?.type === 'provider_status' && last.extra?.status === 'retrying') {
+            last.extra = d
+            last.timestamp = new Date()
+            return
+          }
+          blocks.push({
             id: generateBlockId(),
             type: 'provider_status',
             content: '',
@@ -807,6 +828,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               sessionId: draft.sessionId,
               running: false,
             })
+            // The backend saves a Plan-mode turn's `<proposed_plan>` as the
+            // session plan; other turns never write it.
+            if (draft.sessionInteractionMode === 'plan') {
+              draft.cacheInvalidations.push({ kind: 'plan', sessionId: draft.sessionId })
+            }
           }
         })
         break

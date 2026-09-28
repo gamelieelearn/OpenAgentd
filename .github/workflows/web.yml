@@ -6,6 +6,7 @@ on:
     paths:
       - "web/**"
       - "app/**"
+      - "appv3/contract/**"
       - "Makefile"
       - "desktop/src-tauri/tauri*.conf.json"
       - "desktop/src-tauri/Cargo.toml"
@@ -18,6 +19,7 @@ on:
     paths:
       - "web/**"
       - "app/**"
+      - "appv3/contract/**"
       - "Makefile"
       - "desktop/src-tauri/tauri*.conf.json"
       - "desktop/src-tauri/Cargo.toml"

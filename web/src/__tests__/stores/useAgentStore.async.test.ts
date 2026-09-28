@@ -3084,6 +3084,91 @@ describe("loadOlderMessages", () => {
   })
 })
 
+// ── loadOlderUntilPrompt ──────────────────────────────────────────────────────
+
+describe("loadOlderUntilPrompt", () => {
+  const page = (messages: ReturnType<typeof makeMessageResponse>[], nextCursor: string | null) => ({
+    lead: { id: "lead-sess", agent_name: "lead", title: null, created_at: null, updated_at: null, sub_sessions: [], messages },
+    members: [],
+    has_more: nextCursor !== null,
+    next_cursor: nextCursor,
+  })
+
+  function seed() {
+    useAgentStore.setState({
+      sessionId: "sess-1",
+      hasMore: true,
+      nextCursor: "c0",
+      leadName: "lead",
+      agentStreams: { lead: makeStream({ blocks: [{ id: "newest", type: "user" as const, content: "newest prompt" }] }) },
+    })
+  }
+
+  it("fetches pages until one holds a prompt, then prepends them all in one update", async () => {
+    seed()
+    const pages: Record<string, ReturnType<typeof page>> = {
+      c0: page([makeMessageResponse({ id: "a2", role: "assistant", content: "end of a long answer" })], "c1"),
+      c1: page([
+        makeMessageResponse({ id: "report", role: "user", content: "a report", extra: { from_agent: "explorer" } }),
+        makeMessageResponse({ id: "a1", role: "assistant", content: "more of it" }),
+      ], "c2"),
+      c2: page([
+        makeMessageResponse({ id: "p1", role: "user", content: "older prompt" }),
+        makeMessageResponse({ id: "a0", role: "assistant", content: "its answer" }),
+      ], "c3"),
+    }
+    mockSessionHistory.mockImplementation((_id: string, cursor: string) => Promise.resolve(pages[cursor]))
+    let updates = 0
+    const unsubscribe = useAgentStore.subscribe((state, previous) => {
+      if (state.agentStreams.lead.blocks !== previous.agentStreams.lead.blocks) updates += 1
+    })
+
+    const found = await useAgentStore.getState().loadOlderUntilPrompt()
+    unsubscribe()
+
+    expect(found).toBe(true)
+    expect(mockSessionHistory.mock.calls.map((call: unknown[]) => call[1])).toEqual(["c0", "c1", "c2"])
+    expect(updates).toBe(1)
+    expect(useAgentStore.getState().agentStreams.lead.blocks.map((b) => b.id)).toEqual(
+      expect.arrayContaining(["p1", "report", "newest"]),
+    )
+    const ids = useAgentStore.getState().agentStreams.lead.blocks.map((b) => b.id)
+    expect(ids.indexOf("p1")).toBeLessThan(ids.indexOf("report"))
+    expect(ids.at(-1)).toBe("newest")
+    expect(useAgentStore.getState().nextCursor).toBe("c3")
+    expect(useAgentStore.getState()._loadingOlder).toBe(false)
+  })
+
+  it("stops after the page limit, or when history runs out, without a prompt", async () => {
+    seed()
+    let n = 0
+    mockSessionHistory.mockImplementation(() => {
+      n += 1
+      return Promise.resolve(page([makeMessageResponse({ id: `a${n}`, role: "assistant", content: "answer" })], `c${n}`))
+    })
+
+    expect(await useAgentStore.getState().loadOlderUntilPrompt(3)).toBe(false)
+    expect(mockSessionHistory).toHaveBeenCalledTimes(3)
+
+    mockSessionHistory.mockReset()
+    mockSessionHistory.mockImplementation(() => Promise.resolve(page([], null)))
+    expect(await useAgentStore.getState().loadOlderUntilPrompt()).toBe(false)
+    expect(mockSessionHistory).toHaveBeenCalledTimes(1)
+    expect(useAgentStore.getState().hasMore).toBe(false)
+  })
+
+  it("drops the pages when the session changes while they load", async () => {
+    seed()
+    mockSessionHistory.mockImplementation(async () => {
+      useAgentStore.setState((state) => ({ _sessionGeneration: (state._sessionGeneration ?? 0) + 1 }))
+      return page([makeMessageResponse({ id: "p1", role: "user", content: "older prompt" })], null)
+    })
+
+    expect(await useAgentStore.getState().loadOlderUntilPrompt()).toBe(false)
+    expect(useAgentStore.getState().agentStreams.lead.blocks.map((b) => b.id)).toEqual(["newest"])
+  })
+})
+
 // ── Ghost-message regression: late SSE after /undo ────────────────────────────
 // When a user undoes a message before the backend SSE events (queued_turn_start
 // / done) arrive, those late events must NOT re-introduce the reverted user

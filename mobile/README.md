@@ -2,7 +2,7 @@
 
 Remote-backend-only Tauri mobile shell for OpenAgentd.
 
-The mobile app embeds the shared React Web UI from `../web/dist` and connects to an existing OpenAgentd API server. It does not bundle or start the Python/FastAPI backend.
+The mobile app embeds the shared React Web UI from `../web/dist` and connects to an existing OpenAgentd API server. It does not bundle or start a backend.
 
 ## Local development
 
@@ -62,8 +62,13 @@ For a physical iPhone, expose the dev servers on the LAN first:
 
 ```bash
 cd ../web && bun dev --host 0.0.0.0
-cd .. && uv run uvicorn app.server:app --host 0.0.0.0 --port 8000
+cd .. && OPENAGENTD_ACCESS_KEY=<choose-a-key> APP_ENV=development \
+  cargo run --manifest-path appv3/Cargo.toml -p appv3-cli -- server serve --host 0.0.0.0 --port 8000
 ```
+
+The server refuses to listen on the LAN without an access key; enter the same
+key in the app's **Backend connection**. An installed CLI does the same with
+`openagentd server start --host 0.0.0.0 --key`.
 
 Then run the iOS dev app:
 
@@ -100,6 +105,6 @@ make ios-build
 
 If iOS blocks the first launch, trust the developer profile on the phone in **Settings → General → VPN & Device Management**.
 
-Use **Backend connection** in the app to save/check a remote server. Simulator builds can usually reach the Mac with `http://localhost:8000`; physical devices normally need a LAN IP or HTTPS endpoint.
+Use **Backend connection** in the app to save/check a remote server. Simulator builds can usually reach the Mac with `http://localhost:8000`; physical devices normally need a LAN IP or HTTPS endpoint. The server has no built-in TLS: for access beyond a trusted LAN, put an HTTPS reverse proxy in front of it and connect to the proxy's URL.
 
 For local developer builds, set a unique iOS bundle identifier in `src-tauri/tauri.conf.json` if `com.openagentd.mobile` is already registered to another Apple developer team.

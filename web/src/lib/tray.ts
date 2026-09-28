@@ -18,7 +18,7 @@ function isTauriRuntime(): boolean {
 
 /**
  * Update the tray menu's session label to describe what the user is
- * currently working on (e.g. ``"Coding: openagentd"`` or
+ * currently working on (e.g. ``"openagentd"`` or
  * ``"Chat: Refactor auth flow"``). Pass an empty string to reset the
  * label to the idle placeholder.
  *

@@ -10,9 +10,43 @@ import type {
   AgentStatusResponse,
 } from '../types'
 
-export async function health(): Promise<{ status: string; version: string }> {
+export interface HealthResponse {
+  status: string
+  version: string
+  /** Optional server features (v3). Absent on v2, which has none of them. */
+  capabilities?: string[]
+}
+
+export async function health(): Promise<HealthResponse> {
   const res = await fetch(`${apiBaseUrl()}/health/ready`)
   if (!res.ok) await parseDetailOrThrow(res, 'health')
+  return res.json()
+}
+
+// ── Plugins (v3 only: `capabilities` includes "api.plugins") ────────────────
+
+export interface PluginStatus {
+  name: string
+  file: string
+  path: string
+  status: 'loaded' | 'error'
+  /** Provider id when the file registers a model provider. */
+  provider: string | null
+  /** Tool hooks the file registers (`tool.before`, `tool.after`). */
+  hooks: string[]
+  errors: string[]
+}
+
+export interface PluginsResponse {
+  dirs: string[]
+  plugins: PluginStatus[]
+  /** v2 `*.py` plugins with no `*.ts`/`*.js` port — v3 does not run them. */
+  unported: { name: string; file: string; path: string }[]
+}
+
+export async function listPlugins(): Promise<PluginsResponse> {
+  const res = await fetch(`${apiBaseUrl()}/plugins`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listPlugins')
   return res.json()
 }
 

@@ -2,6 +2,7 @@ export const queryKeys = {
   health: () => ['health'] as const,
   backendStatus: () => ['app-backend-status'] as const,
   agents: () => ['agents'] as const,
+  plugins: () => ['plugins'] as const,
   agentRegistry: (workspace?: string | null) => workspace ? ['agents', 'registry', workspace] as const : ['agents', 'registry'] as const,
   session: {
     // NOTE: there is no separate agent-status key. The home-page "is agent mode
@@ -11,6 +12,9 @@ export const queryKeys = {
     sessions: {
       all: () => ['session', 'sessions'] as const,
       infinite: () => ['session', 'sessions', 'infinite'] as const,
+      /** Running or waiting sessions across every workspace (one page). */
+      active: () => ['session', 'sessions', 'active'] as const,
+      search: (query: string) => ['session', 'sessions', 'search', query] as const,
       workspace: (workspace: string) => ['session', 'sessions', 'workspace', workspace] as const,
       list: (offset: number, limit: number) =>
         ['session', 'sessions', 'list', offset, limit] as const,
@@ -24,7 +28,7 @@ export const queryKeys = {
     files: (sessionId: string) => ['session', 'files', sessionId] as const,
     subagents: (sessionId: string) => ['session', 'subagents', sessionId] as const,
   },
-  // Coding-mode workspace sidebar — keyed by the absolute workspace path
+  // Workspace panel data — keyed by the absolute workspace path
   // (a single project may be shared across multiple sessions/tabs, so the
   // cache is keyed by path rather than session id). The reducer enqueues
   // ``coding_workspace`` invalidations on every file-mutating tool_end and
@@ -61,11 +65,19 @@ export const queryKeys = {
     list: (workspace: string) => ['snippets', 'list', workspace] as const,
   },
   observability: {
-    summary: (days: number) => ['observability', 'summary', days] as const,
+    summary: (days: number, filters: { workspace?: string | null; model?: string | null; session?: string | null } = {}) =>
+      ['observability', 'summary', days, filters.workspace ?? null, filters.model ?? null, filters.session ?? null] as const,
     traces: (days: number, limit: number, offset: number) =>
       ['observability', 'traces', days, limit, offset] as const,
-    infiniteTraces: (days: number, limit: number) =>
-      ['observability', 'traces', 'infinite', days, limit] as const,
+    infiniteTraces: (
+      days: number,
+      limit: number,
+      filters: { workspace?: string | null; model?: string | null; session?: string | null } = {},
+      errorsOnly = false,
+    ) => [
+      'observability', 'traces', 'infinite', days, limit,
+      filters.workspace ?? null, filters.model ?? null, filters.session ?? null, errorsOnly,
+    ] as const,
     trace: (traceId: string) => ['observability', 'trace', traceId] as const,
   },
   scheduler: {
@@ -73,6 +85,7 @@ export const queryKeys = {
     list: () => ['scheduler', 'list'] as const,
   },
   todos: (sessionId: string) => ['todos', sessionId] as const,
+  plan: (sessionId: string) => ['plan', sessionId] as const,
   mcp: {
     all: () => ['mcp'] as const,
     list: () => ['mcp', 'list'] as const,

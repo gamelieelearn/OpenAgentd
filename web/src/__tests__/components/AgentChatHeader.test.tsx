@@ -5,6 +5,7 @@ import '@testing-library/jest-dom'
 import userEvent from '@testing-library/user-event'
 
 import { AgentChatHeader } from '@/components/AgentChatView/AgentChatHeader'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 
 function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>> = {}) {
   const props: ComponentProps<typeof AgentChatHeader> = {
@@ -13,13 +14,13 @@ function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>>
     isMobile: true,
     workspace: '/Users/name/Workspace A',
     sessionTitle: 'Fix updater restart',
-    onCodingSidebarToggle: () => undefined,
+    onSidebarToggle: () => undefined,
     headerTokens: undefined,
     sessionId: 'session-1',
     todos: [],
-    showTodos: false,
-    setShowTodos: () => undefined,
-    codingPanel: null,
+    onToggleTasks: () => undefined,
+    tasksViewActive: false,
+    workspacePanel: null,
     onWorkspaceFiles: () => undefined,
     agentCapabilitiesOpen: false,
     onToggleAgentCapabilities: () => undefined,
@@ -43,11 +44,41 @@ describe('AgentChatHeader', () => {
     expect(screen.queryByText('Fix updater restart')).not.toBeInTheDocument()
   })
 
+  it('keeps the desktop header on the page tone in light mode', () => {
+    const { container } = renderHeader({ isMobile: false })
+    const header = container.querySelector('header') as HTMLElement
+    expect(header.className).toContain('bg-(--bg-page)')
+    expect(header.className).toContain('md:dark:bg-(--bg-sidebar)')
+    expect(header.className.split(' ')).not.toContain('md:bg-(--bg-sidebar)')
+  })
+
   it('keeps desktop coding sessions showing workspace and session title', () => {
     renderHeader({ isMobile: false })
 
     expect(screen.getByText('Workspace A')).toBeInTheDocument()
     expect(screen.getByText('Fix updater restart')).toBeInTheDocument()
+  })
+
+  it('renames the session from its title on desktop', async () => {
+    const user = userEvent.setup()
+    const onRenameSession = mock((..._args: unknown[]) => {})
+    renderHeader({ isMobile: false, onRenameSession })
+
+    await user.click(screen.getByRole('button', { name: 'Rename session Fix updater restart' }))
+    const input = screen.getByLabelText('Session title')
+    await user.clear(input)
+    await user.type(input, 'Ship the updater{Enter}')
+
+    expect(onRenameSession.mock.calls).toEqual([['session-1', 'Ship the updater']])
+    expect(screen.queryByLabelText('Session title')).not.toBeInTheDocument()
+  })
+
+  it('sizes every mobile header action to the full header height on touch', () => {
+    renderHeader({ isMobile: true })
+
+    for (const name of ['Tasks', 'Workspace files', 'Session settings']) {
+      expect(screen.getByRole('button', { name }).className).toContain('pointer-coarse:size-9')
+    }
   })
 
   it('renders token meter on mobile when headerTokens has zero usage', () => {
@@ -84,6 +115,42 @@ describe('AgentChatHeader', () => {
     expect(onCloseMobileActionsMenu).toHaveBeenCalledTimes(2)
   })
 
+  it('steps prompts, searches files, and opens the palette from the mobile drawer, then closes it', async () => {
+    const user = userEvent.setup()
+    const jumpToPrompt = mock((..._args: unknown[]) => {})
+    const onQuickOpen = mock(() => {})
+    const onOpenPalette = mock(() => {})
+    const onCloseMobileActionsMenu = mock(() => {})
+    useTranscriptFollowStore.setState({ jumpToPrompt })
+    try {
+      renderHeader({ showMobileActions: true, onQuickOpen, onOpenPalette, onCloseMobileActionsMenu })
+
+      await user.click(screen.getByRole('button', { name: 'Previous prompt' }))
+      await user.click(screen.getByRole('button', { name: 'Next prompt' }))
+      await user.click(screen.getByRole('button', { name: 'Search files' }))
+      await user.click(screen.getByRole('button', { name: 'Command palette' }))
+
+      expect(jumpToPrompt.mock.calls).toEqual([[-1], [1]])
+      expect(onQuickOpen).toHaveBeenCalledTimes(1)
+      expect(onOpenPalette).toHaveBeenCalledTimes(1)
+      expect(onCloseMobileActionsMenu).toHaveBeenCalledTimes(4)
+    } finally {
+      useTranscriptFollowStore.setState({ jumpToPrompt: null })
+    }
+  })
+
+  it('disables mobile prompt stepping in a chat with no session yet', () => {
+    useTranscriptFollowStore.setState({ jumpToPrompt: () => {} })
+    try {
+      renderHeader({ showMobileActions: true, sessionId: null })
+
+      expect(screen.getByRole('button', { name: 'Previous prompt' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Next prompt' })).toBeDisabled()
+    } finally {
+      useTranscriptFollowStore.setState({ jumpToPrompt: null })
+    }
+  })
+
   it('labels the chat workspace "Chat" instead of its home-directory basename', () => {
     renderHeader({
       isMobile: false,
@@ -118,5 +185,86 @@ describe('AgentChatHeader', () => {
 
     expect(screen.getByRole('tooltip')).toHaveTextContent('Chat')
     expect(screen.queryByText('/Users/name')).not.toBeInTheDocument()
+  })
+
+  it('opens the command palette from the desktop command center', async () => {
+    const user = userEvent.setup()
+    const onOpenPalette = mock(() => {})
+    renderHeader({ isMobile: false, onOpenPalette })
+
+    await user.click(screen.getByRole('button', { name: /Search or run a command/ }))
+
+    expect(onOpenPalette).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the command center off the mobile header', () => {
+    renderHeader({ isMobile: true, onOpenPalette: () => undefined })
+
+    expect(screen.queryByRole('button', { name: /Search or run a command/ })).not.toBeInTheDocument()
+  })
+
+  it('reflects the review dock state on its toggle', () => {
+    const { rerender } = renderHeader({ isMobile: false, workspacePanel: null })
+    expect(screen.getByRole('button', { name: 'Changed files and workspace files' })).toHaveAttribute('aria-pressed', 'false')
+
+    rerender(
+      <AgentChatHeader
+        dragHandlers={{}}
+        isMacOverlay={false}
+        isMobile={false}
+        workspace="/Users/name/Workspace A"
+        sessionTitle={null}
+        onSidebarToggle={() => undefined}
+        sessionId="session-1"
+        todos={[]}
+        onToggleTasks={() => undefined}
+        tasksViewActive={false}
+        workspacePanel="changed"
+        onWorkspaceFiles={() => undefined}
+        agentCapabilitiesOpen={false}
+        onToggleAgentCapabilities={() => undefined}
+        showMobileActions={false}
+        setShowMobileActions={() => undefined}
+        onToggleScheduler={() => undefined}
+        onFindInTranscript={() => undefined}
+        onCloseMobileActionsMenu={() => undefined}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Changed files and workspace files' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('routes the desktop Tasks button through onToggleTasks with progress and pressed state', async () => {
+    const user = userEvent.setup()
+    const onToggleTasks = mock(() => {})
+    renderHeader({
+      isMobile: false,
+      onToggleTasks,
+      tasksViewActive: true,
+      todos: [
+        { task_id: '1', content: 'Plan', status: 'completed' },
+        { task_id: '2', content: 'Build', status: 'in_progress' },
+        { task_id: '3', content: 'Ship', status: 'pending' },
+      ],
+    })
+
+    const button = screen.getByRole('button', { name: 'Task list' })
+    expect(button).toHaveAttribute('aria-pressed', 'true')
+    expect(button).toHaveTextContent('1/3')
+    await user.click(button)
+    expect(onToggleTasks).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables the desktop Tasks button without a session', () => {
+    renderHeader({ isMobile: false, sessionId: null })
+    expect(screen.getByRole('button', { name: 'Task list' })).toBeDisabled()
+  })
+
+  it('toggles tasks from the mobile header through the same handler', async () => {
+    const user = userEvent.setup()
+    const onToggleTasks = mock(() => {})
+    renderHeader({ isMobile: true, onToggleTasks })
+
+    await user.click(screen.getByRole('button', { name: /Tasks/ }))
+    expect(onToggleTasks).toHaveBeenCalledTimes(1)
   })
 })

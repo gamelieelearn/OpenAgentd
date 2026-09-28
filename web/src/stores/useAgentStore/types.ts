@@ -34,6 +34,8 @@ export type CacheInvalidation =
   | { kind: 'coding_workspace_paths'; workspace: string; paths: string[] }
   | { kind: 'scheduler' }
   | { kind: 'todos'; sessionId: string }
+  /** A Plan-mode turn ended, so the saved session plan may have changed. */
+  | { kind: 'plan'; sessionId: string }
   | { kind: 'subagents'; sessionId: string }
   /**
    * A turn started or finished for ``sessionId``. Patches that row's
@@ -204,7 +206,15 @@ export interface AgentStoreActions {
   setSessionInteractionMode: (mode: SessionInteractionMode) => Promise<boolean>
   setSessionModelSettings: (model: string | null, thinkingLevel: string | null, fastMode?: boolean) => void
   compactAgent: () => Promise<void>
-  undoAgent: () => Promise<AgentCommandResponse | undefined>
+  /** ``restoreDraft: false`` skips putting the undone prompt back in the composer. */
+  undoAgent: (options?: { restoreDraft?: boolean }) => Promise<AgentCommandResponse | undefined>
+  /**
+   * Undo back to just before the direct prompt ``blockId`` — later prompts
+   * included — and, unless ``restoreDraft`` is false, put it in the composer.
+   * Resolves to the reverted prompt, or ``null`` when nothing was reverted.
+   * Redo still brings everything back.
+   */
+  revertToMessage: (blockId: string, options?: { restoreDraft?: boolean }) => Promise<ContentBlock | null>
   redoAgent: () => Promise<AgentCommandResponse | undefined>
   redoAllAgent: () => Promise<AgentCommandResponse | undefined>
   consumePendingDraft: () => { content: string; attachments?: MessageAttachment[] } | null
@@ -241,6 +251,12 @@ export interface AgentStoreActions {
   reconcileTurnTail: (sessionId: string, workspace?: string | null) => Promise<void>
   beginResolvedSession: (sessionId: string | null, options: { workspace: string; interactionMode?: SessionInteractionMode; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   loadOlderMessages: () => Promise<void>
+  /**
+   * Load older pages until one holds a prompt the user wrote (at most
+   * ``maxPages``), prepending them in a single update. Resolves whether a
+   * prompt arrived.
+   */
+  loadOlderUntilPrompt: (maxPages?: number) => Promise<boolean>
   toggleSidebar: () => void
   dismissSetupRequired: () => void
   isEmptyIdleSession: () => boolean

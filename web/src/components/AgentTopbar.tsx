@@ -45,6 +45,10 @@ export interface AgentTopbarActionDescriptor {
   indicator?: boolean
   /** Override the indicator dot color (e.g. error red). */
   indicatorClassName?: string
+  /** Toggle state for panel toggles; rendered as ``aria-pressed``. */
+  pressed?: boolean
+  /** Short trailing text such as task progress (``"2/5"``). */
+  badge?: string
   className?: string
 }
 
@@ -53,15 +57,8 @@ export interface AgentTopbarProps {
   tokens?: AgentTopbarTokens
   /** Force the mobile/desktop layout. Defaults to desktop. */
   isMobile?: boolean
-  /**
-   * Custom Todos trigger. The TodosPopover handles its own trigger
-   * (open state, popover wiring), so the consumer passes the rendered
-   * trigger element. When omitted the topbar renders a plain Todos
-   * action driven by `onTodosClick`.
-   */
-  todosSlot?: React.ReactNode
   todosAction?: AgentTopbarActionDescriptor
-  /** Scheduler action — opens the scheduled-tasks drawer (⌘S / Ctrl+S). */
+  /** Scheduler action — opens the scheduled-tasks drawer. */
   schedulerAction?: AgentTopbarActionDescriptor
   /** Files action — typically toggles the workspace files panel. */
   filesAction?: AgentTopbarActionDescriptor
@@ -80,7 +77,6 @@ export interface AgentTopbarProps {
 export function AgentTopbar({
   tokens,
   isMobile = false,
-  todosSlot,
   todosAction,
   schedulerAction,
   filesAction,
@@ -114,7 +110,7 @@ export function AgentTopbar({
         />
       )}
 
-      {todosSlot ?? (todosAction && <AgentTopbarActionButton action={todosAction} fallbackIcon={ListChecks} />)}
+      {todosAction && <AgentTopbarActionButton action={todosAction} fallbackIcon={ListChecks} />}
       {schedulerAction && (
         <AgentTopbarActionButton action={schedulerAction} fallbackIcon={CalendarClock} />
       )}
@@ -148,6 +144,8 @@ function AgentTopbarActionButton({
       aria-label={action.ariaLabel ?? action.label ?? action.title}
       indicator={action.indicator}
       indicatorClassName={action.indicatorClassName}
+      badge={action.badge}
+      aria-pressed={action.pressed}
     />
   )
   if (!action.title) return button

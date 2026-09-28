@@ -1,11 +1,16 @@
-import { memo, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
+import { memo, useState, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
 import { ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { InlineTitleInput } from '@/components/ui/inline-title-input'
+import { usePlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
-import { TodosPopover } from '@/components/TodosPopover'
+import { CommandCenterButton } from './CommandCenterButton'
+import { summarizeTodos } from '@/components/TaskChecklist'
 import { TokenMeter } from '@/components/ui/token-meter'
 import type { CodingWorkspaceTreeChat, TodoItem } from '@/api/types'
 import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
@@ -19,13 +24,15 @@ interface AgentChatHeaderProps {
   /** Chat entry from the workspace tree — labels the chat root as "Chat". */
   chatWorkspace?: CodingWorkspaceTreeChat | null
   sessionTitle: string | null
-  onCodingSidebarToggle: () => void
+  onSidebarToggle: () => void
   headerTokens?: AgentTopbarTokens
   sessionId: string | null
   todos: TodoItem[]
-  showTodos: boolean
-  setShowTodos: Dispatch<SetStateAction<boolean>>
-  codingPanel: null | 'changed' | 'files'
+  /** ⌘T target: the dock's Tasks tab on desktop, the popover otherwise. */
+  onToggleTasks: () => void
+  /** Whether the task list is showing (popover open, or Tasks tab focused). */
+  tasksViewActive: boolean
+  workspacePanel: null | 'changed' | 'files'
   onWorkspaceFiles: () => void
   agentCapabilitiesOpen: boolean
   onToggleAgentCapabilities: () => void
@@ -36,6 +43,12 @@ interface AgentChatHeaderProps {
   onFindInTranscript: () => void
   onOpenTerminal?: () => void
   onCloseMobileActionsMenu: () => void
+  /** Desktop command center and the mobile drawer's palette row; hidden or disabled when omitted. */
+  onOpenPalette?: () => void
+  /** Mobile drawer's file search; disabled when omitted (no workspace). */
+  onQuickOpen?: () => void
+  /** Rename a session; makes the desktop title editable in place. */
+  onRenameSession?: (sessionId: string, title: string) => void
 }
 
 export const AgentChatHeader = memo(function AgentChatHeader({
@@ -45,13 +58,13 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   workspace,
   chatWorkspace = null,
   sessionTitle,
-  onCodingSidebarToggle,
+  onSidebarToggle,
   headerTokens,
   sessionId,
   todos,
-  showTodos,
-  setShowTodos,
-  codingPanel,
+  onToggleTasks,
+  tasksViewActive,
+  workspacePanel,
   onWorkspaceFiles,
   agentCapabilitiesOpen,
   onToggleAgentCapabilities,
@@ -62,39 +75,76 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   onFindInTranscript,
   onOpenTerminal,
   onCloseMobileActionsMenu,
+  onOpenPalette,
+  onQuickOpen,
+  onRenameSession,
 }: AgentChatHeaderProps) {
+  const { os } = usePlatform()
+  // Published by the mounted transcript; a new chat has no prompts to step.
+  const publishedJumpToPrompt = useTranscriptFollowStore((s) => s.jumpToPrompt)
+  const jumpToPrompt = sessionId ? publishedJumpToPrompt : null
+  // Keyed by session so a switch mid-edit drops the field instead of carrying
+  // the old title onto the new session.
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const renaming = renamingSessionId !== null && renamingSessionId === sessionId
   const activeTodoCount = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length
+  const todoSummary = summarizeTodos(todos)
   // The chat workspace reads as "Chat" rather than the home directory's
   // basename, on every label derived from the workspace path.
   const isChatWorkspace = isChatWorkspacePath(workspace, chatWorkspace)
   const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : ''
   // The tooltip exists to disambiguate a truncated basename (two workspaces can
-  // share one), so it keeps revealing the real path for coding workspaces —
+  // share one), so it keeps revealing the real path for project workspaces —
   // but never the home path for chat, whose label is already unambiguous.
   const workspaceTooltip = isChatWorkspace ? workspaceName : workspace
+  const dockOpen = workspacePanel !== null
+  const sidebarShortcut = shortcutLabel(APP_SHORTCUTS.sidebar, os)
+  const dockShortcut = shortcutLabel(APP_SHORTCUTS.workspaceFiles, os)
 
   return (
     <header
       {...dragHandlers}
-      className={`mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) ${
+      // Desktop zoning (dark only): the header joins the sidebar and status
+      // bar on the recessed rail tone; light mode keeps one page tone.
+      className={`mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) md:dark:bg-(--bg-sidebar) ${
         isMacOverlay ? 'select-none pl-[70px]' : ''
       }`}
     >
         <div className={`mr-1 flex h-full min-w-0 shrink items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
-          {/* Hamburger target depends on mode: coding sidebar toggle,
-              mobile drawer, or a synthetic ⌘B/Ctrl+B for the general sidebar
-              (whose collapse state is owned by Sidebar). */}
-          <button
-            type="button"
-            onClick={() => {
-              onCodingSidebarToggle()
-            }}
-            aria-label="Toggle sidebar"
-            className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-          >
-            <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
-          </button>
-          {workspace && !isMobile ? (
+          {/* Toggles the desktop sidebar, or the drawer on mobile. */}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSidebarToggle()
+                  }}
+                  aria-label="Toggle sidebar"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                >
+                  <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>{`Toggle sidebar (${sidebarShortcut})`}</TooltipContent>
+          </Tooltip>
+          {workspace && !isMobile && renaming && onRenameSession ? (
+            <span className="ml-1 flex min-w-0 max-w-xs items-center gap-1 text-sm lg:max-w-md xl:max-w-xl">
+              <span className="shrink-0 font-semibold text-(--color-text)">{workspaceName}</span>
+              <span className="shrink-0 text-(--color-text-muted)">·</span>
+              <InlineTitleInput
+                initial={sessionTitle ?? ''}
+                label="Session title"
+                onSubmit={(title) => {
+                  setRenamingSessionId(null)
+                  onRenameSession(renamingSessionId, title)
+                }}
+                onCancel={() => setRenamingSessionId(null)}
+                className="h-6 w-64 min-w-0 shrink text-sm"
+              />
+            </span>
+          ) : workspace && !isMobile ? (
             <Tooltip className="ml-1 min-w-0 max-w-xs lg:max-w-md xl:max-w-xl">
               <TooltipTrigger
                 className="min-w-0 max-w-xs lg:max-w-md xl:max-w-xl"
@@ -104,7 +154,18 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                     {sessionTitle && (
                       <>
                         <span className="shrink-0 text-(--color-text-muted)">·</span>
-                        <span className="truncate text-(--color-text-muted)">{sessionTitle}</span>
+                        {onRenameSession && sessionId ? (
+                          <button
+                            type="button"
+                            onClick={() => setRenamingSessionId(sessionId)}
+                            aria-label={`Rename session ${sessionTitle}`}
+                            className="min-w-0 truncate rounded-xs text-(--color-text-muted) transition-colors hover:text-(--color-text)"
+                          >
+                            {sessionTitle}
+                          </button>
+                        ) : (
+                          <span className="truncate text-(--color-text-muted)">{sessionTitle}</span>
+                        )}
                       </>
                     )}
                   </span>
@@ -115,11 +176,9 @@ export const AgentChatHeader = memo(function AgentChatHeader({
           ) : null}
         </div>
 
-        {/* Agent switching lives in the chat area's member line. Split view
-            collapses to a count pill — each pane already shows its
-            own agent. */}
-        <div className="flex min-w-0 flex-1 justify-start overflow-hidden px-1">
-          {isMobile && (
+        {/* Center: mobile title, or the desktop command-center search. */}
+        <div className="flex min-w-0 flex-1 justify-start overflow-hidden px-1 md:justify-center">
+          {isMobile ? (
             <div className="min-w-0 flex items-baseline gap-1 text-sm">
               {workspace ? (
                 <span className="truncate font-semibold text-(--color-text)">{workspaceName}</span>
@@ -127,7 +186,9 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                 <span className="truncate font-semibold text-(--color-text)">Choose a workspace</span>
               )}
             </div>
-          )}
+          ) : onOpenPalette ? (
+            <CommandCenterButton onClick={onOpenPalette} />
+          ) : null}
         </div>
 
         {/* Right cluster — desktop gets the full action row. Mobile keeps
@@ -150,16 +211,16 @@ export const AgentChatHeader = memo(function AgentChatHeader({
             <MobileHeaderAction
               Icon={ListTodo}
               label="Tasks"
-              onClick={() => setShowTodos((v) => !v)}
+              onClick={onToggleTasks}
               disabled={!sessionId}
               badge={activeTodoCount}
-              active={showTodos}
+              active={tasksViewActive}
             />
             <MobileHeaderAction
               Icon={PanelRight}
               label="Workspace files"
               onClick={workspace ? onWorkspaceFiles : undefined}
-              active={codingPanel !== null}
+              active={workspacePanel !== null}
               disabled={!workspace}
             />
             <MobileHeaderAction
@@ -176,26 +237,35 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               onScheduler={() => { onToggleScheduler(); onCloseMobileActionsMenu() }}
               onFindInTranscript={() => { onFindInTranscript(); onCloseMobileActionsMenu() }}
               onOpenTerminal={onOpenTerminal ? () => { onOpenTerminal(); onCloseMobileActionsMenu() } : undefined}
+              onPreviousPrompt={jumpToPrompt ? () => { jumpToPrompt(-1); onCloseMobileActionsMenu() } : undefined}
+              onNextPrompt={jumpToPrompt ? () => { jumpToPrompt(1); onCloseMobileActionsMenu() } : undefined}
+              onQuickOpen={onQuickOpen ? () => { onQuickOpen(); onCloseMobileActionsMenu() } : undefined}
+              onCommandPalette={onOpenPalette ? () => { onOpenPalette(); onCloseMobileActionsMenu() } : undefined}
             />
           </>
         ) : (
           <AgentTopbar
             isMobile={false}
             tokens={headerTokens}
-            todosSlot={
-              <TodosPopover
-                open={showTodos}
-                onOpenChange={setShowTodos}
-                todos={todos}
-                sessionId={sessionId}
-              />
-            }
+            todosAction={{
+              Icon: ListTodo,
+              onClick: onToggleTasks,
+              disabled: !sessionId,
+              title: sessionId ? `Task list (${shortcutLabel(APP_SHORTCUTS.tasks, os)})` : 'No active session',
+              ariaLabel: 'Task list',
+              badge: todoSummary.progressLabel,
+              indicator: todoSummary.hasInProgress,
+              indicatorClassName: 'bg-(--color-info)',
+              pressed: tasksViewActive,
+              className: tasksViewActive ? 'bg-(--bg-key) text-(--color-text)' : undefined,
+            }}
             filesAction={workspace ? {
                   Icon: PanelRight,
                   onClick: onWorkspaceFiles,
-                  title: codingPanel === null ? 'Changed files and workspace files' : 'Close changed files and workspace files',
+                  title: `${dockOpen ? 'Close' : 'Open'} review dock (${dockShortcut})`,
                   ariaLabel: 'Changed files and workspace files',
-                  className: codingPanel !== null ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)' : undefined,
+                  pressed: dockOpen,
+                  className: dockOpen ? 'bg-(--bg-key) text-(--color-text)' : undefined,
                 } : undefined}
           />
         )}

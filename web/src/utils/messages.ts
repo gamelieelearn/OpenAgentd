@@ -63,9 +63,17 @@ function assistantBlocks(
     blocks.push({ id: `${msg.id}:thinking`, type: 'thinking', content: msg.reasoning_content, timestamp })
   }
 
-  const extra = msg.extra as { duration_ms?: number; model?: unknown } | null
+  const extra = msg.extra as {
+    duration_ms?: number
+    model?: unknown
+    thinking_level?: unknown
+    usage?: { output?: number; cost?: { estimated_usd?: number }; estimated_cost_usd?: number }
+    cost?: { estimated_usd?: number }
+    estimated_cost_usd?: number
+  } | null
   const responseDurationMs = typeof extra?.duration_ms === 'number' ? extra.duration_ms : undefined
   const model = typeof extra?.model === 'string' ? extra.model : undefined
+  const thinkingLevel = typeof extra?.thinking_level === 'string' ? extra.thinking_level : undefined
 
   // Me text before tools — LLM emits content first, then tool_calls
   if (msg.content) {
@@ -75,7 +83,7 @@ function assistantBlocks(
       content: msg.content,
       timestamp,
       responseDurationMs,
-      extra: model ? { model } : undefined,
+      extra: model ? { model, ...(thinkingLevel ? { thinking_level: thinkingLevel } : {}) } : undefined,
     })
   }
 
@@ -105,6 +113,13 @@ function assistantBlocks(
     }
     blocks.push(block)
     if (tool.id) pendingToolBlocks.set(tool.id, block)
+  }
+
+  if (extra?.usage && blocks.length > 0) {
+    // Same cost fallbacks as ``sumUsageFromMessages``.
+    const costUsd = extra.usage.cost?.estimated_usd ?? extra.usage.estimated_cost_usd ?? extra.estimated_cost_usd ?? extra.cost?.estimated_usd ?? 0
+    const owner = blocks.find((b) => b.type === 'text') ?? blocks[0]
+    owner.usage = { outputTokens: extra.usage.output ?? 0, costUsd }
   }
 
   return blocks
@@ -175,6 +190,22 @@ export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
   return acc
 }
 
+/** The agent a user-role row came from, if an agent (not the user) sent it. */
+function userMessageSender(msg: MessageResponse): string | undefined {
+  // Me normalise DB extra: support both old (from_agents: string[]) and new (from_agent: string) formats
+  const rawExtra = msg.extra as { routing?: { from_agent?: string; from_agents?: string[] }; from_agent?: string; from_agents?: string[] } | null
+  return rawExtra?.from_agent ?? rawExtra?.routing?.from_agent ?? rawExtra?.from_agents?.[0] ?? rawExtra?.routing?.from_agents?.[0]
+}
+
+/**
+ * A row that ``parseAgentBlocks`` turns into a prompt the user wrote: a user
+ * row that is not queued, a summary, or an agent's report.
+ */
+export function isPromptMessage(msg: MessageResponse): boolean {
+  if (msg.kind === 'queued' || msg.extra?.queue_status === 'queued' || msg.is_summary) return false
+  return msg.role === 'user' && !userMessageSender(msg)
+}
+
 /**
  * Parse DB messages into a flat ContentBlock[] for the agent view.
  * User messages → type:'user' block (rendered as user bubble inline)
@@ -210,9 +241,7 @@ export function parseAgentBlocks(
     }
 
     if (msg.role === 'user') {
-      // Me normalise DB extra: support both old (from_agents: string[]) and new (from_agent: string) formats
-      const rawExtra = msg.extra as { routing?: { from_agent?: string; from_agents?: string[] }; from_agent?: string; from_agents?: string[] } | null
-      const fromAgent = rawExtra?.from_agent ?? rawExtra?.routing?.from_agent ?? rawExtra?.from_agents?.[0] ?? rawExtra?.routing?.from_agents?.[0]
+      const fromAgent = userMessageSender(msg)
       const extra = { ...(msg.extra ?? {}) }
       if (fromAgent) extra.from_agent = fromAgent
       const timestamp = msg.created_at ? new Date(msg.created_at) : new Date()

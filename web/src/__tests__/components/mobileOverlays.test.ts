@@ -2,9 +2,9 @@ import { describe, expect, it } from 'bun:test'
 import { overlaysToClose, type MobileOverlay } from '@/components/AgentChatView/mobileOverlays'
 
 const ALL: MobileOverlay[] = [
-  'sidebar', 'actions', 'coding-panel', 'todos', 'files', 'scheduler', 'capabilities', 'palette',
+  'sidebar', 'actions', 'workspace-panel', 'todos', 'files', 'scheduler', 'capabilities', 'palette',
 ]
-const DRAWERS: MobileOverlay[] = ['sidebar', 'actions', 'coding-panel']
+const DRAWERS: MobileOverlay[] = ['sidebar', 'actions', 'workspace-panel']
 
 describe('overlaysToClose', () => {
   it('never includes the overlay being kept', () => {
@@ -26,7 +26,7 @@ describe('overlaysToClose', () => {
 
   it('opening todos closes the workspace panel, sidebar and session settings', () => {
     const closed = overlaysToClose('todos')
-    expect(closed).toContain('coding-panel')
+    expect(closed).toContain('workspace-panel')
     expect(closed).toContain('sidebar')
     expect(closed).toContain('capabilities')
   })
@@ -36,7 +36,7 @@ describe('overlaysToClose', () => {
     // that), but SHOULD close every non-drawer overlay.
     const closed = overlaysToClose('sidebar')
     expect(closed).not.toContain('actions')
-    expect(closed).not.toContain('coding-panel')
+    expect(closed).not.toContain('workspace-panel')
     expect(closed).toContain('todos')
     expect(closed).toContain('files')
     expect(closed).toContain('scheduler')
@@ -45,7 +45,7 @@ describe('overlaysToClose', () => {
   })
 
   it('opening the coding panel closes session settings, todos and palette', () => {
-    const closed = overlaysToClose('coding-panel')
+    const closed = overlaysToClose('workspace-panel')
     expect(closed).toContain('capabilities')
     expect(closed).toContain('todos')
     expect(closed).toContain('palette')

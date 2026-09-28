@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
 import '@testing-library/jest-dom'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
@@ -100,6 +100,15 @@ describe('QuestionCard', () => {
     // useful thing on the card for someone using a screen reader.
     expect(screen.getByRole('radio', { name: /pnpm.*recommended/is })).toBeInTheDocument()
     expect(screen.queryAllByRole('radio', { name: /recommended/i })).toHaveLength(1)
+  })
+
+  it('gives options and question steps a 44px touch target on coarse pointers', () => {
+    renderCard({ question: TWO_QUESTIONS })
+
+    expect(screen.getByRole('radio', { name: /pnpm/ }).closest('label')?.className).toContain('pointer-coarse:min-h-11')
+    const steps = within(screen.getByRole('group', { name: 'Questions' })).getAllByRole('button')
+    expect(steps).toHaveLength(2)
+    for (const step of steps) expect(step.className).toContain('pointer-coarse:min-h-11')
   })
 
   it('replaces the selection for a single-answer question', () => {

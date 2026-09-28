@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, memo } from 'react'
-import { Check, ChevronDown, ChevronUp, Copy, Undo2 } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Copy, History, Pencil } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { MarkdownBlock } from '@/utils/markdown'
 
 import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from '../FileLightbox'
 import { FileTypeIcon } from '../FileTypeIcon'
@@ -43,11 +43,6 @@ function renderUrlSegments(text: string, keyPrefix: string): React.ReactNode[] {
 
 const USER_COLLAPSE_LINES = 10
 const USER_COLLAPSE_CHARS = 700
-
-function shortModelName(modelId: string | null | undefined): string | null {
-  if (!modelId) return null
-  return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
-}
 
 /**
  * Render user prose with ``@mention`` tokens syntax-highlighted.
@@ -194,12 +189,22 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onRevert, modelId, onMentionFileOpen, mentions, fromAgent }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; onMentionFileOpen?: (path: string) => void; mentions?: string[]; fromAgent?: string | null }) {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, onRestore, onMentionFileOpen, mentions, fromAgent }: {
+  content: string
+  timestamp?: Date
+  attachments?: MessageAttachment[]
+  /** Rewind to just before this prompt and put it back in the composer. */
+  onEdit?: () => void
+  /** Keep this prompt and its answer; undo every later turn. */
+  onRestore?: () => void
+  onMentionFileOpen?: (path: string) => void
+  mentions?: string[]
+  fromAgent?: string | null
+}) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [reportExpanded, setReportExpanded] = useState(false)
-  const modelName = shortModelName(modelId)
 
   const handleCopy = async () => {
     try {
@@ -253,7 +258,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
               isSubagentLongReport && !reportExpanded && "max-h-36 overflow-hidden",
             )}
           >
-            <LazyMarkdownBlock content={content} />
+            <MarkdownBlock content={content} />
             {isSubagentLongReport && !reportExpanded && (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-(--bg-card) via-(--bg-card)/80 to-transparent" />
             )}
@@ -329,26 +334,40 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
            )}
          </div>
 
-         {/* Copy button + timestamp row */}
-          {(timestamp || modelName) && (
-            <div className={`flex items-center gap-1.5 transition-opacity duration-150 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
-              {modelName && (
-                <span className="mr-1 font-mono text-[11px] text-(--color-text-subtle)">{modelName}</span>
-              )}
-               {onRevert && (
+         {/* Actions + timestamp row. Always rendered: Copy and Edit do not
+             depend on the metadata, and a pending prompt has neither yet. */}
+            <div className={`flex items-center gap-1.5 transition-opacity duration-150 focus-within:opacity-100 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
+              {onEdit && (
                 <Tooltip>
                   <TooltipTrigger
                     render={
                       <button
-                        onClick={onRevert}
+                        onClick={onEdit}
                         className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:scale-90"
-                        aria-label="Revert latest message"
+                        aria-label="Edit message"
                       >
-                        <Undo2 size={11} />
+                        <Pencil size={11} />
                       </button>
                     }
                   />
-                  <TooltipContent>Revert latest message</TooltipContent>
+                  {/* Undo, so later turns come back with Redo. */}
+                  <TooltipContent>Edit from here</TooltipContent>
+                </Tooltip>
+              )}
+              {onRestore && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        onClick={onRestore}
+                        className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:scale-90"
+                        aria-label="Restore to here"
+                      >
+                        <History size={11} />
+                      </button>
+                    }
+                  />
+                  <TooltipContent>Restore to here — undoes later turns</TooltipContent>
                 </Tooltip>
               )}
               <Tooltip>
@@ -382,7 +401,6 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                 </Tooltip>
               )}
             </div>
-          )}
       </div>
     </div>
   )

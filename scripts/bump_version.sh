@@ -92,6 +92,10 @@ replace_exact_line desktop/src-tauri/Cargo.toml "version = \"$current_version\""
 replace_json_version desktop/src-tauri/tauri.conf.json
 replace_exact_line mobile/src-tauri/Cargo.toml "version = \"$current_version\"" "version = \"$version\""
 replace_json_version mobile/src-tauri/tauri.conf.json
+# appv3 (native CLI and desktop sidecar): every crate inherits the
+# workspace version, which the binary reports in --version and /health.
+appv3_version=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\([^"]*\)".*/\1/p;}' appv3/Cargo.toml)
+replace_exact_line appv3/Cargo.toml "version = \"$appv3_version\"" "version = \"$version\""
 
 release_date_iso=$(date -u +%F)
 release_date_human=$(LC_ALL=C date -u '+%B %-d, %Y' 2>/dev/null || LC_ALL=C date -u '+%B %d, %Y' | sed 's/ 0/ /')
@@ -117,6 +121,7 @@ uv sync
 # Dependency updates belong in their own PR, where CI can test them.
 cargo update --workspace --manifest-path desktop/src-tauri/Cargo.toml
 cargo update --workspace --manifest-path mobile/src-tauri/Cargo.toml
+cargo update --workspace --manifest-path appv3/Cargo.toml
 
 scripts/check_version_consistency.sh
 

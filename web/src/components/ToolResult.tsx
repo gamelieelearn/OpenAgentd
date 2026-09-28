@@ -14,8 +14,10 @@
 
 import { Check, Circle, ExternalLink, FileText, Globe, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
-import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { useContext, type ReactNode } from 'react'
+import { FileRefButton, FileRefContext, LinkifiedText } from './FileRefLink'
+import type { FileRef } from '@/utils/file-refs'
+import { MarkdownBlock } from '@/utils/markdown'
 import { truncateForDisplay } from './ToolCall/displayText'
 
 // ---------------------------------------------------------------------------
@@ -156,7 +158,7 @@ function ShellResult({ result }: { result: string }) {
       {/* stdout / stderr output */}
       {body && (
         <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
-          {body}
+          <LinkifiedText text={body} />
         </pre>
       )}
     </div>
@@ -188,7 +190,7 @@ function FileListResult({ result }: { result: string }) {
             key={i}
             className="font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap text-(--color-text-2)"
           >
-            {e}
+            <LinkifiedText text={e} />
           </li>
         ))}
       </ul>
@@ -264,7 +266,7 @@ function BackgroundOutputBlock({
         {headerAction}
       </div>
       <pre className="max-h-40 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2) sm:max-h-64">
-        {truncateForDisplay(body)}
+        <LinkifiedText text={truncateForDisplay(body)} />
       </pre>
     </div>
   )
@@ -410,7 +412,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     <div className="relative">
       {headerAction && <div className="absolute top-0 right-1.5">{headerAction}</div>}
       <pre className={`max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words pr-10 font-mono text-[11px] leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
-        {truncateForDisplay(result)}
+        <LinkifiedText text={truncateForDisplay(result)} />
       </pre>
     </div>
   )
@@ -719,6 +721,12 @@ function parseLspLocations(result: string): { locations: LspLocation[]; note: st
   return { locations, note }
 }
 
+/** The ``line:character`` position of a location, as a file reference. */
+function locationRef(location: LspLocation): FileRef {
+  const [line, column] = location.position.split(':').map(Number)
+  return { path: location.path, line, column }
+}
+
 function lspCountLabel(operation: string | undefined, count: number): string {
   const singular = count === 1
   if (operation === 'go_to_definition') return `${count} ${singular ? 'definition' : 'definitions'}`
@@ -743,6 +751,7 @@ function LspNavigationResult({
   operation?: string
   result: string
 }) {
+  const opener = useContext(FileRefContext)
   if (result.trim() === 'No results.') {
     return (
       <p className="font-mono text-[11px] leading-relaxed text-(--color-text-muted)">
@@ -771,7 +780,11 @@ function LspNavigationResult({
                   {location.name}
                 </span>
               )}
-              {location.path}
+              {opener && opener.canOpen({ path: location.path }) ? (
+                <FileRefButton fileRef={locationRef(location)} opener={opener} className="text-left">
+                  {location.path}
+                </FileRefButton>
+              ) : location.path}
             </span>
             <span className="shrink-0 text-(--color-accent)">
               {location.position}
@@ -808,7 +821,7 @@ function GenericResult({ result }: { result: string }) {
 
   return (
     <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
-      {clipped}
+      <LinkifiedText text={clipped} />
     </pre>
   )
 }
@@ -900,7 +913,7 @@ function TeamToolResult({ result }: { result: string }) {
 
       {output && (
         <div className="max-h-[calc(16*1.55em)] overflow-y-auto rounded bg-(--bg-card)/40 p-2 border border-(--color-border-subtle) text-xs">
-          <LazyMarkdownBlock content={truncateForDisplay(output)} />
+          <MarkdownBlock content={truncateForDisplay(output)} />
         </div>
       )}
 
@@ -923,7 +936,7 @@ function TeamToolResult({ result }: { result: string }) {
                 </div>
                 {resOutput && (
                   <div className="max-h-48 overflow-y-auto text-xs">
-                    <LazyMarkdownBlock content={truncateForDisplay(resOutput)} />
+                    <MarkdownBlock content={truncateForDisplay(resOutput)} />
                   </div>
                 )}
               </div>

@@ -1,6 +1,7 @@
 import { useHotkeys } from '@tanstack/react-hotkeys'
 import { useRouter } from '@tanstack/react-router'
 import { getPlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
 
 function hotkeyPlatform() {
   const { os } = getPlatform()
@@ -15,8 +16,8 @@ function hotkeyPlatform() {
  *
  * This drives the router's history stack directly (``router.history``,
  * TanStack Router's wrapper around the real ``window.history``), so it
- * works the same everywhere in the app — settings, telemetry, coding workspaces,
- * and coding sessions — not just chat. Registered once, globally, in
+ * works the same everywhere in the app — settings, telemetry, workspaces and
+ * sessions alike. Registered once, globally, in
  * ``__root.tsx``.
  */
 export function useHistoryBackForwardShortcuts(): void {
@@ -24,12 +25,12 @@ export function useHistoryBackForwardShortcuts(): void {
   useHotkeys(
     [
       {
-        hotkey: 'Mod+[',
+        hotkey: hotkeyOf(APP_SHORTCUTS.historyBack),
         callback: () => router.history.back(),
         options: { meta: { name: 'History back', description: 'Navigate backward' } },
       },
       {
-        hotkey: 'Mod+]',
+        hotkey: hotkeyOf(APP_SHORTCUTS.historyForward),
         callback: () => router.history.forward(),
         options: { meta: { name: 'History forward', description: 'Navigate forward' } },
       },

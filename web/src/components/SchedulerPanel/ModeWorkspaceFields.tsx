@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
-import { loadCodingWorkspaceEntries, workspaceLabel } from '@/utils/workspace'
+import { loadWorkspaceEntries, workspaceLabel } from '@/utils/workspace'
 
 export function ModeWorkspaceFields({
   workspace,
@@ -14,7 +14,7 @@ export function ModeWorkspaceFields({
   workspaceErrorId?: string
 }) {
   const savedWorkspaces = useMemo(() => {
-    const paths = loadCodingWorkspaceEntries().map((entry) => entry.path)
+    const paths = loadWorkspaceEntries().map((entry) => entry.path)
     if (workspace && !paths.includes(workspace)) paths.push(workspace)
     return paths.sort()
   }, [workspace])
@@ -23,7 +23,7 @@ export function ModeWorkspaceFields({
     <div>
       <label className="mb-1 block text-xs font-medium text-(--color-text-2)">Workspace</label>
       <div className="flex flex-wrap items-center gap-2">
-          <div className="w-full min-w-0 sm:w-72 sm:shrink-0">
+          <div className="w-full min-w-0 @xl:w-72 @xl:shrink-0">
             <Dropdown
               value={workspace ?? ''}
               onValueChange={(v) => onChange(v || null)}
@@ -47,7 +47,7 @@ export function ModeWorkspaceFields({
       )}
       <p className="mt-1 text-xs text-(--color-text-muted)">
         Delivers to the coding agent for the selected workspace.{' '}
-        <span className="text-(--color-text-subtle)">Workspaces come from saved coding workspaces.</span>
+        <span className="text-(--color-text-subtle)">Workspaces come from the ones saved in the sidebar.</span>
       </p>
     </div>
   )

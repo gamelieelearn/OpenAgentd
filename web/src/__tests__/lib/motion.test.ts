@@ -33,7 +33,23 @@ function cssBezier(name: string): number[] {
   return match[1]!.split(',').map((n) => Number(n.trim()))
 }
 
+/** The selector of the rule block that defines ``--name``. */
+function selectorDefining(name: string): string {
+  const at = css.indexOf(`--${name}:`)
+  const open = css.lastIndexOf('{', at)
+  const start = css.lastIndexOf('}', open) + 1
+  return css.slice(start, open).replace(/\/\*[\s\S]*?\*\//g, '').trim()
+}
+
 describe('lib/motion — parity with the index.css token block', () => {
+  // They sat in the dark override, so the default light theme had none and
+  // every ``var(--motion-*)`` animation or transition there fell back.
+  it('defines the tokens for both themes, not in one theme override', () => {
+    for (const name of ['motion-base', 'motion-fast', 'ease-out', 'ease-in-out']) {
+      expect(selectorDefining(name)).toBe(':root')
+    }
+  })
+
   it('exposes every duration in seconds, matching the CSS milliseconds', () => {
     expect(DURATIONS_S.instant).toBeCloseTo(cssMs('motion-instant') / 1000, 5)
     expect(DURATIONS_S.fast).toBeCloseTo(cssMs('motion-fast') / 1000, 5)

@@ -29,6 +29,7 @@ import type {
   WorkspaceFilesResponse,
   CodingWorkspaceFilesResponse,
   TodosResponse,
+  SessionPlanResponse,
   AgentChatResponse,
   DiscardWorkspaceFileResponse,
   CodingWorkspaceVisibilityResponse,
@@ -341,13 +342,15 @@ export async function revertCodingWorkspaceCommit(
 export async function listSessions(
   before?: string | null,
   limit = 20,
-  filters?: { workspace?: string | null },
+  filters?: { workspace?: string | null; active?: boolean; query?: string },
   signal?: AbortSignal,
 ): Promise<SessionPageResponse> {
   const params = new URLSearchParams()
   if (before) params.set('before', before)
   params.set('limit', String(limit))
   if (filters?.workspace) params.set('workspace', filters.workspace)
+  if (filters?.active) params.set('active', 'true')
+  if (filters?.query) params.set('q', filters.query)
   const res = await fetch(`${apiBaseUrl()}/agent/sessions?${params}`, { signal })
   if (!res.ok) await parseDetailOrThrow(res, 'listSessions')
   return res.json()
@@ -573,4 +576,17 @@ export async function getTodos(sessionId: string): Promise<TodosResponse> {
   const res = await fetch(`${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/todos`)
   if (!res.ok) await parseDetailOrThrow(res, 'getTodos')
   return res.json()
+}
+
+/** The session's saved plan. A v2 backend has no such route: 404 is "no plan". */
+export async function getSessionPlan(sessionId: string): Promise<SessionPlanResponse> {
+  const res = await fetch(`${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/plan`)
+  if (res.status === 404) return { plan: null }
+  if (!res.ok) await parseDetailOrThrow(res, 'getSessionPlan')
+  return res.json()
+}
+
+export async function clearSessionPlan(sessionId: string): Promise<void> {
+  const res = await fetch(`${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/plan`, { method: 'DELETE' })
+  if (!res.ok) await parseDetailOrThrow(res, 'clearSessionPlan')
 }

@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from 'bun:test'
 import {
-  loadCodingWorkspaceEntries,
-  loadCodingWorkspaces,
-  loadLastCodingWorkspace,
-  saveCodingWorkspace,
-  saveLastCodingWorkspace,
-  shouldRestoreLastCodingWorkspace,
+  loadWorkspaceEntries,
+  loadWorkspaces,
+  loadLastWorkspace,
+  saveWorkspace,
+  saveLastWorkspace,
+  shouldRestoreLastWorkspace,
   workspaceFromSession,
 } from '@/utils/workspace'
 
@@ -17,14 +17,14 @@ describe('coding workspace persistence', () => {
   })
 
   it('preserves creation order when an existing workspace is selected again', () => {
-    const first = saveCodingWorkspace('/repo/alpha')
-    const second = saveCodingWorkspace('/repo/beta')
+    const first = saveWorkspace('/repo/alpha')
+    const second = saveWorkspace('/repo/beta')
 
-    const selectedAgain = saveCodingWorkspace('/repo/alpha')
+    const selectedAgain = saveWorkspace('/repo/alpha')
 
     expect(selectedAgain.createdAt).toBe(first.createdAt)
-    expect(loadCodingWorkspaces()).toEqual(['/repo/alpha', '/repo/beta'])
-    expect(loadCodingWorkspaceEntries().map((entry) => entry.createdAt)).toEqual([
+    expect(loadWorkspaces()).toEqual(['/repo/alpha', '/repo/beta'])
+    expect(loadWorkspaceEntries().map((entry) => entry.createdAt)).toEqual([
       first.createdAt,
       second.createdAt,
     ])
@@ -33,38 +33,38 @@ describe('coding workspace persistence', () => {
   it('migrates legacy string entries without reordering them', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(['/repo/old-a', '/repo/old-b']))
 
-    expect(loadCodingWorkspaces()).toEqual(['/repo/old-a', '/repo/old-b'])
+    expect(loadWorkspaces()).toEqual(['/repo/old-a', '/repo/old-b'])
 
-    saveCodingWorkspace('/repo/old-b')
+    saveWorkspace('/repo/old-b')
 
-    const entries = loadCodingWorkspaceEntries()
+    const entries = loadWorkspaceEntries()
     expect(entries.map((entry) => entry.path)).toEqual(['/repo/old-a', '/repo/old-b'])
     expect(Date.parse(entries[0].createdAt)).toBeLessThan(Date.parse(entries[1].createdAt))
   })
 
   it('remembers the last opened coding workspace', () => {
-    saveLastCodingWorkspace('/repo/alpha')
-    const beta = saveLastCodingWorkspace('/repo/beta')
+    saveLastWorkspace('/repo/alpha')
+    const beta = saveLastWorkspace('/repo/beta')
 
-    expect(loadLastCodingWorkspace()).toEqual(beta)
-    expect(loadCodingWorkspaces()).toEqual(['/repo/alpha', '/repo/beta'])
+    expect(loadLastWorkspace()).toEqual(beta)
+    expect(loadWorkspaces()).toEqual(['/repo/alpha', '/repo/beta'])
   })
 
   it('returns null when the last workspace id no longer points to a saved workspace', () => {
-    const saved = saveLastCodingWorkspace('/repo/project')
+    const saved = saveLastWorkspace('/repo/project')
     localStorage.setItem(STORAGE_KEY, JSON.stringify([{ ...saved, id: 'other' }]))
 
-    expect(loadLastCodingWorkspace()).toBeNull()
+    expect(loadLastWorkspace()).toBeNull()
   })
 
-  it('restores the last workspace only on the bare coding route', () => {
-    expect(shouldRestoreLastCodingWorkspace(undefined, '/coding')).toBe(true)
-    expect(shouldRestoreLastCodingWorkspace('sid', '/coding')).toBe(false)
+  it('restores the last workspace only on the new-session route', () => {
+    expect(shouldRestoreLastWorkspace(undefined, '/')).toBe(true)
+    expect(shouldRestoreLastWorkspace('sid', '/')).toBe(false)
   })
 
-  it('does not restore while navigating away from coding mode', () => {
-    expect(shouldRestoreLastCodingWorkspace(undefined, '/')).toBe(false)
-    expect(shouldRestoreLastCodingWorkspace(undefined, '/other')).toBe(false)
+  it('does not restore while navigating to another route', () => {
+    expect(shouldRestoreLastWorkspace(undefined, '/telemetry')).toBe(false)
+    expect(shouldRestoreLastWorkspace(undefined, '/coding')).toBe(false)
   })
 
   it('does not reuse a previous workspace while direct session details are loading', () => {

@@ -1,0 +1,103 @@
+name: appv3
+
+# OpenAgentd v3 (native Rust backend): lint, test and smoke-test the release
+# binary on every desktop OS, so platform-specific code paths stay compiled
+# and exercised.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "appv3/**"
+      - ".github/workflows/appv3.yml"
+      - "install.sh"
+      - "install.ps1"
+      - "scripts/e2e_cli_install.sh"
+      - "scripts/fake_release_server.py"
+  pull_request:
+    branches: [main]
+    paths:
+      - "appv3/**"
+      - ".github/workflows/appv3.yml"
+      - "install.sh"
+      - "install.ps1"
+      - "scripts/e2e_cli_install.sh"
+      - "scripts/fake_release_server.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, ubuntu-22.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: appv3
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: appv3
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cargo fmt
+        if: runner.os == 'Linux'
+        run: cargo fmt --all --check
+
+      - name: Cargo clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Cargo test
+        run: cargo test --locked --workspace --no-fail-fast
+
+      - name: Build release binary
+        run: cargo build --locked --release -p appv3-cli
+
+      - name: Smoke test (version, handshake, health)
+        env:
+          OPENAGENTD_MODEL_REGISTRY_REFRESH: "false"
+        run: |
+          set -euo pipefail
+          bin=target/release/openagentd
+          [ "$RUNNER_OS" = "Windows" ] && bin="$bin.exe"
+          "$bin" --version
+          sb="$RUNNER_TEMP/oad-smoke"
+          mkdir -p "$sb"
+          export APP_ENV=production OPENAGENTD_DATA_DIR="$sb/data" OPENAGENTD_CONFIG_DIR="$sb/config" \
+            OPENAGENTD_STATE_DIR="$sb/state" OPENAGENTD_CACHE_DIR="$sb/cache" OPENAGENTD_WORKSPACE_DIR="$sb/ws"
+          "$bin" server serve --host 127.0.0.1 --port 0 --handshake --generate-token > "$sb/out.txt" 2> "$sb/err.txt" &
+          pid=$!
+          for _ in $(seq 150); do grep -q '^OPENAGENTD_HANDSHAKE ' "$sb/out.txt" && break; sleep 0.2; done
+          line=$(grep '^OPENAGENTD_HANDSHAKE ' "$sb/out.txt") || { echo "no handshake"; cat "$sb/err.txt"; exit 1; }
+          port=$(echo "$line" | sed -E 's/.*"port": *([0-9]+).*/\1/')
+          curl -fsS "http://127.0.0.1:$port/api/health/ready"; echo
+          kill "$pid" || true
+
+      # install.sh --cli / install.ps1 -Cli and `openagentd upgrade` against a
+      # local fake release server (checksum, tamper refusal, self-update).
+      - name: Installer + self-update e2e
+        working-directory: .
+        run: |
+          bin=appv3/target/release/openagentd
+          [ "$RUNNER_OS" = "Windows" ] && bin="$bin.exe"
+          scripts/e2e_cli_install.sh "$bin"

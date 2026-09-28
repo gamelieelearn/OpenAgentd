@@ -11,8 +11,8 @@
  * so React re-renders on lifecycle changes without churning on every output
  * chunk (output goes straight to the persistent xterm instance).
  *
- * Sessions are keyed by a `contextKey` — the coding workspace path or
- * `session:{chatSessionId}` for coding workspaces — so each surface lists only its
+ * Sessions are keyed by a `contextKey` — the workspace path — so each
+ * surface lists only its
  * own terminals while sharing one registry (and one backend session cap).
  *
  * Idle auto-close: detached sessions with no *user input* for

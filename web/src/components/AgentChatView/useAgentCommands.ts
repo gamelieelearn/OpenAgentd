@@ -3,63 +3,92 @@
  * the agent chat view.
  *
  * The palette commands are pure data, but they close over a lot of
- * parent-owned state and callbacks (current view mode, navigate, the
- * various toggle/cycle handlers). Wrapping the assembly in a hook keeps
+ * parent-owned state and callbacks (the various toggle/cycle handlers).
+ * Wrapping the assembly in a hook keeps
  * the parent's render body focused on layout while still threading the
  * closures naturally.
  *
  * Group conventions used by ``CommandPalette``:
  *   - ``Session``    — session lifecycle (new chat, …)
  *   - ``View``       — view-mode + panel toggles
- *   - ``Navigation`` — top-level routes
+ *   - ``Navigation`` — app-level surfaces (Settings, Telemetry)
  */
 import { useMemo } from 'react'
-import type { useNavigate } from '@tanstack/react-router'
 import type { Command } from '../CommandPalette'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { openTelemetry } from '@/stores/useTelemetryStore'
 import { usePlatform } from '@/hooks/use-platform'
-import { dispatchShortcutKey, formatShortcut } from '@/lib/keyboard-shortcut'
+import { useThemePreference } from '@/hooks/useThemePreference'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { APP_SHORTCUTS as KEYS, shortcutLabel } from '@/lib/app-shortcuts'
+import { THEME_OPTIONS } from '@/components/ThemeToggle'
 
 interface UseAgentCommandsArgs {
   toggleAgentCapabilities: () => void
-  setShowTodos: (fn: (v: boolean) => boolean) => void
+  /** Opens the task list (dock Tasks tab on desktop, popover otherwise). */
+  toggleTasks: () => void
+  /** Opens scheduled tasks (dock Schedule tab with a workspace, overlay otherwise). */
+  toggleScheduler: () => void
   handleWorkspaceFiles: () => void
-  handleCodingSidebarToggle: () => void
+  handleSidebarToggle: () => void
 
   // Session
   handleNewSession: () => void
 
-  /** Coding mode with an attached workspace only — opens the terminal tab. */
+  /** Attached workspace only — opens the terminal tab. */
   handleOpenTerminal: () => void
   handleFindInTranscript: () => void
-
-  // Navigation
-  navigate: ReturnType<typeof useNavigate>
+  /** Opens the review dock if needed and toggles it over the chat column. */
+  handleToggleDockMaximized?: () => void
 }
 
 export function useAgentCommands({
   toggleAgentCapabilities,
-  setShowTodos,
+  toggleTasks,
+  toggleScheduler,
   handleWorkspaceFiles,
-  handleCodingSidebarToggle,
+  handleSidebarToggle,
   handleNewSession,
   handleOpenTerminal,
-  navigate,
   handleFindInTranscript,
+  handleToggleDockMaximized,
 }: UseAgentCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const { os } = usePlatform()
+  const { setPreference: setTheme } = useThemePreference()
+  const readerMode = useDisplayPrefsStore((s) => s.transcriptStyle === 'reader')
+  const toggleReaderMode = useDisplayPrefsStore((s) => s.toggleTranscriptStyle)
+  const { os, isTauri } = usePlatform()
   return useMemo<Command[]>(() => [
-    { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: formatShortcut('N', os), action: handleNewSession },
-    // Bare ⌘A is "Select All" on macOS, so Session Settings requires Shift.
-    { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: formatShortcut('A', os, { shift: true }), action: toggleAgentCapabilities },
-    { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: formatShortcut('T', os), action: () => setShowTodos((v) => !v) },
-    { id: 'find-transcript',  group: 'View',       label: 'Find in Transcript', description: 'Search user and assistant text in this session', shortcut: formatShortcut('F', os), action: handleFindInTranscript },
-    { id: 'workspace-files',  group: 'View',       label: 'Open Changed & Files', description: 'Browse changed files and workspace files', shortcut: formatShortcut('D', os), action: handleWorkspaceFiles },
-    { id: 'collapse-sidebar', group: 'View', label: 'Toggle Coding Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: formatShortcut('B', os), action: handleCodingSidebarToggle },
-    { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: formatShortcut('S', os), action: () => dispatchShortcutKey('s', os) },
-    { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'Interactive shell in the workspace (runs on the connected server)', shortcut: formatShortcut('`', os, { shift: true }), action: handleOpenTerminal },
-    { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: formatShortcut(',', os), action: () => openSettings('agents') },
-    { id: 'go-telemetry', group: 'Navigation', label: 'Open Telemetry', description: 'View spans, latency, and model metrics', action: () => navigate({ to: '/telemetry' }) },
-  ], [os, toggleAgentCapabilities, setShowTodos, handleFindInTranscript, handleWorkspaceFiles, handleCodingSidebarToggle, handleNewSession, handleOpenTerminal, navigate, openSettings])
+    { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
+    { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleAgentCapabilities },
+    { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: shortcutLabel(KEYS.tasks, os), action: toggleTasks },
+    { id: 'find-transcript',  group: 'View',       label: 'Find in Transcript', description: 'Search user and assistant text in this session', shortcut: shortcutLabel(KEYS.findInTranscript, os), action: handleFindInTranscript },
+    { id: 'workspace-files',  group: 'View',       label: 'Open Changed & Files', description: 'Browse changed files and workspace files', shortcut: shortcutLabel(KEYS.workspaceFiles, os), action: handleWorkspaceFiles },
+    ...(handleToggleDockMaximized
+      ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Dock', description: 'Give the review dock the full width for diffs, files, and terminals', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
+      : []),
+    { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: shortcutLabel(KEYS.sidebar, os), action: handleSidebarToggle },
+    { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', action: toggleScheduler },
+    { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'Interactive shell in the workspace (runs on the connected server)', shortcut: shortcutLabel(KEYS.terminal, os), action: handleOpenTerminal },
+    { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
+    { id: 'go-telemetry', group: 'Navigation', label: 'Open Telemetry', description: 'Spend, turns, and traces by workspace and model', action: () => openTelemetry() },
+    ...THEME_OPTIONS.map(({ value, label }) => ({
+      id: `theme-${value}`, group: 'View' as const, label: `Theme: ${label}`, description: value === 'system' ? 'Follow the system appearance' : `Use the ${value} theme`, action: () => setTheme(value),
+    })),
+    {
+      id: 'toggle-reader-mode',
+      group: 'View',
+      label: 'Toggle Reader Mode',
+      description: readerMode
+        ? 'Reader mode is on · show every thinking trace and tool call again'
+        : "Fold each turn's work into one row and list the files it changed",
+      keywords: 'transcript compact detailed summary view',
+      action: toggleReaderMode,
+    },
+    // Desktop only: the native ⌘R accelerator was dropped so a stray key
+    // press cannot wipe a live turn's UI state; browsers keep their own reload.
+    ...(isTauri
+      ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
+      : []),
+  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme, readerMode, toggleReaderMode])
 }

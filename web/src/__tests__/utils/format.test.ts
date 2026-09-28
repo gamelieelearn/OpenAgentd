@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatTokens, formatRelativeDate, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText } from "@/utils/format";
+import { formatTokens, formatRelativeDate, formatCompactRelative, formatCompactUpcoming, formatDate, isSleepMessage, extractSleepPrefix, shortId, shortModelName, formatTime, formatFullDateTime, lastTurnText, finalAnswerBlocks } from "@/utils/format";
 
 // ---------------------------------------------------------------------------
 // formatTokens
@@ -214,6 +214,19 @@ describe("shortId", () => {
   });
 });
 
+describe("shortModelName", () => {
+  it("drops the provider prefix and any vendor path", () => {
+    expect(shortModelName("openai:gpt-5")).toBe("gpt-5");
+    expect(shortModelName("openrouter:anthropic/claude-sonnet-4.5")).toBe("claude-sonnet-4.5");
+    expect(shortModelName("gpt-5")).toBe("gpt-5");
+  });
+
+  it("is empty for no model", () => {
+    expect(shortModelName(null)).toBeNull();
+    expect(shortModelName("")).toBeNull();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // formatTime
 // ---------------------------------------------------------------------------
@@ -338,6 +351,20 @@ describe("lastTurnText", () => {
   });
 });
 
+describe("finalAnswerBlocks", () => {
+  it("is the prose after the turn's last tool call, blank and sentinel-only blocks left out", () => {
+    const turn = [
+      { id: "t1", type: "text", content: "Let me look." },
+      { id: "x1", type: "tool", content: "" },
+      { id: "h1", type: "thinking", content: "hmm" },
+      { id: "t2", type: "text", content: "  " },
+      { id: "t3", type: "text", content: "<sleep>" },
+      { id: "t4", type: "text", content: "Found it." },
+    ] as import("@/api/types").ContentBlock[];
+    expect(finalAnswerBlocks(turn).map((b) => b.id)).toEqual(["t4"]);
+  });
+});
+
 describe("lastTurnText — only the final response after the last tool call", () => {
   it("drops narration text that precedes a tool call", () => {
     const blocks = [
@@ -374,5 +401,52 @@ describe("lastTurnText — only the final response after the last tool call", ()
       block("tool", ""),
     ];
     expect(lastTurnText(blocks)).toBe("");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// formatCompactUpcoming
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("formatCompactUpcoming", () => {
+  // Local times, so the expectations hold in any test timezone.
+  const now = new Date(2026, 2, 10, 12, 0);
+  const at = (day: number, hour: number, minute = 0) => new Date(2026, 2, day, hour, minute).toISOString();
+
+  it("shows the time for later today, the weekday within a week, then the date", () => {
+    expect(formatCompactUpcoming(at(10, 18, 5), now)).toBe("18:05");
+    expect(formatCompactUpcoming(at(11, 9), now)).toBe("Wed 09:00");
+    expect(formatCompactUpcoming(at(20, 9), now)).toBe("20/03");
+  });
+
+  it("reads due once the time has passed, and empty for missing input", () => {
+    expect(formatCompactUpcoming(at(10, 11), now)).toBe("due");
+    expect(formatCompactUpcoming(null, now)).toBe("");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// formatCompactRelative
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("formatCompactRelative", () => {
+  const now = new Date("2026-03-10T12:00:00Z");
+
+  it("returns an empty string for missing or invalid input", () => {
+    expect(formatCompactRelative(null, now)).toBe("");
+    expect(formatCompactRelative(undefined, now)).toBe("");
+    expect(formatCompactRelative("not-a-date", now)).toBe("");
+  });
+
+  it("steps through now / minutes / hours / days", () => {
+    expect(formatCompactRelative("2026-03-10T11:59:40Z", now)).toBe("now");
+    expect(formatCompactRelative("2026-03-10T12:05:00Z", now)).toBe("now");
+    expect(formatCompactRelative("2026-03-10T11:55:00Z", now)).toBe("5m");
+    expect(formatCompactRelative("2026-03-10T09:00:00Z", now)).toBe("3h");
+    expect(formatCompactRelative("2026-03-08T12:00:00Z", now)).toBe("2d");
+  });
+
+  it("falls back to day/month past a week", () => {
+    expect(formatCompactRelative("2026-02-20T12:00:00Z", now)).toMatch(/^\d{2}\/\d{2}$/);
   });
 });

@@ -4,6 +4,49 @@
 
 import { apiBaseUrl } from '../base-url'
 
+/**
+ * Optional narrowing for summary and trace-list requests. Filters apply per
+ * turn on the backend: a span counts toward the workspace and model of the
+ * turn (``agent_run`` span) it belongs to.
+ */
+export interface ObservabilityFilters {
+  /** Workspace root as recorded on spans (see ``facets.workspaces``). */
+  workspace?: string | null
+  /** ``provider:model`` (see ``facets.models``). */
+  model?: string | null
+  /** Session id (see ``by_session``); the backend adds its sub-agent sessions. */
+  session?: string | null
+}
+
+function filterParams(params: URLSearchParams, filters: ObservabilityFilters | undefined): URLSearchParams {
+  if (filters?.workspace) params.set('workspace', filters.workspace)
+  if (filters?.model) params.set('model', filters.model)
+  if (filters?.session) params.set('session', filters.session)
+  return params
+}
+
+/** One session in ``by_session`` (top 100 by spend). */
+export interface SessionUsage {
+  session_id: string
+  /** Workspace, model, and agent of the session's latest turn. */
+  workspace: string | null
+  model: string | null
+  agent_name: string | null
+  turns: number
+  errors: number
+  input_tokens: number
+  output_tokens: number
+  cached_tokens: number
+  cache_percent: number
+  estimated_cost_usd: number
+  last_active_ms: number
+  /** From the database at request time; ``null`` when untitled or deleted. */
+  title?: string | null
+  parent_session_id?: string | null
+  /** The session no longer exists (its spans outlive it). */
+  deleted?: boolean
+}
+
 export interface ObservabilitySummary {
   window_start: string
   window_end: string
@@ -25,8 +68,22 @@ export interface ObservabilitySummary {
     turn_p95: number
     llm_p50: number
     llm_p95: number
+    /** Time to the first streamed output of an LLM call. Absent on older backends. */
+    ttft_p50?: number
+    ttft_p95?: number
   }
-  daily_turns: Array<{ day: string; turns: number; errors: number }>
+  /**
+   * Output tokens per second while LLM calls streamed: the median and the
+   * slow tail (5th percentile). Absent on older backends; 0 when unmeasured.
+   */
+  output_tps?: { p50: number; p5: number }
+  daily_turns: Array<{
+    day: string
+    turns: number
+    errors: number
+    /** Absent on backends older than v3.0.0. */
+    estimated_cost_usd?: number
+  }>
   by_model: Array<{
     provider: string
     model: string
@@ -39,6 +96,10 @@ export interface ObservabilitySummary {
     cache_percent: number
     estimated_cost_usd: number
     p95_ms: number
+    /** Median time to first output (ms); absent on older backends, 0 when unmeasured. */
+    ttft_p50_ms?: number
+    /** Median output tokens per second; absent on older backends, 0 when unmeasured. */
+    output_tps_p50?: number
   }>
   cache_by_step: Array<{
     step: string
@@ -54,10 +115,30 @@ export interface ObservabilitySummary {
     estimated_cost_usd: number
   }>
   by_tool: Array<{ tool: string; calls: number; errors: number; p95_ms: number }>
+  /**
+   * Spend and turns per workspace; ``workspace: null`` collects turns recorded
+   * before spans carried a workspace. Absent on backends older than v3.0.0.
+   */
+  by_workspace?: Array<{
+    workspace: string | null
+    turns: number
+    errors: number
+    input_tokens: number
+    output_tokens: number
+    estimated_cost_usd: number
+  }>
+  /** Spend and usage per session, most expensive first. Absent before v3.0.0. */
+  by_session?: SessionUsage[]
+  /** Filter options for the whole window, most-used first. */
+  facets?: { workspaces: string[]; models: string[] }
 }
 
-export async function getObservabilitySummary(days: number): Promise<ObservabilitySummary> {
-  const res = await fetch(`${apiBaseUrl()}/observability/summary?days=${days}`)
+export async function getObservabilitySummary(
+  days: number,
+  filters?: ObservabilityFilters,
+): Promise<ObservabilitySummary> {
+  const params = filterParams(new URLSearchParams({ days: String(days) }), filters)
+  const res = await fetch(`${apiBaseUrl()}/observability/summary?${params}`)
   if (!res.ok) throw new Error(`GET /observability/summary failed: ${res.status}`)
   return res.json()
 }
@@ -71,6 +152,8 @@ export interface TraceListItem {
   run_id: string | null
   session_id: string | null
   agent_name: string | null
+  /** Absent on backends older than v3.0.0; ``null`` for unrecorded turns. */
+  workspace?: string | null
   provider: string | null
   model: string | null
   provider_model: string | null
@@ -117,10 +200,14 @@ export async function listTraces(
   days: number,
   limit = 50,
   offset = 0,
+  filters?: ObservabilityFilters & { errorsOnly?: boolean },
 ): Promise<TracesListResponse> {
-  const res = await fetch(
-    `${apiBaseUrl()}/observability/traces?days=${days}&limit=${limit}&offset=${offset}`,
+  const params = filterParams(
+    new URLSearchParams({ days: String(days), limit: String(limit), offset: String(offset) }),
+    filters,
   )
+  if (filters?.errorsOnly) params.set('status', 'error')
+  const res = await fetch(`${apiBaseUrl()}/observability/traces?${params}`)
   if (!res.ok) throw new Error(`GET /observability/traces failed: ${res.status}`)
   return res.json()
 }

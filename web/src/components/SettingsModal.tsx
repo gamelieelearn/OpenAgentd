@@ -11,10 +11,8 @@
  */
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, X, type LucideIcon } from 'lucide-react'
-import { lazy, Suspense } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -31,60 +29,26 @@ import {
   isDrillDown,
   mobileBackSection,
   parentSection,
-  SETTINGS_SECTIONS,
   type SettingsSectionDef,
   type TopLevelSection,
 } from '@/components/settings/sections'
+import { useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
 import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
+import { SettingsHubPage } from '@/components/settings/pages/settings.index'
+import { AgentsListPage } from '@/components/settings/pages/settings.agents'
+import { SkillsListPage } from '@/components/settings/pages/settings.skills'
+import { NewSkillPage } from '@/components/settings/pages/settings.skills.new'
+import { SkillEditorPage } from '@/components/settings/pages/settings.skills.$name'
+import { McpListPage } from '@/components/settings/pages/settings.mcp'
+import { NewMcpServerPage } from '@/components/settings/pages/settings.mcp.new'
+import { McpServerDetailPage } from '@/components/settings/pages/settings.mcp.$name'
+import { MemorySettingsPage } from '@/components/settings/pages/settings.memory'
+import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
+import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
+import { AutomationSettingsPage } from '@/components/settings/pages/settings.automation'
+import { PluginsSettingsPage } from '@/components/settings/pages/settings.plugins'
 
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
-
-// Section pages are loaded on demand. The modal is opened from a button, not
-// on the tauri:// navigation path, so the Suspense-waterfall concern that
-// keeps route components eager (see web/vite.config.ts) does not apply here,
-// and the pages are ~3.6k LOC the first paint never needs.
-const SettingsHubPage = lazy(() =>
-  import('@/components/settings/pages/settings.index').then((m) => ({ default: m.SettingsHubPage })),
-)
-const AgentsListPage = lazy(() =>
-  import('@/components/settings/pages/settings.agents').then((m) => ({ default: m.AgentsListPage })),
-)
-const SkillsListPage = lazy(() =>
-  import('@/components/settings/pages/settings.skills').then((m) => ({ default: m.SkillsListPage })),
-)
-const NewSkillPage = lazy(() =>
-  import('@/components/settings/pages/settings.skills.new').then((m) => ({ default: m.NewSkillPage })),
-)
-const SkillEditorPage = lazy(() =>
-  import('@/components/settings/pages/settings.skills.$name').then((m) => ({ default: m.SkillEditorPage })),
-)
-const McpListPage = lazy(() =>
-  import('@/components/settings/pages/settings.mcp').then((m) => ({ default: m.McpListPage })),
-)
-const NewMcpServerPage = lazy(() =>
-  import('@/components/settings/pages/settings.mcp.new').then((m) => ({ default: m.NewMcpServerPage })),
-)
-const McpServerDetailPage = lazy(() =>
-  import('@/components/settings/pages/settings.mcp.$name').then((m) => ({ default: m.McpServerDetailPage })),
-)
-const MemorySettingsPage = lazy(() =>
-  import('@/components/settings/pages/settings.memory').then((m) => ({
-    default: m.MemorySettingsPage,
-  })),
-)
-const ProvidersSettingsPage = lazy(() =>
-  import('@/components/settings/pages/settings.providers').then((m) => ({ default: m.ProvidersSettingsPage })),
-)
-const DeniedPathsSettingsPage = lazy(() =>
-  import('@/components/settings/pages/settings.denied_paths').then((m) => ({
-    default: m.DeniedPathsSettingsPage,
-  })),
-)
-const AutomationSettingsPage = lazy(() =>
-  import('@/components/settings/pages/settings.automation').then((m) => ({
-    default: m.AutomationSettingsPage,
-  })),
-)
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 
@@ -159,13 +123,13 @@ function ModalSidebar({
   const skillsQ = useSkillFilesQuery()
   const mcpQ = useMcpServersQuery()
   const deniedPathsQ = useDeniedPathsSettingsQuery()
+  const sections = useVisibleSettingsSections()
   const active = parentSection(section)
 
   const counts: Partial<Record<TopLevelSection, number | null>> = {
     skills: skillsQ.data?.skills.length ?? null,
     mcp: mcpQ.data?.servers.length ?? null,
     denied_paths: deniedPathsQ.data?.denied_patterns.length ?? null,
-    sandbox: deniedPathsQ.data?.denied_patterns.length ?? null,
   }
 
   return (
@@ -174,7 +138,7 @@ function ModalSidebar({
       className="hidden h-full w-52 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) select-none md:flex"
     >
       {SETTINGS_GROUPS.map((group, idx) => {
-        const items = SETTINGS_SECTIONS.filter((s) => s.group === group.id)
+        const items = sections.filter((s) => s.group === group.id)
         if (items.length === 0) return null
         return (
           <div key={group.id}>
@@ -211,6 +175,7 @@ function MobileTabBar({
   section: SettingsSection
   onSelect: (s: TopLevelSection) => void
 }) {
+  const sections = useVisibleSettingsSections()
   return (
     <nav
       aria-label="Settings sections"
@@ -219,11 +184,11 @@ function MobileTabBar({
       <select aria-label="Settings section" value={parentSection(section)}
         className="min-h-9 w-full rounded-sm border border-(--color-border) bg-(--bg-input) px-3 text-base text-(--color-text)"
         onChange={(event) => {
-          const item = SETTINGS_SECTIONS.find((candidate) => candidate.id === event.target.value)
+          const item = sections.find((candidate) => candidate.id === event.target.value)
           if (item) onSelect(item.id)
         }}>
         {SETTINGS_GROUPS.map((group) => <optgroup key={group.id} label={group.label}>
-          {SETTINGS_SECTIONS.filter((item) => item.group === group.id).map((item) =>
+          {sections.filter((item) => item.group === group.id).map((item) =>
             <option key={item.id} value={item.id}>{item.label}</option>)}
         </optgroup>)}
       </select>
@@ -290,9 +255,9 @@ function SectionContent({
         <McpServerDetailPage name={selectedName} onBack={() => setSection('mcp')} />
       ) : null
     case 'memory':       return <MemorySettingsPage />
+    case 'plugins':      return <PluginsSettingsPage />
     case 'providers':    return <ProvidersSettingsPage />
-    case 'denied_paths':
-    case 'sandbox':      return <DeniedPathsSettingsPage />
+    case 'denied_paths': return <DeniedPathsSettingsPage />
     case 'automation':   return <AutomationSettingsPage />
     case 'about':
     default:             return <SettingsHubPage />
@@ -300,23 +265,6 @@ function SectionContent({
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────
-
-/** Mirrors a page's sticky h-11 header plus a few rows so the lazy chunk
- *  swap does not shift layout. */
-function SectionSkeleton() {
-  return (
-    <div aria-busy="true" className="flex flex-col">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) px-3 sm:px-4">
-        <Skeleton className="h-3 w-24" />
-      </div>
-      <div className="flex flex-col gap-3 p-3 sm:p-4">
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-2/3" />
-      </div>
-    </div>
-  )
-}
 
 /** Panel enter/exit. Module scope so framer sees a stable target reference.
  *  Mirrors MODAL_VARIANTS / MODAL_VARIANTS_REDUCED in ui/app-overlay.tsx —
@@ -399,14 +347,18 @@ export function SettingsModal() {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <button
+                    // A Button (not a bare <button>) so touch gets the same
+                    // 44px target as Back; desktop keeps the dense 28px.
+                    <Button
                       type="button"
+                      size="icon-sm"
+                      variant="ghost"
                       onClick={closeSettings}
-                      className="flex h-9 w-9 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 md:w-7"
+                      className="md:size-7"
                       aria-label="Close settings"
                     >
                       <X size={14} aria-hidden="true" />
-                    </button>
+                    </Button>
                   }
                 />
                 <TooltipContent>Close (Esc)</TooltipContent>
@@ -419,14 +371,12 @@ export function SettingsModal() {
 
               <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page)">
                 <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
-                  <Suspense fallback={<SectionSkeleton />}>
-                    <SectionContent
-                      key={`${section}:${selectedName ?? ''}`}
-                      section={section}
-                      selectedName={selectedName}
-                      setSection={setSection}
-                    />
-                  </Suspense>
+                  <SectionContent
+                    key={`${section}:${selectedName ?? ''}`}
+                    section={section}
+                    selectedName={selectedName}
+                    setSection={setSection}
+                  />
                 </div>
               </main>
             </div>

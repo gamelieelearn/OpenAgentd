@@ -15,6 +15,8 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 
+import { getPlatform } from '@/hooks/use-platform'
+import { routeTerminalKey } from './terminal-keys'
 import { TERMINAL_THEMES, type TerminalResolvedTheme } from './terminal-themes'
 
 export interface XtermHandle {
@@ -56,6 +58,9 @@ export function createXterm(options: {
   // and the prompt visually smears / misaligns on redraw.
   term.loadAddon(new Unicode11Addon())
   term.unicode.activeVersion = '11'
+  // ⌘K clears and ⌘F stays in the terminal instead of firing app shortcuts.
+  const { os } = getPlatform()
+  term.attachCustomKeyEventHandler((event) => routeTerminalKey(event, os, () => term.clear()))
 
   let webglAddon: WebglAddon | null = null
 

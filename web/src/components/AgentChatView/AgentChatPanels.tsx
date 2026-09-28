@@ -1,9 +1,17 @@
+import { useState } from 'react'
 import { CommandPalette, QuickOpen } from '../CommandPalette'
 import { SchedulerPanel } from '../SchedulerPanel'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { TodosPopover } from '../TodosPopover'
-import type { TodoItem, WorkspaceFileInfo } from '@/api/types'
+import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
+
+/** True from the first time ``open`` is set, so a panel mounted then can still animate out. */
+function useOpenedOnce(open: boolean): boolean {
+  const [opened, setOpened] = useState(open)
+  if (open && !opened) setOpened(true)
+  return opened
+}
 
 interface AgentChatPanelsProps {
   agentCapabilitiesOpen: boolean
@@ -12,20 +20,23 @@ interface AgentChatPanelsProps {
   sessionThinkingLevel: string | null
   onSessionModelSettingsChange: (model: string | null, thinkingLevel: string | null) => void
   onCloseAgentCapabilities: () => void
-  isMobile: boolean
+  /** Popover fallback: mobile, or desktop without a review dock. */
   showTodos: boolean
   onShowTodosChange: (open: boolean) => void
   todos: TodoItem[]
-  sessionId: string | null
+  plan?: SessionPlan | null
+  onClearPlan?: () => void
   schedulerOpen: boolean
   onCloseScheduler: () => void
   showPalette: boolean
   paletteCommands: Command[]
   quickOpenOpen: boolean
+  /** Query Quick Open opens with; empty from its shortcut. */
+  quickOpenQuery: string
   quickOpenWorkspaceFiles: WorkspaceFileInfo[]
   /** Backend hit its file cap — Quick Open says so instead of silently hiding. */
   quickOpenFilesTruncated?: boolean
-  onQuickOpenFileOpen: (file: WorkspaceFileInfo) => void
+  onQuickOpenFileOpen: (file: WorkspaceFileInfo, line?: number, endLine?: number) => void
   onClosePalette: () => void
   onCloseQuickOpen: () => void
 }
@@ -37,48 +48,55 @@ export function AgentChatPanels({
   sessionThinkingLevel,
   onSessionModelSettingsChange,
   onCloseAgentCapabilities,
-  isMobile,
   showTodos,
   onShowTodosChange,
   todos,
-  sessionId,
+  plan,
+  onClearPlan,
   schedulerOpen,
   onCloseScheduler,
   showPalette,
   paletteCommands,
   quickOpenOpen,
+  quickOpenQuery,
   quickOpenWorkspaceFiles,
   quickOpenFilesTruncated,
   onQuickOpenFileOpen,
   onClosePalette,
   onCloseQuickOpen,
 }: AgentChatPanelsProps) {
+  const settingsOpened = useOpenedOnce(agentCapabilitiesOpen)
+  const schedulerOpened = useOpenedOnce(schedulerOpen)
   return (
     <>
-      <SessionSettingsPanel
-        open={agentCapabilitiesOpen}
-        workspace={agentWorkspace}
-        sessionModel={sessionModel}
-        sessionThinkingLevel={sessionThinkingLevel}
-        onSessionModelSettingsChange={onSessionModelSettingsChange}
-        onClose={onCloseAgentCapabilities}
-      />
+      {settingsOpened && (
+        <SessionSettingsPanel
+          open={agentCapabilitiesOpen}
+          workspace={agentWorkspace}
+          sessionModel={sessionModel}
+          sessionThinkingLevel={sessionThinkingLevel}
+          onSessionModelSettingsChange={onSessionModelSettingsChange}
+          onClose={onCloseAgentCapabilities}
+        />
+      )}
       <TodosPopover
-        open={isMobile && showTodos}
+        open={showTodos}
         onOpenChange={onShowTodosChange}
         todos={todos}
-        sessionId={sessionId}
-        trigger={false}
+        plan={plan}
+        onClearPlan={onClearPlan}
       />
-      <SchedulerPanel
-        open={schedulerOpen}
-        onClose={onCloseScheduler}
-      />
+      {schedulerOpened && (
+        <SchedulerPanel
+          open={schedulerOpen}
+          onClose={onCloseScheduler}
+        />
+      )}
       {showPalette && (
         <CommandPalette commands={paletteCommands} onClose={onClosePalette} />
       )}
       {quickOpenOpen && (
-        <QuickOpen workspaceFiles={quickOpenWorkspaceFiles} filesTruncated={quickOpenFilesTruncated} onFileOpen={onQuickOpenFileOpen} onClose={onCloseQuickOpen} />
+        <QuickOpen workspaceFiles={quickOpenWorkspaceFiles} filesTruncated={quickOpenFilesTruncated} commands={paletteCommands} onFileOpen={onQuickOpenFileOpen} onClose={onCloseQuickOpen} initialQuery={quickOpenQuery} />
       )}
     </>
   )

@@ -1,45 +1,38 @@
 /**
- * AppFooter — full-width application status bar (footer).
+ * AppFooter — full-width desktop status bar (VS Code / Zed convention).
  *
- * Sits at the bottom of the window across the entire width (under the sidebar
- * and main chat), matching modern code editor status bars (Zed / VS Code).
+ * Left cluster is workspace-scoped, right cluster is session-scoped:
+ *   • left:  connected backend and its health · git branch with ahead/behind
+ *            + dirty count
+ *   • right: active model (thinking level) · fast mode · 24h spend · settings
  *
- * Left cluster (Context & Health):
- *   • HealthDot / Backend connection status
- *   • Workspace git branch + dirty change indicator (when in coding mode)
- *   • Active model & thinking level pill (clicking opens session settings)
- *   • Fast mode indicator (when active)
- *
- * Right cluster (Metrics & Utility):
-  *   • View mode toggle (Agent / Split)
-  *   • Scheduler shortcut button
-  *   • ThemeToggle (collapsed 3-way cycler)
-  *   • Help button (Command Palette ⌘⇧P)
- *   • Telemetry link
- *   • Settings button (Settings modal ⌘,)
+ * The command palette entry lives in the header's command center, so the
+ * footer carries no help button. Hidden below ``md``; mobile surfaces these
+ * in the sidebar drawer footer instead.
  */
 import { memo } from 'react'
 import {
-  Activity,
-  CalendarClock,
   GitBranch,
-  HelpCircle,
   Settings,
   Sparkles,
   Zap,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
 
 import { HealthDot } from './HealthDot'
-import { ThemeToggle } from './ThemeToggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
-import { formatShortcut } from '@/lib/keyboard-shortcut'
+import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { openTelemetry } from '@/stores/useTelemetryStore'
+import { useObservabilitySummaryQuery } from '@/queries/useObservabilitySummaryQuery'
+import { formatSpend } from '@/utils/telemetryFormat'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
+
+// The summary endpoint only refreshes on demand; poll so spend follows turns.
+const SPEND_REFRESH_MS = 60_000
 
 export interface AppFooterProps {
   workspace?: string | null
@@ -53,39 +46,48 @@ export interface AppFooterProps {
   sessionModel?: string | null
   sessionThinkingLevel?: string | null
   sessionFastMode?: boolean
-  onToggleScheduler?: () => void
   onToggleSessionSettings?: () => void
-  onTogglePalette?: () => void
   onOpenGitChanges?: () => void
   className?: string
 }
 
-function formatModelDisplay(model: string): string {
-  return model
+/** Shared status-bar item: 20px tall, 11px text, keycap hover. */
+const ITEM =
+  'flex h-5 min-w-0 items-center gap-1 rounded-xs px-1.5 text-[11px] text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring)'
+const ICON_ITEM =
+  'flex h-5 w-5 shrink-0 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring)'
+
+function Divider() {
+  return <div className="mx-0.5 h-3 w-px shrink-0 bg-(--color-border-subtle)" aria-hidden="true" />
+}
+
+function syncLabel(ahead: number | null | undefined, behind: number | null | undefined): string | null {
+  const parts: string[] = []
+  if (ahead) parts.push(`${ahead} to push`)
+  if (behind) parts.push(`${behind} to pull`)
+  return parts.length > 0 ? parts.join(', ') : null
 }
 
 export const AppFooter = memo(function AppFooter({
   workspace,
   chatWorkspace = false,
-  sessionId: _sessionId,
   sessionModel,
   sessionThinkingLevel,
   sessionFastMode,
-  onToggleScheduler,
   onToggleSessionSettings,
-  onTogglePalette,
   onOpenGitChanges,
   className,
 }: AppFooterProps) {
   const { os } = usePlatform()
-  const navigate = useNavigate()
   const openSettings = useSettingsStore((s) => s.openSettings)
+  const spend = useObservabilitySummaryQuery(1, {}, { refetchInterval: SPEND_REFRESH_MS }).data?.totals.estimated_cost_usd
+  const spendLabel = spend === undefined ? null : formatSpend(spend)
 
-  const isCoding = Boolean(workspace) && !chatWorkspace
+  const isProject = Boolean(workspace) && !chatWorkspace
   const statusQuery = useQuery({
     queryKey: queryKeys.coding.status(workspace ?? ''),
     queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace!, signal),
-    enabled: isCoding,
+    enabled: isProject,
     staleTime: 10_000,
   })
 
@@ -96,74 +98,86 @@ export const AppFooter = memo(function AppFooter({
   const unstaged = gitStatus?.dirty?.unstaged ?? 0
   const untracked = gitStatus?.dirty?.untracked ?? 0
   const dirtyTotal = staged + unstaged + untracked
+  const ahead = gitStatus?.commits_ahead ?? null
+  const behind = gitStatus?.commits_behind ?? null
+  const sync = syncLabel(ahead, behind)
+
+  const branchTooltip = [
+    `Git branch: ${branch}`,
+    dirtyTotal > 0 ? `${dirtyTotal} changed files` : null,
+    sync,
+  ].filter(Boolean).join(' · ')
 
   return (
     <footer
       className={cn(
-        'hidden md:flex h-6 shrink-0 items-center justify-between border-t border-(--color-border-subtle) bg-(--bg-page) px-2 text-[11px] select-none text-(--color-text-muted)',
+        'hidden h-(--spacing-status-bar) shrink-0 select-none items-center justify-between gap-2 border-t border-(--color-border) bg-(--bg-page) px-2 text-[11px] text-(--color-text-muted) md:flex dark:bg-(--bg-sidebar)',
         className,
       )}
       role="status"
       aria-label="Application status"
     >
-      {/* Left cluster: Connection, Git / Workspace, Model */}
+      {/* Left cluster — workspace scope: connection, repository state. */}
       <div className="flex min-w-0 items-center gap-1 overflow-hidden">
         <HealthDot labeled />
 
-        {isCoding && isGit && branch && (
+        {isProject && isGit && branch && (
           <>
-            <div className="mx-0.5 h-3 w-px bg-(--color-border-subtle)" aria-hidden="true" />
+            <Divider />
             <Tooltip>
               <TooltipTrigger
                 render={
                   <button
                     type="button"
                     onClick={onOpenGitChanges}
-                    className="flex h-5 max-w-[180px] items-center gap-1 rounded-sm px-1.5 font-mono text-xs md:text-[10px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring)"
+                    className={cn(ITEM, 'max-w-[240px] font-mono')}
                   >
-                    <GitBranch size={11} className="shrink-0 text-(--color-text-subtle)" />
+                    <GitBranch size={11} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
                     <span className="truncate">{branch}</span>
+                    {ahead ? <span className="shrink-0" aria-label={`${ahead} commits to push`}>↑{ahead}</span> : null}
+                    {behind ? <span className="shrink-0" aria-label={`${behind} commits to pull`}>↓{behind}</span> : null}
                     {dirtyTotal > 0 && (
-                      <span className="shrink-0 rounded-sm bg-(--accent-orange-soft) px-1 font-mono text-[11px] md:text-[9px] font-semibold text-(--accent-orange-text)">*{dirtyTotal}</span>
+                      <span className="shrink-0 rounded-xs bg-(--accent-orange-soft) px-1 font-semibold text-(--accent-orange-text)">*{dirtyTotal}</span>
                     )}
                   </button>
                 }
               />
-              <TooltipContent>{`Git branch: ${branch}${dirtyTotal > 0 ? ` (${dirtyTotal} changed files)` : ''}`}</TooltipContent>
+              <TooltipContent>{branchTooltip}</TooltipContent>
             </Tooltip>
           </>
         )}
+      </div>
 
+      {/* Right cluster — session scope, then app utilities. */}
+      <div className="flex min-w-0 shrink items-center justify-end gap-0.5">
         {sessionModel && (
-          <>
-            <div className="mx-0.5 h-3 w-px bg-(--color-border-subtle)" aria-hidden="true" />
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    onClick={onToggleSessionSettings}
-                    className="flex h-5 max-w-[340px] lg:max-w-[480px] xl:max-w-[600px] items-center gap-1 rounded-sm px-1.5 font-mono text-xs md:text-[10px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring)"
-                  >
-                    <Sparkles size={11} className="shrink-0 text-(--color-accent)" />
-                    <span className="truncate">{formatModelDisplay(sessionModel)}</span>
-                    {sessionThinkingLevel && sessionThinkingLevel !== 'off' && (
-                      <span className="shrink-0 text-[11px] md:text-[9px] text-(--color-text-subtle)">({sessionThinkingLevel})</span>
-                    )}
-                  </button>
-                }
-              />
-              <TooltipContent>{`Active Model: ${sessionModel}${sessionThinkingLevel ? ` (thinking: ${sessionThinkingLevel})` : ''} (${formatShortcut('A', os, { shift: true })})`}</TooltipContent>
-            </Tooltip>
-          </>
+          <Tooltip className="min-w-0">
+            <TooltipTrigger
+              className="min-w-0"
+              render={
+                <button
+                  type="button"
+                  onClick={onToggleSessionSettings}
+                  className={cn(ITEM, 'max-w-[320px] font-mono lg:max-w-[440px]')}
+                >
+                  <Sparkles size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+                  <span className="truncate">{sessionModel}</span>
+                  {sessionThinkingLevel && sessionThinkingLevel !== 'off' && (
+                    <span className="shrink-0 text-(--color-text-subtle)">({sessionThinkingLevel})</span>
+                  )}
+                </button>
+              }
+            />
+            <TooltipContent>{`Active Model: ${sessionModel}${sessionThinkingLevel ? ` (thinking: ${sessionThinkingLevel})` : ''} (${shortcutLabel(APP_SHORTCUTS.sessionSettings, os)})`}</TooltipContent>
+          </Tooltip>
         )}
 
         {sessionFastMode && (
           <Tooltip>
             <TooltipTrigger
               render={
-                <span className="inline-flex h-4 items-center gap-0.5 rounded-sm bg-(--accent-orange-soft) px-1 font-mono text-[11px] md:text-[9px] font-medium text-(--accent-orange-text)">
-                  <Zap size={8.5} />
+                <span className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-[11px] font-medium text-(--accent-orange-text)">
+                  <Zap size={9} aria-hidden="true" />
                   <span>fast</span>
                 </span>
               }
@@ -171,64 +185,25 @@ export const AppFooter = memo(function AppFooter({
             <TooltipContent>Fast mode active</TooltipContent>
           </Tooltip>
         )}
-      </div>
 
-      {/* Right cluster: Scheduler, Utilities */}
-      <div className="flex shrink-0 items-center gap-0.5 pl-2">
-        {onToggleScheduler && (
+        {(sessionModel || sessionFastMode) && <Divider />}
+
+        {spendLabel && (
           <Tooltip>
             <TooltipTrigger
               render={
                 <button
                   type="button"
-                  onClick={onToggleScheduler}
-                  className="flex h-5 w-5 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-                  aria-label="Scheduler"
+                  onClick={() => openTelemetry({ days: 1 })}
+                  className={cn(ITEM, 'font-mono tabular-nums')}
+                  aria-label={`Spend in the last 24 hours: ${spendLabel}`}
                 >
-                  <CalendarClock size={12} aria-hidden="true" />
+                  <span>{spendLabel}</span>
+                  <span className="text-(--color-text-subtle)">24h</span>
                 </button>
               }
             />
-            <TooltipContent>{`Scheduler (${formatShortcut('S', os)})`}</TooltipContent>
-          </Tooltip>
-        )}
-
-        <ThemeToggle collapsed compact />
-
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <a
-                href="/telemetry"
-                className="flex h-5 w-5 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-                aria-label="Telemetry"
-                onClick={(e) => {
-                  e.preventDefault()
-                  void navigate({ to: '/telemetry' })
-                }}
-              >
-                <Activity size={12} aria-hidden="true" />
-              </a>
-            }
-          />
-          <TooltipContent>Telemetry</TooltipContent>
-        </Tooltip>
-
-        {onTogglePalette && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={onTogglePalette}
-                  className="flex h-5 w-5 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-                  aria-label="Help and shortcuts"
-                >
-                  <HelpCircle size={12} aria-hidden="true" />
-                </button>
-              }
-            />
-            <TooltipContent>{`Help and shortcuts (${formatShortcut('K', os)})`}</TooltipContent>
+            <TooltipContent>Spend in the last 24 hours · Open Telemetry</TooltipContent>
           </Tooltip>
         )}
 
@@ -238,14 +213,14 @@ export const AppFooter = memo(function AppFooter({
               <button
                 type="button"
                 onClick={() => openSettings()}
-                className="flex h-5 w-5 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                className={ICON_ITEM}
                 aria-label="Settings"
               >
                 <Settings size={12} aria-hidden="true" />
               </button>
             }
           />
-          <TooltipContent>{`Settings (${formatShortcut(',', os)})`}</TooltipContent>
+          <TooltipContent>{`Settings (${shortcutLabel(APP_SHORTCUTS.settings, os)})`}</TooltipContent>
         </Tooltip>
       </div>
     </footer>

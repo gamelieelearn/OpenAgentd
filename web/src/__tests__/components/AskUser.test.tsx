@@ -83,9 +83,16 @@ describe('AskUser — waiting state', () => {
   })
 
   it('does not show the form on a different tool call', () => {
-    render(<AskUser toolCallId="call-OTHER" result={PLACEHOLDER} />)
+    const { container } = render(<AskUser toolCallId="call-OTHER" result={PLACEHOLDER} />)
 
     expect(screen.queryByRole('radio', { name: /pnpm/ })).toBeNull()
+    expect(container.querySelector('[data-question-waiting]')).toBeNull()
+  })
+
+  it('marks the open card, so the timeline can point at it', () => {
+    const { container } = render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    expect(container.querySelector('[data-question-waiting]')).not.toBeNull()
   })
 
   it('never renders the placeholder written for the model', () => {

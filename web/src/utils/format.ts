@@ -18,6 +18,12 @@ export function shortId(id: string): string {
   return id.slice(0, 8)
 }
 
+/** ``provider:vendor/model`` → ``model``. */
+export function shortModelName(modelId: string | null | undefined): string | null {
+  if (!modelId) return null
+  return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
+}
+
 export function formatTime(date: Date): string {
   return date.toLocaleTimeString(undefined, {
     hour: 'numeric',
@@ -55,7 +61,7 @@ export function formatDate(dateStr: string | null): Date {
   return new Date(dateStr)
 }
 
-import { isToday, isYesterday, format } from 'date-fns'
+import { isToday, isYesterday, isSameDay, format } from 'date-fns'
 
 // Me format date+time: "Today 14:32", "Yesterday 09:01", or "DD/MM/YYYY 14:32"
 export function formatRelativeDate(dateStr: string | null): string {
@@ -65,6 +71,40 @@ export function formatRelativeDate(dateStr: string | null): string {
   if (isToday(date)) return `Today ${time}`
   if (isYesterday(date)) return `Yesterday ${time}`
   return `${format(date, 'dd/MM/yyyy')} ${time}`
+}
+
+/**
+ * Compact age for dense list meta slots: ``now``, ``5m``, ``3h``, ``2d``,
+ * then ``dd/MM`` past a week. Future timestamps (clock skew) read ``now``.
+ */
+export function formatCompactRelative(dateStr: string | null | undefined, now: Date = new Date()): string {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const elapsed = now.getTime() - date.getTime()
+  if (!Number.isFinite(elapsed)) return ''
+  const minutes = Math.floor(elapsed / 60_000)
+  if (minutes < 1) return 'now'
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d`
+  return format(date, 'dd/MM')
+}
+
+/**
+ * Compact next-fire time for dense list meta slots: ``HH:mm`` later today,
+ * ``EEE HH:mm`` within a week, then ``dd/MM``. Past times read ``due``.
+ */
+export function formatCompactUpcoming(dateStr: string | null | undefined, now: Date = new Date()): string {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const ahead = date.getTime() - now.getTime()
+  if (!Number.isFinite(ahead)) return ''
+  if (ahead <= 0) return 'due'
+  if (isSameDay(date, now)) return format(date, 'HH:mm')
+  if (ahead < 7 * 24 * 60 * 60_000) return format(date, 'EEE HH:mm')
+  return format(date, 'dd/MM')
 }
 
 // ── IANA timezone helpers ────────────────────────────────────────────────────
@@ -188,6 +228,26 @@ export function formatInTimezone(iso: string | null | undefined, timeZone: strin
 import type { ContentBlock } from '@/api/types'
 
 /**
+ * The text blocks that make up a turn's final answer: prose after the turn's
+ * last tool call. Earlier text is narration between tool calls. Blocks that
+ * are blank or hold nothing but a sleep sentinel are left out.
+ */
+export function finalAnswerBlocks(turn: ContentBlock[]): ContentBlock[] {
+  let start = 0
+  for (let i = turn.length - 1; i >= 0; i--) {
+    if (turn[i].type === 'tool') {
+      start = i + 1
+      break
+    }
+  }
+  return turn.slice(start).filter((block) => {
+    if (block.type !== 'text') return false
+    const content = extractSleepPrefix(block.content) ?? block.content
+    return content.trim().length > 0
+  })
+}
+
+/**
  * Extract copyable text from the last agent turn in a flat block list.
  *
  * A turn starts after the last `user` block. Within the turn, sleep-sentinel
@@ -211,29 +271,8 @@ export function lastTurnText(blocks: ContentBlock[]): string {
     }
   }
 
-  let turnBlocks = blocks.slice(startIdx)
-
-  // Keep only what follows the last tool call, if any.
-  for (let i = turnBlocks.length - 1; i >= 0; i--) {
-    if (turnBlocks[i].type === 'tool') {
-      turnBlocks = turnBlocks.slice(i + 1)
-      break
-    }
-  }
-
-  const parts: string[] = []
-
-  for (const block of turnBlocks) {
-    if (block.type !== 'text') continue
-    const sleepPrefix = extractSleepPrefix(block.content)
-    if (sleepPrefix !== null) {
-      // Block ends with a sentinel — keep any real content before it
-      if (sleepPrefix.length > 0) parts.push(sleepPrefix)
-      // Skip the sentinel itself — it's an internal signal
-    } else {
-      parts.push(block.content)
-    }
-  }
-
-  return parts.join('\n\n')
+  // A block ending in a sentinel keeps any real content before it.
+  return finalAnswerBlocks(blocks.slice(startIdx))
+    .map((block) => extractSleepPrefix(block.content) ?? block.content)
+    .join('\n\n')
 }

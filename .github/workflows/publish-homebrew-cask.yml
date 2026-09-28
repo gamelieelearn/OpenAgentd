@@ -4,7 +4,7 @@
 #     brew install --cask openagentd
 #
 # Pairs with ``publish-homebrew.yml`` (which publishes the CLI Formula
-# from PyPI). The two artefacts coexist in the same tap repo and can be
+# from the release's CLI archives). The two artefacts coexist in the same tap repo and can be
 # installed independently.
 #
 # Trigger model:
@@ -256,8 +256,7 @@ jobs:
               the app in Finder and choose "Open" once.
 
               Apple Silicon only. Intel Mac users: install the CLI with
-              "brew install openagentd" instead, and open the cockpit at
-              http://localhost:4082.
+              "brew install openagentd" instead.
 
               Uninstall keeps your data. ``brew uninstall --cask
               openagentd`` removes the app only; agents, sessions, and

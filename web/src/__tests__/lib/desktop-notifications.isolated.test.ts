@@ -39,8 +39,20 @@ describe('desktop notification library integration', () => {
     await runWorker('focused skip and forced send')
   })
 
-  it('sends native notifications in the mobile app without focused-window skip or in-app sound', async () => {
-    await runWorker('mobile native app')
+  it('sends mobile notifications through the notification plugin without focused-window skip or in-app sound', async () => {
+    await runWorker('mobile plugin send')
+  })
+
+  it('skips a mobile notification for the session on screen only while the page is visible', async () => {
+    await runWorker('mobile on-screen skip')
+  })
+
+  it('opens the notified session when a mobile notification is tapped', async () => {
+    await runWorker('mobile tap opens')
+  })
+
+  it('does not listen for notification taps outside the mobile app', async () => {
+    await runWorker('desktop tap listener')
   })
 
   it('reports unsupported runtime before touching native APIs', async () => {

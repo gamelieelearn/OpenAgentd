@@ -4,7 +4,7 @@
  * The mobile nav cards that used to live here are no longer needed since
  * the modal's own sidebar handles all section navigation.
  */
-import { useState } from 'react'
+import { useState, type ComponentType } from 'react'
 import {
   Server,
   Download,
@@ -16,15 +16,73 @@ import {
 } from 'lucide-react'
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
+import { THEME_OPTIONS } from '@/components/ThemeToggle'
 import { SettingsSection } from '@/components/settings/SettingsSection'
-import { SETTINGS_SECTIONS } from '@/components/settings/sections'
+import { useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
 import { ICON_SIZE } from '@/components/settings/tokens'
 import { Button } from '@/components/ui/button'
 import { checkForUpdates, downloadUpdate, fetchReleaseNotes, installUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
-import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { MarkdownBlock } from '@/utils/markdown'
 import { useHealthQuery } from '@/queries'
+import { useThemePreference } from '@/hooks/useThemePreference'
+import { cn } from '@/lib/utils'
+import { TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+
+// ── Appearance ────────────────────────────────────────────────────────────
+
+function SegmentedChoice<T extends string>({ label, options, value, onChange }: {
+  label: string
+  options: readonly { value: T; label: string; Icon?: ComponentType<{ size?: number; 'aria-hidden'?: boolean | 'true' }> }[]
+  value: T
+  onChange: (next: T) => void
+}) {
+  return (
+    <div role="group" aria-label={label} className="inline-flex rounded-md border border-(--color-border) bg-(--bg-key) p-0.5">
+      {options.map(({ value: option, label: optionLabel, Icon }) => (
+        <button
+          key={option}
+          type="button"
+          aria-pressed={value === option}
+          onClick={() => onChange(option)}
+          className={cn(
+            'flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 pointer-coarse:h-11',
+            value === option ? 'bg-(--bg-card) text-(--color-text) shadow-sm' : 'text-(--color-text-muted) hover:text-(--color-text)',
+          )}
+        >
+          {Icon && <Icon size={13} aria-hidden="true" />}
+          {optionLabel}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function AppearanceSection() {
+  const { preference, setPreference } = useThemePreference()
+  const transcriptStyle = useDisplayPrefsStore((s) => s.transcriptStyle)
+  const setTranscriptStyle = useDisplayPrefsStore((s) => s.setTranscriptStyle)
+  return (
+    <SettingsSection title="Appearance">
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-(--color-text-muted)">Theme</p>
+          <SegmentedChoice label="Theme" options={THEME_OPTIONS} value={preference} onChange={setPreference} />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-(--color-text-muted)">Transcript</p>
+            <p className="mt-0.5 text-[11px] text-(--color-text-subtle)">
+              Reader folds each turn&apos;s thinking and tool calls into one row, and lists the files it changed.
+            </p>
+          </div>
+          <SegmentedChoice label="Transcript" options={TRANSCRIPT_STYLES} value={transcriptStyle} onChange={setTranscriptStyle} />
+        </div>
+      </div>
+    </SettingsSection>
+  )
+}
 
 // ── Updates card ──────────────────────────────────────────────────────────
 
@@ -136,7 +194,7 @@ function UpdateSettingsCard() {
               </div>
             </div>
             <div className="max-h-[24rem] overflow-y-auto px-4 py-3 text-(--color-text)">
-              <LazyMarkdownBlock content={`${releaseNotes?.body ?? status.notes ?? 'Loading release notes...'}${releaseNotesError ? `\n\nCould not load GitHub release notes: ${releaseNotesError}` : ''}`} />
+              <MarkdownBlock content={`${releaseNotes?.body ?? status.notes ?? 'Loading release notes...'}${releaseNotesError ? `\n\nCould not load GitHub release notes: ${releaseNotesError}` : ''}`} />
             </div>
           </div>
         </div>
@@ -175,6 +233,7 @@ export function SettingsHubPage() {
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
   const version = healthQ.data?.version
   const setSection = useSettingsStore((s) => s.setSection)
+  const sections = useVisibleSettingsSections()
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
@@ -187,7 +246,7 @@ export function SettingsHubPage() {
             <Info size={15} />
           </span>
           <div>
-            <h1 className="text-xs font-semibold text-(--color-text)">About openagentd</h1>
+            <h1 className="text-xs font-semibold text-(--color-text)">About OpenAgentd</h1>
             <p className="text-xs md:text-[10px] font-mono text-(--color-text-subtle)">
               {version
                 ? `On-machine AI assistant · v${version}`
@@ -204,7 +263,7 @@ export function SettingsHubPage() {
         <div className="md:hidden">
           <SettingsSection title="Preferences">
             <div className="divide-y divide-(--color-border)">
-              {SETTINGS_SECTIONS.filter((s) => !s.mobileTab).map((item) => {
+              {sections.filter((s) => !s.mobileTab).map((item) => {
                 const Icon = item.icon
                 return (
                   <button
@@ -224,6 +283,8 @@ export function SettingsHubPage() {
             </div>
           </SettingsSection>
         </div>
+
+        <AppearanceSection />
 
         <SettingsSection title="Backend connection">
           <div className="flex flex-wrap items-start gap-3">

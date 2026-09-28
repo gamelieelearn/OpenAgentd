@@ -9,6 +9,7 @@ import { queryKeys } from '@/queries'
 import { appendSubagent, patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
+import { useUnreadStore } from '@/stores/useUnreadStore'
 
 const notifiedIds = new Set<string>()
 const MAX_NOTIFIED_IDS = 200
@@ -31,6 +32,23 @@ function rememberNotification(id: string): boolean {
 export function invalidateGlobalEventQueries(queryClient: QueryClient): void {
   queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
   queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
+  // MCP status is pushed instead of polled on v3; resync what a gap missed.
+  queryClient.invalidateQueries({ queryKey: queryKeys.mcp.all() })
+}
+
+/**
+ * Query prefixes behind each `config_changed` resource (v3 watches the config
+ * dirs). Prefix keys on purpose: e.g. `['agents']` also covers the registry,
+ * and `['settings']` covers providers and every settings page.
+ */
+const CONFIG_RESOURCE_KEYS: Record<string, readonly (readonly unknown[])[]> = {
+  agents: [queryKeys.agents(), queryKeys.agentFiles.all()],
+  skills: [queryKeys.skillFiles.all()],
+  commands: [['commands']],
+  snippets: [['snippets']],
+  mcp: [queryKeys.mcp.all()],
+  plugins: [queryKeys.plugins(), queryKeys.settings.providers()],
+  settings: [['settings']],
 }
 
 /**
@@ -38,7 +56,8 @@ export function invalidateGlobalEventQueries(queryClient: QueryClient): void {
  * scheduled task. ``running`` and ``needs_input`` are the only turn-dependent
  * fields on a session row, so patch them in place; only fall back to a list
  * refetch when the session is not in any cached page yet (a scheduled task may
- * have just created it).
+ * have just created it). The active list is the exception: a session joining
+ * or leaving it cannot be patched in, and it is a single small page.
  */
 function markSessionRunning(
   queryClient: QueryClient,
@@ -48,7 +67,9 @@ function markSessionRunning(
 ): void {
   if (!patchSessionRunning(queryClient, sessionId, running, needsInput)) {
     queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+    return
   }
+  queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.active() })
 }
 
 export async function handleGlobalEvent(
@@ -104,6 +125,12 @@ export async function handleGlobalEvent(
     queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(sessionId) })
 
     const before = useAgentStore.getState()
+    // Subagent output surfaces through its lead, and a stopped turn is the
+    // user's own doing; neither has anything new to read.
+    const shown = before.sessionId === sessionId && document.visibilityState === 'visible'
+    if (!parentSessionId && event.status !== 'stopped' && !shown) {
+      useUnreadStore.getState().markUnread(sessionId)
+    }
     if (before.sessionId !== sessionId) return true
     // This notification travels over a *separate* global SSE connection from
     // the session's own agent stream, so it carries no ordering guarantee
@@ -167,6 +194,47 @@ export async function handleGlobalEvent(
     return true
   }
 
+  if (type === 'workspace_files_changed') {
+    // Something outside the agent (editor, terminal, git) changed a watched
+    // workspace. The server reports the resolved path plus every spelling the
+    // UI used to ask for it, since those are the query keys.
+    const names = [event.workspace, ...(Array.isArray(event.aliases) ? event.aliases : [])]
+    const workspaces = new Set(names.filter((w): w is string => typeof w === 'string' && w.length > 0))
+    for (const workspace of workspaces) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.coding.files(workspace) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.coding.diff(workspace) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.coding.status(workspace) })
+      if (event.git === true) {
+        queryClient.invalidateQueries({ queryKey: ['coding-workspace-history', workspace] })
+      }
+    }
+    const sessionIds = Array.isArray(event.session_ids) ? event.session_ids : []
+    for (const sessionId of sessionIds) {
+      if (typeof sessionId === 'string') queryClient.invalidateQueries({ queryKey: queryKeys.session.files(sessionId) })
+    }
+    return workspaces.size > 0 || sessionIds.length > 0
+  }
+
+  if (type === 'config_changed') {
+    // Agents, skills, MCP config, plugins… edited outside this window.
+    const resources = Array.isArray(event.resources) ? event.resources : []
+    let known = false
+    for (const resource of resources) {
+      const keys = typeof resource === 'string' ? CONFIG_RESOURCE_KEYS[resource] : undefined
+      if (!keys) continue
+      known = true
+      for (const queryKey of keys) queryClient.invalidateQueries({ queryKey })
+    }
+    return known
+  }
+
+  if (type === 'mcp_status_changed') {
+    // A server settled (ready / error / stopped); replaces polling while it starts.
+    if (typeof event.name !== 'string') return false
+    queryClient.invalidateQueries({ queryKey: queryKeys.mcp.all() })
+    return true
+  }
+
   if (type === 'lsp_install_required') {
     const component = event.component
     const workspace = event.workspace
@@ -204,12 +272,11 @@ export async function handleGlobalEvent(
     if (kind === 'input_needed' && sessionId) {
       markSessionRunning(queryClient, sessionId, true, true)
     }
-    const viewingAskingSession =
-      kind === 'input_needed' && sessionId !== undefined
-      && useAgentStore.getState().sessionId === sessionId
+    // Mobile has no window focus to check, so it skips by this instead.
+    const sessionOnScreen = sessionId !== undefined && useAgentStore.getState().sessionId === sessionId
     await sendDesktopNotification(
       { kind, sessionId, title: event.title, body: event.body },
-      { force: kind === 'input_needed' && !viewingAskingSession },
+      { force: kind === 'input_needed' && !sessionOnScreen, sessionOnScreen },
     )
     return true
   }

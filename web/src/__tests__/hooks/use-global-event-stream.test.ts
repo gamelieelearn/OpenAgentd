@@ -19,6 +19,7 @@ import { GlobalEventStream, handleGlobalEvent, reconcileCurrentSession, resetGlo
 import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
+import { useUnreadStore } from '@/stores/useUnreadStore'
 
 const INITIAL = {
   sessionId: null as string | null,
@@ -42,6 +43,8 @@ beforeEach(() => {
   globalCallbacks = null
   globalSignals = []
   useLspInstallStore.setState({ request: null })
+  useUnreadStore.setState({ ids: [] })
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
 })
 
 afterEach(cleanup)
@@ -441,6 +444,59 @@ describe('handleGlobalEvent', () => {
     expect(client.getQueryState(queryKeys.session.subagents('lead-1'))?.isInvalidated).toBe(true)
   })
 
+  // Membership changes (a session starts, stops, or asks) are not patchable in
+  // place, and the active list is one small page.
+  it('refetches the active sessions list on every turn and question event', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+    const events: [string, Record<string, unknown>][] = [
+      ['session_turn_started', { session_id: 's1' }],
+      ['session_turn_completed', { session_id: 's1', status: 'completed' }],
+      ['desktop_notification', {
+        notification_id: 'n-active', kind: 'input_needed', session_id: 's1', title: 'Needs your input', body: 'Which?',
+      }],
+    ]
+    for (const [type, data] of events) {
+      client.setQueryData(queryKeys.session.sessions.active(), { pages: [], pageParams: [null] })
+      await handleGlobalEvent(client, type, data, 1, () => 1)
+      expect(client.getQueryState(queryKeys.session.sessions.active())?.isInvalidated).toBe(true)
+    }
+  })
+
+  it('marks a finished session unread when this window is not showing it', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+
+    await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'done', status: 'completed' }, 1, () => 1)
+    await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'failed', status: 'error' }, 1, () => 1)
+
+    expect(useUnreadStore.getState().ids).toEqual(['done', 'failed'])
+  })
+
+  it('marks the shown session unread only while the window is hidden', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'current', reconcileTurnTail: mock(async () => {}) })
+
+    await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'current', status: 'completed' }, 1, () => 1)
+    expect(useUnreadStore.getState().ids).toEqual([])
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+    await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'current', status: 'completed' }, 1, () => 1)
+    expect(useUnreadStore.getState().ids).toEqual(['current'])
+  })
+
+  it('does not mark stopped turns or subagent turns unread', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+
+    await handleGlobalEvent(client, 'session_turn_completed', { session_id: 'stopped', status: 'stopped' }, 1, () => 1)
+    await handleGlobalEvent(client, 'session_turn_completed', {
+      session_id: 'child', parent_session_id: 'lead', status: 'completed',
+    }, 1, () => 1)
+
+    expect(useUnreadStore.getState().ids).toEqual([])
+  })
+
   it('invalidates parent subagents on session_turn_completed with parent_session_id', async () => {
     const client = new QueryClient()
     client.setQueryData(queryKeys.session.subagents('lead-parent'), { live_members: [] })
@@ -452,6 +508,68 @@ describe('handleGlobalEvent', () => {
     }, 1, () => 1)
 
     expect(client.getQueryState(queryKeys.session.subagents('lead-parent'))?.isInvalidated).toBe(true)
+  })
+
+  it('invalidates coding and session file queries on workspace_files_changed', async () => {
+    const client = new QueryClient()
+    const keys = [
+      queryKeys.coding.files('/abs/proj'),
+      queryKeys.coding.status('~/proj'),
+      queryKeys.coding.diff('~/proj'),
+      queryKeys.coding.history('~/proj', 50, false),
+      queryKeys.session.files('sess-1'),
+      queryKeys.coding.files('/other'),
+    ]
+    for (const key of keys) client.setQueryData(key, {})
+
+    expect(await handleGlobalEvent(client, 'workspace_files_changed', {
+      workspace: '/abs/proj', aliases: ['~/proj'], session_ids: ['sess-1'],
+      paths: ['src/a.ts'], truncated: false, git: true, rescan: false,
+    }, 1, () => 1)).toBe(true)
+
+    const invalidated = (key: readonly unknown[]) => client.getQueryState(key)?.isInvalidated
+    expect(keys.slice(0, 5).map(invalidated)).toEqual([true, true, true, true, true])
+    expect(invalidated(queryKeys.coding.files('/other'))).toBe(false)
+  })
+
+  it('leaves git history alone for plain file changes', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.coding.history('/abs/proj', 50, false), {})
+    await handleGlobalEvent(client, 'workspace_files_changed', { workspace: '/abs/proj', paths: ['a'], git: false }, 1, () => 1)
+    expect(client.getQueryState(queryKeys.coding.history('/abs/proj', 50, false))?.isInvalidated).toBe(false)
+  })
+
+  it('invalidates only the resources named by config_changed', async () => {
+    const client = new QueryClient()
+    const keys = {
+      skills: queryKeys.skillFiles.list(),
+      mcp: queryKeys.mcp.list(),
+      registry: queryKeys.agentRegistry('/ws'),
+      agentFiles: queryKeys.agentFiles.list(),
+      plugins: queryKeys.plugins(),
+      providers: queryKeys.settings.providers(),
+      commands: queryKeys.commands.list('/ws'),
+    }
+    for (const key of Object.values(keys)) client.setQueryData(key, {})
+    const invalidated = (key: readonly unknown[]) => client.getQueryState(key)?.isInvalidated ?? false
+
+    expect(await handleGlobalEvent(client, 'config_changed', { resources: ['skills', 'mcp'] }, 1, () => 1)).toBe(true)
+    expect([invalidated(keys.skills), invalidated(keys.mcp)]).toEqual([true, true])
+    expect([keys.registry, keys.agentFiles, keys.plugins, keys.providers, keys.commands].map(invalidated)).toEqual([false, false, false, false, false])
+
+    await handleGlobalEvent(client, 'config_changed', { resources: ['agents', 'plugins'] }, 1, () => 1)
+    expect([keys.registry, keys.agentFiles, keys.plugins, keys.providers].map(invalidated)).toEqual([true, true, true, true])
+    expect(invalidated(keys.commands)).toBe(false)
+
+    expect(await handleGlobalEvent(client, 'config_changed', { resources: ['unknown'] }, 1, () => 1)).toBe(false)
+  })
+
+  it('refreshes MCP servers when one settles', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.mcp.list(), { servers: [] })
+    expect(await handleGlobalEvent(client, 'mcp_status_changed', { name: 'slack', state: 'ready' }, 1, () => 1)).toBe(true)
+    expect(client.getQueryState(queryKeys.mcp.list())?.isInvalidated).toBe(true)
+    expect(await handleGlobalEvent(client, 'mcp_status_changed', { state: 'ready' }, 1, () => 1)).toBe(false)
   })
 
   it('prompts for TypeScript tooling only when backend downloads are enabled', async () => {
@@ -503,7 +621,7 @@ describe('handleGlobalEvent', () => {
 
     expect(handled).toBe(true)
     expect(sendDesktopNotification).toHaveBeenCalledTimes(1)
-    expect(sendDesktopNotification.mock.calls[0][1]).toEqual({ force: true })
+    expect(sendDesktopNotification.mock.calls[0][1]).toEqual({ force: true, sessionOnScreen: false })
   })
 
   it('leaves the focus check in charge when the asking session is open', async () => {
@@ -518,7 +636,26 @@ describe('handleGlobalEvent', () => {
 
     // Not forced: a focused, visible window suppresses it (the card is right
     // there), while a backgrounded window still gets it.
-    expect(sendDesktopNotification.mock.calls[0][1]).toEqual({ force: false })
+    expect(sendDesktopNotification.mock.calls[0][1]).toEqual({ force: false, sessionOnScreen: true })
+  })
+
+  // The mobile app cannot tell a focused window from the app being open, so it
+  // needs to know which completions are for the session already on screen.
+  it('tells the notifier whether a finished session is the one on screen', async () => {
+    const client = new QueryClient()
+    useAgentStore.setState({ sessionId: 'shown' })
+
+    await handleGlobalEvent(client, 'desktop_notification', {
+      notification_id: 'notice-d1', session_id: 'shown', kind: 'assistant_done', title: 'Done', body: 'Shown',
+    }, 1, () => 1)
+    await handleGlobalEvent(client, 'desktop_notification', {
+      notification_id: 'notice-d2', session_id: 'elsewhere', kind: 'assistant_done', title: 'Done', body: 'Elsewhere',
+    }, 1, () => 1)
+
+    expect(sendDesktopNotification.mock.calls.map((call) => call[1])).toEqual([
+      { force: false, sessionOnScreen: true },
+      { force: false, sessionOnScreen: false },
+    ])
   })
 
   it('badges the session row so another window sees the stopped session', async () => {

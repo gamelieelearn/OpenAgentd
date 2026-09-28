@@ -10,15 +10,22 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { formatTime, formatFullDateTime, lastTurnText } from '@/utils/format'
+import { formatTime, formatFullDateTime, lastTurnText, shortModelName } from '@/utils/format'
+import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
 import { PlanActionContext } from '@/utils/markdown-plan'
+import { turnModel } from '@/utils/turns'
 import type { ContentBlock } from '@/api/types'
+import { useQuestionAwaitsUser } from '@/components/AskUser'
+import { TurnChangedFiles, WorkSummaryRow } from '@/components/ReaderTurn'
+import { readerSegments, turnChangedFiles } from '@/components/ReaderTurn/segments'
 
 export interface AssistantTurnFooterProps {
   /** Blocks belonging to a single assistant turn (no user blocks inside). */
   turnBlocks: ContentBlock[]
   /** Visual density: 'compact' for narrow panes, 'roomy' for the wide view. */
   size?: 'compact' | 'roomy'
+  /** Name the model and thinking level; the transcript does so only when they changed. */
+  showModel?: boolean
 }
 
 function formatDuration(ms: number): string {
@@ -31,39 +38,41 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${seconds}s`
 }
 
-function shortModelName(modelId: string | null | undefined): string | null {
-  if (!modelId) return null
-  return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
-}
-
-export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact' }: AssistantTurnFooterProps) {
+export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact', showModel = true }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
   const footerData = useMemo(() => {
     // Me lastTurnText walks back to the previous user block; pass the turn directly
     const textContent = lastTurnText(turnBlocks)
     const lastBlock = turnBlocks[turnBlocks.length - 1]
     let responseDurationMs: number | undefined
-    let modelId: string | undefined
     let hasTool = false
+    let outputTokens = 0
+    let costUsd = 0
+    for (const block of turnBlocks) {
+      outputTokens += block.usage?.outputTokens ?? 0
+      costUsd += block.usage?.costUsd ?? 0
+    }
     for (let i = turnBlocks.length - 1; i >= 0; i--) {
       const block = turnBlocks[i]
       responseDurationMs ??= typeof block.responseDurationMs === 'number'
         ? block.responseDurationMs
         : undefined
-      modelId ??= typeof block.extra?.model === 'string' ? block.extra.model : undefined
       hasTool ||= block.type === 'tool'
-      if (responseDurationMs !== undefined && modelId !== undefined && hasTool) break
+      if (responseDurationMs !== undefined && hasTool) break
     }
+    const model = turnModel(turnBlocks)
     return {
       textContent,
       timestamp: lastBlock?.timestamp,
       responseDurationMs,
-      modelId,
-      modelName: shortModelName(modelId),
+      modelName: shortModelName(model?.model),
+      thinkingLevel: model?.thinkingLevel,
       hasTool,
+      outputTokens,
+      costUsd: Math.round(costUsd * 1e8) / 1e8,
     }
   }, [turnBlocks])
-  const { textContent, timestamp, responseDurationMs, modelName } = footerData
+  const { textContent, timestamp, responseDurationMs, modelName, thinkingLevel, outputTokens, costUsd } = footerData
 
   const handleCopy = useCallback(async () => {
     try {
@@ -98,8 +107,14 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
           <TooltipContent>Copy</TooltipContent>
         </Tooltip>
       )}
-      {modelName && (
-        <span className="font-mono text-[11px] text-(--color-text-muted)">{modelName}</span>
+      {showModel && modelName && (
+        <span
+          data-turn-model
+          className="font-mono text-[11px] text-(--color-text-muted)"
+          title={thinkingLevel ? `Thinking level: ${thinkingLevel}` : undefined}
+        >
+          {thinkingLevel ? `${modelName} · ${thinkingLevel}` : modelName}
+        </span>
       )}
       {timestamp && (
         <Tooltip className="text-[11px] text-(--color-text-muted)">
@@ -109,6 +124,15 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
       )}
       {responseDurationMs !== undefined && (
         <span className="font-mono text-[11px] text-(--color-text-muted)">{formatDuration(responseDurationMs)}</span>
+      )}
+      {(outputTokens > 0 || costUsd > 0) && (
+        <span
+          className="font-mono text-[11px] text-(--color-text-muted)"
+          aria-label={`${formatInt(outputTokens)} output tokens${costUsd > 0 ? `, $${costUsd.toFixed(4)}` : ''}`}
+          title={`${formatInt(outputTokens)} output tokens${costUsd > 0 ? ` · $${costUsd.toFixed(4)}` : ''}`}
+        >
+          {costUsd > 0 ? formatSpend(costUsd) : `${formatCompact(outputTokens)} tok`}
+        </span>
       )}
     </div>
   )
@@ -147,8 +171,19 @@ export interface AssistantTurnProps {
   size?: 'compact' | 'roomy'
   /** Callback to switch to Code mode and start implementation of a proposed plan. */
   onStartImplementing?: () => void
+  /** Quote selected plan text into the composer; offered on finished turns. */
+  onCommentOnPlan?: (quote: string) => void
   /** True when interaction mode is actively transitioning to Code mode. */
   isSwitchingInteractionMode?: boolean
+  /** Passed to the footer. */
+  showModel?: boolean
+  /**
+   * Reader mode: the work folds behind one summary row, and a finished
+   * turn lists the files it edited (see ``ReaderTurn/segments.ts``).
+   */
+  reader?: boolean
+  /** Blocks transcript find matched; a fold holding one opens. */
+  findHitBlockIds?: ReadonlySet<string>
 }
 
 export const AssistantTurn = memo(function AssistantTurn({
@@ -162,7 +197,11 @@ export const AssistantTurn = memo(function AssistantTurn({
   renderBlock,
   size = 'compact',
   onStartImplementing,
+  onCommentOnPlan,
   isSwitchingInteractionMode = false,
+  showModel,
+  reader = false,
+  findHitBlockIds,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
   // rather than merely for the stream to stop.
@@ -171,36 +210,62 @@ export const AssistantTurn = memo(function AssistantTurn({
     () => ({
       onStartImplementing: !turnIsOpen ? onStartImplementing : undefined,
       isSwitching: isSwitchingInteractionMode,
+      onComment: !turnIsOpen ? onCommentOnPlan : undefined,
     }),
-    [turnIsOpen, onStartImplementing, isSwitchingInteractionMode],
+    [turnIsOpen, onStartImplementing, isSwitchingInteractionMode, onCommentOnPlan],
   )
+  const awaitsUser = useQuestionAwaitsUser()
+  const segments = useMemo(() => (reader ? readerSegments(blocks, awaitsUser) : null), [reader, blocks, awaitsUser])
+  const changedFiles = useMemo(() => (reader && !turnIsOpen ? turnChangedFiles(blocks) : []), [reader, turnIsOpen, blocks])
+
+  const renderAt = (j: number) => {
+    const block = blocks[j]
+    const absoluteIdx = startIndex + j
+    const isLast = absoluteIdx === totalBlocks - 1
+    // Only the block currently receiving output is streaming. Earlier
+    // blocks of the same turn are finished the moment the next one opens —
+    // flagging them too gave every one of them a typewriter rAF loop with
+    // nothing to animate. `appendStreamed` only ever fills the last block
+    // of a kind, so the block taking deltas is always the trailing one.
+    // Compaction blocks live in `blocks` directly, so their active streaming
+    // state is indicated by `block.extra?.state === 'compacting'`.
+    const isCompactionStreaming = isWorking && block.type === 'compaction' && block.extra?.state === 'compacting'
+    const isStreaming = isCompactionStreaming || (isWorking && absoluteIdx >= finalizedCount && isLast)
+    return (
+      <div key={block.id}>
+        {renderBlock({
+          block,
+          isStreaming,
+          isLast,
+        })}
+      </div>
+    )
+  }
 
   return (
     <PlanActionContext.Provider value={planActionValue}>
       <div className="space-y-2">
-      {blocks.map((block, j) => {
-        const absoluteIdx = startIndex + j
-        const isLast = absoluteIdx === totalBlocks - 1
-        // Only the block currently receiving output is streaming. Earlier
-        // blocks of the same turn are finished the moment the next one opens —
-        // flagging them too gave every one of them a typewriter rAF loop with
-        // nothing to animate. `appendStreamed` only ever fills the last block
-        // of a kind, so the block taking deltas is always the trailing one.
-        // Compaction blocks live in `blocks` directly, so their active streaming
-        // state is indicated by `block.extra?.state === 'compacting'`.
-        const isCompactionStreaming = isWorking && block.type === 'compaction' && block.extra?.state === 'compacting'
-        const isStreaming = isCompactionStreaming || (isWorking && absoluteIdx >= finalizedCount && isLast)
-        return (
-          <div key={block.id}>
-            {renderBlock({
-              block,
-              isStreaming,
-              isLast,
-            })}
-          </div>
-        )
-      })}
-      {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} />}
+      {segments
+        ? segments.map((segment) => {
+            if (segment.kind === 'block') return renderAt(segment.index)
+            const work = segment.indices.map((j) => blocks[j])
+            const lastIndex = segment.indices[segment.indices.length - 1]
+            return (
+              <WorkSummaryRow
+                // Keyed by its first block so the toggle survives new steps.
+                key={`work-${work[0].id}`}
+                blocks={work}
+                live={turnIsOpen}
+                currentStep={turnIsOpen && lastIndex === blocks.length - 1 ? blocks[lastIndex] : null}
+                forceOpen={work.some((block) => findHitBlockIds?.has(block.id) ?? false)}
+              >
+                {segment.indices.map(renderAt)}
+              </WorkSummaryRow>
+            )
+          })
+        : blocks.map((_, j) => renderAt(j))}
+      {changedFiles.length > 0 && <TurnChangedFiles files={changedFiles} />}
+      {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} showModel={showModel} />}
     </div>
     </PlanActionContext.Provider>
   )

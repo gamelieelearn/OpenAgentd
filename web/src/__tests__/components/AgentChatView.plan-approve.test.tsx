@@ -17,6 +17,10 @@ mock.module('@tanstack/react-query', () => ({
   QueryClientProvider: ({ children }: { children: unknown }) => children,
 }))
 mock.module('@/queries/useTodosQuery', () => ({ useTodosQuery: () => ({ data: { todos: [] } }) }))
+mock.module('@/queries/useSessionPlanQuery', () => ({
+  useSessionPlanQuery: () => ({ data: { plan: null } }),
+  useClearSessionPlanMutation: () => ({ mutate: () => {} }),
+}))
 mock.module('@/queries', () => ({ useProvidersQuery: () => ({ data: { providers: [] } }) }))
 mock.module('@/queries/useCommandsQuery', () => ({ useCommandsQuery: () => ({ data: { commands: [] } }) }))
 mock.module('@/queries/useSnippetsQuery', () => ({ useSnippetsQuery: () => ({ data: { snippets: [] } }) }))
@@ -43,11 +47,11 @@ mock.module('@/stores/useToastStore', () => ({
     push: (t: { tone: string; title: string; description?: string }) => { toastedAlerts.push(t) },
   }),
 }))
-mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
+mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
+mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHeader: () => null }))
-mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: () => null }))
-mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
+mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
 mock.module('@/components/FloatingInputComposer', () => ({
   FloatingInputComposer: forwardRef<
     Record<string, (...args: never[]) => void>,

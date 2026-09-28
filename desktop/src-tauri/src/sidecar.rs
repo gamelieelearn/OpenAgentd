@@ -1,15 +1,14 @@
-//! Python sidecar supervisor.
+//! Backend sidecar supervisor for the native `openagentd` binary.
 //!
-//! Spawns `python -m app.cli server serve --handshake --generate-token
-//! --parent-pid <us>`, parses the first JSON handshake line from stdout,
-//! and exposes the child for graceful shutdown.
+//! Spawns `<runtime> server serve --handshake --generate-token
+//! --parent-pid <us>`, where `<runtime>` is the bundled `openagentd`. It
+//! parses the first JSON handshake line from stdout and exposes the child
+//! for graceful shutdown.
 //!
 //! Layout expectations (paths relative to the bundled resources dir):
 //!
-//! - `sidecar/python/bin/python3`: the bundled CPython interpreter.
-//! - `sidecar/site-packages/`: pre-installed openagentd + dependencies.
-//! - `sidecar/_web_dist/`: the built React frontend (also embedded in
-//!   `site-packages/app/_web_dist/`; either works).
+//! - `sidecar/bin/openagentd` (`openagentd.exe` on Windows): the backend.
+//!   The web UI is Tauri's `frontendDist`, not part of the sidecar.
 //!
 //! Windows uses a Job Object with kill-on-close semantics so the sidecar cannot
 //! outlive the desktop shell, including after a crash.
@@ -19,8 +18,7 @@
 //! (fallback), because the anonymous-pipe + tokio overlapped-I/O
 //! combination has failed to deliver the stdout handshake line on real
 //! user installs (v1.22.8). The spawn path also strips the verbatim
-//! ``\\?\`` prefix from the resolved python path — some Python launcher
-//! executables mis-parse it and exit before producing any output.
+//! ``\\?\`` prefix from the resolved binary path (see ``strip_unc_prefix``).
 
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
@@ -97,12 +95,12 @@ impl Sidecar {
             .context("locate resource dir")?;
         let sidecar_root = resource_dir.join("sidecar");
 
-        let python_bin = resolve_python_bin(&sidecar_root)
-            .with_context(|| format!("locate python binary under {}", sidecar_root.display()))?;
+        let backend_bin = resolve_backend_bin(&sidecar_root)
+            .with_context(|| format!("locate backend binary under {}", sidecar_root.display()))?;
         // Tauri's resource resolver can hand back a verbatim ``\\?\``
         // extended-length path on Windows; strip it before spawning —
         // see ``strip_unc_prefix`` for why.
-        let python_bin = strip_unc_prefix(&python_bin);
+        let backend_bin = strip_unc_prefix(&backend_bin);
 
         let log_dir = app
             .path()
@@ -129,67 +127,13 @@ impl Sidecar {
 
         log::info!(
             "spawning sidecar: {} (parent_pid={}, log={})",
-            python_bin.display(),
+            backend_bin.display(),
             parent_pid,
             log_path.display()
         );
 
-        // Explicit script path (not ``-m app.cli``) so we know exactly
-        // which CLI module is invoked. ``-m`` would let Python search
-        // ``sys.path`` and could surface a vendored ``app.cli`` from a
-        // user-extended directory later.
-        let cli_entry = sidecar_root
-            .join("site-packages")
-            .join("app")
-            .join("cli")
-            .join("__main__.py");
-        if !cli_entry.is_file() {
-            return Err(anyhow!(
-                "sidecar bundle missing CLI entry at {}",
-                cli_entry.display()
-            ));
-        }
-
-        let site_packages = sidecar_root.join("site-packages");
-
-        // Bootstrap ``sys.path`` from inside the child instead of via the
-        // ``PYTHONPATH`` environment variable.
-        //
-        // Background:  ``PYTHONPATH`` is inherited by every grandchild
-        // process the agent spawns.  Another Python interpreter the user
-        // has installed (``uv tool install browser-use``, ``pipx`` tools,
-        // Homebrew Python scripts, …) then finds *our* pure-Python
-        // packages on ``sys.path`` before its own.  When that package
-        // tries to load a native extension built for our ABI
-        // (``pydantic_core`` cpython-3.14 vs. the tool's cpython-3.12),
-        // the import crashes with ``ModuleNotFoundError`` because
-        // Python's import system has already committed to our package
-        // directory.
-        //
-        // ``PYTHONHOME`` is still intentionally NOT set — python-build-
-        // standalone is relocatable and finds its own stdlib from the
-        // executable path; setting PYTHONHOME would leak into every
-        // subprocess and override the user's other Python interpreters'
-        // stdlib resolution.
-        //
-        // Paths arrive via ``sys.argv[1]`` (site-packages dir) and
-        // ``sys.argv[2]`` (CLI entry) so we never embed them into Python
-        // source — that would break on directories containing quotes.
-        // ``sys.argv`` is then rewritten to look like a normal
-        // ``python <entry> serve …`` invocation before ``runpy``.
-        let bootstrap = "import sys, runpy, site; \
-             _site = sys.argv.pop(1); \
-             _entry = sys.argv.pop(1); \
-             site.addsitedir(_site); \
-             sys.argv[0] = _entry; \
-             runpy.run_path(_entry, run_name='__main__')";
-
-        let mut cmd = Command::new(&python_bin);
-        cmd.arg("-c")
-            .arg(bootstrap)
-            .arg(site_packages.as_os_str())
-            .arg(cli_entry.as_os_str())
-            .arg("server")
+        let mut cmd = Command::new(&backend_bin);
+        cmd.arg("server")
             .arg("serve")
             .arg("--host")
             .arg("127.0.0.1")
@@ -213,8 +157,8 @@ impl Sidecar {
         // Open backend.log up-front and hand it to the child as stderr.
         // ``Stdio::from(File)`` causes the kernel to write child stderr
         // directly into the file with no intermediate buffer in our process,
-        // so a Python crash within the first millisecond still leaves a
-        // useful traceback on disk.  The previous design piped stderr and
+        // so a crash within the first millisecond still leaves a useful
+        // message on disk.  The previous design piped stderr and
         // copied bytes in a background task; if the child died before the
         // task was scheduled, ``backend.log`` ended up empty and we had
         // nothing to debug from.
@@ -232,22 +176,21 @@ impl Sidecar {
 
         cmd.arg("--parent-pid")
             .arg(parent_pid.to_string())
-            .env("PYTHONUNBUFFERED", "1")
             .env("APP_ENV", app_env)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::from(stderr_for_child));
 
         // Windows-only: tell the child to also persist the handshake to
-        // a file.  ``_emit_handshake`` in ``app/cli/commands/serve.py``
-        // checks this env var and writes the JSON atomically (tmp+rename).
+        // a file.  The backend's ``server serve`` checks this env var and
+        // writes the JSON atomically (tmp+rename).
         #[cfg(windows)]
         if let Some(ref path) = handshake_file {
             cmd.env("OPENAGENTD_HANDSHAKE_FILE", path.as_os_str());
         }
 
-        // Path resolution is delegated to the Python backend
-        // (app.core.paths). It already resolves the XDG-spec directories
+        // Path resolution is delegated to the backend. It already
+        // resolves the XDG-spec directories
         // — ~/.config/openagentd, ~/.local/share/openagentd, etc. — that
         // the CLI uses, with $OPENAGENTD_*_DIR env-var overrides for
         // anyone who wants different paths. Setting Tauri's per-app
@@ -272,7 +215,7 @@ impl Sidecar {
             cmd.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
         }
 
-        let mut child = cmd.spawn().context("spawn python sidecar")?;
+        let mut child = cmd.spawn().context("spawn backend sidecar")?;
 
         #[cfg(windows)]
         {
@@ -482,6 +425,11 @@ impl Sidecar {
         }
     }
 
+    /// Exit status once the process has exited (reaping it), else `None`.
+    pub fn exit_status(&mut self) -> Option<std::process::ExitStatus> {
+        self.child.try_wait().ok().flatten()
+    }
+
     pub async fn shutdown(&mut self) {
         self.shutdown_with_grace(SHUTDOWN_GRACE).await;
     }
@@ -519,16 +467,17 @@ impl Sidecar {
     }
 }
 
-fn resolve_python_bin(sidecar_root: &Path) -> Result<PathBuf> {
+/// Locate the bundled ``openagentd`` backend binary.
+fn resolve_backend_bin(sidecar_root: &Path) -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     let candidates = [
-        sidecar_root.join("python").join("python.exe"),
-        sidecar_root.join("python").join("install").join("python.exe"),
+        sidecar_root.join("bin").join("openagentd.exe"),
+        sidecar_root.join("openagentd.exe"),
     ];
     #[cfg(not(target_os = "windows"))]
     let candidates = [
-        sidecar_root.join("python").join("bin").join("python3"),
-        sidecar_root.join("python").join("install").join("bin").join("python3"),
+        sidecar_root.join("bin").join("openagentd"),
+        sidecar_root.join("openagentd"),
     ];
     for c in candidates.iter() {
         if c.is_file() {
@@ -536,7 +485,7 @@ fn resolve_python_bin(sidecar_root: &Path) -> Result<PathBuf> {
         }
     }
     Err(anyhow!(
-        "no python binary found in sidecar bundle (looked in: {:?})",
+        "no openagentd backend binary found in bundle (looked in: {:?})",
         candidates.iter().map(|p| p.display().to_string()).collect::<Vec<_>>()
     ))
 }
@@ -545,10 +494,10 @@ fn resolve_python_bin(sidecar_root: &Path) -> Result<PathBuf> {
 ///
 /// Tauri's resource resolver canonicalises paths through Windows APIs that
 /// sometimes return the verbatim form (``\\?\C:\Program Files\...``).
-/// ``CreateProcessW`` accepts it, but some launcher ``.exe``s shipped
-/// inside Python distributions mis-parse it as a UNC share name and exit
-/// before their stderr is even wired up — the spawn "succeeds" and then
-/// nothing happens: no handshake, no backend.log content.
+/// ``CreateProcessW`` accepts it, but the child then sees it as its own
+/// executable path, and launchers that derive paths from it have
+/// mis-parsed it as a UNC share name and exited before their stderr was
+/// wired up (v1.22.6): no handshake, no backend.log content.
 ///
 /// No-op on paths without the prefix (and on macOS/Linux, where the
 /// prefix never appears).
@@ -747,33 +696,33 @@ mod tests {
 
     // ``strip_unc_prefix`` is pure string manipulation, so these run on
     // every platform — the v1.22.6 regression (verbatim ``\\?\`` path
-    // handed to a Python launcher .exe, which mis-parses it and dies
-    // silently) is guarded even by macOS/Linux CI.
+    // handed to the sidecar .exe, which mis-parsed it and died silently)
+    // is guarded even by macOS/Linux CI.
 
     #[test]
     fn strip_local_path_verbatim_prefix() {
-        let stripped = strip_unc_prefix(Path::new(r"\\?\C:\Program Files\OpenAgentd\python.exe"));
+        let stripped = strip_unc_prefix(Path::new(r"\\?\C:\Program Files\OpenAgentd\openagentd.exe"));
         assert_eq!(
             stripped,
-            PathBuf::from(r"C:\Program Files\OpenAgentd\python.exe")
+            PathBuf::from(r"C:\Program Files\OpenAgentd\openagentd.exe")
         );
     }
 
     #[test]
     fn strip_unc_share_verbatim_prefix() {
-        let stripped = strip_unc_prefix(Path::new(r"\\?\UNC\server\share\python.exe"));
-        assert_eq!(stripped, PathBuf::from(r"\\server\share\python.exe"));
+        let stripped = strip_unc_prefix(Path::new(r"\\?\UNC\server\share\openagentd.exe"));
+        assert_eq!(stripped, PathBuf::from(r"\\server\share\openagentd.exe"));
     }
 
     #[test]
     fn unprefixed_local_path_is_unchanged() {
-        let p = Path::new(r"C:\Program Files\OpenAgentd\python.exe");
+        let p = Path::new(r"C:\Program Files\OpenAgentd\openagentd.exe");
         assert_eq!(strip_unc_prefix(p), p.to_path_buf());
     }
 
     #[test]
     fn unprefixed_unc_path_is_unchanged() {
-        let p = Path::new(r"\\server\share\python.exe");
+        let p = Path::new(r"\\server\share\openagentd.exe");
         assert_eq!(strip_unc_prefix(p), p.to_path_buf());
     }
 

@@ -69,12 +69,19 @@ export function mergeBlocks(
   return [...blocks, ...liveTail]
 }
 
-export function latestDirectUserBlockId(blocks: ContentBlock[]): string | undefined {
-  for (let i = blocks.length - 1; i >= 0; i--) {
+/**
+ * Blocks after ``id`` that render something; ``null`` once ``id`` is gone.
+ * Scans from the end, so the cost is the number of blocks counted.
+ */
+export function countBlocksAfter(blocks: ContentBlock[], id: string): number | null {
+  let count = 0
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
     const block = blocks[i]
-    if (block.type === 'user' && !block.extra?.from_agent) return block.id
+    if (block.id === id) return count
+    const blank = (block.type === 'text' || block.type === 'thinking') && block.content.trim().length === 0
+    if (!blank) count += 1
   }
-  return undefined
+  return null
 }
 
 const PLAN_CONTENT_REGEX =
@@ -99,15 +106,6 @@ export function hasPlanContent(blocks: ContentBlock[]): boolean {
       typeof b.content === 'string' &&
       PLAN_CONTENT_REGEX.test(stripBacktickCode(b.content)),
   )
-}
-
-/** Check the live suffix first, then the stable finalized history. This avoids
- * scanning a merged session-sized array for every streamed delta. */
-export function latestDirectUserBlockIdFromParts(
-  blocks: ContentBlock[],
-  currentBlocks: ContentBlock[],
-): string | undefined {
-  return latestDirectUserBlockId(currentBlocks) ?? latestDirectUserBlockId(blocks)
 }
 
 /**

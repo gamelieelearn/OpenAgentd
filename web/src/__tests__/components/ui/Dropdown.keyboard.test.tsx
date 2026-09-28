@@ -7,7 +7,7 @@
  * trap's reach and strand keyboard users.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
@@ -155,6 +155,29 @@ describe('Dropdown — keyboard', () => {
     // Second Escape has no menu to close, so it passes through.
     await userEvent.keyboard('{Escape}')
     expect(outerEscape).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes when focus moves outside it, as when a shortcut opens a dialog', async () => {
+    render(
+      <>
+        <Dropdown trigger="Actions" aria-label="Actions">
+          <DropdownItem>Rename</DropdownItem>
+        </Dropdown>
+        <div role="dialog" aria-label="Settings">
+          <button type="button">Save</button>
+        </div>
+      </>,
+    )
+    const actions = screen.getByRole('button', { name: 'Actions' })
+    await userEvent.click(actions)
+
+    // Focus on the menu's own trigger or options keeps it open.
+    act(() => actions.focus())
+    act(() => screen.getByRole('menuitem', { name: 'Rename' }).focus())
+    expect(actions.getAttribute('aria-expanded')).toBe('true')
+
+    act(() => screen.getByRole('button', { name: 'Save' }).focus())
+    expect(actions.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('drops the active-option pointer when closed', async () => {

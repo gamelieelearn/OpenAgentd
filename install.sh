@@ -1,38 +1,64 @@
 #!/bin/sh
-# install.sh — one-command desktop app installer for OpenAgentd on macOS / Linux.
+# install.sh — one-command installer for OpenAgentd on macOS / Linux.
 #
 # Usage:
 #     curl -LsSf https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh
-#     ./install.sh
-#     ./install.sh --version 1.102.0
+#     curl -LsSf https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh -s -- --cli
+#     ./install.sh --version 3.0.0
 #
-# Installs the macOS Apple Silicon app into /Applications or the Linux x86_64
-# .deb package through apt. Release artefacts are downloaded from GitHub.
+# Default: installs the macOS Apple Silicon app into /Applications or the
+# Linux x86_64 .deb package through apt.
+# --cli: installs the `openagentd` command-line binary (macOS arm64/x86_64,
+# Linux x86_64/arm64) into ~/.local/bin, verified against its .sha256, and
+# removes an OpenAgentd v2 (Python) install made with uv or pipx.
+#
+# Release artefacts are downloaded from GitHub. OPENAGENTD_RELEASES_URL
+# overrides the releases base URL (used by tests against a local server).
 
 set -eu
 
 REPO="lthoangg/openagentd"
+RELEASES_URL="${OPENAGENTD_RELEASES_URL:-https://github.com/${REPO}/releases}"
 VERSION=""
+MODE="desktop"
+INSTALL_DIR="${OPENAGENTD_INSTALL_DIR:-$HOME/.local/bin}"
 
 usage() {
     cat <<'EOF'
-OpenAgentd desktop app installer for macOS and Linux.
+OpenAgentd installer for macOS and Linux.
 
 Usage:
-    install.sh [--version VERSION]
+    install.sh [--cli [--dir DIR]] [--version VERSION]
 
 Options:
-    --version VERSION  Install a specific release (for example, 1.102.0).
+    --cli              Install the `openagentd` command-line tool instead of
+                       the desktop app.
+    --dir DIR          Where --cli puts the binary (default: ~/.local/bin,
+                       or $OPENAGENTD_INSTALL_DIR).
+    --version VERSION  Install a specific release (for example, 3.0.0).
     -h, --help         Show this help.
 
 Supported platforms:
-    macOS 11+ on Apple Silicon
-    Debian/Ubuntu Linux on x86_64
+    Desktop app: macOS 11+ on Apple Silicon, Debian/Ubuntu Linux on x86_64
+    CLI:         macOS on Apple Silicon or Intel, Linux (glibc) on x86_64 or arm64
 EOF
 }
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --cli)
+            MODE="cli"
+            shift
+            ;;
+        --dir)
+            shift
+            if [ $# -eq 0 ]; then
+                echo "error: --dir requires an argument" >&2
+                exit 2
+            fi
+            INSTALL_DIR="$1"
+            shift
+            ;;
         --version)
             shift
             if [ $# -eq 0 ]; then
@@ -72,9 +98,9 @@ command -v curl >/dev/null 2>&1 || fail "curl is required"
 
 resolve_version() {
     if [ -z "$VERSION" ]; then
-        step "Finding the latest OpenAgentd desktop release"
+        step "Finding the latest OpenAgentd release"
         release_url="$(curl -LsSf -o /dev/null -w '%{url_effective}' \
-            "https://github.com/${REPO}/releases/latest")" \
+            "${RELEASES_URL}/latest")" \
             || fail "could not resolve the latest GitHub release"
         VERSION="${release_url##*/}"
         VERSION="${VERSION#v}"
@@ -93,7 +119,7 @@ install_macos() {
     command -v tar >/dev/null 2>&1 || fail "tar is required"
 
     asset="OpenAgentd.app.tar.gz"
-    url="https://github.com/${REPO}/releases/download/v${VERSION}/${asset}"
+    url="${RELEASES_URL}/download/v${VERSION}/${asset}"
     archive="$tmpdir/$asset"
 
     step "Downloading ${BOLD}OpenAgentd ${VERSION}${RESET} for macOS"
@@ -125,7 +151,7 @@ install_linux() {
         || fail "Linux desktop installation currently requires Debian/Ubuntu (apt-get)"
 
     asset="OpenAgentd_${VERSION}_amd64.deb"
-    url="https://github.com/${REPO}/releases/download/v${VERSION}/${asset}"
+    url="${RELEASES_URL}/download/v${VERSION}/${asset}"
     package="$tmpdir/$asset"
 
     step "Downloading ${BOLD}OpenAgentd ${VERSION}${RESET} for Linux"
@@ -143,10 +169,137 @@ install_linux() {
     fi
 }
 
+# Rust target triple of the CLI archive for this machine.
+cli_target() {
+    os="$(uname -s)"
+    arch="$(uname -m)"
+    case "$os" in
+        Darwin)
+            # A shell running under Rosetta reports x86_64 on Apple Silicon;
+            # prefer the native build there.
+            if [ "$arch" = "x86_64" ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null || true)" = "1" ]; then
+                arch="arm64"
+            fi
+            case "$arch" in
+                arm64|aarch64) TARGET="aarch64-apple-darwin" ;;
+                x86_64) TARGET="x86_64-apple-darwin" ;;
+                *) fail "unsupported macOS architecture: $arch" ;;
+            esac
+            ;;
+        Linux)
+            if ldd --version 2>&1 | grep -qi musl; then
+                fail "musl-based Linux (e.g. Alpine) is not supported yet; the CLI needs glibc"
+            fi
+            case "$arch" in
+                x86_64|amd64) TARGET="x86_64-unknown-linux-gnu" ;;
+                aarch64|arm64) TARGET="aarch64-unknown-linux-gnu" ;;
+                *) fail "unsupported Linux architecture: $arch" ;;
+            esac
+            ;;
+        *) fail "unsupported platform: $os" ;;
+    esac
+}
+
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | cut -d' ' -f1
+    else
+        fail "sha256sum or shasum is required to verify the download"
+    fi
+}
+
+# OpenAgentd v2 was a Python package. Its uv/pipx shim usually sits in
+# ~/.local/bin too, so remove it *before* placing v3 (uninstalling later
+# could delete the new binary). A pip install cannot be removed safely from
+# here; the PATH check at the end points it out instead.
+remove_v2() {
+    if command -v uv >/dev/null 2>&1 && uv tool list 2>/dev/null | grep -q '^openagentd '; then
+        step "Removing OpenAgentd v2 (installed with uv)"
+        uv tool uninstall openagentd || fail "could not remove the v2 uv tool; run: uv tool uninstall openagentd"
+    fi
+    if command -v pipx >/dev/null 2>&1 && pipx list --short 2>/dev/null | grep -q '^openagentd '; then
+        step "Removing OpenAgentd v2 (installed with pipx)"
+        pipx uninstall openagentd || fail "could not remove the v2 pipx package; run: pipx uninstall openagentd"
+    fi
+}
+
+install_cli() {
+    command -v tar >/dev/null 2>&1 || fail "tar is required"
+    cli_target
+    if command -v brew >/dev/null 2>&1 && brew list --formula openagentd >/dev/null 2>&1; then
+        fail "openagentd is installed with Homebrew; update it with: brew upgrade openagentd"
+    fi
+
+    asset="openagentd-${VERSION}-${TARGET}.tar.gz"
+    url="${RELEASES_URL}/download/v${VERSION}/${asset}"
+    archive="$tmpdir/$asset"
+
+    step "Downloading ${BOLD}openagentd ${VERSION}${RESET} (${TARGET})"
+    note "    Source: $url"
+    curl -LsSf --retry 3 -o "$archive" "$url" || fail "failed to download $asset"
+    curl -LsSf --retry 3 -o "$archive.sha256" "$url.sha256" || fail "failed to download $asset.sha256"
+
+    expected="$(cut -d' ' -f1 < "$archive.sha256")"
+    actual="$(sha256_of "$archive")"
+    [ -n "$expected" ] && [ "$expected" = "$actual" ] \
+        || fail "checksum mismatch for $asset (expected $expected, got $actual)"
+
+    stage="$tmpdir/stage"
+    mkdir -p "$stage"
+    tar -xzf "$archive" -C "$stage"
+    [ -x "$stage/openagentd" ] || fail "the archive does not contain the openagentd binary"
+    "$stage/openagentd" --version >/dev/null 2>&1 \
+        || fail "the downloaded binary does not run on this machine"
+
+    remove_v2
+
+    step "Installing into ${BOLD}${INSTALL_DIR}${RESET}"
+    mkdir -p "$INSTALL_DIR"
+    # Every executable at the archive root, replaced by rename so a running
+    # copy (or a leftover symlink) is swapped rather than written through.
+    for f in "$stage"/*; do
+        [ -f "$f" ] && [ -x "$f" ] || continue
+        name="${f##*/}"
+        cp "$f" "$INSTALL_DIR/.$name.tmp.$$"
+        chmod 755 "$INSTALL_DIR/.$name.tmp.$$"
+        mv -f "$INSTALL_DIR/.$name.tmp.$$" "$INSTALL_DIR/$name"
+    done
+    note "    $("$INSTALL_DIR/openagentd" --version)"
+}
+
+cli_path_hints() {
+    case ":$PATH:" in
+        *":$INSTALL_DIR:"*) ;;
+        *)
+            say "Add ${BOLD}${INSTALL_DIR}${RESET} to your PATH, for example:"
+            say "    echo 'export PATH=\"$INSTALL_DIR:\$PATH\"' >> ~/.profile"
+            return
+            ;;
+    esac
+    found="$(command -v openagentd 2>/dev/null || true)"
+    if [ -n "$found" ] && [ "$found" != "$INSTALL_DIR/openagentd" ]; then
+        say "Warning: ${BOLD}${found}${RESET} comes first on your PATH."
+        say "    If it is OpenAgentd v2 installed with pip, remove it with: python3 -m pip uninstall openagentd"
+    fi
+}
+
 resolve_version
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
+
+if [ "$MODE" = "cli" ]; then
+    install_cli
+    say ""
+    step "${BOLD}Installed openagentd ${VERSION}!${RESET}"
+    cli_path_hints
+    say "Next: run ${BOLD}openagentd --help${RESET}, or ${BOLD}openagentd server start --wait${RESET}."
+    note "      It uses the same config and data as OpenAgentd v2 and the desktop app."
+    say ""
+    exit 0
+fi
 
 case "$(uname -s)" in
     Darwin) install_macos ;;

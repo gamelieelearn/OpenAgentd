@@ -21,20 +21,49 @@
  * request. The frame is fluid — it takes the transcript's width at every
  * breakpoint rather than switching to a separate mobile presentation.
  */
-import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useCallback, type ReactNode } from 'react'
 import { MessageCircleQuestion } from 'lucide-react'
 
-import { answerQuestion, dismissQuestion } from '@/api/client'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { useToastStore } from '@/stores/useToastStore'
-import type { ResolvedQuestion } from '@/stores/useAgentStore'
-import type { QuestionItem } from '@/api/types'
+import type { AgentStoreState, ResolvedQuestion } from '@/stores/useAgentStore'
+import type { ContentBlock, QuestionItem } from '@/api/types'
 import { QuestionCard } from './QuestionCard'
-import { forgetQuestionDraft } from './draft-cache'
+import { useQuestionResolver } from './useQuestionResolver'
 
 /** Mirrors ``question_service.PLACEHOLDER_RESULT``. */
 const PLACEHOLDER_PREFIX = 'Waiting for the user to answer'
+
+/** The ``tool_call_id`` of the question open in this session, or ``null``. */
+function selectOpenQuestionCallId(state: AgentStoreState): string | null {
+  const question = state.pendingQuestion
+  return question !== null && state.sessionId !== null && question.sessionId === state.sessionId
+    ? question.toolCallId
+    : null
+}
+
+/** A persisted result that closes nothing yet: none, or the server's placeholder. */
+function isUnsettledResult(result: string | undefined): boolean {
+  const text = (result ?? '').trim()
+  return !text || text.startsWith(PLACEHOLDER_PREFIX)
+}
+
+/**
+ * Whether an ``ask_user`` block's card still reads "Needs your input": it holds
+ * the open question, or nothing has closed it yet. Reader mode keeps such a
+ * card out of the work fold and folds it once it settles.
+ */
+export function useQuestionAwaitsUser(): (block: ContentBlock) => boolean {
+  const openCallId = useAgentStore(selectOpenQuestionCallId)
+  const resolvedQuestions = useAgentStore((state) => state.resolvedQuestions)
+  return useCallback(
+    (block: ContentBlock) => {
+      const id = block.toolCallId
+      if (openCallId !== null && id === openCallId) return true
+      return !(id && resolvedQuestions[id]) && isUnsettledResult(block.toolResult)
+    },
+    [openCallId, resolvedQuestions],
+  )
+}
 
 /**
  * Recovers the reason from the persisted sentence, which is all a cold load
@@ -71,26 +100,6 @@ const REASON_LABEL: Record<string, string> = {
   interrupted: 'Not asked — interrupted before the question went out',
 }
 
-function errorMessage(cause: unknown, fallback: string): string {
-  return cause instanceof Error && cause.message ? cause.message : fallback
-}
-
-/**
- * The server's "this question is not open any more" reply (see
- * ``_open_question_or_conflict`` / ``_resolve_or_conflict`` in
- * ``routes/agent/questions.py``). Another window or device got there first, or
- * a new message superseded the question. Duck-typed on ``status`` rather than
- * on the client's error class so the check does not depend on which module
- * threw.
- */
-function isAlreadyResolved(cause: unknown): boolean {
-  return (
-    typeof cause === 'object' &&
-    cause !== null &&
-    (cause as { status?: unknown }).status === 409
-  )
-}
-
 export function AskUser({
   toolCallId,
   args,
@@ -103,104 +112,28 @@ export function AskUser({
   result?: string
 }) {
   const pendingQuestion = useAgentStore((state) => state.pendingQuestion)
-  const sessionId = useAgentStore((state) => state.sessionId)
-  const resolveQuestion = useAgentStore((state) => state.resolveQuestion)
-  const markTurnResuming = useAgentStore((state) => state.markTurnResuming)
+  const openCallId = useAgentStore(selectOpenQuestionCallId)
   const resolved = useAgentStore((state) =>
     toolCallId ? state.resolvedQuestions[toolCallId] : undefined,
   )
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  const isOpen =
-    pendingQuestion !== null &&
-    sessionId !== null &&
-    pendingQuestion.sessionId === sessionId &&
-    pendingQuestion.toolCallId === toolCallId
+  const isOpen = pendingQuestion !== null && openCallId === toolCallId
+  const { submitting, error, answer, dismiss } = useQuestionResolver(isOpen ? pendingQuestion : null)
 
   if (!isOpen) {
     const { waiting, body } = describeResolution(resolved, result, args)
     return <QuestionShell waiting={waiting}>{body}</QuestionShell>
   }
 
-  const questionId = pendingQuestion.id
-
-  const resolve = async (
-    action: () => Promise<{ resumed: boolean }>,
-    failure: string,
-    // Only an answer restarts the turn; a dismissal reports ``resumed: false``
-    // by design, and warning about that would turn "not now" into an error.
-    expectResume: boolean,
-    answers: string[][] | null,
-    reason: string | null,
-  ) => {
-    if (submitting) return
-    setSubmitting(true)
-    setError(null)
-    try {
-      const outcome = await action()
-      forgetQuestionDraft(questionId)
-      // Record the outcome here as well as on the broadcast. Either can land
-      // first; the store guard makes the second a no-op. Clearing without
-      // recording would strand the card in "waiting" — the broadcast then has
-      // no open question left to attach the outcome to.
-      resolveQuestion(questionId, answers, reason)
-      if (expectResume) {
-        if (outcome.resumed) {
-          // The restarted turn adds no user block, so nothing else marks it
-          // live until its first token — show the "about to respond" dots now.
-          markTurnResuming()
-        } else {
-          useToastStore.getState().push({
-            tone: 'error',
-            title: 'Answer saved, but the agent did not restart',
-            description: 'Send a message to continue the turn.',
-          })
-        }
-      }
-    } catch (cause) {
-      // Retrying cannot succeed: the row is gone. Close the card with what we
-      // know; the persisted result shows the real outcome on the next load.
-      // (Normally the resolution broadcast already closed it, and the store
-      // guard makes this a no-op.)
-      if (isAlreadyResolved(cause)) {
-        forgetQuestionDraft(questionId)
-        resolveQuestion(questionId, null, 'resolved_elsewhere')
-        return
-      }
-      // Keep the form and the draft: the selection is still valid and the user
-      // should be able to retry without re-picking anything.
-      setError(errorMessage(cause, failure))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   return (
-    <QuestionShell waiting>
+    <QuestionShell waiting open>
       <QuestionCard
-        key={questionId}
+        key={pendingQuestion.id}
         question={pendingQuestion}
         submitting={submitting}
         error={error}
-        onSubmit={(answers) =>
-          void resolve(
-            () => answerQuestion(sessionId, questionId, answers),
-            'Could not send the answer.',
-            true,
-            answers,
-            null,
-          )
-        }
-        onDismiss={() =>
-          void resolve(
-            () => dismissQuestion(sessionId, questionId),
-            'Could not dismiss the question.',
-            false,
-            null,
-            'dismissed',
-          )
-        }
+        onSubmit={answer}
+        onDismiss={dismiss}
       />
     </QuestionShell>
   )
@@ -209,13 +142,16 @@ export function AskUser({
 /** The card frame. Fluid width — no separate mobile presentation. */
 function QuestionShell({
   waiting,
+  open = false,
   children,
 }: {
   waiting: boolean
+  /** Still answerable here; the transcript's timeline marks it. */
+  open?: boolean
   children: ReactNode
 }) {
   return (
-    <div className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
+    <div data-question-waiting={open ? '' : undefined} className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
       <div className="flex items-center gap-1.5 border-b border-(--color-border) px-3 py-1.5 text-[11px] font-medium tracking-wide text-(--color-text-muted) uppercase">
         <MessageCircleQuestion size={12} aria-hidden />
         {waiting ? 'Needs your input' : 'Your input'}
@@ -256,14 +192,14 @@ function describeResolution(
     }
   }
 
-  const text = (result ?? '').trim()
   // A cold load mid-wait: the row still holds the placeholder, and the store had
   // no open question for this call (another device answered, or this client
   // reconnected after the fact). Still unanswered, so the label stays "waiting".
-  if (!text || text.startsWith(PLACEHOLDER_PREFIX)) {
+  if (isUnsettledResult(result)) {
     return { waiting: true, body: <QuestionNote text="Waiting for an answer…" /> }
   }
 
+  const text = (result ?? '').trim()
   const pairs = [...text.matchAll(/"([^"]*)"="([^"]*)"/g)].map(([, question, answer]) => ({
     question,
     answer,

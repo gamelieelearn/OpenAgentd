@@ -6,7 +6,7 @@
  * - `AssistantTurnFooter`: `useCallback` on handleCopy — stable across re-renders.
  * - `TodosPopover`: `sortedTodos` with `useMemo` — sort order is correct and
  *   stable regardless of the input array reference changing.
- * - `CodingFileViewerPanel/TextPreview`: `lines` memoized — the same content
+ * - `FileViewerPanel/TextPreview`: `lines` memoized — the same content
  *   string produces the same line array, and selection state changes don't
  *   corrupt the rendered text.
  * - `Sidebar`: `dateGroups` with `useMemo` — group labels are deterministic.
@@ -109,7 +109,7 @@ describe("TodosPopover — memoized sort order", () => {
     ]
 
     render(
-      <TodosPopover open onOpenChange={() => {}} todos={todos} sessionId="s1" />,
+      <TodosPopover open onOpenChange={() => {}} todos={todos} />,
     )
 
     const items = screen.getAllByRole("listitem")
@@ -124,7 +124,7 @@ describe("TodosPopover — memoized sort order", () => {
     ]
 
     render(
-      <TodosPopover open onOpenChange={() => {}} todos={todos} sessionId="s1" />,
+      <TodosPopover open onOpenChange={() => {}} todos={todos} />,
     )
 
     const items = screen.getAllByRole("listitem")
@@ -141,7 +141,7 @@ describe("TodosPopover — memoized sort order", () => {
     ]
 
     render(
-      <TodosPopover open onOpenChange={() => {}} todos={todos} sessionId="s1" />,
+      <TodosPopover open onOpenChange={() => {}} todos={todos} />,
     )
 
     const items = screen.getAllByRole("listitem")
@@ -158,7 +158,7 @@ describe("TodosPopover — memoized sort order", () => {
     ]
 
     render(
-      <TodosPopover open onOpenChange={() => {}} todos={todos} sessionId="s1" />,
+      <TodosPopover open onOpenChange={() => {}} todos={todos} />,
     )
 
     const bar = screen.getByRole("progressbar")
@@ -171,7 +171,7 @@ describe("TodosPopover — memoized sort order", () => {
     ]
 
     render(
-      <TodosPopover open onOpenChange={() => {}} todos={todos} sessionId="s1" />,
+      <TodosPopover open onOpenChange={() => {}} todos={todos} />,
     )
 
     const bar = screen.getByRole("progressbar")
@@ -186,7 +186,7 @@ describe("TodosPopover — memoized sort order", () => {
     ]
 
     render(
-      <TodosPopover open onOpenChange={() => {}} todos={todos} sessionId="s1" />,
+      <TodosPopover open onOpenChange={() => {}} todos={todos} />,
     )
 
     expect(screen.getByText("2/3 done")).toBeTruthy()
@@ -194,7 +194,7 @@ describe("TodosPopover — memoized sort order", () => {
 
   it("does not render progress bar when todos list is empty", () => {
     render(
-      <TodosPopover open onOpenChange={() => {}} todos={[]} sessionId="s1" />,
+      <TodosPopover open onOpenChange={() => {}} todos={[]} />,
     )
 
     expect(screen.queryByRole("progressbar")).toBeNull()

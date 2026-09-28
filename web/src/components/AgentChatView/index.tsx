@@ -19,30 +19,73 @@ import { AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AgentView } from '../AgentView'
+import type { FileRefOpener } from '../FileRefLink'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
-import { CodingSidebar } from '../CodingSidebar'
-import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
-import { CodingFileViewerPanel } from '../CodingFileViewerPanel'
+import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
+import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
 import { useProvidersQuery } from '@/queries'
+import { renameSession } from '@/queries/session-rename'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
+import { useLayoutStore } from '@/stores/useLayoutStore'
+import { useMarkSessionRead } from '@/stores/useUnreadStore'
+import { useElementWidthSelect } from '@/hooks/use-element-width'
+import { useReturnFocusFromDock } from '@/hooks/use-dock-focus'
+import { dockOverlaysChat } from '@/lib/workbench-layout'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
-import type { ContentBlock, MessageAttachment } from '@/api/types'
+import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
+import { FolderCode, FileUp } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { usePlatform } from '@/hooks/use-platform'
+import { useTauriDrag } from '@/hooks/use-tauri-drag'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { type InputComposerHandle } from '../InputComposer'
+import { FloatingInputComposer } from '../FloatingInputComposer'
+import { AppFooter } from '../AppFooter'
+import { WorkspacePanel } from '../WorkspacePanel'
+import { workspaceLabel } from '@/utils/workspace'
+import { workspaceRelativePath } from '@/utils/file-refs'
+import type {
+  AgentCapabilities as AgentCapabilitiesType,
+  ContentBlock,
+  MessageAttachment,
+} from '@/api/types'
+import { AgentChatHeader } from './AgentChatHeader'
+import { AgentChatPanels } from './AgentChatPanels'
+import { ProviderSetupNotice } from './ProviderSetupNotice'
+import { retryLatestPrompt } from './retryPrompt'
+import { useDragDrop } from './useDragDrop'
+import { useOverlayState } from './useOverlayState'
+import { useSessionBootstrap } from './useSessionBootstrap'
+import { useSlashCommands } from './useSlashCommands'
+import { useCommandPalette } from './useCommandPalette'
+import { composerHistoryPrompts, newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
+import { deliverFromComposer, stopTurn, useReleaseHeldMessages } from './heldMessages'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
 const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
 
+const isInReviewDock = (element: Element) => element.closest('[data-review-dock]') !== null
+/** Stable selector: the shell only needs to know when the split stops fitting. */
+const isCenterTooNarrow = (width: number) => dockOverlaysChat(width, false)
+
 interface ActiveAgentViewProps {
   emptyState?: React.ReactNode
   onMentionFileOpen?: (path: string) => void
+  fileRefOpener?: FileRefOpener
   onStartImplementing?: () => void
+  onCommentOnPlan?: (quote: string) => void
+  onRetry?: () => void
+  onSwitchModel?: () => void
   isSwitchingInteractionMode?: boolean
   findOpen?: boolean
   findQuery?: string
@@ -50,12 +93,18 @@ interface ActiveAgentViewProps {
   onFindQueryChange?: (query: string) => void
   onFindClose?: () => void
   onFindActiveIndexChange?: (index: number) => void
+  /** The floating composer is up and carries the jump-to-latest chip. */
+  jumpToLatestInComposer?: boolean
 }
 
 const ActiveAgentView = memo(function ActiveAgentView({
   emptyState,
   onMentionFileOpen,
+  fileRefOpener,
   onStartImplementing,
+  onCommentOnPlan,
+  onRetry,
+  onSwitchModel,
   isSwitchingInteractionMode,
   findOpen,
   findQuery,
@@ -63,6 +112,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
   onFindQueryChange,
   onFindClose,
   onFindActiveIndexChange,
+  jumpToLatestInComposer,
 }: ActiveAgentViewProps) {
   const activeStream = useAgentStore((s) => {
     if (s.leadName && s.agentStreams[s.leadName]) return s.agentStreams[s.leadName]
@@ -85,8 +135,12 @@ const ActiveAgentView = memo(function ActiveAgentView({
       isError={activeStatus === 'error'}
       lastError={activeLastError}
       onMentionFileOpen={onMentionFileOpen}
+      fileRefOpener={fileRefOpener}
       emptyState={emptyState}
       onStartImplementing={onStartImplementing}
+      onCommentOnPlan={onCommentOnPlan}
+      onRetry={onRetry}
+      onSwitchModel={onSwitchModel}
       isSwitchingInteractionMode={isSwitchingInteractionMode}
       findOpen={findOpen}
       findQuery={findQuery}
@@ -94,46 +148,30 @@ const ActiveAgentView = memo(function ActiveAgentView({
       onFindQueryChange={onFindQueryChange}
       onFindClose={onFindClose}
       onFindActiveIndexChange={onFindActiveIndexChange}
+      jumpToLatestInComposer={jumpToLatestInComposer}
     />
   )
 })
-import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { AlertCircle, FolderCode, X, FileUp } from 'lucide-react'
-import { useIsMobile } from '@/hooks/use-mobile'
-import { usePlatform } from '@/hooks/use-platform'
-import { useTauriDrag } from '@/hooks/use-tauri-drag'
-import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/ui/empty-state'
-import { type InputComposerHandle } from '../InputComposer'
-import { FloatingInputComposer } from '../FloatingInputComposer'
-import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
-import { AgentChatHeader } from './AgentChatHeader'
-import { AgentChatPanels } from './AgentChatPanels'
-import { AppFooter } from '../AppFooter'
-import { workspaceLabel } from '@/utils/workspace'
-import { useDragDrop } from './useDragDrop'
-import { useOverlayState } from './useOverlayState'
-import { useSessionBootstrap } from './useSessionBootstrap'
-import { useSlashCommands } from './useSlashCommands'
-import { useCommandPalette } from './useCommandPalette'
-import { parseBuiltInSlashCommand } from './helpers'
 
 interface AgentChatViewProps {
   sessionId?: string
   workspace?: string | null
-  codingSessionLoading?: boolean
+  sessionLoading?: boolean
 }
 
-export function AgentChatView({ sessionId, workspace = null, codingSessionLoading = false }: AgentChatViewProps) {
+export function AgentChatView({ sessionId, workspace = null, sessionLoading = false }: AgentChatViewProps) {
   const navigate = useNavigate()
   const openSettings = useSettingsStore((s) => s.openSettings)
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
+  const handleRenameSession = useCallback((id: string, title: string) => {
+    renameSession(queryClient, id, title).catch(() => pushToast({ tone: 'error', title: 'Could not rename session' }))
+  }, [queryClient, pushToast])
   const isMobile = useIsMobile()
   const { isMacOverlay } = usePlatform()
   const storeWorkspace = useAgentStore((s) => s._workspace)
   const effectiveWorkspace = workspace || storeWorkspace
-  // Chat sessions run on the same screen as coding workspaces but the root is
+  // Chat sessions run on the same screen as project workspaces but the root is
   // not a repository: labels read "Chat" and the dock has no Git tab.
   const chatWorkspace = useChatWorkspace()
   const isChatWorkspace = isChatWorkspacePath(effectiveWorkspace, chatWorkspace)
@@ -145,6 +183,8 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   const dragHandlers = useTauriDrag()
   const inputRef = useRef<InputComposerHandle>(null)
   const mainColumnRef = useRef<HTMLDivElement>(null)
+  // Handing focus back from the dock must not summon a collapsed composer.
+  const returnFocusToComposer = useCallback(() => inputRef.current?.focus({ expand: false }), [])
 
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
   const [isSwitchingInteractionMode, setIsSwitchingInteractionMode] = useState(false)
@@ -232,6 +272,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
   const paletteOpen = useUIStore((s) => s.paletteOpen)
   const quickOpenOpen = useUIStore((s) => s.quickOpenOpen)
+  const quickOpenQuery = useUIStore((s) => s.quickOpenQuery)
   const toggleScheduler = useUIStore((s) => s.toggleScheduler)
   const toggleAgentCapabilities = useUIStore((s) => s.toggleAgentCapabilities)
   const togglePalette = useUIStore((s) => s.togglePalette)
@@ -244,38 +285,44 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   const {
     mobileSidebarOpen,
     setMobileSidebarOpen,
-    codingPanel,
-    setCodingPanel,
-    codingFileViewer,
-    setCodingFileViewer,
-    codingFileViewerDetached,
-    setCodingFileViewerDetached,
-    codingFileOpenKey,
-    setCodingFileOpenKey,
+    workspacePanel,
+    setWorkspacePanel,
+    fileViewer,
+    setFileViewer,
+    fileOpenKey,
+    setFileOpenKey,
     terminalOpenKey,
     handledTerminalOpenKeyRef,
-    codingSidebarCollapsed,
-    setCodingSidebarCollapsed,
+    dockViewRequest,
+    handledDockViewKeyRef,
+    dockActiveView,
+    setDockActiveView,
+    dockViewsEnabled,
+    sidebarCollapsed,
+    setSidebarCollapsed,
     openWorkspaceDialogKey,
     showTodos,
     showMobileActions,
     handleWorkspaceFiles,
-    handleCodingSidebarToggle,
+    handleSidebarToggle,
     handleOpenWorkspaceDialog,
-    handleCodingFileSelect,
+    handleFileSelect,
     handleMentionFileOpen,
+    handleFileRefOpen,
     closeMobileActionsMenu,
     handleSetShowMobileActions,
     handleToggleAgentCapabilities,
     handleToggleScheduler,
     handleTogglePalette,
+    handleSwitchModel,
     handleToggleQuickOpen,
     handleSetShowTodos,
+    handleToggleTasks,
     handleOpenTerminal,
     edgeSwipeHandlers,
     sidebarDragOffset,
     actionsDragOffset,
-    codingPanelDragOffset,
+    workspacePanelDragOffset,
   } = useOverlayState({
     isMobile,
     workspace,
@@ -288,15 +335,32 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   const leadBlocks = useAgentStore((s) => (
     s.leadName ? s.agentStreams[s.leadName]?.blocks ?? EMPTY_BLOCKS : EMPTY_BLOCKS
   ))
-  const historyPrompts = useMemo(() => (
-    [...leadBlocks]
-      .reverse()
-      .filter((block) => block.type === 'user' && block.content.trim())
-      .map((block) => block.content)
-  ), [leadBlocks])
+  const historyPrompts = useMemo(() => composerHistoryPrompts(leadBlocks), [leadBlocks])
+  // ↑/↓ recall in the composer shows the recalled prompt in the transcript;
+  // walking back out to an empty draft returns to the live end, as ⌥⌘↓ past
+  // the newest prompt does. Reads blocks at call time to stay stable.
+  const handleHistoryRecall = useCallback((prompt: string | null) => {
+    const transcript = useTranscriptFollowStore.getState()
+    if (prompt === null) {
+      transcript.jumpToLatest?.()
+      return
+    }
+    const { leadName, agentStreams } = useAgentStore.getState()
+    const id = newestUserBlockId((leadName ? agentStreams[leadName]?.blocks : undefined) ?? EMPTY_BLOCKS, prompt)
+    if (id) transcript.showPrompt?.(id)
+  }, [])
 
   const { data: todosData } = useTodosQuery(sessionIdState)
   const todos = todosData?.todos ?? []
+  const { data: planData } = useSessionPlanQuery(sessionIdState)
+  const plan = planData?.plan ?? null
+  const { mutate: clearPlan } = useClearSessionPlanMutation()
+  const handleClearPlan = useCallback(() => {
+    if (!sessionIdState) return
+    clearPlan(sessionIdState, {
+      onError: (err) => pushToast({ tone: 'error', title: 'Could not clear the plan', description: err instanceof Error ? err.message : String(err) }),
+    })
+  }, [sessionIdState, clearPlan, pushToast])
   const providersQ = useProvidersQuery()
   const hasConfiguredModelProvider = providersQ.data?.providers.some(
     (provider) => provider.kind !== 'local' && provider.is_configured,
@@ -304,9 +368,9 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
 
   // Lead capabilities — used to drive composer affordances (slash menu).
   const agentWorkspace = workspace
-  const hasCodingWorkspace = Boolean(workspace)
-  const isCodingSessionLoading = codingSessionLoading
-  const { data: agentRegistryData, isLoading: agentRegistryLoading } = useAgentsQuery(agentWorkspace, hasCodingWorkspace)
+  const hasWorkspace = Boolean(workspace)
+  const isSessionLoading = sessionLoading
+  const { data: agentRegistryData, isLoading: agentRegistryLoading } = useAgentsQuery(agentWorkspace, hasWorkspace)
   const leadAgent = agentRegistryData?.agents?.[0]
   const leadCapabilities: AgentCapabilitiesType | undefined = leadAgent?.capabilities
 
@@ -323,7 +387,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     return leadAgent?.summary_trigger_tokens
   }, [sessionModel, registryData, leadAgent])
   // Workspace file/folder list for the InputComposer's @-mention picker.
-  // Fetched lazily when a coding workspace is available.
+  // Fetched lazily once a workspace is attached.
   const { refs: fileRefs } = useFileRefsQuery({
     workspace,
     enabled: fileRefsEnabled && Boolean(workspace),
@@ -343,13 +407,14 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     handleNewSession,
     handleDraftValueChange,
     handleAddFileComment,
+    handleAddPlanComment,
   } = useSessionBootstrap({
     sessionId,
     workspace,
     chatWorkspace,
     agentWorkspace,
-    hasCodingWorkspace,
-    isCodingSessionLoading,
+    hasWorkspace,
+    isSessionLoading,
     isMobile,
     paletteOpen,
     sessionModel,
@@ -383,7 +448,12 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     hasVisibleMessages: leadHasVisibleBlocks,
   })
 
+  useReleaseHeldMessages({ workspace, sessionId: sessionIdState, composerRef: inputRef })
+  useMarkSessionRead(sessionIdState)
+
   const handleFindInTranscript = useCallback(() => {
+    // Find searches the chat, which a maximized dock covers.
+    useLayoutStore.getState().setDockMaximized(false)
     setFindOpen(true)
     setFindActiveIndex(0)
   }, [])
@@ -397,21 +467,40 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     workspace,
     quickOpenOpen,
     sessionIdState,
-    navigate,
+    workspacePanelOpen: workspacePanel !== null,
     handleNewSession,
     handleWorkspaceFiles,
-    handleCodingSidebarToggle,
+    handleSidebarToggle,
     handleToggleAgentCapabilities,
-    handleSetShowTodos,
+    handleToggleTasks,
     handleTogglePalette,
     handleToggleQuickOpen,
     handleToggleScheduler,
     handleOpenTerminal,
     handleFindInTranscript,
-    setCodingFileViewer,
-    setCodingFileViewerDetached,
-    setCodingFileOpenKey,
-    setCodingPanel,
+    setFileViewer,
+    setFileOpenKey,
+    setWorkspacePanel,
+  })
+
+  // Review dock geometry: a ratio of the center region (chat + dock), with a
+  // maximized / narrow-window overlay that covers the chat instead of
+  // squeezing it. The chat stays mounted underneath so its scroll position
+  // and live stream survive a maximize round-trip. The dock measures the
+  // center itself; the shell subscribes to one bit so a sidebar tween or a
+  // window drag does not re-render this whole tree every frame.
+  const centerRef = useRef<HTMLDivElement>(null)
+  const centerTooNarrow = useElementWidthSelect(centerRef, isCenterTooNarrow)
+  const dockMaximized = useLayoutStore((s) => s.dockMaximized)
+  const chatCoveredByDock = !isMobile && Boolean(workspace) && workspacePanel !== null && (dockMaximized || centerTooNarrow)
+  // The dock claims focus while it covers the chat; give it back when it
+  // closes or uncovers the chat so it is never left on <body>.
+  useReturnFocusFromDock({
+    open: workspacePanel !== null,
+    covered: chatCoveredByDock,
+    enabled: !isMobile,
+    isInDock: isInReviewDock,
+    onReturn: returnFocusToComposer,
   })
 
   const handleStartImplementing = useCallback(async () => {
@@ -441,6 +530,17 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     }
   }, [effectiveWorkspace, isSwitchingInteractionMode, sessionIdState, sendMessage, pushToast])
 
+  const handleRetry = useCallback(() => {
+    if (effectiveWorkspace) void retryLatestPrompt(effectiveWorkspace)
+  }, [effectiveWorkspace])
+
+  const fileRefOpener = useMemo<FileRefOpener | undefined>(() => (workspace
+    ? {
+        canOpen: (ref) => workspaceRelativePath(ref.path, workspace) !== null,
+        open: (ref) => void handleFileRefOpen(ref),
+      }
+    : undefined), [handleFileRefOpen, workspace])
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -459,13 +559,13 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           workspace={workspace}
           chatWorkspace={chatWorkspace}
           sessionTitle={sessionTitle}
-          onCodingSidebarToggle={handleCodingSidebarToggle}
+          onSidebarToggle={handleSidebarToggle}
           headerTokens={headerTokens}
           sessionId={sessionIdState}
           todos={todos}
-          showTodos={showTodos}
-          setShowTodos={handleSetShowTodos}
-          codingPanel={codingPanel}
+          onToggleTasks={handleToggleTasks}
+          tasksViewActive={dockViewsEnabled ? workspacePanel !== null && dockActiveView === 'tasks' : showTodos}
+          workspacePanel={workspacePanel}
 
         onWorkspaceFiles={handleWorkspaceFiles}
         agentCapabilitiesOpen={agentCapabilitiesOpen}
@@ -477,28 +577,34 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         onFindInTranscript={handleFindInTranscript}
         onOpenTerminal={workspace && !isChatWorkspace ? handleOpenTerminal : undefined}
         onCloseMobileActionsMenu={closeMobileActionsMenu}
+        onOpenPalette={handleTogglePalette}
+        onQuickOpen={workspace ? handleToggleQuickOpen : undefined}
+        onRenameSession={handleRenameSession}
       />
 
-      {/* Body row — sidebar (or coding rail) + main content column. On
+      {/* Body row — sidebar + main content column. On
           mobile the Sidebar is position:fixed (overlay drawer), so it
           takes no space here and the main column is always full-width. */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <CodingSidebar
+        <Sidebar
             currentSessionId={sessionIdState || undefined}
             workspace={workspace}
-            onCollapse={() => setCodingSidebarCollapsed(true)}
+            onCollapse={() => setSidebarCollapsed(true)}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
             onCommandPalette={handleTogglePalette}
-            desktopCollapsed={codingSidebarCollapsed}
+            desktopCollapsed={sidebarCollapsed}
             mobileOpen={mobileSidebarOpen}
             mobileDragOffset={sidebarDragOffset}
             onMobileClose={() => setMobileSidebarOpen(false)}
         />
 
+        <div ref={centerRef} className="relative flex min-w-0 flex-1 overflow-hidden">
         <main
           id="main"
           ref={mainColumnRef}
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
+          inert={chatCoveredByDock}
+          aria-hidden={chatCoveredByDock || undefined}
           // Opts this column out of the global stray-file-drop guard
           // (usePreventStrayFileDrop) — drops landing here are ours to handle.
           data-file-drop-zone
@@ -517,53 +623,18 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
               </div>
             </div>
           )}
-        {setupRequired && (
-          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-sm border border-(--accent-blue)/35 bg-(--accent-blue-soft) p-3 text-sm text-(--color-text) sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 gap-3">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-(--accent-blue)" aria-hidden="true" />
-              <div className="min-w-0">
-                <p className="font-medium">Configure a provider to start chatting</p>
-                <p className="mt-0.5 text-xs text-(--color-text-muted)">{setupRequired.message}</p>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
-              <Button
-                size="sm"
-                onClick={() => openSettings('providers')}
-              >
-                Open Providers
-              </Button>
-              <button
-                type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-8 md:w-8"
-                onClick={dismissSetupRequired}
-                aria-label="Dismiss provider setup notice"
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-        )}
-        {!setupRequired && !hasConfiguredModelProvider && (
-          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-sm border border-(--color-border) bg-(--bg-card) p-3 text-sm text-(--color-text) sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 gap-3">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-(--color-accent)" aria-hidden="true" />
-              <div className="min-w-0">
-                <p className="font-medium">No model provider configured</p>
-                <p className="mt-0.5 text-xs text-(--color-text-muted)">Connect a provider once, then OpenAgentd can seed and run your default agent.</p>
-              </div>
-            </div>
-            <Button size="sm" onClick={() => openSettings('providers')}>
-              Open Providers
-            </Button>
-          </div>
-        )}
-        {isCodingSessionLoading ? (
+        <ProviderSetupNotice
+          setupMessage={setupRequired?.message ?? null}
+          hasConfiguredProvider={hasConfiguredModelProvider}
+          onOpenProviders={() => openSettings('providers')}
+          onDismiss={dismissSetupRequired}
+        />
+        {isSessionLoading ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
               <h2 className="text-sm font-medium text-(--color-text)">
-                {isChatWorkspace ? 'Opening chat…' : 'Opening coding session…'}
+                {isChatWorkspace ? 'Opening chat…' : 'Opening session…'}
               </h2>
               <p className="mt-1 text-xs text-(--color-text-muted)">
                 {isChatWorkspace
@@ -577,7 +648,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
               <h2 className="text-sm font-medium text-(--color-text)">
-                {isChatWorkspace ? 'Opening chat…' : 'Opening coding workspace…'}
+                {isChatWorkspace ? 'Opening chat…' : 'Opening workspace…'}
               </h2>
               <p className="mt-1 text-xs text-(--color-text-muted)">
                 {isChatWorkspace ? 'Preparing Chat' : `Preparing agents for ${workspace}`}
@@ -588,7 +659,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           <EmptyState
             icon={FolderCode}
             title="No workspace attached"
-            body="Choose a local project folder from the sidebar to start a coding session."
+            body="Choose a local project folder from the sidebar to start a session."
             action={
               <Button type="button" onClick={handleOpenWorkspaceDialog}>
                 Open workspace
@@ -599,7 +670,11 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           <div className="flex flex-1 flex-col min-h-0">
             <ActiveAgentView
               onMentionFileOpen={handleMentionFileOpen}
+              fileRefOpener={fileRefOpener}
               onStartImplementing={handleStartImplementing}
+              onCommentOnPlan={parentSessionId ? undefined : handleAddPlanComment}
+              onRetry={handleRetry}
+              onSwitchModel={handleSwitchModel}
               isSwitchingInteractionMode={isSwitchingInteractionMode}
               findOpen={findOpen}
               findQuery={findQuery}
@@ -614,12 +689,14 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 setFindActiveIndex(0)
               }}
               onFindActiveIndexChange={setFindActiveIndex}
+              jumpToLatestInComposer={!parentSessionId && Boolean(workspace)}
               emptyState={
                 effectiveWorkspace ? (
                   <div className="flex flex-col items-center justify-center py-16">
                     <WorkspaceInfoCard
                       workspace={effectiveWorkspace}
                       chatWorkspace={isChatWorkspace}
+                      currentSessionId={sessionIdState}
                     />
                   </div>
                 ) : undefined
@@ -638,14 +715,14 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 <span className="truncate">Subagents are orchestrated by the lead agent. Switch to the lead session to send instructions.</span>
               </div>
               <Button
-                size="sm"
+                size="xs"
                 variant="default"
                 onClick={() => {
                   if (parentSessionId) {
-                    navigate({ to: '/coding/$sessionId', params: { sessionId: parentSessionId } })
+                    navigate({ to: '/$sessionId', params: { sessionId: parentSessionId } })
                   }
                 }}
-                className="shrink-0 h-6 text-xs px-2.5"
+                className="shrink-0"
               >
                 Return to Lead
               </Button>
@@ -655,7 +732,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           <FloatingInputComposer
             ref={inputRef}
             boundsRef={mainColumnRef}
-            onSubmit={async (content: string, files?: File[], mentions?: string[]) => {
+            onSubmit={async (content, files, mentions, delivery) => {
               if (!workspace) return
               if (!files || files.length === 0) {
                 const builtInCmd = parseBuiltInSlashCommand(content)
@@ -665,37 +742,23 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 }
               }
               const expanded = await expandUserCommand(content)
-              const current = useAgentStore.getState()
-              const delivered = await sendMessage(expanded, files, {
-                workspace,
-                model: current.sessionModel || null,
-                thinkingLevel: current.sessionThinkingLevel || null,
-                fastMode: current.sessionFastMode,
-                mentions,
-              })
-              // The composer cleared itself the moment this handler was
-              // called. If the send never landed, hand the draft and its
-              // attachments back instead of letting them disappear with an
-              // error banner as the only trace.
-              if (!delivered) inputRef.current?.restoreLastSubmission()
+              await deliverFromComposer(workspace, inputRef.current, { content: expanded, files, mentions }, delivery)
             }}
-            onStop={() => useAgentStore.getState().stopAgent()}
+            onStop={() => { void stopTurn(inputRef.current) }}
             onSlashCommand={handleSlashCommand}
             onSnippetCommand={handleSnippetCommand}
             slashCommands={slashCommands}
             snippetCommands={snippetCommands}
             historyPrompts={historyPrompts}
+            onHistoryRecall={handleHistoryRecall}
             onValueChange={handleDraftValueChange}
             fileRefs={fileRefs}
             onFileRefsNeeded={() => setFileRefsEnabled(true)}
             isStreaming={isAgentWorking}
-            disabled={isCodingSessionLoading}
+            disabled={isSessionLoading}
             placeholder={
-              isAgentWorking
-                ? 'Agent working… type to interrupt'
-                : isChatWorkspace
-                  ? 'Ask anything…'
-                  : `Coding in ${workspaceName}`
+              // While a turn runs the composer shows its own queue/stop hint.
+              isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
             }
             capabilities={leadCapabilities}
             // A switch requested mid-turn is queued server-side, so the toggle
@@ -717,44 +780,37 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           />
         ) : null}
         </main>
-        {/* Workspace files panel — coding workspace only.
-            Desktop: in-flow flex sibling — pushes <main> left (no overlay).
-            Mobile: fixed overlay from the right. */}
-        {workspace && codingFileViewer !== null && codingFileViewerDetached && codingPanel === null && (
-          <CodingFileViewerPanel
-            workspace={workspace}
-            file={codingFileViewer}
-            mobile={isMobile}
-            onAddComment={handleAddFileComment}
-            onClose={() => {
-              setCodingFileViewer(null)
-              setCodingFileViewerDetached(false)
-            }}
-          />
-        )}
+        {/* Review dock — only with a workspace attached.
+            Desktop: in-flow sibling sized as a ratio of this center region,
+            or an overlay across it when maximized / the window is narrow.
+            Mobile: fixed full-screen overlay from the right. */}
         <AnimatePresence initial={false}>
-          {workspace && codingPanel !== null && (
-            <CodingWorkspacePanel
+          {workspace && workspacePanel !== null && (
+            <WorkspacePanel
+              key="review-dock"
               workspace={workspace}
               open
               chatWorkspace={isChatWorkspace}
-              initialTab={codingPanel}
               mobile={isMobile}
-              mobileDragOffset={codingPanelDragOffset}
-              selectedFilePath={codingFileViewer?.path ?? null}
-              selectedFileOpenKey={codingFileOpenKey}
+              mobileDragOffset={workspacePanelDragOffset}
+              centerRef={centerRef}
+              selectedFilePath={fileViewer?.path ?? null}
+              selectedFileOpenKey={fileOpenKey}
               terminalOpenKey={terminalOpenKey}
               handledTerminalOpenKeyRef={handledTerminalOpenKeyRef}
-              onFileSelect={handleCodingFileSelect}
+              viewRequest={dockViewRequest}
+              handledViewRequestKeyRef={handledDockViewKeyRef}
+              onActiveViewChange={setDockActiveView}
+              todos={todos}
+              sessionId={sessionIdState}
+              plan={plan}
+              onClearPlan={handleClearPlan}
+              onFileSelect={handleFileSelect}
               onAddComment={handleAddFileComment}
-              onOpenPalette={handleToggleQuickOpen}
-              onClose={() => {
-                setCodingPanel(null)
-                setCodingFileViewerDetached(false)
-              }}
             />
           )}
         </AnimatePresence>
+        </div>
       </div>
 
       <AppFooter
@@ -764,9 +820,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         sessionModel={sessionModel}
         sessionThinkingLevel={sessionThinkingLevel}
         sessionFastMode={storeState.sessionFastMode}
-        onToggleScheduler={handleToggleScheduler}
         onToggleSessionSettings={handleToggleAgentCapabilities}
-        onTogglePalette={handleTogglePalette}
         onOpenGitChanges={workspace ? handleWorkspaceFiles : undefined}
       />
 
@@ -777,16 +831,17 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         sessionThinkingLevel={sessionThinkingLevel}
         onSessionModelSettingsChange={setSessionModelSettings}
         onCloseAgentCapabilities={closeAgentCapabilities}
-        sessionId={sessionIdState}
-        isMobile={isMobile}
-        showTodos={showTodos}
+        showTodos={!dockViewsEnabled && showTodos}
         onShowTodosChange={handleSetShowTodos}
         todos={todos}
+        plan={plan}
+        onClearPlan={handleClearPlan}
         schedulerOpen={schedulerOpen}
         onCloseScheduler={closeScheduler}
         showPalette={paletteOpen}
         paletteCommands={paletteCommands}
         quickOpenOpen={quickOpenOpen}
+        quickOpenQuery={quickOpenQuery}
         quickOpenWorkspaceFiles={quickOpenWorkspaceFiles}
         quickOpenFilesTruncated={quickOpenFilesTruncated}
         onQuickOpenFileOpen={handleQuickOpenFileOpen}

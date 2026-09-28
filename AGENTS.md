@@ -1,7 +1,9 @@
 # OpenAgentd Repository Guide
 
-OpenAgentd is a local-first coding-agent cockpit: a FastAPI backend, one React UI,
-and separate Tauri desktop and mobile shells. The canonical catalogue of
+OpenAgentd is a local-first coding-agent cockpit: a native Rust backend
+(`appv3/`, v3), one React UI, and separate Tauri desktop and mobile shells.
+The end-of-life Python/FastAPI backend (`app/`, v2) stays in the tree and
+shares the same database and config files. The canonical catalogue of
 shipped behavior is `documents/docs/features.md`.
 
 ## Instruction scopes
@@ -9,8 +11,9 @@ shipped behavior is `documents/docs/features.md`.
 Apply this file repository-wide, then add the nearest nested `AGENTS.md` for
 the path you edit. The main local guides are:
 
-- Backend: `app/AGENTS.md`, plus `app/agent/AGENTS.md`, `app/api/AGENTS.md`, or
-  `app/services/AGENTS.md`.
+- Backend v3 (shipped): `appv3/AGENTS.md`.
+- Backend v2 (Python): `app/AGENTS.md`, plus `app/agent/AGENTS.md`,
+  `app/api/AGENTS.md`, or `app/services/AGENTS.md`.
 - Frontend: `web/AGENTS.md` and `web/src/AGENTS.md`.
 - Native shells: `desktop/AGENTS.md`, `desktop/src-tauri/AGENTS.md`,
   `mobile/AGENTS.md`, `mobile/src-tauri/AGENTS.md`, and
@@ -26,11 +29,16 @@ worktrees are not part of the tracked instruction hierarchy.
 
 ## Repository map
 
-- `app/`: API, agent runtime, CLI, scheduler, SQLModel tables, migrations, and
-  application services.
+- `appv3/`: the shipped backend: Rust workspace for the API, agent runtime,
+  CLI, scheduler, persistence, and the desktop sidecar binary.
+  `appv3/contract/` holds data shared with other surfaces, including the SSE
+  event contract.
+- `app/`: v2 Python API, agent runtime, CLI, scheduler, SQLModel tables,
+  migrations, and application services (end-of-life).
 - `web/`: shared React UI used by browser, desktop, and mobile clients.
-- `desktop/`: Tauri shell that can supervise a bundled Python sidecar.
-- `mobile/`: remote-backend-only Tauri shell; it does not bundle Python.
+- `desktop/`: Tauri shell that supervises the bundled native `openagentd`
+  sidecar built from `appv3/`.
+- `mobile/`: remote-backend-only Tauri shell; it does not bundle a backend.
 - `native/shell-core/`: Tauri-free Rust crate shared by both shells (server
   config, URL normalization, keyring, download limits).
 - `tests/`: pytest suite mirroring `app/`; `tests/manual/` holds standalone
@@ -48,29 +56,32 @@ worktrees are not part of the tracked instruction hierarchy.
 From the repository root:
 
 ```bash
-uv sync --frozen
 bun install --cwd web --frozen-lockfile
-make run       # API only on :8000
-make dev       # API with reload + Vite on :5173
+make run       # v3 API only on :8000 (needs cargo)
+make dev       # v3 API + Vite on :5173
+uv sync --frozen && make run-v2   # v2 Python API instead
 ```
 
 Build outputs have distinct targets:
 
 ```bash
-make build       # Python wheel only
+make build-v3    # optimized v3 release binary
+make build       # v2 Python wheel only
 make build-web   # web/dist for native packaging
 ```
 
-Use the native subtree Makefiles for desktop/mobile packages; do not treat the
-Python wheel as a native application build.
+Use the native subtree Makefiles for desktop/mobile packages
+(`make -C desktop sidecar` stages the v3 binary); do not treat the Python
+wheel as a native application build.
 
 ## Architecture boundaries
 
-- Keep FastAPI handlers focused on transport validation and response shaping.
-  Durable behavior belongs in `app/services/` or the owning `app/agent/`
-  subsystem; persistence tables belong in `app/models/` or scheduler models.
-- Keep provider/tool/agent runtime behavior under `app/agent/`; do not move it
-  into route modules.
+- Keep route handlers (axum in `appv3/crates/api/`, FastAPI in `app/api/`)
+  focused on transport validation and response shaping. Durable behavior
+  belongs in the owning runtime crate (`appv3/crates/agent/`, `tools/`,
+  `providers/`, `db/`) or, for v2, `app/services/` and `app/agent/`.
+- v3 must keep v2's wire format and on-disk formats (DB schema, YAML, snapshot
+  repos). Record every deliberate deviation in `appv3/REPORT.md`.
 - In the UI, TanStack Query owns server state and Zustand owns client/stream
   state. Keep backend wire handling in `web/src/api/`, queries in
   `web/src/queries/`, and route registration in `web/src/router.ts`.
@@ -81,17 +92,23 @@ Python wheel as a native application build.
 
 ## Safety constraints
 
-- Route every externally supplied workspace root through
-  `app.services.agent_manager.validate_workspace()`. Resolve paths within a
-  workspace with the existing `_safe_resolve()` / `_safe_join*()` helpers.
-- Preserve constant-time secret comparison with `hmac.compare_digest`.
+- Route every externally supplied workspace root through the workspace
+  validator (v3: `validate_workspace` in `appv3/crates/agent/src/manager.rs`;
+  v2: `app.services.agent_manager.validate_workspace()`). Resolve paths within
+  a workspace with the existing `safe_resolve` / `safe_join` helpers.
+- Preserve constant-time secret comparison (v3: `auth::constant_time_eq`; v2:
+  `hmac.compare_digest`).
+- Keep the v3 network guard (Host check, cross-origin refusal without an
+  access key) and the child-environment secret scrub in `appv3/crates/core/`
+  and `appv3/crates/api/` intact; see `appv3/AGENTS.md`.
 - Treat auth, shell/file tools, MCP launch configuration, Tauri CSP/
   capabilities, keyring storage, and updater/signing code as
   security-sensitive. Use argument-list subprocess APIs; do not introduce
   `shell=True` command construction.
 - Do not edit generated/build state such as `web/dist/`, `app/_web_dist/`,
-  `desktop/sidecar-bundle/`, native `target/` or `gen/` trees, or ignored
-  `.openagentd/` runtime state. Change sources and rerun the owning build.
+  `desktop/sidecar-bundle/`, native `target/` (including `appv3/target/`) or
+  `gen/` trees, or ignored `.openagentd/` runtime state. Change sources and
+  rerun the owning build.
 - Keep release versions synchronized through the repository release scripts;
   `make verify-version` checks the cross-project contract.
 - Read `DESIGN.md` before changing UI. Use its tokens and existing primitives,
@@ -103,20 +120,22 @@ Python wheel as a native application build.
 Choose every target covering the paths changed:
 
 ```bash
-make verify-backend  # ruff lint/format check, ty, pytest
+make verify-v3       # v3 Rust: cargo fmt check, clippy -D warnings, tests
+make verify-backend  # v2 Python: ruff lint/format check, ty, pytest
 make verify-web      # ESLint, app/test TypeScript, Bun tests
 make verify-docs     # Markdown links/frontmatter/Make references
 make verify-version  # synchronized release versions and catalogue metadata
 make verify-desktop  # locked desktop cargo check/test/clippy
 make verify-mobile   # locked mobile cargo check
 make verify-shell-core # shared native crate fmt/clippy/test
-make verify          # portable backend + web + docs + version checks
+make verify          # portable v3 + v2 backend + web + docs + version checks
 make verify-native   # shell-core + desktop + mobile; native system dependencies required
 ```
 
 Use focused checks while iterating, then run the applicable target above.
 Always run Bun tests with `--parallel` (`bun test --cwd web --parallel` or `cd web && bun test --parallel <path>`) for per-file module isolation.
-Cross-surface API or event changes require both backend and web checks. Run
+Cross-surface API or event changes require both backend and web checks; SSE
+event types must also match `appv3/contract/sse_events.json`. Run
 `make help` for maintained scenario, health, migration, and build targets.
 
 ## Documentation

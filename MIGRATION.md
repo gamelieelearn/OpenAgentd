@@ -89,6 +89,16 @@ Custom agents that listed only removed tools fall back to the built-in
 defaults for their mode. Skills or plugins whose instructions tell the model
 to "use the write tool" should be reworded to reference `patch`.
 
+## Upgrading from OpenAgentd v2 to v3
+
+OpenAgentd v3 replaces the Python backend and CLI with a native Rust binary (`appv3/`).
+
+- **CLI migration**: Existing v2 installations installed via `uv`, `pipx`, or `pip` migrate to v3 automatically by running `openagentd upgrade`. Alternatively, install the native binary directly via `curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh -s -- --cli` (macOS/Linux) or `install.ps1 -Cli` (Windows). Homebrew users update via `brew upgrade openagentd`.
+- **Desktop application**: Desktop updates bundle the native backend automatically; no manual backend migration is required.
+- **Data compatibility**: SQLite database, configuration, agents, skills, and telemetry directories remain 100% compatible and share the exact same paths (`~/.config/openagentd/`, `~/.local/share/openagentd/`, etc.).
+- **Server architecture**: The v3 CLI server is API-only and does not host an embedded web cockpit. Connect to the printed server address from the desktop application, mobile app, or run the web UI from source (`make dev`). Non-loopback addresses (`0.0.0.0`) require `--key`.
+- **Plugins**: v3 plugins run in an embedded QuickJS engine using TypeScript/JavaScript (`.ts`/`.js`). Legacy v2 Python plugins (`.py`) are flagged in **Settings → Plugins** and must be ported to TypeScript.
+
 ## Existing OpenAgentd Installs
 
 If you already use OpenAgentd before `1.0.0`, you do not need to uninstall first. Install or update OpenAgentd normally, then launch the desktop app or run `openagentd`.

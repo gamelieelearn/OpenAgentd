@@ -121,6 +121,24 @@ describe("CommandPalette", () => {
     expect(screen.queryByText("New Chat")).toBeNull()
   })
 
+  it("matches every word of the query across label, description, and keywords", async () => {
+    const user = userEvent.setup()
+    const commands: Command[] = [
+      { id: "reader", label: "Toggle Reader Mode", description: "Fold each turn", keywords: "compact transcript detailed", action: () => {} },
+      { id: "new-chat", label: "New Chat", description: "Start a new session", action: () => {} },
+    ]
+    render(<CommandPalette commands={commands} onClose={() => {}} />)
+    const input = screen.getByPlaceholderText("Search commands…")
+
+    await user.type(input, "compact mode")
+    expect(screen.getByText("Toggle Reader Mode")).toBeTruthy()
+    expect(screen.queryByText("New Chat")).toBeNull()
+
+    await user.clear(input)
+    await user.type(input, "reader chat")
+    expect(screen.queryByText("Toggle Reader Mode")).toBeNull()
+  })
+
   it("shows no-match message when query has no results", async () => {
     const user = userEvent.setup()
     render(<CommandPalette commands={makeCommands()} onClose={() => {}} />)
@@ -454,5 +472,186 @@ describe("CommandPalette", () => {
       />,
     )
     expect(screen.queryByText("file list truncated")).toBeNull()
+  })
+})
+
+describe("CommandPalette — nested pages", () => {
+  function pageCommands(onPick: (id: string) => void = () => {}): Command[] {
+    return [
+      { id: "new-chat", label: "New Chat", action: () => {} },
+      {
+        id: "switch-session",
+        label: "Switch Session…",
+        action: () => {},
+        page: {
+          placeholder: "Search sessions…",
+          commands: [
+            { id: "s1", label: "Fix login bug", action: () => onPick("s1") },
+            { id: "s2", label: "Refactor store", action: () => onPick("s2") },
+          ],
+        },
+      },
+    ]
+  }
+
+  it("opens a page in place instead of running and closing", async () => {
+    const user = userEvent.setup()
+    let closed = false
+    render(<CommandPalette commands={pageCommands()} onClose={() => { closed = true }} />)
+
+    await user.click(screen.getByText("Switch Session…"))
+
+    expect(closed).toBe(false)
+    expect(screen.getByPlaceholderText("Search sessions…")).toBeTruthy()
+    expect(screen.getByText("Fix login bug")).toBeTruthy()
+    expect(screen.queryByText("New Chat")).toBeNull()
+  })
+
+  it("filters and runs a page item, then closes", async () => {
+    const user = userEvent.setup()
+    const picked: string[] = []
+    let closed = false
+    render(<CommandPalette commands={pageCommands((id) => picked.push(id))} onClose={() => { closed = true }} />)
+
+    await user.click(screen.getByText("Switch Session…"))
+    await user.type(screen.getByPlaceholderText("Search sessions…"), "refac")
+    await user.keyboard("{Enter}")
+
+    expect(picked).toEqual(["s2"])
+    expect(closed).toBe(true)
+  })
+
+  it("returns to the root list on Backspace in an empty query", async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette commands={pageCommands()} onClose={() => {}} />)
+
+    await user.click(screen.getByText("Switch Session…"))
+    await user.keyboard("{Backspace}")
+
+    expect(screen.getByPlaceholderText("Search commands…")).toBeTruthy()
+    expect(screen.getByText("New Chat")).toBeTruthy()
+  })
+
+  it("steps back out of a page on Escape before closing", async () => {
+    const user = userEvent.setup()
+    let closed = false
+    render(<CommandPalette commands={pageCommands()} onClose={() => { closed = true }} />)
+
+    await user.click(screen.getByText("Switch Session…"))
+    await user.keyboard("{Escape}")
+    expect(closed).toBe(false)
+    expect(screen.getByText("New Chat")).toBeTruthy()
+
+    await user.keyboard("{Escape}")
+    expect(closed).toBe(true)
+  })
+
+  it("names the open page next to the search field", async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette commands={pageCommands()} onClose={() => {}} />)
+
+    await user.click(screen.getByText("Switch Session…"))
+
+    expect(screen.getByRole("button", { name: "Back to all commands" }).textContent).toBe("Switch Session")
+  })
+})
+
+describe("QuickOpen — > command mode", () => {
+  const files: WorkspaceFileInfo[] = [
+    { path: 'src/App.tsx', name: 'App.tsx', size: 0, mtime: 0, mime: 'text/plain' },
+  ]
+
+  it("searches commands instead of files when the query starts with >", async () => {
+    const user = userEvent.setup()
+    render(<QuickOpen workspaceFiles={files} commands={makeCommands()} onFileOpen={() => {}} onClose={() => {}} />)
+
+    expect(screen.queryByText("New Chat")).toBeNull()
+    await user.type(screen.getByPlaceholderText("Search files…"), ">side")
+
+    expect(screen.getByText("Toggle Sidebar")).toBeTruthy()
+    expect(screen.queryByText("New Chat")).toBeNull()
+    expect(screen.queryByText("App.tsx")).toBeNull()
+  })
+
+  it("runs the command on Enter", async () => {
+    const user = userEvent.setup()
+    let ran = false
+    let opened = false
+    const commands: Command[] = [{ id: "c1", label: "Run Me", action: () => { ran = true } }]
+    render(<QuickOpen workspaceFiles={files} commands={commands} onFileOpen={() => { opened = true }} onClose={() => {}} />)
+
+    await user.type(screen.getByPlaceholderText("Search files…"), ">")
+    await user.keyboard("{Enter}")
+
+    expect(ran).toBe(true)
+    expect(opened).toBe(false)
+  })
+
+  it("hints the > prefix while searching files", () => {
+    render(<QuickOpen workspaceFiles={files} commands={makeCommands()} onFileOpen={() => {}} onClose={() => {}} />)
+    expect(screen.getByText(">").closest("kbd")).toBeTruthy()
+  })
+})
+
+describe("QuickOpen — a query with a line", () => {
+  const files: WorkspaceFileInfo[] = [
+    { path: 'web/src/Button.tsx', name: 'Button.tsx', size: 0, mtime: 0, mime: 'text/plain' },
+    { path: 'app/ui/Button.tsx', name: 'Button.tsx', size: 0, mtime: 0, mime: 'text/plain' },
+    { path: 'web/src/App.tsx', name: 'App.tsx', size: 0, mtime: 0, mime: 'text/plain' },
+  ]
+
+  it("opens already searching for its initial query, the query selected", () => {
+    render(<QuickOpen workspaceFiles={files} initialQuery="Button.tsx" onFileOpen={() => {}} onClose={() => {}} />)
+
+    const input = screen.getByPlaceholderText("Search files…") as HTMLInputElement
+    expect(input.value).toBe("Button.tsx")
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Button.tsx".length])
+    expect(screen.getAllByText("Button.tsx")).toHaveLength(2)
+    expect(screen.queryByText("App.tsx")).toBeNull()
+  })
+
+  it("searches by the path before :line and opens the pick at that line", async () => {
+    const user = userEvent.setup()
+    let opened: { path: string; line?: number } | null = null
+    render(
+      <QuickOpen
+        workspaceFiles={files}
+        initialQuery="app/ui/Button.tsx:42"
+        onFileOpen={(file, line) => { opened = { path: file.path, line } }}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.keyboard("{Enter}")
+
+    expect(opened as { path: string; line?: number } | null).toEqual({ path: 'app/ui/Button.tsx', line: 42 })
+  })
+
+  it("opens the pick at a query's :start-end range", async () => {
+    const user = userEvent.setup()
+    let opened: unknown[] | null = null
+    render(
+      <QuickOpen
+        workspaceFiles={files}
+        initialQuery="web/src/App.tsx:42-58"
+        onFileOpen={(file, line, endLine) => { opened = [file.path, line, endLine] }}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.keyboard("{Enter}")
+
+    expect(opened as unknown[] | null).toEqual(['web/src/App.tsx', 42, 58])
+  })
+
+  it("opens a pick without a line when the query has none", async () => {
+    const user = userEvent.setup()
+    let opened: { path: string; line?: number } | null = null
+    render(<QuickOpen workspaceFiles={files} onFileOpen={(file, line) => { opened = { path: file.path, line } }} onClose={() => {}} />)
+
+    await user.type(screen.getByPlaceholderText("Search files…"), "App.tsx")
+    await user.keyboard("{Enter}")
+
+    expect(opened as { path: string; line?: number } | null).toEqual({ path: 'web/src/App.tsx', line: undefined })
   })
 })

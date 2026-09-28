@@ -141,6 +141,28 @@ describe("AssistantTurnFooter", () => {
 
     expect(screen.getByText("1m 33s")).toBeTruthy()
   })
+
+  it("sums the turn's cost across its messages, with the output tokens in the label", () => {
+    const blocks: ContentBlock[] = [
+      { id: "t1", type: "tool", content: "", toolName: "read", toolDone: true, usage: { outputTokens: 500, costUsd: 0.004 } },
+      { id: "b1", type: "text", content: "Answer", usage: { outputTokens: 1000, costUsd: 0.016 } },
+    ]
+
+    render(<AssistantTurnFooter turnBlocks={blocks} />)
+
+    const cost = screen.getByText("$0.02")
+    expect(cost.getAttribute("aria-label")).toBe("1,500 output tokens, $0.0200")
+  })
+
+  it("shows output tokens when the provider reports no cost", () => {
+    const blocks: ContentBlock[] = [
+      { id: "b1", type: "text", content: "Answer", usage: { outputTokens: 1500, costUsd: 0 } },
+    ]
+
+    render(<AssistantTurnFooter turnBlocks={blocks} />)
+
+    expect(screen.getByText("1.5K tok")).toBeTruthy()
+  })
 })
 
 /**
@@ -242,5 +264,49 @@ describe("AssistantTurn — onStartImplementing CTA", () => {
     )
 
     expect(screen.queryByTestId("plan-action-btn")).toBeNull()
+  })
+})
+
+describe("AssistantTurn — tool calls", () => {
+  const read = (id: string, path: string, done = true): ContentBlock => ({
+    id, type: "tool", content: "", toolName: "read", toolArgs: JSON.stringify({ path }), toolDone: done, toolResult: done ? "ok" : undefined,
+  })
+  const blocks: ContentBlock[] = [
+    { id: "intro", type: "text", content: "Looking around." },
+    read("r1", "a.ts"),
+    read("r2", "b.ts"),
+    { id: "g1", type: "tool", content: "", toolName: "grep", toolArgs: "{}", toolDone: true, toolResult: "ok" },
+    { id: "answer", type: "text", content: "Done." },
+  ]
+
+  function renderTurn(turnBlocks: ContentBlock[], opts: { open?: boolean } = {}) {
+    return render(
+      <AssistantTurn
+        blocks={turnBlocks}
+        startIndex={0}
+        finalizedCount={turnBlocks.length}
+        isWorking={opts.open ?? false}
+        isTrailingTurn
+        totalBlocks={turnBlocks.length}
+        renderBlock={({ block }) => <p data-testid={`row-${block.id}`}>{block.id}</p>}
+      />,
+    )
+  }
+
+  it("renders every tool call on its own row, with nothing folded", () => {
+    renderTurn(blocks)
+
+    for (const id of ["intro", "r1", "r2", "g1", "answer"]) {
+      expect(screen.getByTestId(`row-${id}`)).toBeTruthy()
+    }
+    expect(screen.queryByRole("button", { name: /Explored/ })).toBeNull()
+  })
+
+  it("shows every finished call while the turn runs", () => {
+    renderTurn([read("r1", "a.ts"), read("r2", "b.ts"), read("r3", "c.ts"), read("r4", "d.ts", false)], { open: true })
+
+    for (const id of ["r1", "r2", "r3", "r4"]) {
+      expect(screen.getByTestId(`row-${id}`)).toBeTruthy()
+    }
   })
 })

@@ -18,6 +18,10 @@ interface ThinkingProps {
 
 export function Thinking({ content, isStreaming = false }: ThinkingProps) {
   const smoothedContent = useSmoothStream(content, isStreaming)
+  // Whitespace-only traces (a provider's blank first delta) would render an
+  // empty, margined box.
+  if (!content.trim()) return null
+
   const sections = splitSections(smoothedContent)
 
   return (

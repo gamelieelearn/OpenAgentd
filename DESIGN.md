@@ -175,6 +175,10 @@ spacing:
   gutter: 8px
   card-padding: 12px
   app-header: 36px
+  status-bar: 24px
+  tab-bar: 36px
+  toolbar: 32px
+  list-row: 28px
   mac-traffic-inset: 70px
   content-max: 768px
   overlay-max: 860px
@@ -271,7 +275,6 @@ components:
     padding: 2px
   segmented-item-active:
     backgroundColor: "{colors.bg-card}"
-    borderColor: "{colors.border-strong}"
     textColor: "{colors.on-surface}"
     rounded: "{rounded.xs}"
   input:
@@ -481,6 +484,10 @@ desktop-first and walk styles back down.
 **Fixed geometry:**
 
 - `app-header` (36px) — the shared top bar across every platform shell.
+- `status-bar` (24px) — the desktop status footer.
+- `tab-bar` (36px) — the review dock's editor-tab strip.
+- `toolbar` (32px) — the single view toolbar under a tab bar.
+- `list-row` (28px) — sidebar and dock list rows.
 - `mac-traffic-inset` (70px) — left inset that clears the macOS traffic-light
   overlay (12px origin + ~58px button group).
 - `content-max` (768px) — reading measure for transcripts and prose.
@@ -491,6 +498,49 @@ desktop-first and walk styles back down.
 `env(safe-area-inset-*)`. Overlays additionally track the visual-viewport offset
 so they follow the soft keyboard by translation rather than by resizing — a
 height change mid-animation causes visible reflow.
+
+### Workbench layout (desktop)
+
+From `md:` up the coding view is a workbench: header, sidebar, a center region
+holding the chat and the review dock, and a status bar. Mobile keeps its drawer
+and full-screen dock sheet unchanged.
+
+```
+┌────────────── app-header 36 · bg-page (light) / bg-sidebar (dark) ─────────┐
+│ sidebar 264 │ chat · bg-page (≥ 400)         │ review dock (≥ 340)          │
+│ page / rail │                                │ tab-bar 36 · bg-sidebar      │
+│ 28px rows   │                                │ toolbar 32 · bg-page         │
+│             │                                │ one scroller                 │
+└────────────── status-bar 24 · bg-page (light) / bg-sidebar (dark) ─────────┘
+```
+
+- **Zoning is tonal in dark mode.** There the header, sidebar and status bar
+  sit on the recessed `bg-sidebar`; in light mode they share the chat's
+  `bg-page`, so the app reads as one sheet of paper. The dock tab bar is
+  `bg-sidebar` in both. Working surfaces (chat, dock content) sit on
+  `bg-page`. The zones meet at hairline borders, never shadows.
+- **Geometry lives in one place.** `lib/workbench-layout.ts` owns the math and
+  `useLayoutStore` (`oa.layout.v1`) persists the choices. The sidebar defaults
+  to 264px (220–440px) and opens expanded on first run at ≥1280px. The dock is
+  stored as a ratio of the center (default 45%), clamped so the dock keeps
+  340px and the chat keeps 400px.
+- **Overlay instead of squeeze.** When the dock is maximized (`Mod+Shift+D`) or
+  the center is narrower than 740px, the dock covers the chat instead of
+  shrinking it. The chat stays mounted underneath (`inert`) so its scroll
+  position and live stream survive. Maximize is session-only.
+- **Separators are controls.** Resize handles are 6px, keyboard-focusable
+  `role="separator"` elements (arrows ±16px, Shift ±64px, Home/End, Enter or
+  double-click to reset) whose 1px line lights up in `focus-ring`.
+- **One toolbar, one scroller per view.** A view gets at most one 32px toolbar
+  under the tab bar and one scrolling region. Lists are flat `divide-y` rows at
+  `list-row` height; row actions swap in for trailing metadata on hover/focus
+  instead of nesting controls inside the row button.
+- **The dock holds views, not just files.** Besides Git, file, diff, commit,
+  and terminal tabs, the agent's Tasks and the Scheduled tasks list open as
+  closable dock tabs (`Mod+T`, `Mod+S`); pressing the shortcut again while the
+  tab is focused hides the dock. The header's review-dock button (`Mod+D`) is
+  the one show/hide control. The dock never covers the header, so the tab bar
+  carries no hide button. Inline diff peeks never scroll their ancestors.
 
 ## Elevation & Depth
 
@@ -582,6 +632,12 @@ buttons never shift size between states.
 
 **Mobile Touch Parity Scaling**: On touch devices (`pointer: coarse` / mobile shell), standalone icon actions scale up to a **44×44px touch target** (`h-11 w-11`), while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`).
 
+- `Button` gets this automatically: a coarse-pointer rule sets `min-height`/`min-width: 44px` on `[data-slot="button"]`. Prefer `Button` over a bare `<button>` for icon actions.
+- `--spacing-list-row` becomes 44px on coarse pointers, so sidebar and dock list rows grow with it. Inline row actions add `pointer-coarse:size-9` (36px) to fill the taller row.
+- Controls inside the 36px app header and tab bar grow only to that height (`pointer-coarse:size-9`, tab close `pointer-coarse:size-8`), because overlays are positioned from `--spacing-app-header`.
+- Grow the control itself. Do not stretch hit areas with pseudo-elements: adjacent actions would steal each other's taps.
+- Rows with a long-press action sheet set `-webkit-touch-callout: none` (`LongPressButton` does this while enabled).
+
 **Inputs** use `bg-input` (matching the page, not the card) with a 1px border.
 Focus shifts the border to `focus-ring` and adds a 30% ring. Borders never change
 width on hover — that causes a 1px layout jump.
@@ -594,8 +650,16 @@ width on hover — that causes a 1px layout jump.
 
 **Segmented Controls & Connected Tabs**:
 - **Container**: `rounded-sm`, 1px `border-(--color-border)`, `bg-(--bg-key)` (or `bg-card`), `p-0.5`.
-- **Active Segment**: `rounded-xs`, `bg-(--bg-card)` (or `bg-page`), 1px `border-(--color-border-strong)`, `text-(--color-text)`, `font-medium`.
+- **Active Segment**: `rounded-xs`, `bg-(--bg-card)` (or `bg-page`), no border colour (the fill alone marks it), `text-(--color-text)`, `font-medium`.
 - **Inactive Segment**: `rounded-xs`, 1px `border-transparent`, `text-(--color-text-muted)`, hover `text-(--color-text-2)`.
+- **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow).
+
+**Editor Tabs** (review dock tab bar):
+- **Strip**: `tab-bar` height on `bg-sidebar`; tabs scroll horizontally, actions stay pinned right.
+- **Active Tab**: `bg-page` with a 2px Bark (`--color-accent`) top edge and no bottom border, so it opens onto the content below.
+- **Inactive Tab**: transparent top edge, 1px bottom `border`, `text-(--color-text-muted)`, hover `bg-key` wash.
+- **Close**: a sibling `<button>` (never nested in the tab button), always visible on the active tab and on touch, hover-revealed otherwise; middle-click also closes.
+- **Semantics**: tabs are buttons with `aria-current`, not an ARIA `tablist` — terminal tabs carry their own context menu and sheet.
 
 **Badges & Counters**:
 - **Agent / Status Chip**: `rounded-full`, 20px height, `px-2 py-0.5`, `label-sm` (11px).
@@ -613,6 +677,13 @@ background, tuned text tone, solid dot.
 `overlay-max`), `sheet` (edge drawer), and `palette` (compact 480px search card).
 All three are `position: fixed`, share `rounded-lg` (12px — the panel ceiling) and a 1px border, and go
 edge-to-edge below 768px.
+
+**App-level overlays** (Settings, Telemetry) share the `settings-modal-shell`
+geometry, mount at the root so any route can open them, and are mutually
+exclusive with the palette and utility panels. Telemetry reads top-down: a
+filter bar (range, workspace, model, session chip), a headline stat strip,
+per-day activity, then section-card breakdowns whose rows double as filters,
+then recent turns. Escape steps out of a trace before it closes the overlay.
 
 ## Platform Shell
 
@@ -649,9 +720,11 @@ flash is fully exposed there.
 ### Desktop chrome
 
 The macOS window uses `titleBarStyle: "Overlay"` with `hiddenTitle: true`, so the
-app's own 40px `app-header` *is* the title bar. `trafficLightPosition` is
-`{x: 12, y: 22}`, which is exactly why `mac-traffic-inset` is 70px (12px origin +
-~58px button group). Reference window is 1280×820, floor 820×640.
+app's own 36px `app-header` *is* the title bar. The traffic lights are placed
+from Rust (`desktop/src-tauri/src/window.rs`, `{x: 12, y: 20}`; the JSON config
+value is ignored for builder-created windows), which centres them against the
+36px header and is why `mac-traffic-inset` is 70px (12px origin + ~58px button
+group). Reference window is 1280×820, floor 820×640.
 
 ### Mobile shell
 
@@ -664,6 +737,13 @@ viewport, and overlays follow the keyboard by **translating** rather than
 resizing. While the keyboard is up, `.pb-safe` drops from the home-indicator
 inset to a flat 8px, because the indicator is hidden behind the keyboard and the
 inset would only waste a strip of space.
+
+The shell blocks pinch zoom, so the iOS app follows **Dynamic Type** instead
+(`lib/dynamic-type.ts`). A hidden probe set in `font: -apple-system-body` reads
+the user's text size, and the root font size scales from 16px by that size over
+iOS's default of 17px. The scale never goes below 1, because the 11px floor
+assumes the design size, and stops at 1.25. Everything in rem scales with it:
+text, spacing, and touch targets. Px sizes do not.
 
 ## Do's and Don'ts
 
@@ -684,6 +764,8 @@ inset would only waste a strip of space.
   IDs, token counts, diffs.
 - Don't render UI text below 11px; the floor is enforced in CSS, so specifying
   9–10px only creates a mismatch between the class name and the result.
+- Do size reading text (messages, labels, controls) with the rem scale so it
+  follows Dynamic Type on iOS; keep px sizes for dense metadata only.
 - Don't stack more than two font weights in one view.
 
 **Layout & depth**

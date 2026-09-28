@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/lthoangg/openagentd/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="Apache 2.0"></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.14-blue.svg" alt="Python 3.14"></a>
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/backend-Rust-orange.svg" alt="Rust backend"></a>
   <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white" alt="React 19"></a>
   <a href="https://discord.gg/cz6GQHQUMg"><img src="https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
@@ -62,13 +62,20 @@ Release artifacts are available for macOS, Windows, and Linux on the [latest rel
 Install the backend when you want to run it from a terminal, use a browser client, or connect another device:
 
 ```bash
-uv tool install openagentd
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh -s -- --cli
 openagentd
 ```
 
-The server creates its default agents and configuration on first start. Open the
-printed local address and add a provider in Settings. For a phone or another
-computer on your network:
+```powershell
+# Windows PowerShell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/lthoangg/openagentd/main/install.ps1))) -Cli
+```
+
+The server creates its default agents and configuration on first start. It
+serves the API only: connect to the printed `Server:` address from the desktop
+app's server connection dialog or the mobile app, then add a provider in
+Settings. For a phone or another computer on your network:
 
 ```bash
 openagentd server start --host 0.0.0.0 --key
@@ -76,7 +83,11 @@ openagentd server status
 openagentd server health
 ```
 
-`--key` protects non-loopback access. Use `openagentd --help` and `<command> --help` for the current command reference.
+`--key` sets the access key every client must send; the server refuses to
+listen beyond loopback without one. It has no built-in TLS, so put an HTTPS
+reverse proxy in front of it before exposing it outside a trusted network.
+Use `openagentd --help` and `<command> --help` for the current command
+reference.
 
 Run one agent turn directly against the current project directory when you need
 a pipe-friendly terminal response:
@@ -93,19 +104,16 @@ support workspace selection or session resume.
 
 ### From source
 
+Requires a Rust toolchain (`cargo`) and Bun:
+
 ```bash
 git clone https://github.com/lthoangg/openagentd.git
 cd openagentd
-uv sync
 bun install --cwd web
-make run
+make dev       # backend on :8000 + web UI on http://localhost:5173
 ```
 
-For frontend development in a second terminal:
-
-```bash
-cd web && bun dev
-```
+`make run` starts only the backend.
 
 ## What it feels like
 

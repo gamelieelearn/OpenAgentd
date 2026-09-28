@@ -9,7 +9,8 @@ local database/log tree, or external credentials.
 - Run modules from the repository root as
   `uv run python -m manual.<module> --help`.
 - Most HTTP scripts default to the development API under
-  `http://localhost:8000/api`; start it with `make run` or `make dev`.
+  `http://localhost:8000/api`; start it with `make run` or `make dev` (v3
+  backend), or `make run-v2` for the Python backend.
   Override `--base` only intentionally and never aim mutation scripts at a
   production server for routine testing.
 - Modules under `manual.try_providers` call external provider APIs and may

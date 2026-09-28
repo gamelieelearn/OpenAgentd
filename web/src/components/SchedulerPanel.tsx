@@ -1,21 +1,20 @@
 import { useEffect, useState } from 'react'
-import { useDebouncedCallback } from '@tanstack/react-pacer'
-import { X, Clock, Plus, Loader2, AlertCircle, CalendarClock, ArrowLeft } from 'lucide-react'
-import { SearchBar } from '@/components/ui/search-bar'
+import { X, Plus, CalendarClock, ArrowLeft } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   useScheduledTasksQuery,
 } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useUIStore } from '@/stores/useUIStore'
 import { AppOverlay } from '@/components/ui/app-overlay'
-import { TaskListItem } from './SchedulerPanel/TaskListItem'
 import { CreateTaskForm } from './SchedulerPanel/CreateTaskForm'
 import { TaskDetailView } from './SchedulerPanel/TaskDetailView'
+import { TaskListPane } from './SchedulerPanel/TaskListPane'
 
 interface SchedulerPanelProps {
   open: boolean
   onClose: () => void
-  /** Workspace inherited from the surrounding coding chat view. */
+  /** Workspace inherited from the surrounding chat view. */
   contextWorkspace?: string | null
 }
 
@@ -27,12 +26,6 @@ export function SchedulerPanel({
   const isMobile = useIsMobile()
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
-  const updateDebouncedSearchQuery = useDebouncedCallback(setDebouncedSearchQuery, {
-    wait: 150,
-    key: 'scheduler-task-search',
-  })
   const [mobilePane, setMobilePane] = useState<'list' | 'detail' | 'create'>('list')
 
   const tasksQuery = useScheduledTasksQuery()
@@ -46,16 +39,15 @@ export function SchedulerPanel({
 
   const tasks = tasksQuery.data?.tasks ?? []
 
-  const filteredTasks = tasks.filter((task) => {
-    const q = debouncedSearchQuery.toLowerCase()
-    if (!q) return true
-    return (
-      task.name.toLowerCase().includes(q) ||
-      (task.workspace ?? '').toLowerCase().includes(q)
-    )
-  })
-
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : null
+
+  const focusTaskId = useUIStore((s) => s.scheduledTaskFocus)
+  useEffect(() => {
+    if (!open || !focusTaskId) return
+    setSelectedTaskId(focusTaskId)
+    if (isMobile) setMobilePane('detail')
+    useUIStore.getState().focusScheduledTask(null)
+  }, [focusTaskId, isMobile, open])
 
   const handleSelectTask = (id: string) => {
     setSelectedTaskId(id)
@@ -124,7 +116,7 @@ export function SchedulerPanel({
                       : 'Scheduled Tasks'}
                 </h2>
                 {tasks.length > 0 && (!isMobile || mobilePane === 'list') && (
-                  <span className="rounded-full bg-(--bg-key) px-1.5 py-0.2 font-mono text-xs md:text-[10px] font-semibold text-(--color-text-subtle)">
+                  <span className="rounded-full bg-(--bg-key) px-1.5 py-0.2 font-mono text-xs md:text-[11px] font-semibold text-(--color-text-subtle)">
                     {tasks.length}
                   </span>
                 )}
@@ -198,69 +190,23 @@ export function SchedulerPanel({
         {/* List panel */}
         {showList && (
           <div className={`flex flex-col bg-(--bg-sidebar) ${isMobile ? 'w-full' : 'w-96 shrink-0 border-r border-(--color-border)'}`}>
-            {/* Search bar */}
-            <div className="border-b border-(--color-border) bg-(--bg-sidebar) p-2.5">
-              <SearchBar
-                placeholder="Search tasks…"
-                value={searchQuery}
-                onChange={(event) => {
-                  const nextQuery = event.target.value
-                  setSearchQuery(nextQuery)
-                  updateDebouncedSearchQuery(nextQuery)
-                }}
-              />
-            </div>
-
-            {/* Task list */}
-            <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y">
-              {tasksQuery.isLoading ? (
-                <div className="flex flex-col items-center justify-center gap-2 p-10 text-center">
-                  <Loader2 size={22} className="animate-spin text-(--color-accent)" />
-                  <p className="text-xs text-(--color-text-muted)">Loading scheduled tasks…</p>
-                </div>
-              ) : tasksQuery.isError ? (
-                <div className="flex flex-col items-center justify-center gap-2.5 p-8 text-center">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-(--color-error-subtle) text-(--color-error)">
-                    <AlertCircle size={18} />
-                  </div>
-                  <p className="text-sm font-medium text-(--color-error)">Failed to load tasks</p>
-                </div>
-              ) : filteredTasks.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-card) text-(--color-text-muted)">
-                    <Clock size={18} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-(--color-text)">
-                      {searchQuery ? 'No tasks match your search' : 'No scheduled tasks yet'}
-                    </p>
-                    {!searchQuery && !isMobile && (
-                      <p className="mt-1 text-xs text-(--color-text-subtle)">
-                        Use the form on the right to create one.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-1.5 p-2">
-                  {filteredTasks.map((task) => (
-                    <TaskListItem
-                      key={task.id}
-                      task={task}
-                      isSelected={selectedTaskId === task.id}
-                      onSelect={() => handleSelectTask(task.id)}
-                      onDeleted={() => handleTaskDeleted(task.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
+            <TaskListPane
+              tasks={tasks}
+              isLoading={tasksQuery.isLoading}
+              isError={tasksQuery.isError}
+              selectedTaskId={selectedTaskId}
+              onSelect={handleSelectTask}
+              onDeleted={handleTaskDeleted}
+              emptyHint={isMobile ? undefined : 'Use the form on the right to create one.'}
+            />
           </div>
         )}
 
         {/* Detail / Create panel */}
         {showDetail && (
-          <div className="flex flex-1 flex-col overflow-hidden">
+          // Container, not viewport, breakpoints: the same forms render in
+          // the review dock's Schedule tab at a fraction of the window.
+          <div className="@container flex flex-1 flex-col overflow-hidden">
             {selectedTask && (!isMobile || mobilePane === 'detail') ? (
               <TaskDetailView
                 task={selectedTask}

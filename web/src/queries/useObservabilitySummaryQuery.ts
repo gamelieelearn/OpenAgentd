@@ -1,12 +1,25 @@
-import { useQuery } from '@tanstack/react-query'
-import { getObservabilitySummary } from '@/api/client'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { getObservabilitySummary, type ObservabilityFilters } from '@/api/client'
 import { queryKeys } from './keys'
 
-export function useObservabilitySummaryQuery(days: number) {
+export function useObservabilitySummaryQuery(
+  days: number,
+  filters: ObservabilityFilters = {},
+  { refetchInterval }: { refetchInterval?: number } = {},
+) {
+  const normalized = {
+    workspace: filters.workspace ?? null,
+    model: filters.model ?? null,
+    session: filters.session ?? null,
+  }
   return useQuery({
-    queryKey: queryKeys.observability.summary(days),
-    queryFn: () => getObservabilitySummary(days),
+    queryKey: queryKeys.observability.summary(days, normalized),
+    queryFn: () => getObservabilitySummary(days, normalized),
     // Span aggregates evolve slowly; refresh on manual navigation only.
     staleTime: 60_000,
+    refetchInterval,
+    // Changing a filter keeps the previous numbers on screen until the new
+    // window lands instead of flashing the loading skeleton.
+    placeholderData: keepPreviousData,
   })
 }

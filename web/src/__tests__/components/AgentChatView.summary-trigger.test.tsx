@@ -23,6 +23,10 @@ mock.module('@tanstack/react-query', () => ({
   QueryClientProvider: ({ children }: { children: unknown }) => children,
 }))
 mock.module('@/queries/useTodosQuery', () => ({ useTodosQuery: () => ({ data: { todos: [] } }) }))
+mock.module('@/queries/useSessionPlanQuery', () => ({
+  useSessionPlanQuery: () => ({ data: { plan: null } }),
+  useClearSessionPlanMutation: () => ({ mutate: () => {} }),
+}))
 mock.module('@/queries', () => ({ useProvidersQuery: () => ({ data: { providers: [] } }) }))
 mock.module('@/queries/useCommandsQuery', () => ({ useCommandsQuery: () => ({ data: { commands: [] } }) }))
 mock.module('@/queries/useSnippetsQuery', () => ({ useSnippetsQuery: () => ({ data: { snippets: [] } }) }))
@@ -33,16 +37,15 @@ mock.module('@/hooks/use-tauri-drag', () => ({ useTauriDrag: () => ({}) }))
 mock.module('@/hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: () => {} }))
 mock.module('@/stores/useToastStore', () => ({ useToastStore: () => ({ push: () => {} }) }))
 mock.module('@/stores/cache-invalidation-bridge', () => ({ prependSession: () => {}, prependWorkspaceSession: () => {} }))
-mock.module('@/utils/workspace', () => ({ saveLastCodingWorkspace: () => {}, workspaceLabel: (w: string) => w, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
+mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, workspaceLabel: (w: string) => w, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
 mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null }))
-mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
-mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: () => null }))
-mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
+mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentCommands: () => [] }))
+mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
 mock.module('@/api/client', () => ({
   listCodingWorkspaceFiles: async () => [],
   renderCommand: async () => ({ content: '' }),

@@ -1,8 +1,10 @@
-# Build the desktop app and its Python sidecar.
+# Build the desktop app and its backend sidecar: the native ``openagentd``
+# binary from ``appv3/``, copied to ``sidecar-bundle/bin/``.
 #
 # Targets:
-#   make sidecar        Build a slim Python sidecar bundle for the current OS/arch.
-#   make sidecar-full   Same, but with [audio,azure-doc-intel] extras.
+#   make sidecar        Build the backend and stage it in ``sidecar-bundle/``.
+#                       PROFILE=dist (default, fat LTO) or release (faster
+#                       build); TARGET=<rust triple> to cross/pin a target.
 #   make icons          Regenerate .icns / .ico from icons/icon.png.
 #   make dev            Tauri shell + Vite dev server, using the bundled
 #                       sidecar connection model. Run Vite in another terminal
@@ -10,7 +12,8 @@
 #   make dev-bundled    Tauri shell with the *bundled* sidecar (requires
 #                       ``make sidecar`` first). Use this to test the
 #                       sidecar handshake / auth wiring end-to-end.
-#   make build          Build a release desktop app.
+#   make build          Build a release desktop app from the existing bundle.
+#   make build-dev-app  Build the sidecar, then a dev-identity .app bundle.
 #   make open           Open the dev macOS app bundle.
 #   make open-prod      Open the production macOS app bundle.
 #   make clean          Remove build artefacts.
@@ -23,27 +26,33 @@
 # The Tauri shell no longer points at an implicit dev backend. To use a
 # standalone server, add it from the app's Server connection dialog.
 
-.PHONY: sidecar sidecar-full icons dev dev-bundled build-dev-app build clean open open-prod
+.PHONY: sidecar icons dev dev-bundled build-dev-app build clean open open-prod
 
 ROOT       := $(abspath ..)
 BUNDLE     := sidecar-bundle
-PYVER      := 3.14
-EXTRAS     ?=                       # set to e.g. "audio,azure-doc-intel,full"
+EXE        := $(if $(filter Windows_NT,$(OS)),.exe,)
+
+# `dist` = fat LTO (smaller, a few % faster, ~3x slower build); use
+# PROFILE=release for quicker local bundles. Profiles keep symbols
+# (strip = false), so strip the bundled copy.
+PROFILE    ?= dist
+TARGET     ?=
+BIN_DIR    := ../appv3/target/$(if $(TARGET),$(TARGET)/,)$(PROFILE)
 sidecar:
-	@python3 ../scripts/build_sidecar.py \
-		--root "$(ROOT)" \
-		--out  "$(BUNDLE)" \
-		--python-version "$(PYVER)" \
-		$(if $(EXTRAS),--extras "$(EXTRAS)",)
+	cargo build --locked --profile $(PROFILE) --manifest-path ../appv3/Cargo.toml -p appv3-cli $(if $(TARGET),--target $(TARGET),)
+	@rm -rf "$(BUNDLE)"
+	@mkdir -p "$(BUNDLE)/bin"
+	@cp -f "$(BIN_DIR)/openagentd$(EXE)" "$(BUNDLE)/bin/openagentd$(EXE)"
+	@# GNU strip (e.g. from Git Bash) can corrupt MSVC executables; skip it there.
+	@if [ -z "$(EXE)" ] && command -v strip >/dev/null 2>&1; then strip "$(BUNDLE)/bin/openagentd$(EXE)"; fi
+	@"$(BUNDLE)/bin/openagentd$(EXE)" --version
+	@du -sh "$(BUNDLE)"
 
 open:
 	@open "src-tauri/target/release/bundle/macos/OpenAgentd (dev).app"
 
 open-prod:
 	@open "src-tauri/target/release/bundle/macos/OpenAgentd.app"
-
-sidecar-full:
-	@$(MAKE) sidecar EXTRAS="audio,azure-doc-intel"
 
 icons:
 	python3 ../scripts/generate_icons.py
@@ -61,9 +70,9 @@ dev:
 	@echo "→ Tauri dev shell. Make sure Vite (:5173) is running. Backend uses bundled sidecar when available."
 	cd src-tauri && cargo tauri dev -c tauri.dev.conf.json
 
-# Dev with the bundled CPython sidecar — the closest thing to ``make build``
+# Dev with the bundled backend sidecar — the closest thing to ``make build``
 # without producing a .dmg. Useful for testing handshake, token injection,
-# Job-Object cleanup, and the ``app.cli serve`` entry path.
+# Job-Object cleanup, and the ``server serve`` entry path.
 #
 # The XDG roots are pinned to ``<repo>/.openagentd/dev/...`` so the bundled
 # sidecar shares state (DB, config, workspace) with ``make dev`` at

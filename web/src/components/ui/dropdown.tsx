@@ -49,6 +49,7 @@ import {
 import { createPortal } from 'react-dom'
 import { ChevronDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { DURATIONS_S } from '@/lib/motion'
 import { buttonVariants } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 
@@ -123,6 +124,8 @@ export interface DropdownProps {
   onValueChange?: (value: string) => void
   className?: string
   panelClassName?: string
+  /** Which trigger edge the panel lines up with; ``end`` suits triggers at a right edge. */
+  align?: 'start' | 'end'
   id?: string
   'aria-label'?: string
   'aria-invalid'?: boolean | 'true' | 'false'
@@ -137,6 +140,7 @@ function Dropdown({
   onValueChange,
   className,
   panelClassName,
+  align = 'start',
   id,
   'aria-label': ariaLabel,
   'aria-invalid': ariaInvalid,
@@ -144,10 +148,11 @@ function Dropdown({
   disabled,
 }: DropdownProps) {
   const [open, setOpen] = useState(false)
-  const { mounted: panelMounted, closing: panelClosing } = useDeferredUnmount(open, 100)
+  // Matches the exit's ``animation-duration-(--motion-fast)`` below.
+  const { mounted: panelMounted, closing: panelClosing } = useDeferredUnmount(open, DURATIONS_S.fast * 1000)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0, flipsUp: false })
   const uid = useId()
   /** Index of the keyboard's active option, or -1 for none. */
   const [highlight, setHighlight] = useState(-1)
@@ -157,13 +162,18 @@ function Dropdown({
     if (!t) return
     const rect = t.getBoundingClientRect()
     const panelH = panelRef.current?.offsetHeight ?? 200
+    const panelW = panelRef.current?.offsetWidth ?? rect.width
     const flipsUp = rect.bottom + 4 + window.scrollY + panelH > window.innerHeight + window.scrollY
+    const left = align === 'end'
+      ? Math.max(8, rect.right - Math.max(panelW, rect.width))
+      : rect.left
     setPos({
       top: flipsUp ? rect.top - panelH - 4 + window.scrollY : rect.bottom + 4 + window.scrollY,
-      left: rect.left + window.scrollX,
+      left: left + window.scrollX,
       width: rect.width,
+      flipsUp,
     })
-  }, [])
+  }, [align])
 
   useEffect(() => {
     if (!panelMounted) return
@@ -176,10 +186,11 @@ function Dropdown({
     }
   }, [panelMounted, reposition])
 
-  // Outside click closes
+  // A click or focus outside closes: focus covers what a click cannot, such
+  // as a shortcut that opens a dialog, which takes focus, under the open menu.
   useEffect(() => {
     if (!open) return
-    const handler = (e: MouseEvent) => {
+    const handler = (e: Event) => {
       if (
         panelRef.current?.contains(e.target as Node) ||
         triggerRef.current?.contains(e.target as Node)
@@ -187,7 +198,11 @@ function Dropdown({
       setOpen(false)
     }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('focusin', handler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('focusin', handler)
+    }
   }, [open])
 
   // Escape closes
@@ -361,10 +376,19 @@ function Dropdown({
             'min-w-[var(--dropdown-anchor-width)]',
             'rounded-sm border border-(--color-border) bg-(--bg-card)',
             'p-1 shadow-md outline-none',
-            'duration-100',
+            // Only the animation gets a duration: ``duration-*`` also sets
+            // ``transition-duration``, and with ``transition-property`` at its
+            // ``all`` default the panel slid from where it first mounted to
+            // where it measured itself into place. DESIGN.md → Motion: in at
+            // ``base`` on the ``ease-out`` curve, out at ``fast``.
+            'ease-(--ease-out)',
+            // Grow out of the corner at the trigger.
+            pos.flipsUp
+              ? (align === 'end' ? 'origin-bottom-right' : 'origin-bottom-left')
+              : (align === 'end' ? 'origin-top-right' : 'origin-top-left'),
             panelClosing
-              ? 'animate-out fade-out-0 zoom-out-95'
-              : 'animate-in fade-in-0 zoom-in-95',
+              ? 'animate-out fade-out-0 zoom-out-95 animation-duration-(--motion-fast)'
+              : 'animate-in fade-in-0 zoom-in-95 animation-duration-(--motion-base)',
             panelClassName,
           )}
           style={{ top: pos.top, left: pos.left, '--dropdown-anchor-width': `${pos.width}px` } as React.CSSProperties}

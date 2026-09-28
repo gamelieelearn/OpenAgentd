@@ -184,7 +184,7 @@ describe("InputComposer — placeholder and disabled state", () => {
 
   it("overrides placeholder when streaming", () => {
     render(<InputComposer onSubmit={() => {}} isStreaming={true} placeholder="Ask anything…" />)
-    expect((screen.getByLabelText("Message input") as HTMLTextAreaElement).placeholder).toMatch(/Queue a follow-up/)
+    expect((screen.getByLabelText("Message input") as HTMLTextAreaElement).placeholder).toBe("Steer or queue a follow-up…")
   })
 
   it("send button disabled with no text, enabled once text is typed", async () => {
@@ -248,6 +248,19 @@ describe("InputComposer — input history", () => {
     expect(textarea.value).toBe("older")
     await user.keyboard("{ArrowDown}")
     expect(textarea.value).toBe("newer")
+  })
+
+  it("reports each recalled prompt, and the return to an empty draft", async () => {
+    const user = userEvent.setup()
+    const onHistoryRecall = mock((..._args: unknown[]) => {})
+    render(<InputComposer onSubmit={() => {}} historyPrompts={["newer", "older"]} onHistoryRecall={onHistoryRecall} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.click(textarea)
+
+    await user.keyboard("{ArrowUp}{ArrowUp}{ArrowUp}{ArrowDown}{ArrowDown}")
+
+    // The third ↑ is past the oldest prompt and recalls nothing new.
+    expect(onHistoryRecall.mock.calls.map((call) => call[0])).toEqual(["newer", "older", "newer", null])
   })
 
   it("does not hijack modified arrow keys", async () => {
@@ -361,29 +374,39 @@ describe("InputComposer — file attachment", () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Character count
+// No character count
 // ─────────────────────────────────────────────────────────────────────────────
-describe("InputComposer — character count", () => {
-  it("hidden below 500 chars, visible above 500", () => {
-    render(<InputComposer onSubmit={() => {}} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    act(() => { fireEvent.change(textarea, { target: { value: "a".repeat(499) } }) })
-    expect(screen.queryByText("499")).toBeNull()
-
-    act(() => { fireEvent.change(textarea, { target: { value: "a".repeat(501) } }) })
-    expect(screen.getByText("501")).toBeTruthy()
-  })
-
-  it("shows error indicator above 2000 chars", () => {
+describe("InputComposer — long drafts", () => {
+  it("does not count characters: messages have no length limit", () => {
     render(<InputComposer onSubmit={() => {}} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     act(() => { fireEvent.change(textarea, { target: { value: "a".repeat(2001) } }) })
-    const charCount = screen.getByText("2001")
-    expect(charCount).toBeTruthy()
-    // The error styling is visual; we verify the element exists and can be styled
-    // Implementation detail: actual color rendering is tested via E2E, not unit tests
+    expect(screen.queryByText("2001")).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Send / Stop slot (DESIGN.md `button-send`)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputComposer — send and stop buttons", () => {
+  it("fills Send with the inverted send pill once there is text", async () => {
+    const user = userEvent.setup()
+    render(<InputComposer onSubmit={() => {}} />)
+    await user.type(screen.getByLabelText("Message input"), "hi")
+
+    const send = screen.getByLabelText("Send message")
+    expect(send.className).toContain("rounded-full")
+    expect(send.className).toContain("bg-(--bg-send)")
+  })
+
+  it("draws Stop as the same neutral pill, not an error", () => {
+    render(<InputComposer onSubmit={() => {}} isStreaming onStop={() => {}} />)
+
+    const stop = screen.getByLabelText("Stop generation")
+    expect(stop.className).toContain("rounded-full")
+    expect(stop.className).toContain("bg-(--bg-send)")
+    expect(stop.className).not.toContain("--color-error")
   })
 })
 
@@ -422,6 +445,18 @@ describe("InputComposer — ref API", () => {
     act(() => { ref.current?.appendValue("!make") })
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     expect(textarea.value).toBe("hello !make")
+  })
+
+  it("appendValue with paragraph: true starts a new paragraph after existing text", () => {
+    const ref = createRef<InputComposerHandle>()
+    render(<InputComposer onSubmit={() => {}} ref={ref} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    act(() => { ref.current?.appendValue("first", { paragraph: true }) })
+    expect(textarea.value).toBe("first")
+
+    act(() => { ref.current?.appendValue("second", { paragraph: true }) })
+    expect(textarea.value).toBe("first\n\nsecond")
   })
 })
 

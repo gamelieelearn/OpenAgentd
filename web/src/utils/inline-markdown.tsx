@@ -1,14 +1,8 @@
 /**
  * Inline-only markdown for short, model-authored strings.
  *
- * Deliberately its own module rather than a call to ``LazyMarkdownBlock``,
- * which already code-splits the full ``markdown.tsx`` graph
- * (@tanstack/markdown, Mermaid) into an on-demand chunk. So the reason is
- * *not* initial bundle size — that chunk is never in the eager path. It is:
+ * Deliberately its own module rather than a call to ``MarkdownBlock``:
  *
- * - **No async boundary for one line.** Going through the lazy renderer means a
- *   chunk fetch plus a Suspense fallback to draw a question label; the card
- *   would visibly reflow on open.
  * - **Block markup is wrong here.** That renderer emits an ``oa-prose``
  *   wrapper and ``<p>`` elements, which break a compact card's layout.
  * - **No links, by design.** See ``INLINE_MARKERS`` below: these strings are

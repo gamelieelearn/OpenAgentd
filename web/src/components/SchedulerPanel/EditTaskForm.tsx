@@ -15,6 +15,7 @@ import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import { useSchedulerPaneHeaderClass } from './chrome'
 
 export function EditTaskForm({
   task,
@@ -26,6 +27,7 @@ export function EditTaskForm({
   onCancel: () => void
 }) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const headerClass = useSchedulerPaneHeaderClass()
   const currentSessionId = useAgentStore((state) => state.sessionId)
   const currentSessionTitle = useAgentStore((state) => state.sessionTitle)
   const activeSessionWorkspace = useAgentStore((state) => state._workspace)
@@ -62,7 +64,7 @@ export function EditTaskForm({
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-(--bg-page)">
       {/* Header */}
-      <div className="border-b border-(--color-border) bg-(--bg-sidebar) px-4 py-2.5 sm:px-5">
+      <div className={headerClass}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-sm border border-(--color-accent)/30 bg-(--color-accent)/10 text-(--color-accent)">
@@ -93,7 +95,7 @@ export function EditTaskForm({
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-5">
+      <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto p-4 @xl:p-5">
         <div className="space-y-3.5">
           {/* Routing */}
           <ModeWorkspaceFields
@@ -105,7 +107,7 @@ export function EditTaskForm({
 
           {/* Schedule Type & Detail */}
           {values.schedule_type === 'every' ? (
-            <div className="grid gap-3 sm:grid-cols-2 sm:items-start">
+            <div className="grid gap-3 @xl:grid-cols-2 @xl:items-start">
               <div>
                 <label className="mb-1 block text-xs font-medium text-(--color-text-2)">Schedule Type</label>
                 <ScheduleTypeSegmented
@@ -140,7 +142,7 @@ export function EditTaskForm({
               />
 
               {values.schedule_type === 'at' && (
-                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-start">
+                <div className="mt-3 grid gap-3 @xl:grid-cols-[minmax(0,1fr)_12rem] @xl:items-start">
                   <div>
                     <label htmlFor="edit-task-at-datetime" className="mb-1 block text-xs font-medium text-(--color-text-2)">Date & Time</label>
                     <DateTimePicker
@@ -167,7 +169,7 @@ export function EditTaskForm({
               )}
 
               {values.schedule_type === 'cron' && (
-                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-start">
+                <div className="mt-3 grid gap-3 @xl:grid-cols-[minmax(0,1fr)_12rem] @xl:items-start">
                   <div>
                     <label htmlFor="edit-task-cron-expression" className="mb-1 block text-xs font-medium text-(--color-text-2)">Cron Expression</label>
                     <Input
@@ -214,7 +216,7 @@ export function EditTaskForm({
           </div>
 
           {/* Session Target & Max Runs */}
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-start">
+          <div className="grid gap-3 @xl:grid-cols-[minmax(0,1fr)_9rem] @xl:items-start">
             <div>
               <label htmlFor="edit-session-target" className="mb-1 block text-xs font-medium text-(--color-text-2)">Session Target</label>
               <Dropdown
@@ -286,12 +288,12 @@ export function EditTaskForm({
         </div>
 
         {/* Actions */}
-        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <div className="mt-5 flex flex-col-reverse gap-2 @xl:flex-row @xl:justify-end">
           <Button
             type="button"
             variant="subtle"
             size="sm"
-            className="h-8 sm:min-w-20 text-xs"
+            className="h-8 @xl:min-w-20 text-xs"
             onClick={onCancel}
             disabled={updateMutation.isPending}
           >
@@ -302,7 +304,7 @@ export function EditTaskForm({
             variant="primary"
             size="sm"
             disabled={updateMutation.isPending}
-            className="h-8 sm:min-w-28 text-xs font-medium"
+            className="h-8 @xl:min-w-28 text-xs font-medium"
           >
             {updateMutation.isPending ? (
               <>

@@ -1,26 +1,23 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { TodosPopover } from '@/components/TodosPopover'
 import type { TodoItem } from '@/api/types'
 
 afterEach(cleanup)
 
+const TODOS: TodoItem[] = [
+  { task_id: 'task_done', content: 'Completed task', status: 'completed' },
+  { task_id: 'task_cancel', content: 'Cancelled task', status: 'cancelled' },
+  { task_id: 'task_pending', content: 'Pending task', status: 'pending' },
+  { task_id: 'task_active', content: 'Active task', status: 'in_progress' },
+]
+
 describe('TodosPopover — mobile edge-swipe exclusion', () => {
-  it('marks the mobile overlay data-swipe-ignore so useEdgeSwipe never reads a touch on it', () => {
-    // Regression: with trigger={false} (how AgentChatHeader renders it on
-    // mobile) this is the full-screen overlay variant (backdrop + panel),
-    // not tracked as a drawer by useEdgeSwipe. Without this attribute an
-    // edge-zone touch on top of it is read as a fresh "open" gesture for
-    // the sidebar/actions drawer underneath.
-    render(
-      <TodosPopover
-        open
-        trigger={false}
-        onOpenChange={() => {}}
-        todos={[]}
-        sessionId="session-123"
-      />,
-    )
+  it('marks the overlay data-swipe-ignore so useEdgeSwipe never reads a touch on it', () => {
+    // Regression: the panel + backdrop are not tracked as a drawer by
+    // useEdgeSwipe. Without this attribute an edge-zone touch on top of it
+    // is read as a fresh "open" gesture for the drawer underneath.
+    render(<TodosPopover open onOpenChange={() => {}} todos={[]} />)
 
     const overlay = document.querySelector('[role="presentation"]')
     expect(overlay).not.toBeNull()
@@ -29,65 +26,36 @@ describe('TodosPopover — mobile edge-swipe exclusion', () => {
 })
 
 describe('TodosPopover', () => {
+  it('renders nothing while closed', () => {
+    render(<TodosPopover open={false} onOpenChange={() => {}} todos={TODOS} />)
+    expect(screen.queryByRole('dialog', { name: 'Tasks' })).toBeNull()
+  })
+
   it('shows an empty-state message when there are no todos', () => {
-    render(
-      <TodosPopover
-        open
-        onOpenChange={() => {}}
-        todos={[]}
-        sessionId="session-123"
-      />,
-    )
+    render(<TodosPopover open onOpenChange={() => {}} todos={[]} />)
 
     expect(screen.getByText('No tasks yet')).toBeTruthy()
-    // No checklist should be rendered when the list is empty.
     expect(screen.queryByRole('list', { name: 'Task list' })).toBeNull()
   })
 
+  it('shows the saved plan row even before there are tasks', () => {
+    const plan = { content: '## Summary\nDo it.', updated_at: new Date().toISOString() }
+    render(<TodosPopover open onOpenChange={() => {}} todos={[]} plan={plan} onClearPlan={() => {}} />)
+
+    expect(screen.getByRole('button', { name: 'View plan' })).toBeTruthy()
+    expect(screen.getByText('No tasks yet')).toBeTruthy()
+  })
+
+  it('has no plan row without a saved plan', () => {
+    render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
+    expect(screen.queryByRole('button', { name: 'View plan' })).toBeNull()
+  })
+
   it('renders a flat checklist sorted in_progress → pending → completed → cancelled', () => {
-    const todos: TodoItem[] = [
-      {
-        task_id: 'task_done',
-        content: 'Completed task',
-        status: 'completed',
-      },
-      {
-        task_id: 'task_cancel',
-        content: 'Cancelled task',
-        status: 'cancelled',
-      },
-      {
-        task_id: 'task_pending',
-        content: 'Pending task',
-        status: 'pending',
-      },
-      {
-        task_id: 'task_active',
-        content: 'Active task',
-        status: 'in_progress',
-      },
-    ]
+    render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
 
-    render(
-      <TodosPopover
-        open
-        onOpenChange={() => {}}
-        todos={todos}
-        sessionId="session-123"
-      />,
-    )
-
-    // All content lines render.
-    expect(screen.getByText('Active task')).toBeTruthy()
-    expect(screen.getByText('Pending task')).toBeTruthy()
-    expect(screen.getByText('Completed task')).toBeTruthy()
-    expect(screen.getByText('Cancelled task')).toBeTruthy()
-
-    // Header counter reflects (completed + cancelled) / total — cancelled
-    // tasks have also left the active set, so they count as "finished".
+    // Cancelled tasks have left the active set, so they count as finished.
     expect(screen.getByText('2/4 done')).toBeTruthy()
-
-    // Sort order: in_progress → pending → completed → cancelled.
     const items = screen.getAllByRole('listitem')
     expect(items.map((li) => li.textContent)).toEqual([
       expect.stringContaining('Active task'),
@@ -98,57 +66,34 @@ describe('TodosPopover', () => {
   })
 
   it('strikes through completed and cancelled rows, not pending or in_progress', () => {
-    const todos: TodoItem[] = [
-      { task_id: '1', content: 'Active', status: 'in_progress' },
-      { task_id: '2', content: 'Pending', status: 'pending' },
-      { task_id: '3', content: 'Done', status: 'completed' },
-      { task_id: '4', content: 'Cancelled', status: 'cancelled' },
-    ]
+    render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
 
-    render(
-      <TodosPopover
-        open
-        onOpenChange={() => {}}
-        todos={todos}
-        sessionId="session-123"
-      />,
-    )
-
-    expect(screen.getByText('Active').className).not.toContain('line-through')
-    expect(screen.getByText('Pending').className).not.toContain('line-through')
-    expect(screen.getByText('Done').className).toContain('line-through')
-    expect(screen.getByText('Cancelled').className).toContain('line-through')
+    expect(screen.getByText('Active task').className).not.toContain('line-through')
+    expect(screen.getByText('Pending task').className).not.toContain('line-through')
+    expect(screen.getByText('Completed task').className).toContain('line-through')
+    expect(screen.getByText('Cancelled task').className).toContain('line-through')
   })
 
-  it('does not apply the mobile first-open zoom-in animation', () => {
-    render(
-      <TodosPopover
-        open
-        onOpenChange={() => {}}
-        todos={[]}
-        sessionId="session-123"
-        trigger={false}
-      />,
-    )
+  it('fades in without the zoom-in animation', () => {
+    render(<TodosPopover open onOpenChange={() => {}} todos={[]} />)
 
     const dialog = screen.getByRole('dialog', { name: 'Tasks' })
     expect(dialog.className).not.toContain('zoom-in-95')
     expect(dialog.className).toContain('fade-in-0')
   })
 
-  it('does not apply the desktop popover zoom-in animation', () => {
-    render(
-      <TodosPopover
-        open
-        onOpenChange={() => {}}
-        todos={[]}
-        sessionId="session-123"
-      />,
-    )
+  it('closes from the backdrop', () => {
+    const calls: boolean[] = []
+    render(<TodosPopover open onOpenChange={(open) => calls.push(open)} todos={TODOS} />)
 
-    const panel = document.querySelector('[data-slot="popover-content"]')
-    expect(panel?.className).not.toContain('zoom-in-95')
-    expect(panel?.className).toContain('fade-in-0')
+    fireEvent.click(screen.getByRole('button', { name: 'Close tasks' }))
+    expect(calls).toEqual([false])
   })
 
+  it('keeps the progress counter at the 11px floor on desktop', () => {
+    render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
+    const counter = screen.getByText('2/4 done')
+    expect(counter.className).toContain('md:text-[11px]')
+    expect(counter.className).not.toContain('text-[10px]')
+  })
 })

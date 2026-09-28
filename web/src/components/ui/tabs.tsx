@@ -10,6 +10,11 @@ interface TabsContextValue {
 
 const TabsContext = createContext<TabsContextValue | null>(null)
 
+type TabsSize = 'default' | 'sm'
+
+/** Size chosen on ``TabsList`` and read by its triggers. */
+const TabsListSizeContext = createContext<TabsSize>('default')
+
 function useTabsContext() {
   const context = useContext(TabsContext)
   if (!context) throw new Error('Tabs components must be used inside <Tabs>')
@@ -57,30 +62,45 @@ function Tabs({ className, value, defaultValue, onValueChange, orientation = 'ho
   )
 }
 
-const TABS_LIST_BASE = 'group/tabs-list inline-flex w-fit max-w-full items-center justify-center overflow-x-auto rounded-md border border-(--color-border) bg-(--bg-key) p-0.5 text-(--color-text-muted) data-[orientation=horizontal]:h-8 data-[orientation=vertical]:h-fit data-[orientation=vertical]:flex-col data-[orientation=vertical]:overflow-x-visible data-[variant=line]:border-transparent data-[variant=line]:bg-transparent data-[variant=line]:p-0'
+const TABS_LIST_BASE = 'group/tabs-list inline-flex w-fit max-w-full items-center justify-center overflow-x-auto border border-(--color-border) bg-(--bg-key) p-0.5 text-(--color-text-muted) data-[orientation=vertical]:h-fit data-[orientation=vertical]:flex-col data-[orientation=vertical]:overflow-x-visible data-[variant=line]:border-transparent data-[variant=line]:bg-transparent data-[variant=line]:p-0'
 const TABS_LIST_VARIANT: Record<string, string> = { default: '', line: 'gap-1' }
+// Height lives in the size map (not the base) because ``cn`` is a plain join:
+// a caller's ``h-*`` cannot override a base height it does not replace.
+const TABS_LIST_SIZE: Record<TabsSize, string> = {
+  default: 'rounded-md data-[orientation=horizontal]:h-8',
+  sm: 'rounded-sm data-[orientation=horizontal]:h-6',
+}
+const TABS_TRIGGER_SIZE: Record<TabsSize, string> = {
+  default: 'px-3 py-1 text-sm data-active:shadow-sm [&_svg:not([class*=size-])]:size-4',
+  sm: 'px-2 text-xs [&_svg:not([class*=size-])]:size-3',
+}
 
-function tabsListVariants({ variant = 'default' }: { variant?: 'default' | 'line' | null } = {}): string {
-  return cn(TABS_LIST_BASE, TABS_LIST_VARIANT[variant ?? 'default'])
+function tabsListVariants({ variant = 'default', size = 'default' }: { variant?: 'default' | 'line' | null; size?: TabsSize } = {}): string {
+  return cn(TABS_LIST_BASE, TABS_LIST_SIZE[size], TABS_LIST_VARIANT[variant ?? 'default'])
 }
 
 interface TabsListProps extends ComponentPropsWithRef<'div'> {
   /** Visual treatment. */
   variant?: 'default' | 'line' | null
+  /** ``sm`` is the 24px segmented control for dense panel toolbars. */
+  size?: TabsSize
 }
 
-function TabsList({ className, variant = 'default', ...props }: TabsListProps) {
+function TabsList({ className, variant = 'default', size = 'default', ...props }: TabsListProps) {
   const { orientation } = useTabsContext()
   return (
-    <div
-      role="tablist"
-      data-slot="tabs-list"
-      data-variant={variant}
-      data-orientation={orientation}
-      aria-orientation={orientation}
-      className={cn(tabsListVariants({ variant }), className)}
-      {...props}
-    />
+    <TabsListSizeContext.Provider value={size}>
+      <div
+        role="tablist"
+        data-slot="tabs-list"
+        data-variant={variant}
+        data-size={size}
+        data-orientation={orientation}
+        aria-orientation={orientation}
+        className={cn(tabsListVariants({ variant, size }), className)}
+        {...props}
+      />
+    </TabsListSizeContext.Provider>
   )
 }
 
@@ -91,6 +111,7 @@ interface TabsTriggerProps extends ComponentPropsWithRef<'button'> {
 
 function TabsTrigger({ className, value, id, type = 'button', onClick, onKeyDown, ...props }: TabsTriggerProps) {
   const { id: groupId, value: activeValue, setValue, orientation } = useTabsContext()
+  const size = useContext(TabsListSizeContext)
   const active = activeValue === value
   const triggerId = id ?? `${groupId}-${encodeURIComponent(value)}-tab`
 
@@ -105,10 +126,11 @@ function TabsTrigger({ className, value, id, type = 'button', onClick, onKeyDown
       aria-controls={`${groupId}-${encodeURIComponent(value)}-panel`}
       tabIndex={active ? 0 : -1}
       className={cn(
-        'relative inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-xs border border-transparent px-3 py-1 text-sm font-medium whitespace-nowrap text-(--color-text-muted) transition-colors',
+        'relative inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-xs border border-transparent font-medium whitespace-nowrap text-(--color-text-muted) transition-colors',
+        TABS_TRIGGER_SIZE[size],
         'hover:bg-(--bg-card)/40 hover:text-(--color-text) active:bg-(--bg-card)/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/30 disabled:pointer-events-none disabled:opacity-50',
-        'data-active:border-(--color-border-strong) data-active:bg-(--bg-card) data-active:text-(--color-text) data-active:shadow-sm',
-        '[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*=size-])]:size-4',
+        'data-active:bg-(--bg-card) data-active:text-(--color-text)',
+        '[&_svg]:pointer-events-none [&_svg]:shrink-0',
         className,
       )}
       onClick={(event) => {

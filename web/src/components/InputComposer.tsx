@@ -4,17 +4,20 @@ import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer.mentions'
 import { MentionOverlay } from './InputComposer.overlay'
-import { CHAR_WARN_THRESHOLD, findActiveSnippet } from './InputComposer.helpers'
+import { findActiveSnippet } from './InputComposer.helpers'
 import { InputComposerSuggestions } from './InputComposer.suggestions'
 import { useInputComposerSuggestionEngine } from './InputComposer.suggestionEngine'
 import { MAX_TEXTAREA_HEIGHT, useTextareaAutosize } from './InputComposer.autosize'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 import { buildAcceptString } from './InputComposer.files'
 import { useInputComposerAttachments } from './InputComposer.attachments'
+import { DeliveryMenu } from './InputComposer.deliveryMenu'
 import { cn } from '@/lib/utils'
 import { buildHistoryEntries } from './InputComposer.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { usePlatform } from '@/hooks/use-platform'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { isPrimaryModifierOS } from '@/lib/keyboard-shortcut'
 import { SessionModeToggle } from './SessionModeToggle'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
@@ -64,8 +67,27 @@ export interface SnippetCommand {
   category?: string
 }
 
+/**
+ * How a message sent during a turn is delivered: ``steer`` hands it to the
+ * running turn before the agent's next step, ``after-turn`` holds it until
+ * the turn ends, ``interrupt`` stops the turn and sends it in its place.
+ * Idle sends are always ``steer``, which simply starts a turn.
+ */
+export type SendDelivery = 'steer' | 'after-turn' | 'interrupt'
+
+/** Either primary modifier stops and sends, so a Mac user reaching for Ctrl is not surprised. */
+function deliveryForKey(e: { metaKey: boolean; ctrlKey: boolean; altKey: boolean }): SendDelivery {
+  if (e.metaKey || e.ctrlKey) return 'interrupt'
+  if (e.altKey) return 'after-turn'
+  return 'steer'
+}
+
+/** The chevron half of the split Send pill. */
+const DELIVERY_TRIGGER_CLASS =
+  'flex h-8 w-5 shrink-0 items-center justify-center gap-0 rounded-l-none rounded-r-full border-0 border-l border-l-(--color-text-on-accent)/20 bg-(--bg-send) px-0 py-0 text-(--color-text-on-accent) hover:bg-(--bg-send) hover:opacity-90 hover:shadow-none active:bg-(--bg-send) md:h-7 [&>span]:hidden [&_svg]:text-(--color-text-on-accent)'
+
 export interface InputComposerProps {
-  onSubmit: (message: string, files?: File[], mentionedFiles?: string[]) => void
+  onSubmit: (message: string, files?: File[], mentionedFiles?: string[], delivery?: SendDelivery) => void
   onStop?: () => void
   onSlashCommand?: (id: string) => void
   onSnippetCommand?: (id: string) => Promise<string | null> | string | null
@@ -141,12 +163,22 @@ export interface InputComposerProps {
   onSuggestionsMenuChange?: (open: boolean) => void
   /** Newest-first prompt history supplied by the parent, e.g. loaded chat history. */
   historyPrompts?: string[]
+  /**
+   * ``↑``/``↓`` recalled a history prompt into the input (its text), or
+   * walked back out to an empty draft (``null``).
+   */
+  onHistoryRecall?: (prompt: string | null) => void
 }
 
 export interface InputComposerHandle {
-  focus: () => void
+  /**
+   * ``expand: false`` leaves a collapsed floating bar collapsed, focusing its
+   * Expand button instead — for handing focus back rather than summoning it.
+   */
+  focus: (options?: { expand?: boolean }) => void
   setValue: (text: string) => void
-  appendValue: (text: string) => void
+  /** ``paragraph`` puts a blank line, rather than a space, before the text. */
+  appendValue: (text: string, options?: { paragraph?: boolean }) => void
   insertText: (text: string) => void
   setFiles: (files: File[]) => void
   addFiles: (files: File[]) => void
@@ -190,6 +222,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   onValueChange,
   onSuggestionsMenuChange,
   historyPrompts = [],
+  onHistoryRecall,
 }, ref) {
   const [value, setValue] = useState('')
   const {
@@ -239,7 +272,9 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     })
   }, [mentionRanges])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const expandButtonRef = useRef<HTMLButtonElement>(null)
   const isMobile = useIsMobile()
+  const { os } = usePlatform()
   const prefersReducedMotion = useReducedMotion()
 
   const history = useMemo(
@@ -336,6 +371,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         setMentionRange(null)
         setSnippetRange(null)
         requestAnimationFrame(resize)
+        onHistoryRecall?.(null)
         return true
       }
       if (nextIndex >= history.length) return true
@@ -349,10 +385,11 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         el?.setSelectionRange(next.length, next.length)
         resize()
       })
+      onHistoryRecall?.(next)
       return true
     }
     return false
-  }, [history, value, historyIndex, resize, setMentionRange, setSnippetRange])
+  }, [history, value, historyIndex, resize, setMentionRange, setSnippetRange, onHistoryRecall])
 
   // Shared bookkeeping for every programmatic draft mutation: leave history
   // navigation and close any open picker — a value replacement invalidates
@@ -364,7 +401,10 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   }, [setMentionRange, setSnippetRange])
 
   useImperativeHandle(ref, () => ({
-    focus: () => textareaRef.current?.focus(),
+    focus: (options) => {
+      const target = options?.expand === false && minimized ? expandButtonRef.current : textareaRef.current
+      target?.focus()
+    },
     setValue: (text: string) => {
       setValue(text)
       resetDraftState()
@@ -372,8 +412,9 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       // ``resizeAfterLayout`` for why this must wait two frames.
       resizeAfterLayout()
     },
-    appendValue: (text: string) => {
+    appendValue: (text: string, options?: { paragraph?: boolean }) => {
       setValue((prev) => {
+        if (options?.paragraph) return prev.trim() ? `${prev.trimEnd()}\n\n${text}` : text
         const spacer = prev && !/\s$/.test(prev) ? ' ' : ''
         return `${prev}${spacer}${text}`
       })
@@ -441,7 +482,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     textareaRef.current = node
   }, [])
 
-  const submit = useCallback(() => {
+  const submit = useCallback((delivery: SendDelivery = 'steer') => {
     if (disabled) return
     const trimmed = value.trim()
     if (trimmed.length === 0 && files.length === 0) return
@@ -454,7 +495,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     onSubmit(
       trimmed,
       files.length > 0 ? files : undefined,
-      mentions.length > 0 ? mentions : undefined
+      mentions.length > 0 ? mentions : undefined,
+      delivery,
     )
     setLocalHistory((prev) =>
       prev[0] === trimmed ? prev : [trimmed, ...prev].slice(0, 100),
@@ -573,7 +615,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
     if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
       e.preventDefault()
-      submit()
+      submit(isStreaming ? deliveryForKey(e) : 'steer')
     }
   }
 
@@ -607,8 +649,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
   const canSend = hasText && !disabled
   const canStop = isStreaming && !disabled && onStop != null
-  const charCount = value.length
-  const showCharCount = charCount > CHAR_WARN_THRESHOLD
 
   // Surface "has uncommitted content" to the parent so a minimized bar
   // can re-expand when the user attaches a file via the slim strip.
@@ -667,6 +707,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
   const chatEl = minimized ? (
     <button
+      ref={expandButtonRef}
       type="button"
       onClick={(e) => { stopClick(e); handleExpand() }}
       aria-label="Expand input bar"
@@ -679,7 +720,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const effectivePlaceholder = disabled
     ? 'Waiting for response…'
     : isStreaming
-      ? 'Queue a follow-up or /stop…'
+      ? 'Steer or queue a follow-up…'
       : placeholder
 
   const activePopupId = menu?.id
@@ -687,15 +728,38 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
 
 
+  // DESIGN.md `button-send`: the one inverted surface, a full pill. Stop takes
+  // the same slot and shape while a turn runs — neutral ink, not an error red.
+  const sendSlotClass =
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7'
+  const sendPillClass = 'border-(--bg-send) bg-(--bg-send) text-(--color-text-on-accent) hover:opacity-90'
+
+  // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
+  const mac = isPrimaryModifierOS(os)
+  const splitSend = isStreaming && hasText && !disabled
+
   const sendOrStopEl = canStop && !hasText ? (
     <button
       type="button"
       onClick={(e) => { stopClick(e); onStop?.() }}
       aria-label="Stop generation"
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-error) bg-(--color-error) text-(--bg-page) transition duration-100 hover:opacity-90 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7"
+      className={cn(sendSlotClass, sendPillClass)}
     >
-      <Square size={12} fill="currentColor" />
+      <Square size={10} fill="currentColor" aria-hidden="true" />
     </button>
+  ) : splitSend ? (
+    <div role="group" aria-label="Send" className="flex shrink-0">
+      <button
+        type="button"
+        onClick={(e) => { stopClick(e); submit('steer') }}
+        aria-label="Steer the running turn"
+        aria-keyshortcuts="Enter"
+        className={cn(sendSlotClass, sendPillClass, 'rounded-r-none')}
+      >
+        <ArrowUp size={14} aria-hidden="true" />
+      </button>
+      <DeliveryMenu className={DELIVERY_TRIGGER_CLASS} mac={mac} showShortcuts={!isMobile} onPick={submit} />
+    </div>
   ) : (
     <button
       type="button"
@@ -705,14 +769,13 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       }}
       disabled={!canSend}
       aria-label="Send message"
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7 ${
+      className={cn(
+        sendSlotClass,
+        'disabled:cursor-not-allowed disabled:opacity-50',
         canSend
-          // When there's something to send, promote the button to an accent
-          // fill so the primary action reads clearly — a small but meaningful
-          // clarity win over the flat grey it always was.
-          ? 'border-(--color-accent) bg-(--color-accent) text-(--bg-page) hover:opacity-90'
-          : 'border-(--color-border) bg-(--bg-card) text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)'
-      }`}
+          ? sendPillClass
+          : 'border-(--color-border) bg-(--bg-card) text-(--color-text-2)',
+      )}
     >
       {disabled && !minimized ? (
         <Loader2 size={14} className="animate-spin" aria-hidden="true" />
@@ -857,15 +920,6 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       >
         {messageSlot}
       </div>
-      {!minimized && showCharCount && (
-        <span
-          className={`shrink-0 font-mono text-xs ${
-            charCount > 2000 ? 'text-(--color-error)' : 'text-(--color-text-muted)'
-          }`}
-        >
-          {charCount}
-        </span>
-      )}
       {/* Spacer pushes Send to the right edge of the action-button row. */}
       {!minimized && <div className="flex-1" />}
       {sendOrStopEl}

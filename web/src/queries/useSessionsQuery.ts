@@ -1,8 +1,8 @@
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { listSessions, deleteSession, updateSessionTitle, listSubagents } from '@/api/client'
-import type { SessionPageResponse, SessionResponse } from '@/api/types'
+import type { SessionPageResponse } from '@/api/types'
 import { queryKeys } from './keys'
-import { patchSessionInPageData } from './session-cache'
+import { applySessionRename } from './session-rename'
 import { removeSubagent } from '@/stores/cache-invalidation-bridge'
 
 const PAGE_SIZE = 20
@@ -20,7 +20,7 @@ export function useSessionsQuery() {
   })
 }
 
-export function useCodingWorkspaceSessionsQuery(workspace: string, enabled = true) {
+export function useWorkspaceSessionsQuery(workspace: string, enabled = true) {
   return useInfiniteQuery({
     queryKey: queryKeys.session.sessions.workspace(workspace),
     queryFn: ({ pageParam, signal }) =>
@@ -33,14 +33,44 @@ export function useCodingWorkspaceSessionsQuery(workspace: string, enabled = tru
   })
 }
 
+/**
+ * Every session running or waiting on the user, whatever page it sits on.
+ * Kept in the infinite-list shape so the in-place row patches (turn state,
+ * titles) reach it like any other session list; the global event stream
+ * refetches it when a session joins or leaves. A v2 server ignores ``active``
+ * and returns a normal page, so callers filter the rows they show.
+ */
+export function useActiveSessionsQuery() {
+  return useInfiniteQuery({
+    queryKey: queryKeys.session.sessions.active(),
+    queryFn: ({ signal }) => listSessions(null, PAGE_SIZE, { active: true }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: () => undefined,
+  })
+}
+
+const SEARCH_PAGE_SIZE = 30
+
+/**
+ * Sessions whose title contains ``query``, newest first (first page only).
+ * An older server ignores ``q`` and sends a normal page, so callers filter
+ * the rows they show.
+ */
+export function useSessionSearchQuery(query: string) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.session.sessions.search(query),
+    queryFn: ({ signal }) => listSessions(null, SEARCH_PAGE_SIZE, { query }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: () => undefined,
+    enabled: query.length > 0,
+  })
+}
+
 export function useUpdateSessionTitleMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) => updateSessionTitle(id, title),
-    onSuccess: (updated) => {
-      queryClient.setQueriesData({ queryKey: queryKeys.session.sessions.all() }, (old) => patchSessionInPageData(old, updated))
-      queryClient.setQueryData(queryKeys.session.sessions.detail(updated.id), (old: SessionResponse | undefined) => old ? { ...old, ...updated } : old)
-    },
+    onSuccess: (updated) => applySessionRename(queryClient, updated),
   })
 }
 

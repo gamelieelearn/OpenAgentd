@@ -28,7 +28,7 @@ export function agentRegistryQueryOptions(workspace?: string | null, sessionId?:
   return {
     queryKey: [...queryKeys.agentRegistry(workspace), sessionId ?? ''],
     queryFn: (): Promise<AgentRegistryResponse> => {
-      if (!workspace) throw new Error('Coding workspace is required')
+      if (!workspace) throw new Error('Workspace is required')
       return listSessionAgents(workspace, sessionId)
     },
     // Baseline freshness policy lives here so every consumer of this shared

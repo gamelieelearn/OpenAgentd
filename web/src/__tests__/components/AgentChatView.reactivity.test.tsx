@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { forwardRef, useImperativeHandle } from 'react'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import type { ContentBlock } from '@/api/types'
 
 // lucide-react is deliberately NOT mocked here. Bun validates every static
@@ -16,6 +17,10 @@ mock.module('@tanstack/react-query', () => ({
   QueryClientProvider: ({ children }: { children: unknown }) => children,
 }))
 mock.module('@/queries/useTodosQuery', () => ({ useTodosQuery: () => ({ data: { todos: [] } }) }))
+mock.module('@/queries/useSessionPlanQuery', () => ({
+  useSessionPlanQuery: () => ({ data: { plan: null } }),
+  useClearSessionPlanMutation: () => ({ mutate: () => {} }),
+}))
 mock.module('@/queries', () => ({ useProvidersQuery: () => ({ data: { providers: [] } }) }))
 mock.module('@/queries/useAgentsQuery', () => ({
   useAgentsQuery: () => ({ data: { agents: [{ name: 'code' }] }, isLoading: false }),
@@ -41,10 +46,8 @@ mock.module('@/stores/useUIStore', () => ({
 mock.module('@/stores/useSettingsStore', () => ({ useSettingsStore: () => () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null }))
-mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
-mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: () => null }))
-mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
+mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
 mock.module('@/components/AppFooter', () => ({ AppFooter: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
@@ -61,12 +64,16 @@ mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
     </>
   ),
 }))
+/** The composer's ``onHistoryRecall``, as the mounted chat view passed it. */
+let recall: ((prompt: string | null) => void) | undefined
+
 mock.module('@/components/FloatingInputComposer', () => ({
   FloatingInputComposer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
-    { historyPrompts?: string[] }
-  >(function FloatingInputComposerMock({ historyPrompts }, ref) {
+    { historyPrompts?: string[]; onHistoryRecall?: (prompt: string | null) => void }
+  >(function FloatingInputComposerMock({ historyPrompts, onHistoryRecall }, ref) {
     useImperativeHandle(ref, () => ({ setValue: () => {}, setFiles: () => {} }))
+    recall = onHistoryRecall
     return <div data-testid="history-prompts">{(historyPrompts ?? []).join(',')}</div>
   }),
 }))
@@ -76,25 +83,23 @@ mock.module('@/components/AgentChatView/useOverlayState', () => ({
     setMobileSidebarOpen: () => {},
     showFilesPanel: false,
     setShowFilesPanel: () => {},
-    codingPanel: null,
-    setCodingPanel: () => {},
-    codingFileViewer: null,
-    setCodingFileViewer: () => {},
-    codingFileViewerDetached: false,
-    setCodingFileViewerDetached: () => {},
-    codingFileOpenKey: 0,
-    setCodingFileOpenKey: () => {},
+    workspacePanel: null,
+    setWorkspacePanel: () => {},
+    fileViewer: null,
+    setFileViewer: () => {},
+    fileOpenKey: 0,
+    setFileOpenKey: () => {},
     terminalOpenKey: 0,
     handledTerminalOpenKeyRef: { current: 0 },
-    codingSidebarCollapsed: false,
-    setCodingSidebarCollapsed: () => {},
+    sidebarCollapsed: false,
+    setSidebarCollapsed: () => {},
     openWorkspaceDialogKey: 0,
     showTodos: false,
     showMobileActions: false,
     handleWorkspaceFiles: () => {},
-    handleCodingSidebarToggle: () => {},
+    handleSidebarToggle: () => {},
     handleOpenWorkspaceDialog: () => {},
-    handleCodingFileSelect: () => {},
+    handleFileSelect: () => {},
     handleMentionFileOpen: () => {},
     closeMobileActionsMenu: () => {},
     handleSetShowMobileActions: () => {},
@@ -108,7 +113,7 @@ mock.module('@/components/AgentChatView/useOverlayState', () => ({
     edgeSwipeHandlers: {},
     sidebarDragOffset: null,
     actionsDragOffset: null,
-    codingPanelDragOffset: null,
+    workspacePanelDragOffset: null,
   }),
 }))
 mock.module('@/components/AgentChatView/useSessionBootstrap', () => ({
@@ -191,6 +196,28 @@ describe('AgentChatView reactive derived state', () => {
     })
 
     expect(screen.getByTestId('history-prompts').textContent).toBe('loaded prompt')
+  })
+
+  it('shows the prompt the composer recalls, the newest with that text, and the live end on leaving recall', () => {
+    const showPrompt = mock((..._args: unknown[]) => {})
+    const jumpToLatest = mock(() => {})
+    useTranscriptFollowStore.setState({ showPrompt, jumpToLatest })
+    useAgentStore.setState((state) => {
+      state.agentStreams.lead.blocks = [
+        { ...userBlock('fix it'), id: 'older' },
+        { id: 'a1', type: 'text', content: 'done' },
+        { ...userBlock(' fix it '), id: 'newer' },
+      ]
+    })
+    render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
+
+    act(() => recall?.('fix it'))
+    act(() => recall?.('never sent here'))
+    act(() => recall?.(null))
+
+    expect(showPrompt.mock.calls).toEqual([['newer']])
+    expect(jumpToLatest).toHaveBeenCalledTimes(1)
+    useTranscriptFollowStore.setState({ showPrompt: null, jumpToLatest: null })
   })
 
   it('sums current session costs exactly and excludes stale agent streams', () => {

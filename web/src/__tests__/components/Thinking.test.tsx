@@ -5,10 +5,13 @@
  * format produced by OpenAI's ``/responses`` API.
  */
 
-import { describe, expect, it } from 'bun:test'
-import { render } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'bun:test'
+import { cleanup, render, screen } from '@testing-library/react'
+
 import { Thinking } from '@/components/Thinking'
 import { splitSections } from '@/utils/thinking'
+
+afterEach(cleanup)
 
 describe('splitSections', () => {
   it('returns a single empty-header section for plain text', () => {
@@ -65,6 +68,8 @@ describe('splitSections', () => {
 })
 
 describe('Thinking', () => {
+  const TRACE = '**Planning**\n\nRead the config first.\n\n**Checking**\n\nThen run the tests.'
+
   it('renders each section header as a separate styled run', () => {
     const text = '**One**\n\nfirst.\n\n**Two**\n\nsecond.'
     const { container, getByText } = render(<Thinking content={text} />)
@@ -82,5 +87,27 @@ describe('Thinking', () => {
     const { container } = render(<Thinking content={text} />)
 
     expect(container.textContent).toContain('Line one.\n\nLine two.\n\n\nLine three.')
+  })
+
+  it('shows a finished trace in full, inline, with no toggle', () => {
+    render(<Thinking content={TRACE} />)
+
+    expect(screen.getByText('Read the config first.')).toBeTruthy()
+    expect(screen.getByText('Then run the tests.')).toBeTruthy()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('shows a streaming trace in full rather than a window of it', () => {
+    render(<Thinking content={TRACE} isStreaming />)
+
+    expect(screen.getByText('Read the config first.')).toBeTruthy()
+    expect(screen.getByText('Then run the tests.')).toBeTruthy()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('renders nothing for a whitespace-only trace', () => {
+    const { container } = render(<Thinking content={'  \n '} />)
+
+    expect(container.innerHTML).toBe('')
   })
 })

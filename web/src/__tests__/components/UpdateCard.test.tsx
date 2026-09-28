@@ -95,8 +95,8 @@ mock.module('@/lib/open-external', () => ({
   openExternalUrl: openExternalUrlMock,
 }))
 
-mock.module('@/utils/LazyMarkdownBlock', () => ({
-  LazyMarkdownBlock: ({ content }: { content: string }) => <div>{content}</div>,
+mock.module('@/utils/markdown', () => ({
+  MarkdownBlock: ({ content }: { content: string }) => <div>{content}</div>,
 }))
 
 let platform = { isTauri: true, os: 'macos', isMacOverlay: true }

@@ -3,33 +3,49 @@
  *
  * Tauri menu/tray items live in Rust, while panel state and the command
  * palette live in React/Zustand. Rust emits a small string command and this
- * bridge fans it back into the same keyboard events the web UI already uses.
+ * bridge fans it back into the same keyboard events the web UI already uses,
+ * or into an app event for actions that have no shortcut.
  */
 import { useEffect } from 'react'
 import { useRouter, type AnyRouter } from '@tanstack/react-router'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { getPlatform } from '@/hooks/use-platform'
-import { dispatchShortcutKey } from '@/lib/keyboard-shortcut'
+import { APP_SHORTCUTS, dispatchAppShortcut } from '@/lib/app-shortcuts'
+import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
+import { listenForNotificationTaps } from '@/lib/desktop-notifications'
 
 interface NotificationClickPayload {
   sessionId?: unknown
   mode?: unknown
 }
 
-function runDesktopCommand(command: unknown, router: AnyRouter): void {
+function runDesktopCommand(command: unknown): void {
   switch (command) {
-    case 'coding':
-      void router.navigate({ to: '/coding' })
+    case 'new_session':
+      dispatchAppShortcut(APP_SHORTCUTS.newSession, getPlatform().os)
+      break
+    case 'open_workspace':
+      dispatchAppEvent(APP_EVENTS.openWorkspace)
+      break
+    case 'find':
+      dispatchAppShortcut(APP_SHORTCUTS.findInTranscript, getPlatform().os)
+      break
+    case 'toggle_sidebar':
+      dispatchAppShortcut(APP_SHORTCUTS.sidebar, getPlatform().os)
+      break
+    case 'terminal':
+      dispatchAppEvent(APP_EVENTS.openTerminal)
       break
     case 'quick_open':
-      dispatchShortcutKey('p', getPlatform().os)
+      dispatchAppShortcut(APP_SHORTCUTS.quickOpen, getPlatform().os)
       break
     case 'command_palette':
-      dispatchShortcutKey('k', getPlatform().os)
+      dispatchAppShortcut(APP_SHORTCUTS.commandPalette, getPlatform().os)
       break
     case 'scheduler':
-      useUIStore.getState().toggleScheduler()
+      // The chat shell decides: dock tab with a workspace, overlay otherwise.
+      dispatchAppEvent(APP_EVENTS.toggleScheduler)
       break
     case 'agent_capabilities':
       useUIStore.getState().toggleAgentCapabilities()
@@ -47,7 +63,7 @@ export function openNotificationSession(payload: unknown, router: AnyRouter): vo
   if (!payload || typeof payload !== 'object') return
   const notification = payload as NotificationClickPayload
   if (typeof notification.sessionId !== 'string') return
-  const to = '/coding/$sessionId'
+  const to = '/$sessionId'
   void router.navigate({ to, params: { sessionId: notification.sessionId } })
 }
 
@@ -68,19 +84,25 @@ export function useDesktopCommands(): void {
           const now = Date.now()
           if (lastCommand && lastCommand.command === event.payload && now - lastCommand.timestamp < 450) return
           lastCommand = { command: event.payload, timestamp: now }
-          runDesktopCommand(event.payload, router)
+          runDesktopCommand(event.payload)
         })
         const unlistenNotification = await listen<NotificationClickPayload>('desktop-notification-clicked', (event) => {
           openNotificationSession(event.payload, router)
         })
+        // The mobile shell reports taps through the notification plugin instead.
+        const stopTaps = await listenForNotificationTaps((sessionId) => {
+          openNotificationSession({ sessionId }, router)
+        })
         if (cancelled) {
           unlisten()
           unlistenNotification()
+          stopTaps()
           return
         }
         cleanup = () => {
           unlisten()
           unlistenNotification()
+          stopTaps()
         }
       } catch {
         // Browser build: no Tauri event bus.

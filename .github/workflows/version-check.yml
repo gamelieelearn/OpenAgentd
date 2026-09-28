@@ -13,6 +13,8 @@ on:
       - "desktop/src-tauri/tauri.dev-bundled.conf.json"
       - "mobile/src-tauri/Cargo.toml"
       - "mobile/src-tauri/tauri.conf.json"
+      - "appv3/Cargo.toml"
+      - "appv3/Cargo.lock"
 
 permissions:
   contents: read

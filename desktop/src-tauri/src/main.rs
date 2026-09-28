@@ -9,6 +9,7 @@ mod commands;
 mod sidecar;
 mod usage;
 mod tray_popup;
+mod watchdog;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -43,7 +44,7 @@ pub struct AppState {
     pub backend_base_url: Arc<Mutex<Option<String>>>,
     pub backend_mode: Arc<Mutex<BackendMode>>,
     /// True only while a bundled-sidecar spawn/handshake/health sequence is
-    /// in progress. Shared with the retry command to prevent two Python
+    /// in progress. Shared with the retry command to prevent two sidecar
     /// backends from being launched concurrently after a slow cold start.
     pub backend_starting: Arc<AtomicBool>,
     /// Remains true after a bundled-sidecar startup attempt fails so a
@@ -172,8 +173,8 @@ pub const NORMAL_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 /// Size cap for one `desktop.log` generation. The plugin's 40 KB default
 /// kept less than a day of history.
 pub const DESKTOP_LOG_MAX_BYTES: u128 = 5 * 1024 * 1024;
-/// First execution of the freshly installed 400+ MB sidecar can spend tens
-/// of seconds in OS security scanning before Python emits any stdout.
+/// First execution of a freshly installed sidecar can spend tens of seconds
+/// in OS security scanning (Gatekeeper, Defender) before it emits stdout.
 pub const SIDECAR_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(60);
 #[cfg(not(target_os = "macos"))]
 pub const RELOAD_SHUTDOWN_GRACE: Duration = Duration::from_millis(750);
@@ -367,7 +368,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 
-/// Cleanly stop the Python sidecar before a process re-exec.
+/// Cleanly stop the backend sidecar before a process re-exec.
 ///
 /// Idempotent: ``.take()``s the sidecar out of shared state, so repeat
 /// calls (or a race with ``ExitRequested``) are no-ops.
@@ -665,6 +666,8 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 menu::run_usage_poll_loop(usage_poll_handle).await;
             });
+            let watchdog_handle = app.handle().clone();
+            tauri::async_runtime::spawn(watchdog::run(watchdog_handle));
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -790,13 +793,13 @@ mod tests {
             Some("desktop-token"),
             &external,
             "main-2",
-            Some("/coding/session-1"),
+            Some("/session-1"),
         )
         .expect("external backend init script");
 
         assert!(script.contains("http://192.168.1.10:4082"));
         assert!(!script.contains("desktop-token"));
-        assert!(script.contains("/coding/session-1"));
+        assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/session-1","#));
     }
 
     #[test]
@@ -806,17 +809,17 @@ mod tests {
             Some("desktop-token"),
             &StdHashMap::new(),
             MAIN_WINDOW,
-            Some("/coding/session-1"),
+            Some("/session-1"),
         )
         .expect("bundled backend init script");
 
         assert!(script.contains("http://127.0.0.1:4082"));
         assert!(script.contains("desktop-token"));
-        assert!(script.contains("/coding/session-1"));
+        assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/session-1","#));
     }
 
     #[test]
-    fn new_window_without_a_target_opens_coding() {
+    fn new_window_without_a_target_opens_a_new_session() {
         let script = new_window_init_script(
             Some("http://127.0.0.1:4082"),
             Some("desktop-token"),
@@ -826,7 +829,8 @@ mod tests {
         )
         .expect("bundled backend init script");
 
-        assert!(script.contains("/coding"));
+        assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/","#));
+        assert!(!script.contains("/coding"));
     }
 
     // ── inherited_external_base_url ──────────────────────────────────────────
@@ -940,11 +944,11 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_desktop_startup_opens_coding() {
+    fn unavailable_desktop_startup_opens_a_new_session() {
         let script = backend_unavailable_init_script();
 
-        assert!(script.contains("__OAD_INITIAL_ROUTE__"));
-        assert!(script.contains("/coding"));
+        assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/","#));
+        assert!(!script.contains("/coding"));
     }
 
     #[test]

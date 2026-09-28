@@ -39,7 +39,7 @@ web/src/
   queries/               TanStack Query factories (sessions, agents, messages)
   api/                   Typed API client + generated types
   utils/
-    LazyMarkdownBlock.tsx  Lazy markdown renderer (used in assistant + inbox bubbles)
+    markdown.tsx         MarkdownBlock renderer, smooth-streams while isStreaming
   routes/                TanStack Router pages
   __tests__/             Vitest + RTL tests — mirror the component path
 ```

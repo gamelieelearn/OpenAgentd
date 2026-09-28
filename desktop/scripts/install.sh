@@ -26,8 +26,7 @@
 #   1. Strip ``com.apple.quarantine`` xattr (set by the browser).
 #   2. Strip any pre-existing invalid signature.
 #   3. Apply an ad-hoc signature (``-s -``) recursively, with the
-#      hardened-runtime entitlements that ``ctranslate2`` requires
-#      for native dependencies that JIT kernels at runtime.
+#      hardened runtime and the bundle's ``entitlements.plist``.
 #   4. Verify the result.
 #   5. (Optional, with ``--install``) copy to /Applications.
 #
@@ -206,17 +205,11 @@ if [ "$PLATFORM" = "macos" ]; then
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <true/>
-    <key>com.apple.security.device.audio-input</key>
-    <true/>
     <key>com.apple.security.network.client</key>
     <true/>
     <key>com.apple.security.network.server</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
 </dict>
 </plist>

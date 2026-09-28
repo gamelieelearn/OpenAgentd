@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-23
+updated: 2026-09-28
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.26.0 · September 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.26.0)
+**Latest release:** v3.0.0 · September 28, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.0.0)
 
 ---
 
@@ -48,9 +48,47 @@ Conventions used in this document:
 ## 1. The desktop coding workspace
 
 The product's primary coding surface. A native double-click app on macOS, Windows,
-and Linux that hosts the same FastAPI sidecar + React UI you would otherwise
-run from the terminal.
+and Linux that hosts the same backend sidecar + React UI you would otherwise
+run from the terminal (the native Rust binary since v3.0.0).
 
+- **Native Rust backend engine (OpenAgentd v3)** `[v3.0.0]` — compiles the entire
+  backend into one ~43 MB binary (`appv3/`). The desktop app and the CLI release ship it
+  in place of the 220 MB Python runtime (`make -C desktop sidecar`).
+  It shares v2's DB, config and plugin dirs. Cold start takes 27–38 ms (26–35x faster)
+  and idle memory is ~20 MB (8x less). User plugins are TypeScript/JavaScript files run in
+  an embedded QuickJS runtime. v3 does not load `.py` plugins; `openagentd.d.ts` in the
+  plugin dir types the API. Measurements and remaining differences: `appv3/REPORT.md`.
+- **Safer local server and backend auto-restart (v3)** `[v3.0.0]` — without an
+  access key, the server refuses requests from other websites and from foreign
+  `Host` names, so a page open in your browser cannot drive your agent. The
+  desktop, mobile and local dev UIs are unaffected; `CORS_ORIGINS` adds
+  origins and `["*"]` restores the open default. The desktop token and access
+  key are removed from the environment of every process the agent starts
+  (shell, terminal, git, MCP, plugins). The desktop app restarts a crashed
+  bundled backend (up to 3 times in 10 minutes) and reconnects open windows.
+  Stopping the server with open streams exits at once instead of after 5 s.
+  An internal crash in one turn ends that turn with an error instead of leaving
+  the session busy, and concurrent messages keep distinct history positions.
+- **v3 on macOS, Linux and Windows** `[v3.0.0]` — CI builds and tests all three.
+  Snapshots use in-process `gix`, so no `git` binary is needed (up to 6x faster).
+  Grep is linear-time and parallel. The file tree, git status and diff refresh live
+  when an editor, terminal or `git` changes the workspace (FSEvents / inotify /
+  ReadDirectoryChangesW; `OPENAGENTD_FS_WATCH=poll|off`). On Windows the terminal
+  works through ConPTY, and background commands no longer open console windows.
+- **Faster v3 plugins and shell** `[v3.0.0]` — plugins get a native `regex`
+  module in Python syntax. A secret scrubber built on it runs about 20x faster
+  than with JS `RegExp`. The `shell` tool reads your rc files (aliases,
+  functions, options, PATH) once and reuses them, instead of sourcing
+  `.zshrc`/`.bashrc` on every call (about 130 ms saved per call; rebuilt when
+  an rc file changes; `OPENAGENTD_SHELL_SNAPSHOT=false` restores v2 behaviour).
+- **Plugins page and live settings refresh (v3)** `[v3.0.0]` — Settings →
+  Plugins lists each plugin with its provider, tool hooks and load errors,
+  and flags v2 Python plugins that have no TypeScript port (v3 does not run
+  them). A one-time notice appears when a plugin isn't running. Agents,
+  skills, commands, snippets, plugins and `mcp.json` edited outside the app
+  refresh in open windows immediately. MCP servers report their status as it
+  changes instead of being polled. With v2 the UI keeps its previous
+  behaviour.
 - **Settings draft protection and mobile navigation** `[v2.11.0]` — unsaved
   drafts survive remote refreshes and edits made during a save. Shared settings
   pages and source editors ask before discarding changes on internal navigation
@@ -61,7 +99,8 @@ run from the terminal.
   together in single-branch and all-branch views. Commit lists provide an
   explicit Load more action and a retry action for failed history requests.
 - **Native desktop app for macOS, Windows, Linux** `[since v1.0; Windows restored v1.106.0]` — Tauri 2 shell,
-  bundled Python sidecar, embedded Web UI, one process, no terminal required.
+  bundled backend sidecar (Python until v2, native since v3.0.0), embedded Web UI,
+  one process, no terminal required.
 - **Explicit backend connection state** `[v1.68.0, v1.99.8, v1.113.0]` — desktop connection options
   are limited to the builtin sidecar and saved servers; no-backend dev windows
   show **Backend unreachable**, active server removal clears the current backend,
@@ -72,7 +111,11 @@ run from the terminal.
   native startup failures surface immediately, and Retry re-spawns the builtin
   backend without allowing duplicate sidecar processes `[v1.113.0]`.
 - **Workspace-required architecture and root redirect** `[v2.4.0, updated v2.19.0]` — OpenAgentd runs on one
-  screen built around workspaces. Root `/` and legacy Cockpit URLs redirect to `/coding`,
+  screen built around workspaces. Since `[v3.0.0]` that screen is the root:
+  `/` is a new session and `/{session_id}` a session; old `/coding` and
+  Cockpit URLs redirect there, and the app's labels no longer call it
+  "coding" (the composer reads "Ask anything in <workspace>…", the palette
+  "Toggle Sidebar", the tray just the workspace name),
   workspaces are required across chat, scheduler, and terminals, and database
   migration permanently removes legacy workspace-less records. The workspace-less
   chat surface itself returned in v2.19.0 as a pinned Chat workspace rather than a
@@ -95,8 +138,8 @@ run from the terminal.
   Packaged desktop launches also canonicalise the `index.html` entrypoint to Home
   instead of showing the client-side 404 screen.
 - **Grouped settings navigation with one save contract** `[v1.128.0]` — the
-  settings sidebar is grouped into **Agents & tools**, **Models**, **System**,
-  and **About** instead of one flat list. **Title generation**, **Summarization**
+  settings sidebar is grouped into **Agents & tools**, **Models**, and
+  **About** instead of one flat list. **Title generation**, **Summarization**
   and **Multimodal** are consolidated into a single **Automation** section whose
   three groups can be collapsed independently. The shared save bar saves edited
   groups together; validation in an untouched group does not block saving,
@@ -124,10 +167,16 @@ run from the terminal.
   the operating system;
   OpenAgentd does not play an extra in-app sound. Background-process completion
   alerts are deprecated and no longer emitted by app clients.
+  Mobile notifications send again after `[v1.113.4]` stopped them; tapping
+  one opens its session, and the one for the session already on screen is
+  skipped while the app is open `[v3.0.0]`. iOS pauses the app in the
+  background, so mobile notifications arrive only while it is running.
 - **Quick Open and Command Palette** `[v2.3.0]` — `⌘P`/`Ctrl+P` searches and
   opens files in the active workspace; `⌘K`/`Ctrl+K` searches app actions.
   Both use the compact warm-paper search surface, keyboard navigation, and a
   visible warning when a capped workspace listing omits files.
+  A Quick Open query ending in `:line` or `:start-end` (`Button.tsx:42-58`)
+  opens the pick with those lines selected `[v3.0.0]`.
   `⌘F`/`Ctrl+F` finds user, assistant, and thinking text in the current transcript
   and highlights each match in place;
   `⌘D`/`Ctrl+D` toggles the files and git dock. `⌘N`/`Ctrl+N` starts a new
@@ -135,12 +184,20 @@ run from the terminal.
   footer and mobile sidebar name the connected backend (`builtin` or the saved
   server name/host) instead of a hardcoded local label. Mobile chat actions
   expose transcript find and terminal access without a hardware keyboard.
-  Empty coding sessions offer Ask about this repo, Generate AGENTS.md, and Open
-  terminal on desktop; those starter chips are omitted on mobile, where the
-  composer and chat actions drawer already cover them. Press and hold the
+  Empty coding sessions no longer show the Ask about this repo, Generate
+  AGENTS.md, and Open terminal starter chips *(deprecated)*; the composer,
+  palette, and chat actions drawer cover them. Press and hold the
   pinned Chat row in the mobile sidebar to start a new chat session, since the
   inline `+` is hidden on touch.
-- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0]` — the expanded composer switches an
+- **Palette pages and switching** `[v3.0.0]` — the Command Palette gains
+  Switch Session… (recent sessions in every workspace, with running and
+  waiting-for-you status) and Switch Workspace… (repositories, worktrees,
+  and Chat, most recently active first). Each opens a nested list in place;
+  Backspace on an empty query or Escape steps back out. Typing `>` in Quick
+  Open searches
+  commands instead of files. The desktop app adds Reload Window, since `⌘R`
+  no longer reloads.
+- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
@@ -150,6 +207,15 @@ run from the terminal.
   queued and applied when that turn closes, so it binds from the next turn and
   any message queued behind it. The toggle shows the queued mode in italics
   until it lands. Use stop if you actually want to interrupt the turn.
+  - **Saved session plan** `[v3.0.0]` — the plan a Plan-mode turn ends with
+    is saved as `plan.md` in the session's data directory; each revision
+    replaces it. Context compaction restates it verbatim, with the task
+    list, just before the summary, so the agent keeps following the
+    approved plan in long sessions (once every tracked task is finished,
+    only a pointer to the file is kept). Selecting text on a plan card offers
+    **Comment**, which quotes the selection into the composer for the agent
+    to revise. The Tasks tab and popover show a Plan row with **View** (opens
+    the file) and **Clear** (stops compaction from restating it).
 - **Fullscreen view mode and traffic-light space reclamation** `[v2.0.0]` — automatically
   detects macOS fullscreen mode and reclaims the window traffic-light header padding to
   maximise message and diff reading area.
@@ -161,7 +227,12 @@ run from the terminal.
   Palette, and native Tauri menu accelerators. Session Settings moved to
   `⌘⇧A`/`Ctrl+Shift+A` to avoid clobbering Select All; view-mode cycling and
   session-list refresh lost their dedicated shortcuts (palette-only, low
-  frequency).
+  frequency). `⌘S`/`Ctrl+S` no longer opens Scheduled Tasks, so it only saves
+  in Settings `[v3.0.0]`.
+- **Theme in Settings and the palette** `[v3.0.0]` — Settings → About has an
+  **Appearance** section with a System / Light / Dark choice, and the Command
+  Palette has **Theme: System**, **Theme: Light** and **Theme: Dark**. The
+  mobile drawer keeps its theme button.
 - **Smooth close animations on UI components** `[v1.77.0]` — dropdown, tooltip,
   and popover now play a 100–150 ms exit animation (fade-out + zoom-out) before
   unmounting, matching the open transitions. Dialog and sheet retain their
@@ -171,6 +242,9 @@ run from the terminal.
   for toast notifications now pauses while the pointer or keyboard focus is on
   the toast, resuming with the remaining time once it clears, so a toast can no
   longer disappear mid-read.
+- **Floating surfaces keep content visible** `[v3.0.0]` — on desktop, toasts,
+  the update card, and the language-tools prompt stack in one bottom-right
+  column above the status bar instead of overlapping each other.
 - **Categorized stream & execution error handling** `[v1.133.0]` — provider stream
   errors (rate limits, auth 401, connection drops) are now displayed directly within
   the chat transcript area as persistent error callout cards, while action validation
@@ -194,6 +268,15 @@ run from the terminal.
   Command Palette, Scheduled Tasks, and Session Settings accelerators now use
   `CmdOrCtrl` (Session Settings requires Shift) to match the in-app
   platform-aware shortcuts `[v1.93.1]`.
+  - **Platform-standard menus** `[v3.0.0]` — File has New Session (`⌘N`), New
+    Window (`⌘⇧N`), Open Workspace… (`⌘O`), and Close Window (`⌘W`, which
+    closes an open dock tab first). Edit adds Find in Transcript (`⌘F`); View
+    adds Toggle Sidebar (`⌘B`) and Open Terminal (`⌘⇧` + backtick). A new Help menu
+    links GitHub, release notes, and issue reporting, and holds the config
+    folder and log shortcuts. The macOS app menu gains Services and
+    Hide/Hide Others/Show All. Reload and Force Reload no longer have
+    accelerators, the duplicate New Window, Quit, and Coding (`⌘⇧K`) items
+    are gone, and the Window menu no longer says "Hide to Tray".
   - **Tray "Usage Limits" submenu** `[v1.92.0]` — the macOS tray polls
     `GET /api/settings/providers/usage-summary` (stale-while-revalidate
     backend cache; per-provider last-known-good fallback on transient
@@ -254,7 +337,7 @@ run from the terminal.
   from the right edge goes forward, while editable fields and scroll-like
   vertical gestures are ignored.
 - **Multiple desktop windows** `[v1.41.0]` — open additional coding windows from
-  File → New Window, the tray menu, or `⌘/Ctrl+N`; windows share the bundled
+  File → New Window, the tray menu, or `⌘⇧N`/`Ctrl+Shift+N`; windows share the bundled
   sidecar and desktop auth token, while each window can independently switch to
   a saved external server `[v1.47.0]`. New windows now inherit the active
   window's current backend selection instead of failing when the bundled sidecar
@@ -309,8 +392,11 @@ run from the terminal.
   attached and the draft intact — no more accepting a file and then losing the
   whole message to a bare upload error. `@mention` context keeps its own
   500 KB limit, since mentioned files are read inline rather than uploaded.
-- **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
-  walks previous user prompts from the current chat plus local submissions.
+- **Composer history navigation** `[v1.32.0, v3.0.0]` — when the input is empty,
+  `↑` / `↓` walks previous user prompts from the current chat plus local
+  submissions; sub-agent reports are left out. The transcript scrolls to each
+  recalled prompt, and back to the latest message when you walk out to an
+  empty draft.
 - **Clickable URLs in user message bubbles** `[v1.77.0]` — plain-text URLs typed
   or pasted into a user message are rendered as tappable links; style matches
   agent response links.
@@ -344,6 +430,12 @@ run from the terminal.
 - **On-demand bundle splitting for heavy components** `[v2.0.0]` — xterm.js, Mermaid
   diagrams, and PDF.js load lazily on demand when first needed, accelerating cold-start
   boot time and reducing initial bundle memory.
+- **App surfaces open without a loading step** `[v3.0.0]` — Settings pages,
+  Telemetry, the review dock with its Tasks and Schedule tabs, the scheduler and
+  session settings dialogs, session search, message Markdown, and MCP app
+  results ship with the app instead of loading on first open, so none of them
+  shows a placeholder first. Only xterm.js, Mermaid, and PDF.js still load on
+  demand.
 - **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
   tapping the scroll-to-bottom button no longer detaches the stream
   auto-follow; direction-based detach logic removed from `onScroll` (was
@@ -356,6 +448,56 @@ run from the terminal.
    output update `[v1.132.0]`.
   Auto-follow remains attached when tool output collapses, turn pruning, or layout shrinkage reduces scroll height during token streaming `[v2.12.0]`.
 - **Mobile keyboard viewport guardrails** `[v1.99.1]` — virtual-keyboard detection now uses the pre-keyboard layout height, the mobile shell stays pinned instead of following `visualViewport.offsetTop`, and chat auto-stick ignores keyboard-only scrollport resizes so manual transcript scrolling no longer flickers on iOS/WebViews.
+- **iOS text size** `[v3.0.0]` — the iOS app follows the system text size
+  (Settings or Control Center) while it runs: larger settings scale the text
+  and spacing together, up to 125%. Smaller settings keep the design size.
+- **A calmer transcript** `[v3.0.0]` — the chat reads as prompts and answers:
+  - Every prompt you wrote has Edit (rewind to it and put it back in the
+    composer) and Restore to here (undo the turns after it; `/redo` brings
+    them back), both reachable from the keyboard.
+  - A failed turn ends in an error card with Retry and Switch model, which
+    opens Session Settings.
+  - Right-click a reply for Copy, Copy as Markdown, and Open Session as
+    Markdown.
+  - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your
+    prompts; `⌥⌘↑` reaches earlier prompts in one press, loading them when
+    they are not loaded yet. On mobile, Previous prompt and Next prompt in the
+    chat actions menu do the same.
+  - `path:line` and `path:start-end` references (also `#L42-L58`) in replies
+    and tool output open the file in the review dock with those lines
+    selected. A bare name or partial path (`Button.tsx`,
+    `src/app.ts` for `web/src/app.ts`) finds its file, preferring one the
+    session read or patched; when several files match, Quick Open opens
+    searching for the reference.
+  - On desktop a timeline scrubber replaces the transcript's scrollbar and
+    marks prompts, find matches, and a question waiting for you.
+  - Reply footers add the turn's output tokens, or its cost when the model
+    has a price.
+- **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
+  About → Appearance → Transcript, or Toggle Reader Mode in the command
+  palette, which also finds it as "compact" or "transcript"). Each turn reads
+  as its answer:
+  - The thinking, every tool call, and the narration between them fold into
+    one row such as "6 reads, 3 searches, 4 commands, 2 edits", with failures
+    counted; while the turn runs it names the current step ("Working ·
+    Shell: Run web tests"). Opening it shows the steps as in the detailed
+    transcript, and transcript find opens it when it matches inside.
+  - A question waiting on the user, interactive MCP apps, errors, and
+    compaction dividers stay in place; once answered or closed, a question
+    folds in with the rest of the work.
+  - A finished turn lists the files its `patch` calls changed, with line
+    counts; each opens in the review dock.
+- **The composer while the agent works** `[v3.0.0]`:
+  - Scrolled away from the live end, a "↓ N new" chip rides on the
+    composer, wherever it is dragged, and counts what arrived since.
+  - While a turn runs, Send splits in two. The pill steers: the agent reads
+    the message before its next step (`Enter`). The chevron adds Queue until
+    done, which holds the message in this window and sends it as a turn of
+    its own once the turn ends (`⌥Enter` / `Alt+Enter`), and Stop & send
+    (`⌘Enter` / `Ctrl+Enter`). In the transcript, steering messages read
+    "Read before the next step" and held ones "Sends when this turn ends".
+    Stopping, or a turn that fails, returns held messages to the composer.
+    They are lost on reload.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits. Read
   results and file-change diffs keep line numbers visible while scrolling
@@ -370,7 +512,10 @@ run from the terminal.
   Both stay visible while streaming and after reloading a session.
 - **Effective model on assistant replies** `[v1.42.0]` — assistant footers show
   the model that produced the reply, including fallback transitions, next to the
-  copy and timing metadata.
+  copy and timing metadata. Since `[v3.0.0]` a footer names the model only on
+  the first reply and where the model changes, followed by the thinking level
+  the reply ran at (e.g. `gpt-5 · high`); a change of level alone names it
+  again.
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
   folders render orange. Mentioned files inject inline hidden context on the
   turn without becoming uploads; mentioned folders inject a lightweight directory
@@ -423,6 +568,8 @@ run from the terminal.
   haptics, and legibility guards optimized for small screens `[v1.45.2]`;
   long-press rows get native impact haptics (`tauri-plugin-haptics`) and an
   iOS-style press-and-hold scale animation `[v1.47.0]`.
+  The chat actions menu also opens Search files (Quick Open) and the command
+  palette `[v3.0.0]`.
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
 - **Restored desktop window size** `[v1.52.0]` — desktop windows reopen at the
@@ -466,7 +613,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   `note`) and providing fallback toolsets and default instructions when omitted from disk.
 - **Clean taskboard checklist** `[v1.127.0, updated v2.1.0]` — the todo taskboard
   serves as a flat, user-readable checklist of tasks and statuses (`pending`,
-  `in_progress`, `completed`, `cancelled`).
+  `in_progress`, `completed`, `cancelled`). A `clear` without a status empties
+  the board, so a new plan no longer inherits the unfinished tasks of an
+  abandoned one; `clear` with a status still removes only those `[v3.0.0]`.
 - **High-throughput chat persistence engine** `[v2.0.0]` — remodeled `session_messages`
   onto derived state (`seq` + `kind` + `pinned`) with partial SQL indexing,
   single-allocation checkpointers, and SQL-level compaction keep-tail calculation.
@@ -485,6 +634,8 @@ executes tools, manages its task list, and inspects workspace repositories.
   model endpoint exhausts its retry budget mid-task (`ReadTimeout` /
   `ConnectError`), the loop resumes the same turn from where it left off
   instead of dropping the agent after a tool call. Bounded and interrupt-aware.
+  Since `[v3.0.0]` a turn's connection retries no longer run out (see below),
+  so there is nothing left to resume from.
 - **Network blip and disconnection resilience** `[v2.9.0]` — transient network
   drops, socket resets, TLS handshake interruptions, DNS resolution glitches,
   connection/write timeouts, and gateway errors (408, 5xx) automatically retry
@@ -497,6 +648,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   alone so switching windows does not tear it down. Replay-state cleanup also
   preserves attached session streams, so long silent tool runs and turns beyond
   the replay-retention window continue delivering later output.
+  Since `[v3.0.0]` a dropped connection, DNS failure, or timeout during a turn
+  retries every 3–5 seconds for as long as the network is down (Stop ends it),
+  so the turn picks up within seconds of the connection returning; the
+  transcript keeps one retry notice that counts the attempts. Summarization,
+  which cannot be stopped mid-call, gives up after 10 attempts.
 - **Automatic max-tokens truncation recovery** `[v1.87.0]` — when a provider
   hits the output token limit (`finish_reason="max_tokens"` or `"length"`), the
   loop automatically injects a recovery message (requesting a continuation for
@@ -537,6 +693,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   cancels the agent, in-flight model/tool work, direct shell
   commands, and session-owned background shell processes before the request
   returns. Queued and late mailbox work cannot restart the stopped turn.
+  A tool that was still running keeps the output it had streamed, followed by
+  "Cancelled by user after N seconds.", both in its card and in what the
+  agent sees next turn `[v3.0.0]`.
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.
@@ -566,7 +725,7 @@ executes tools, manages its task list, and inspects workspace repositories.
 
 ## 3. The coding workspace
 
-Coding mode (`/coding`) opens a local project folder and runs a workspace-aware
+The coding workspace (`/`) opens a local project folder and runs a workspace-aware
 agent against it.
 
 - **Open any local project folder** `[since v1.0]` — server-local paths only.
@@ -594,6 +753,44 @@ agent against it.
   across dock close/reopen; clicking inline `@file` mentions opens the
   referenced file in the dock. Dock, sidebar, and viewer widths are
   independently resizable via drag handles on desktop.
+  - **Review dock tabs and maximize** `[v3.0.0]` — a changed file's diff or a
+    commit opens as a full-height tab next to file and terminal tabs, from the
+    row's hover action or its right-click / long-press menu. The Git tab has one
+    **Changes / History** toolbar with an expand-all toggle; History lists
+    commits, and its **Graph** option swaps in the branch graph (with **All
+    branches**). The dock's actions are New terminal, Refresh and Maximize;
+    files are searched with Quick Open (`Ctrl/⌘+P`). On desktop,
+    `Ctrl/⌘+Shift+D`, the dock's maximize button or **Maximize Review Dock** in
+    the palette gives the dock the full width over the chat; the conversation
+    stays loaded underneath. Tabs close with ×, middle-click or `Ctrl/⌘+W`, and
+    focus moves to the neighbouring tab.
+  - **Tasks and Scheduled tasks in the dock** `[v3.0.0]` — on desktop with a
+    workspace open, the header's task-list button (`Ctrl/⌘+T`) and **Scheduled
+    Tasks** in the palette or the sidebar's Scheduled section open the agent's task list and the
+    scheduled-task list (every workspace, with search, details, and **New
+    task**) as dock tabs. Pressing the shortcut again while that tab is focused
+    hides the dock; the header's review-dock button shows and hides it. On
+    phones with a workspace, scheduled tasks open as a tab in the review sheet
+    too, while the task list stays a popover so the chat remains visible.
+- **Keyboard and touch access** `[v3.0.0]` — right-click menus (dock rows,
+  terminal tabs, sidebar sessions and workspaces, scheduled tasks, provider
+  models) take keyboard focus when they open. Arrow keys, Home and End move
+  through the items, and Escape closes the menu without closing the panel
+  around it, then returns focus. On touch screens, list rows and row actions
+  grow to 44px tap targets, and text never renders below 11px.
+- **Desktop workbench layout** `[v3.0.0]` — the desktop coding view is split into
+  a header with a command center (**Search or run a command**, `Ctrl/⌘+K`), the
+  sidebar, the chat, the review dock and a status bar. The status bar shows
+  the connected backend and its health, the branch with
+  commits to push/pull and uncommitted changes (a click opens the review dock),
+  the session model, and the last 24 hours of spend (a click opens Telemetry on
+  that range); scheduled tasks and the theme moved to the sidebar, the palette
+  and Settings. In light mode the header, sidebar, status bar and chat share
+  one page tone; dark mode sets the chrome on a darker rail. The sidebar opens expanded on windows at least 1280px
+  wide and resizes between 220 and 440px. The dock takes a share of the chat
+  area and always leaves the chat at least 400px; on narrower windows it opens
+  over the chat instead. Both dividers resize by drag or keyboard (arrow keys,
+  Home/End, Enter to reset), and the layout is remembered.
   - **Git Commits & Commit Tree in workspace dock** `[v1.70.2]` — additional sub-tabs inside the "Changes" panel to see recent git commits and a visual branch graph. The commits list supports high-performance cursor-based infinite scrolling (fetching more commits on scroll using a native `IntersectionObserver`) and inline expansion to view the files modified in any commit and their interactive diff previews. The visual tree graph renders the textual `git log --graph` output with branch splits, merges, and an "All Branches" toggle. **Workspace Git UI state (including the selected sub-tab, All Branches toggle, expanded commits, and expanded file diffs) is persisted in the local browser state, maintaining your context across dock toggles and workspace switches** `[v1.73.0]`.
     - **Git Commit Actions (Undo & Revert)** `[v1.88.0]` — right-clicking a commit/file on desktop opens a native-feeling context menu at the cursor, while long-pressing on mobile opens a touch-friendly action sheet. Allows you to **Undo commit** (soft-resets the last commit, keeping all changes staged in your working copy) or **Revert commit** (creates a new commit that reverts the changes of the selected commit, with auto-abort protection if conflicts occur), and confirmation dialogs use responsive side-by-side buttons on desktop.
     - **Time shown alongside date in commit history** `[v1.92.0]` — the commits
@@ -609,7 +806,10 @@ agent against it.
   without nested group labels; session context menu / action sheet options include editing title
   and deleting session `[v1.117.0]`; repository/worktree context menu / action sheet includes
   copying the repo or worktree's absolute path `[v1.120.0]`; scroll-triggered pagination replaces
-  the Load more button.
+  the Load more button. Since `[v3.0.0]` the sidebar has a **Workspaces** header with
+  collapse-all and **Open folder** actions, workspace rows with chevrons and indent guides,
+  a **…** actions menu on worktrees, 28px session rows showing a compact age that swaps to
+  edit/delete on hover, and a **Show more** button instead of scroll-triggered loading.
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0]` — lead sessions with
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0, updated v2.17.0]` — lead sessions with
   delegated subagents render an expandable accordion of child sessions that defaults to
@@ -618,6 +818,33 @@ agent against it.
   can be deleted from the sidebar with instant cache pruning `[v2.17.0]`, falling back cleanly to the
   parent lead session, and opening one shows a read-only banner with a
   **Return to Lead** action.
+- **Rename sessions in place** `[v3.0.0]` — the pencil, a double-click on a
+  sidebar row, **Edit title** in its menu, or a click on the session title in
+  the desktop header turns the title into a text field. Enter or clicking away
+  saves, Escape cancels, and the header and sidebar show the new title at once.
+- **Session search** `[v3.0.0]` — the search button in the Workspaces header,
+  or `⌘F` / `Ctrl+F` while focus is in the sidebar, swaps the tree for a search
+  field that matches session titles across every workspace, however old. Enter
+  opens the first match and Escape returns to the tree. `⌘F` anywhere else
+  still finds text in the transcript.
+- **Session status and unread marks in the sidebar** `[v3.0.0]` — each session
+  row has one status slot: `!` while it waits for your answer, a spinner while
+  it runs, and an accent dot when a turn ended while you were in another
+  session or the window was hidden. Opening the session clears the dot in every
+  window. Unread state stays on this device, and sessions that finish while the
+  app is closed are not marked.
+- **Needs you** `[v3.0.0]` — sessions stopped on a question are listed above
+  the workspaces, from every workspace and however old, each with its
+  workspace name and a count. The list updates as questions are asked and
+  answered, and a click opens the session. The same count badges the app icon
+  in the dock (macOS and Linux) and on iOS once notifications are allowed,
+  and prefixes the browser tab title, e.g.
+  `(2) Fix updater restart`.
+- **Scheduled in the sidebar** `[v3.0.0]` — the bottom of the coding sidebar
+  lists the next five enabled scheduled tasks, soonest first, each with its next
+  run time (`18:05`, `Wed 09:00`, or `20/03`). Clicking a task opens the
+  scheduler on that task, and clicking the **Scheduled** header opens the full
+  list. The section is hidden when nothing is scheduled.
 - **Anchored & regex-optimized filesystem search** `[v2.0.0]` — `glob` pattern matching
   anchors walks at the literal prefix (up to 50x faster), `grep` pre-filters files using
   literal scanning and streams matches asynchronously off the main loop, and non-ignored
@@ -641,13 +868,13 @@ agent against it.
   (desktop) or long-press (mobile) a changed file inside the Changes tab or a
   commit's detail view to open, copy, or otherwise act on that file, including
   deleted files, which render a dedicated deleted-file view in the editor panel.
-- **Persisted coding sessions per workspace** `[v1.18.0]` — `/coding/{session_id}`
-  restores workspace context from the saved session. Bare `/coding` is the
-  launcher or last-workspace restore. New empty sessions exist before the
+- **Persisted coding sessions per workspace** `[v1.18.0]` — `/{session_id}`
+  (`/coding/{session_id}` before v3.0.0) restores workspace context from the
+  saved session. Bare `/` is the launcher or last-workspace restore. New empty sessions exist before the
   first message.
 - **Workspace sidebar pagination** `[v1.18.0]` — each main/worktree list shows
-  roughly 5 sessions and loads more when scrolled to the bottom, so one busy
-  workspace doesn't crowd the others.
+  roughly 5 sessions and loads more on request (**Show more** since `[v3.0.0]`,
+  previously on scroll), so one busy workspace doesn't crowd the others.
 - **`@file` / `@folder` auto-attach** `[v1.17.0]` — see [§1](#1-the-desktop-coding-workspace).
 - **Slash commands scoped to coding workspaces** `[v1.17.0]` — project-local
   commands in `.openagentd/commands/**/*.md`, universal `.agents/commands/**/*.md` `[v2.12.0]`, and `.opencode/commands/**/*.md`
@@ -725,9 +952,13 @@ agent against it.
   soft-keyboard focus preservation, quick symbol row).
   Terminal font defaults to a best-guess Nerd Font stack
   (MesloLGS NF and similar) for correct Powerlevel10k/Starship glyph rendering.
+  On macOS a focused terminal keeps `⌘K` (clears it, as in Terminal.app) and
+  `⌘F` instead of opening the palette or transcript find `[v3.0.0]`.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
-  agent-selection fallback.
+  agent-selection fallback. Since `[v3.0.0]` the card shows the workspace
+  name and path, then its recent sessions by last activity (status, title,
+  age) to reopen with a click; the branch and changes moved to the header.
 - **Sessions ≥ 100 messages load completely with scroll preserved** `[v1.9.0]`.
 
 ---
@@ -1198,6 +1429,27 @@ Everything stays local. No third-party telemetry SaaS.
 - **Built-in telemetry dashboard** `[since v1.0]` — `/telemetry` route in the web
   UI. Focused usage/cost cards, cache hit/miss by step and provider:model,
   scroll-paginated traces, and trace waterfall details.
+- **Telemetry overlay** `[v3.0.0]` — telemetry opens over the current screen from
+  the status-bar spend, the mobile drawer, or **Open Telemetry** in the palette; `/telemetry`
+  links (`?days=`, `?traceId=`, `?session=`) open it too. It shows spend, turns
+  (and how many failed), median turn time, tokens, and cache hit rate, per-day
+  spend or turns, and spend by workspace, session, model, and tool. Filter by
+  range (24h to 90d), workspace, model, or session; clicking a workspace,
+  session, or model row applies that filter, so a session becomes a per-session
+  view with an **Open session** action. Recent turns can be limited to failed ones,
+  and a turn opens to its facts (workspace, model, duration, tokens, cost),
+  **Copy trace ID**, **Open session**, and the span waterfall. Turns record their
+  workspace from v3.0.0; older turns show as **Not recorded**.
+- **Model speed in telemetry** `[v3.0.0]` — every streamed model call records
+  its time to first token and its output speed in tokens per second. The
+  overview shows the median first token (with p95) and the median output speed
+  (with the slowest 5%), each model row shows its median of both, and a
+  model-call span lists them. Calls recorded earlier count toward everything
+  else but not toward speed.
+- **Sub-agents in session telemetry** `[v3.0.0]` — a session's telemetry view
+  counts the sub-agent sessions it started in its spend, turns, and tokens, and
+  says how many. The Sessions card lists each sub-agent under its session (in
+  the overview too), and recent turns name the agent that ran them.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
 - **Estimated model-call cost telemetry** `[v1.34.0]` — chat, title-generation,
@@ -1258,15 +1510,23 @@ Desktop is primary. CLI / server is the developer path.
 - **Windows desktop** `[v1.106.0]` — native x64 `.msi` installer with the
   bundled Python sidecar, WebView2 shell, Job Object process cleanup, native
   PowerShell/cmd shell execution, and signed in-app updates. Interactive PTY
-  terminal tabs remain unavailable pending a ConPTY backend.
+  terminal tabs were unavailable until v3.0.0, which bundles the native backend
+  and opens terminals through ConPTY.
 - **Windows one-command install** `[v1.107.0]` — the `install.ps1` PowerShell
   installer resolves the latest GitHub release, downloads its x64 MSI, rejects
   a non-MSI download before elevation, and invokes Windows Installer.
 - **Signed update manifests** `[v1.2.2+]` — minisign-signed `latest.json` at the
   rolling `latest-desktop` release; verified before install.
 - **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-coding-workspace).
-- **CLI install** `[since v1.0]` — `uv tool install openagentd`, `pipx`, `pip`,
-  `brew install lthoangg/tap/openagentd`.
+- **CLI install** `[since v1.0, native since v3.0.0]` — `install.sh --cli` (macOS / Linux),
+  `install.ps1 -Cli` (Windows), or `brew install lthoangg/tap/openagentd` installs the
+  native standalone executable into `~/.local/bin` (or `%LOCALAPPDATA%\OpenAgentd\bin`)
+  and cleans up any existing Python v2 uv/pipx install. The Python package managers
+  (`uv tool`, `pipx`, `pip`) were used through v2 and are sunset in v2.27.0.
+- **v2 end-of-life notice** `[v2.27.0]` — the last Python release. Interactive
+  CLI commands and `openagentd upgrade` say that v2 gets no further updates and
+  print the v3 install command plus the step that removes the uv/pipx/pip copy.
+  `OPENAGENTD_HIDE_V2_NOTICE=1` hides it; the desktop sidecar never shows it.
 - **CLI server control** `[v1.41.0, v2.4.0]` — `openagentd server restart`,
   `openagentd server status`, `openagentd server health`, and `openagentd server
   start --host 0.0.0.0 --key` make the CLI the control plane for desktop/mobile backends.
@@ -1279,9 +1539,11 @@ Desktop is primary. CLI / server is the developer path.
 - **CLI start --wait** `[v1.73.0, v2.4.0]` — `openagentd server start --wait`
   starts the background server and polls `/api/health/ready` until the database
   connection and the agent session are fully ready.
-- **CLI upgrade** `[v1.41.0]` — `openagentd upgrade` stops the background
-  server, delegates to the detected package manager, then restarts it when it
-  was running.
+- **CLI upgrade** `[v1.41.0, self-update v3.0.0]` — `openagentd upgrade` in v3 stops the
+  background server, downloads the latest prebuilt release archive from GitHub, verifies
+  its SHA-256 checksum, swaps the binaries in place, and restarts the server if it was
+  running. Homebrew installations delegate to `brew upgrade`. In v2.27.0, `openagentd upgrade`
+  migrates existing uv/pipx/pip installations to the v3 native binary.
 - **CLI artifact cleanup** `[v2.18.0]` — `openagentd cleanup` previews a dry run
   and, with `--apply`, deletes sessions older than `--older-than-days`
   (default 14) together with their messages, session artifacts, undo/redo

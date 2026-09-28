@@ -3,7 +3,7 @@
  *
  * These are the shared zero-dependency overlay primitives used across the
  * app for confirmation dialogs and action-sheets (Sidebar's delete/rename
- * dialogs, CodingSidebar's workspace dialogs, CodingWorkspacePanel's
+ * dialogs, Sidebar's workspace dialogs, WorkspacePanel's
  * file/commit action sheets, etc). Many of those are rendered on top of an
  * already-open mobile edge-swipe drawer (e.g. the session sidebar).
  *

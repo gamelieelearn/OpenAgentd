@@ -11,15 +11,41 @@ import { useEffect, useRef, useState } from 'react'
 import { useHotkey } from '@tanstack/react-hotkeys'
 
 import { cn } from '@/lib/utils'
-
-const tokenMeterUsdFmt = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 4,
-  maximumFractionDigits: 4,
-})
+import { formatSpend } from '@/utils/telemetryFormat'
 
 export const DEFAULT_SUMMARY_TRIGGER_TOKENS = 250_000
+
+const RING_RADIUS = 7
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
+
+/** How far the context has filled towards auto-compact, as a ring. */
+function ContextRing({ progress, className }: { progress: number; className?: string }) {
+  const clamped = Math.min(Math.max(progress, 0), 1)
+  return (
+    <svg className={cn('-rotate-90', className)} viewBox="0 0 18 18" aria-hidden="true">
+      <circle
+        cx="9"
+        cy="9"
+        r={RING_RADIUS}
+        fill="none"
+        stroke="var(--color-accent)"
+        strokeOpacity="0.18"
+        strokeWidth="2"
+      />
+      <circle
+        cx="9"
+        cy="9"
+        r={RING_RADIUS}
+        fill="none"
+        stroke="var(--color-accent)"
+        strokeLinecap="round"
+        strokeWidth="2.6"
+        strokeDasharray={RING_CIRCUMFERENCE}
+        strokeDashoffset={RING_CIRCUMFERENCE * (1 - clamped)}
+      />
+    </svg>
+  )
+}
 
 export interface TokenMeterProps {
   input: number
@@ -58,15 +84,11 @@ export function TokenMeter({
   const safeTrigger = Math.max(trigger, 1)
   const progress = Math.min(input / safeTrigger, 1)
   const percent = Math.round(progress * 100)
-  const ringColor = 'var(--color-accent)'
-  const radius = 7
-  const circumference = 2 * Math.PI * radius
-  const dashOffset = circumference * (1 - progress)
   const cachePercentValue = cachedPercent ?? (cached > 0 && input > 0 ? (cached / input) * 100 : undefined)
   const cachePercentFormatted = cachePercentValue !== undefined ? `${cachePercentValue.toFixed(2)}%` : `${cached.toLocaleString()}%`
   const tooltip =
     title ??
-    `Input: ${input.toLocaleString()} / ${safeTrigger.toLocaleString()} (${percent}%) · Output: ${output.toLocaleString()}${
+    `Input: ${input.toLocaleString()} of ${safeTrigger.toLocaleString()} before auto-compact (${percent}%) · Output: ${output.toLocaleString()}${
       (cachePercentValue !== undefined && cachePercentValue > 0) || cached > 0 ? ` · Cache: ${cachePercentFormatted}` : ''
     }`
 
@@ -77,8 +99,11 @@ export function TokenMeter({
     if (!trigger) return
 
     const rect = trigger.getBoundingClientRect()
-    const tooltipWidth = 160
-    const tooltipHeight = 112
+    // Matches ``w-48`` below; wide enough for "auto-compact at" + a 7-digit count.
+    const tooltipWidth = 192
+    // Six ``leading-5`` rows + ``py-2`` + border; flipping above the status-bar
+    // meter uses this, so an undercount overlaps the trigger.
+    const tooltipHeight = 138
     const gap = 8
     const left = Math.max(8, Math.min(rect.right - tooltipWidth, window.innerWidth - tooltipWidth - 8))
     const preferredTop = rect.bottom + gap
@@ -180,40 +205,19 @@ export function TokenMeter({
         onFocus={openHoverTooltip}
         onBlur={closeHoverTooltip}
       >
-        <svg className={cn('-rotate-90', compact ? 'h-3.5 w-3.5' : 'h-4 w-4')} viewBox="0 0 18 18" aria-hidden="true">
-          <circle
-            cx="9"
-            cy="9"
-            r={radius}
-            fill="none"
-            stroke={ringColor}
-            strokeOpacity="0.18"
-            strokeWidth="2"
-          />
-          <circle
-            cx="9"
-            cy="9"
-            r={radius}
-            fill="none"
-            stroke={ringColor}
-            strokeLinecap="round"
-            strokeWidth="2.6"
-            strokeDasharray={circumference}
-            strokeDashoffset={dashOffset}
-          />
-        </svg>
+        <ContextRing progress={progress} className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
       </button>
       {open && tooltipPosition && createPortal(
         <div
           ref={tooltipRef}
-          className="fixed z-50 min-w-40 rounded-sm border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-lg"
+          className="fixed z-50 w-48 rounded-sm border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-lg"
           style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
           role="tooltip"
           onMouseEnter={openHoverTooltip}
           onMouseLeave={closeHoverTooltip}
         >
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">input</span><span>{input.toLocaleString()}</span></div>
-          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">trigger</span><span>{safeTrigger.toLocaleString()}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">auto-compact at</span><span>{safeTrigger.toLocaleString()}</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">used</span><span>{percent}%</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">output</span><span>{output.toLocaleString()}</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cache</span><span>{cachePercentFormatted}</span></div>
@@ -221,7 +225,7 @@ export function TokenMeter({
               agent, while cost is summed across every agent in the session.
               Labelled so the two are not read as the same scope. */}
           {sessionCostUsd !== undefined && sessionCostUsd > 0 && (
-            <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">session cost</span><span>{tokenMeterUsdFmt.format(sessionCostUsd)}</span></div>
+            <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">session cost</span><span>{formatSpend(sessionCostUsd)}</span></div>
           )}
         </div>,
         document.body,

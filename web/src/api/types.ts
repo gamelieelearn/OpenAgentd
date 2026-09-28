@@ -315,31 +315,40 @@ export interface SessionHistoryResponse {
   pending_question?: PendingQuestionResponse | null
 }
 
-// SSE Event Types
-export type SSEEventType =
-  | 'session'
-  | 'thinking'
-  | 'message'
-  | 'tool_call'
-  | 'tool_start'
-  | 'tool_output_delta'
-  | 'tool_end'
-  | 'usage'
-  | 'done'
-  | 'rate_limit'
-  | 'provider_status'
-  | 'error'
-  | 'agent_status'
-  | 'queued_turn_start'
-  | 'inbox'
-  | 'desktop_notification'
-  | 'title_update'
-  | 'summarization_start'
-  | 'summarization_content'
-  | 'summarization_end'
-  | 'question_asked'
-  | 'question_answered'
-  | 'question_dismissed'
+/**
+ * Events on the per-session stream (`/agent/{sid}/stream`). Must match
+ * `session_stream` in `appv3/contract/sse_events.json` (enforced by
+ * `sse-contract.test.ts`); global-feed events live in `global-events.ts`.
+ */
+export const SSE_EVENT_TYPES = [
+  'session',
+  'thinking',
+  'message',
+  'tool_call',
+  'tool_start',
+  'tool_output_delta',
+  'tool_end',
+  'usage',
+  'done',
+  'error',
+  'rate_limit',
+  'provider_status',
+  'agent_status',
+  'agent_not_configured',
+  'interaction_mode',
+  'queued_turn_start',
+  'permission_asked',
+  'question_asked',
+  'question_answered',
+  'question_dismissed',
+  'summarization_start',
+  'summarization_content',
+  'summarization_end',
+  'subagent_spawned',
+  'subagent_status',
+] as const
+
+export type SSEEventType = (typeof SSE_EVENT_TYPES)[number]
 
 export interface SSEEvent {
   type: SSEEventType
@@ -361,6 +370,12 @@ export interface ContentBlock {
   serverDurationMs?: number   // server-measured execution time from tool_end duration_ms
   startedAt?: number          // client timestamp when block was first created (for live elapsed display)
   responseDurationMs?: number // assistant response duration shown in turn footer
+  /**
+   * The persisted message's own usage, carried on exactly one of the blocks
+   * that message produced so a turn can sum it without double counting.
+   * Absent on live blocks until the post-turn reconcile adopts the rows.
+   */
+  usage?: { outputTokens: number; costUsd: number }
   /** Variant-specific metadata. ``user`` inbox blocks carry ``from_agent``;
    *  ``compaction`` blocks carry ``state: 'compacting' | 'compacted'`` and
    *  optional ``error: true``. Keeping this generic avoids one typed field
@@ -479,7 +494,7 @@ export interface SnippetRenderResponse {
  * Workspace paths the server's snapshot restore touched during a
  * ``undo`` / ``redo`` command. Empty lists mean the restore had no
  * filesystem effect (or no snapshot was recorded) — the client uses
- * that as a signal to skip the Coding Workspace cache invalidation
+ * that as a signal to skip the workspace cache invalidation
  * entirely, saving a full ``git diff`` fetch on a 30k-file workspace.
  */
 export interface ChangedPaths {
@@ -606,6 +621,16 @@ export interface TodoItem {
 
 export interface TodosResponse {
   todos: TodoItem[]
+}
+
+/** The session's saved Plan-mode plan (``plan.md``); v3 only. */
+export interface SessionPlan {
+  content: string
+  updated_at: string
+}
+
+export interface SessionPlanResponse {
+  plan: SessionPlan | null
 }
 
 export interface AgentChatResponse {

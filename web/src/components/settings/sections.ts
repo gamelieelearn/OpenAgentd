@@ -18,8 +18,10 @@ import {
   Info,
   KeyRound,
   Plug,
+  Puzzle,
   Shield,
   Sparkles,
+  Workflow,
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
@@ -36,9 +38,9 @@ export type TopLevelSection = Extract<
   | 'skills'
   | 'mcp'
   | 'memory'
+  | 'plugins'
   | 'providers'
   | 'denied_paths'
-  | 'sandbox'
   | 'automation'
   | 'about'
 >
@@ -68,6 +70,8 @@ export interface SettingsSectionDef {
   group: SettingsGroupId
   /** Included in the five-slot mobile tab bar. */
   mobileTab?: boolean
+  /** Shown only when the backend advertises this capability (see `useServerCapability`). */
+  capability?: string
 }
 
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
@@ -99,6 +103,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
     group: 'build',
   },
   {
+    id: 'plugins',
+    label: 'Plugins',
+    icon: Puzzle,
+    group: 'build',
+    capability: 'api.plugins',
+  },
+  {
     id: 'providers',
     label: 'Providers',
     icon: KeyRound,
@@ -108,7 +119,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   {
     id: 'automation',
     label: 'Automation',
-    icon: Sparkles,
+    icon: Workflow,
     group: 'models',
   },
   {
@@ -119,7 +130,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   },
   {
     id: 'about',
-    label: 'About openagentd',
+    label: 'About OpenAgentd',
     icon: Info,
     group: 'about',
     mobileTab: true,

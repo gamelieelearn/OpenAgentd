@@ -19,6 +19,10 @@ mock.module('@tanstack/react-query', () => ({
 }))
 
 mock.module('@/queries/useTodosQuery', () => ({ useTodosQuery: () => ({ data: { todos: [] } }) }))
+mock.module('@/queries/useSessionPlanQuery', () => ({
+  useSessionPlanQuery: () => ({ data: { plan: null } }),
+  useClearSessionPlanMutation: () => ({ mutate: () => {} }),
+}))
 mock.module('@/queries', () => ({
   useProvidersQuery: () => ({ data: { providers: [] } }),
 }))
@@ -51,13 +55,13 @@ mock.module('@/api/client', () => ({
   resolveApiUrl: () => null,
   resolveSession: async () => ({ id: 'new-session', created: true }),
 }))
-mock.module('@/utils/workspace', () => ({ saveLastCodingWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
+mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
 mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null }))
-mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
-mock.module('@/components/CodingWorkspacePanel', () => ({
-  CodingWorkspacePanel: ({ onClose }: { onClose: () => void }) => (
+mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
+mock.module('@/components/WorkspacePanel', () => ({
+  WorkspacePanel: ({ onClose }: { onClose: () => void }) => (
     <aside data-testid="coding-workspace-panel">
       <button type="button" onClick={onClose}>Close workspace panel</button>
     </aside>
@@ -68,8 +72,6 @@ mock.module('framer-motion', () => ({
     <div data-testid="presence-boundary">{children}</div>
   ),
 }))
-mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
-mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
   AgentChatHeader: ({ onWorkspaceFiles }: { onWorkspaceFiles: () => void }) => (
     <button type="button" onClick={onWorkspaceFiles}>Toggle workspace panel</button>
@@ -77,6 +79,7 @@ mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
 }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
 mock.module('@/components/AgentChatView/useAgentCommands', () => ({ useAgentCommands: () => [] }))
+mock.module('@/components/AgentChatView/usePaletteSwitchCommands', () => ({ usePaletteSwitchCommands: () => [] }))
 mock.module('@/components/FloatingInputComposer', () => ({
   FloatingInputComposer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void; addFiles: (files: File[]) => void },
@@ -136,12 +139,13 @@ beforeEach(() => {
 })
 
 describe('AgentChatView coding workspace panel', () => {
-  it('renders the panel inside an exit-animation boundary', () => {
+  it('renders the panel inside an exit-animation boundary', async () => {
     render(<AgentChatView sessionId="test-session" workspace="/repo/project" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Toggle workspace panel' }))
 
-    const panel = screen.getByTestId('coding-workspace-panel')
+    // The dock is a lazily loaded chunk, so it appears after its import settles.
+    const panel = await screen.findByTestId('coding-workspace-panel')
     expect(panel.closest('[data-testid="presence-boundary"]')).not.toBeNull()
   })
 })

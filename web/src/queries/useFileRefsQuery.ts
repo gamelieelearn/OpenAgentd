@@ -1,7 +1,7 @@
 /**
  * Workspace file/folder list for the InputComposer's @-mention picker.
  *
- * Hits the coding workspace endpoint:
+ * Hits the workspace files endpoint:
  *   GET /api/agent/workspace/files/list?workspace=...
  *
  * Both return a flat list of files (max 5,000, gitignore-aware). Folder entries
@@ -31,7 +31,7 @@ interface WorkspaceFileListing {
 }
 import {
   WORKSPACE_FILES_STALE_MS,
-  codingWorkspaceFilesQueryOptions,
+  workspaceFileListQueryOptions,
 } from './workspace-files'
 
 interface UseFileRefsQueryArgs {
@@ -63,7 +63,7 @@ export function useFileRefsQuery({
   workspace,
   enabled = true,
 }: UseFileRefsQueryArgs) {
-  const options = codingWorkspaceFilesQueryOptions(workspace ?? '')
+  const options = workspaceFileListQueryOptions(workspace ?? '')
 
   const query = useQuery<WorkspaceFileListing, Error, WorkspaceFileListing, readonly unknown[]>({
     queryKey: options.queryKey,

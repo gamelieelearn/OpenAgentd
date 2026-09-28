@@ -5,25 +5,36 @@ import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
 import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
 import { Home } from 'lucide-react'
-import { ToastStack } from '@/components/ToastStack'
 import { SettingsModal } from '@/components/SettingsModal'
+import { PluginNotice } from '@/components/settings/pages/settings.plugins'
+import { TelemetryOverlay } from '@/components/Telemetry/TelemetryOverlay'
 import { SkipLink } from '@/components/motion'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { MacTitleBar } from '@/components/MacTitleBar'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
+import { useDynamicType } from '@/hooks/use-dynamic-type'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { closestRestorableRoute, LAST_ROUTE_KEY, lastRouteStorageKey } from '@/lib/route-restore'
 import { getPlatform } from '@/hooks/use-platform'
+import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
 import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
 import { usePreventBackspaceNavigation } from '@/hooks/usePreventBackspaceNavigation'
 import { usePreventStrayFileDrop } from '@/hooks/usePreventStrayFileDrop'
 import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardShortcuts'
 import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
-import { LspInstallPrompt } from '@/components/LspInstallPrompt'
+import { FloatingNotices } from '@/components/FloatingNotices'
+import { CAPABILITY, useServerCapability } from '@/queries'
+
+// Only v3 backends can answer the plugin status request the notice makes.
+function PluginNoticeGate() {
+  if (!useServerCapability(CAPABILITY.plugins)) return null
+  return <PluginNotice />
+}
 
 export function Root() {
   useMobileViewportGuards()
+  useDynamicType()
   useDesktopCommands()
   useContainerSelectAll()
   usePreventBackspaceNavigation()
@@ -39,7 +50,7 @@ export function Root() {
   useEffect(() => { settingsOpenRef.current = settingsOpen }, [settingsOpen])
   const { os } = getPlatform()
   useHotkey(
-    'Mod+,',
+    hotkeyOf(APP_SHORTCUTS.settings),
     () => {
       if (settingsOpenRef.current) closeSettings()
       else openSettings()
@@ -101,14 +112,15 @@ export function Root() {
   return (
     <QueryClientProvider client={queryClient}>
       <GlobalEventStream />
+      <PluginNoticeGate />
       <SkipLink />
       <MacTitleBar />
       <Suspense fallback={<RouteLoadingFallback />}>
         <Outlet />
       </Suspense>
       <SettingsModal />
-      <LspInstallPrompt />
-      <ToastStack />
+      <TelemetryOverlay />
+      <FloatingNotices />
     </QueryClientProvider>
   )
 }

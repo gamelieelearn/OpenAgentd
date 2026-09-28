@@ -1,6 +1,6 @@
 /**
  * TerminalTabButton — tab chip for a terminal session in
- * CodingWorkspacePanel (terminal is coding-mode only for now).
+ * WorkspacePanel (terminal needs an attached workspace).
  *
  * Desktop: right-click opens a small menu (Rename / Close).
  * Mobile: long-press opens the same choice as a bottom sheet — no native
@@ -14,9 +14,19 @@ import { Pencil, TerminalSquare, X } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import {
+  CONTEXT_MENU_ITEM_CLASS,
+  CONTEXT_MENU_ITEM_DANGER_CLASS,
+  ContextMenu,
+} from '@/components/ui/context-menu'
 import { Input } from '@/components/ui/input'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  dockTabButtonClass,
+  dockTabClass,
+  dockTabCloseClass,
+} from '@/components/WorkspacePanel/dock-tab-styles'
 import { softHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { useTerminalStore, type TerminalSessionMeta } from '@/stores/useTerminalStore'
@@ -57,27 +67,18 @@ export function TerminalTabButton({
 
   return (
     <>
-      {/* Background/border live on this wrapper (not the inner button) so
-          the inline close control sits in the same flex row as the label —
-          matching the file-tab layout — instead of floating over truncated
-          text via absolute positioning. */}
-      <div
-        className={cn(
-          'group flex h-7 max-w-40 shrink-0 items-center gap-0.5 rounded-xs pl-2 text-xs',
-          mobile && 'pr-2',
-          active
-            ? 'border border-(--color-border-strong) bg-(--bg-key)/35 text-(--color-text)'
-            : 'border border-transparent text-(--color-text-muted) hover:text-(--color-text-2)',
-          className,
-        )}
-      >
-        <Tooltip className="min-w-0 flex-1">
+      {/* Same editor-tab chrome as the dock's file/diff/commit tabs: the
+          wrapper carries the tab surface, the activate button and the close
+          button are siblings (never a control nested inside a button). */}
+      <div className={cn(dockTabClass(active), className)}>
+        <Tooltip className="h-full min-w-0 flex-1">
           <TooltipTrigger
-            className="min-w-0 flex-1"
+            className="h-full min-w-0 flex-1"
             render={
               <LongPressButton
                 ref={buttonRef}
                 type="button"
+                aria-current={active ? 'true' : undefined}
                 enabled={mobile}
                 onLongPress={() => {
                   softHapticFeedback()
@@ -89,7 +90,12 @@ export function TerminalTabButton({
                   setDesktopMenuAt({ x: e.clientX, y: e.clientY })
                 }}
                 onClick={onActivate}
-                className="flex min-w-0 flex-1 items-center gap-1.5 truncate"
+                onAuxClick={(e) => {
+                  if (mobile || e.button !== 1) return
+                  e.preventDefault()
+                  useTerminalStore.getState().close(meta.id)
+                }}
+                className={cn(dockTabButtonClass(!mobile), 'flex-1')}
               >
                 <TerminalSquare size={12} className="shrink-0" aria-hidden="true" />
                 <span className="truncate font-mono">{meta.title}</span>
@@ -99,68 +105,45 @@ export function TerminalTabButton({
           <TooltipContent>{meta.title}</TooltipContent>
         </Tooltip>
         {!mobile && (
-          <span
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation()
               useTerminalStore.getState().close(meta.id)
             }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                e.stopPropagation()
-                useTerminalStore.getState().close(meta.id)
-              }
-            }}
-            className="ml-0.5 shrink-0 rounded-xs p-0.5 text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+            className={dockTabCloseClass(active)}
             aria-label={`Close ${meta.title}`}
           >
             <X size={11} aria-hidden="true" />
-          </span>
+          </button>
         )}
       </div>
 
       {/* Desktop: right-click menu */}
       {desktopMenuAt && (
-        <div
-          className="fixed inset-0 z-50"
-          onClick={() => setDesktopMenuAt(null)}
-          onContextMenu={(e) => { e.preventDefault(); setDesktopMenuAt(null) }}
-        >
-          <div
-            role="menu"
-            aria-label={`Actions for ${meta.title}`}
-            className="fixed min-w-40 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
-            style={{
-              left: Math.min(desktopMenuAt.x, window.innerWidth - 170 - 8),
-              top: Math.min(desktopMenuAt.y, window.innerHeight - 90 - 8),
-            }}
-            onClick={(e) => e.stopPropagation()}
+        <ContextMenu at={desktopMenuAt} label={`Actions for ${meta.title}`} onDismiss={() => setDesktopMenuAt(null)}>
+          <button
+            type="button"
+            role="menuitem"
+            className={CONTEXT_MENU_ITEM_CLASS}
+            onClick={() => { setDesktopMenuAt(null); openRename() }}
           >
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
-              onClick={() => { setDesktopMenuAt(null); openRename() }}
-            >
-              <Pencil size={12} aria-hidden="true" />
-              Rename
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
-              onClick={() => {
-                setDesktopMenuAt(null)
-                useTerminalStore.getState().close(meta.id)
-              }}
-            >
-              <X size={12} aria-hidden="true" />
-              Close
-            </button>
-          </div>
-        </div>
+            <Pencil size={12} aria-hidden="true" />
+            Rename
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={CONTEXT_MENU_ITEM_DANGER_CLASS}
+            onClick={() => {
+              setDesktopMenuAt(null)
+              useTerminalStore.getState().close(meta.id)
+            }}
+          >
+            <X size={12} aria-hidden="true" />
+            Close
+          </button>
+        </ContextMenu>
       )}
 
       {/* Mobile: long-press action sheet */}

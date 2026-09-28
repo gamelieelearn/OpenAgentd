@@ -1,13 +1,16 @@
 import type { StateCreator } from 'zustand'
 import { agentStatus, sessionHistory, sessionHistorySince, updateSessionInteractionMode } from '@/api/client'
-import { applyOrphanToolResults, parseAgentBlocks, sumUsageFromMessages } from '@/utils/messages'
+import { applyOrphanToolResults, isPromptMessage, parseAgentBlocks, sumUsageFromMessages } from '@/utils/messages'
 import type { OrphanToolResult } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
 import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { toPendingQuestion } from './sse-reducer'
 import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, AgentStore } from './types'
-import type { ContentBlock, MessageResponse, SessionInteractionMode } from '@/api/types'
+import type { ContentBlock, MessageResponse, SessionHistoryResponse, SessionInteractionMode } from '@/api/types'
+
+/** Pages ⌥⌘↑ may fetch looking for an earlier prompt, e.g. across one long agent turn. */
+const OLDER_PROMPT_PAGE_LIMIT = 10
 
 function revertBoundaryTime(session: { revert?: { message_id?: string; created_at?: string } | null; messages: MessageResponse[] }): number | null {
   if (!session.revert) return null
@@ -37,6 +40,30 @@ function messagesBeforeRevert(session: { revert?: { message_id?: string } | null
     }
   }
   return messagesBeforeTime(session.messages, revertBoundaryTime(session))
+}
+
+/** Prepend one older history page to the lead and member streams. */
+function prependOlderPage(draft: AgentStore, history: SessionHistoryResponse, revertTime: number | null) {
+  draft.hasMore = history.has_more
+  draft.nextCursor = history.next_cursor
+  const prepend = (stream: AgentStream, messages: MessageResponse[]) => {
+    // Claim results orphaned by the page boundary: the newer page may hold a
+    // tool result whose call row is in this older page.
+    const orphans = { ...(stream._orphanToolResults ?? {}) }
+    const older = applyOrphanToolResults(parseAgentBlocks(messagesBeforeTime(messages, revertTime), orphans), orphans)
+    stream.blocks = [...older, ...stream.blocks]
+    stream._orphanToolResults = orphans
+  }
+  const lead = draft.leadName ? draft.agentStreams[draft.leadName] : undefined
+  if (lead) prepend(lead, history.lead.messages)
+  // Usage is NOT accumulated here: `loadSession` restores the authoritative
+  // full-session total from the server, so older pages carry nothing new to
+  // add. Accumulating the page's messages would double-count the cost/tokens
+  // the server total already includes.
+  for (const member of history.members) {
+    const stream = draft.agentStreams[member.name]
+    if (stream) prepend(stream, member.messages)
+  }
 }
 
 function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[]) {
@@ -93,7 +120,7 @@ function hasVisibleBlocks(stream: AgentStream | undefined): boolean {
 // new turn is optimistically appended (sendMessage) or streamed in (SSE
 // deltas) to `currentBlocks` *while the fetch is in flight* — e.g. a
 // background reconciliation from the global `session_turn_completed` event,
-// a foreground-resume resync, or a stale coding-workspace re-render — that
+// a foreground-resume resync, or a stale workspace re-render — that
 // content postdates the snapshot and will not appear in `history` yet.
 // Unconditionally clearing `currentBlocks` on resolve would then discard it
 // permanently (nothing replays it back unless the caller also reconnects
@@ -445,6 +472,7 @@ export type SessionSlice = Pick<
   | 'loadSession'
   | 'reconcileTurnTail'
   | 'loadOlderMessages'
+  | 'loadOlderUntilPrompt'
 >
 
 // Keyed by `${sessionId}\u0000${workspace}`. Coalesces concurrent
@@ -1162,43 +1190,46 @@ export const createSessionSlice: StateCreator<
   },
 
   loadOlderMessages: async () => {
-    const { sessionId, nextCursor, hasMore, leadName, _leadRevertTime, _loadingOlder } = get()
+    const { sessionId, nextCursor, hasMore, _leadRevertTime, _loadingOlder } = get()
     if (!sessionId || !hasMore || !nextCursor || _loadingOlder) return
     set((draft) => { draft._loadingOlder = true })
     try {
       const history = await sessionHistory(sessionId, nextCursor)
       set((draft) => {
         draft._loadingOlder = false
-        draft.hasMore = history.has_more
-        draft.nextCursor = history.next_cursor
-        if (leadName && draft.agentStreams[leadName]) {
-          const filtered = messagesBeforeTime(history.lead.messages, _leadRevertTime)
-          const leadStream = draft.agentStreams[leadName]
-          // Claim results orphaned by the page boundary: the newer page may
-          // hold a tool result whose call row is in this older page.
-          const orphans = { ...(leadStream._orphanToolResults ?? {}) }
-          const older = applyOrphanToolResults(parseAgentBlocks(filtered, orphans), orphans)
-          leadStream.blocks = [...older, ...leadStream.blocks]
-          leadStream._orphanToolResults = orphans
-          // Usage is NOT accumulated here: `loadSession` restores the
-          // authoritative full-session total from the server, so older pages
-          // carry nothing new to add. Accumulating the page's messages would
-          // double-count the cost/tokens the server total already includes.
-        }
-        history.members.forEach((member) => {
-          if (draft.agentStreams[member.name]) {
-            const filtered = messagesBeforeTime(member.messages, _leadRevertTime)
-            const memberStream = draft.agentStreams[member.name]
-            const orphans = { ...(memberStream._orphanToolResults ?? {}) }
-            const older = applyOrphanToolResults(parseAgentBlocks(filtered, orphans), orphans)
-            memberStream.blocks = [...older, ...memberStream.blocks]
-            memberStream._orphanToolResults = orphans
-          }
-        })
+        prependOlderPage(draft, history, _leadRevertTime)
       })
     } catch (err) {
       set((draft) => { draft._loadingOlder = false })
       throw err
     }
+  },
+
+  loadOlderUntilPrompt: async (maxPages = OLDER_PROMPT_PAGE_LIMIT) => {
+    const { sessionId, nextCursor, hasMore, _leadRevertTime, _loadingOlder, _sessionGeneration: generation } = get()
+    if (!sessionId || !hasMore || !nextCursor || _loadingOlder) return false
+    set((draft) => { draft._loadingOlder = true })
+    const pages: SessionHistoryResponse[] = []
+    let cursor: string | null = nextCursor
+    let found = false
+    try {
+      // Cursor pages are sequential; fetch them all, then prepend once, so a
+      // run of prompt-less pages (one long agent turn) costs one render.
+      while (cursor && !found && pages.length < maxPages) {
+        const history = await sessionHistory(sessionId, cursor)
+        if (get()._sessionGeneration !== generation) return false
+        pages.push(history)
+        found = messagesBeforeTime(history.lead.messages, _leadRevertTime).some(isPromptMessage)
+        cursor = history.has_more ? history.next_cursor : null
+      }
+    } finally {
+      // Keep whatever arrived, even when a later page failed.
+      set((draft) => {
+        if (draft._sessionGeneration !== generation) return
+        draft._loadingOlder = false
+        for (const history of pages) prependOlderPage(draft, history, _leadRevertTime)
+      })
+    }
+    return found
   },
 })

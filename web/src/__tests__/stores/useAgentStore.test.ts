@@ -515,6 +515,21 @@ describe("_handleSSEEvent: session", () => {
   });
 });
 
+// ── _handleSSEEvent: message ──────────────────────────────────────────────────
+
+describe("_handleSSEEvent: message", () => {
+  it("stamps the live answer with the model and thinking level from the delta", () => {
+    useAgentStore.setState({ leadName: "lead", agentStreams: { lead: makeStream({ status: "working" }) } });
+    useAgentStore.getState()._handleSSEEvent("message", {
+      agent: "lead",
+      text: "hi",
+      metadata: { model: "openai:gpt-5", thinking_level: "high" },
+    });
+    const [block] = useAgentStore.getState().agentStreams.lead.currentBlocks;
+    expect(block.extra).toEqual({ model: "openai:gpt-5", thinking_level: "high" });
+  });
+});
+
 // ── _handleSSEEvent: usage ────────────────────────────────────────────────────
 
 describe("_handleSSEEvent: usage", () => {

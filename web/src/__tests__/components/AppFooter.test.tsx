@@ -1,26 +1,38 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test'
+import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppFooter } from '@/components/AppFooter'
+import { useTelemetryStore } from '@/stores/useTelemetryStore'
+import { useUIStore } from '@/stores/useUIStore'
+import { queryKeys } from '@/queries/keys'
 
 const navigate = mock(() => Promise.resolve())
 mock.module('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 const mockOpenSettings = mock(() => {})
 
-mock.module('@/stores/useSettingsStore', () => ({
-  useSettingsStore: (selector: (s: { openSettings: () => void }) => unknown) =>
-    selector({ openSettings: mockOpenSettings }),
-}))
+// ``getState`` too: opening telemetry closes Settings through the UI store,
+// which calls back into this module.
+mock.module('@/stores/useSettingsStore', () => {
+  const state = { openSettings: mockOpenSettings, closeSettings: () => {} }
+  return {
+    useSettingsStore: Object.assign(
+      (selector: (s: typeof state) => unknown) => selector(state),
+      { getState: () => state },
+    ),
+  }
+})
 
+let healthError = false
+let backendExternal = false
 mock.module('@/queries/useHealthQuery', () => ({
-  useHealthQuery: () => ({ isSuccess: true, isError: false, isLoading: false }),
+  useHealthQuery: () => ({ isSuccess: !healthError, isError: healthError, isLoading: false }),
   useBackendStatusQuery: () => ({
     data: {
-      mode: 'bundled',
-      base_url: 'http://127.0.0.1:4082',
+      mode: backendExternal ? 'external' : 'bundled',
+      base_url: backendExternal ? 'https://agents.example.com' : 'http://127.0.0.1:4082',
       sidecar_running: true,
-      external: false,
+      external: backendExternal,
       supports_bundled: true,
       servers: [],
     },
@@ -28,47 +40,79 @@ mock.module('@/queries/useHealthQuery', () => ({
   }),
 }))
 
-const statusProbes: string[] = []
-mock.module('@/api/client', () => ({
-  getCodingWorkspaceStatus: async (workspace: string) => {
-    statusProbes.push(workspace)
-    return {
+let requested: string[] = []
+
+function renderWithQueryClient(ui: React.ReactElement, spendUsd?: number, gitStatus?: Record<string, unknown>) {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Infinity },
+    },
+  })
+  if (spendUsd !== undefined) {
+    client.setQueryData(queryKeys.observability.summary(1, { workspace: null, model: null, session: null }), {
+      totals: { estimated_cost_usd: spendUsd },
+    })
+  }
+  if (gitStatus) {
+    client.setQueryData(queryKeys.coding.status('/path/to/project'), {
       workspace: '/path/to/project',
       name: 'project',
       is_git_repo: true,
       branch: 'main',
       dirty: { staged: 1, unstaged: 2, untracked: 0 },
-    }
-  },
-}))
-
-function renderWithQueryClient(ui: React.ReactElement) {
-  const client = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-    },
-  })
+      ...gitStatus,
+    })
+  }
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
 }
 
 describe('AppFooter', () => {
+  const realFetch = globalThis.fetch
   beforeEach(() => {
     mockOpenSettings.mockClear()
-    statusProbes.length = 0
+    healthError = false
+    backendExternal = false
+    requested = []
+    // Requests stay pending unless a test seeds the cache.
+    globalThis.fetch = ((input: unknown) => {
+      requested.push(String(input))
+      return new Promise(() => {})
+    }) as unknown as typeof fetch
+  })
+  afterEach(() => {
+    globalThis.fetch = realFetch
   })
 
-  it('renders backend status indicator', () => {
+  it('names the connected backend even when it is the healthy bundled one', () => {
     renderWithQueryClient(<AppFooter />)
     expect(screen.getByRole('status', { name: 'Application status' })).toBeTruthy()
-    expect(screen.queryByText('local')).toBeNull()
-    expect(screen.getByText('builtin')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Connected\. Change backend connection/ }).textContent).toBe('builtin')
+  })
+
+  it('shows the backend indicator for an external server', () => {
+    backendExternal = true
+    renderWithQueryClient(<AppFooter />)
+    expect(screen.getByRole('button', { name: /Connected\. Change backend connection/ })).toBeTruthy()
+  })
+
+  it('shows the backend indicator when the backend is unhealthy', () => {
+    healthError = true
+    renderWithQueryClient(<AppFooter />)
+    expect(screen.getByRole('button', { name: /Backend error\. Change backend connection/ })).toBeTruthy()
   })
 
   it('shows the git branch for a coding workspace', async () => {
-    renderWithQueryClient(<AppFooter workspace="/path/to/project" />)
+    renderWithQueryClient(<AppFooter workspace="/path/to/project" />, undefined, {})
 
     expect(await screen.findByText('main')).toBeTruthy()
-    expect(statusProbes).toEqual(['/path/to/project'])
+  })
+
+  it('shows ahead/behind sync counts beside the branch', async () => {
+    renderWithQueryClient(<AppFooter workspace="/path/to/project" />, undefined, { commits_ahead: 2, commits_behind: 1, upstream: 'origin/main' })
+
+    expect(await screen.findByLabelText('2 commits to push')).toBeTruthy()
+    expect(screen.getByLabelText('1 commits to pull')).toBeTruthy()
+    expect(screen.getByText('*3')).toBeTruthy()
   })
 
   it('skips the git branch and its probe for the chat workspace', () => {
@@ -76,7 +120,15 @@ describe('AppFooter', () => {
 
     expect(screen.getByRole('status', { name: 'Application status' })).toBeTruthy()
     expect(screen.queryByText('main')).toBeNull()
-    expect(statusProbes).toEqual([])
+    expect(requested.some((url) => url.includes('/workspace/status'))).toBe(false)
+  })
+
+  it('sits on the page tone in light mode and the recessed rail only in dark', () => {
+    renderWithQueryClient(<AppFooter />)
+    const footer = screen.getByRole('status', { name: 'Application status' })
+    expect(footer.className).toContain('bg-(--bg-page)')
+    expect(footer.className).toContain('dark:bg-(--bg-sidebar)')
+    expect(footer.className.split(' ')).not.toContain('bg-(--bg-sidebar)')
   })
 
   it('renders model name and thinking level when provided and triggers session settings', async () => {
@@ -112,32 +164,35 @@ describe('AppFooter', () => {
   })
 
 
-  it('renders scheduler and help palette buttons and triggers actions', () => {
-    const onToggleScheduler = mock(() => {})
-    const onTogglePalette = mock(() => {})
+  it('keeps only the settings gear among the utilities', () => {
+    renderWithQueryClient(<AppFooter />)
 
-    renderWithQueryClient(
-      <AppFooter
-        onToggleScheduler={onToggleScheduler}
-        onTogglePalette={onTogglePalette}
-      />
-    )
+    for (const gone of ['Scheduled tasks', 'Telemetry', 'Help and shortcuts']) {
+      expect(screen.queryByLabelText(gone)).toBeNull()
+    }
+    expect(screen.queryByRole('button', { name: /^Theme:/ })).toBeNull()
 
-    const schedulerBtn = screen.getByLabelText('Scheduler')
-    fireEvent.click(schedulerBtn)
-    expect(onToggleScheduler).toHaveBeenCalledTimes(1)
-
-    const helpBtn = screen.getByLabelText('Help and shortcuts')
-    fireEvent.click(helpBtn)
-    expect(onTogglePalette).toHaveBeenCalledTimes(1)
-
-    const settingsBtn = screen.getByLabelText('Settings')
-    fireEvent.click(settingsBtn)
+    fireEvent.click(screen.getByLabelText('Settings'))
     expect(mockOpenSettings).toHaveBeenCalledTimes(1)
   })
 
-  it('exposes telemetry navigation in the utility cluster', () => {
+  it('shows the last 24 hours of spend and opens Telemetry on that range', () => {
+    useTelemetryStore.setState({ traceId: 'stale-trace' })
+    renderWithQueryClient(<AppFooter />, 1.234)
+    const button = screen.getByRole('button', { name: 'Spend in the last 24 hours: $1.23' })
+    expect(button.textContent).toContain('$1.23')
+    expect(button.textContent).toContain('24h')
+
+    fireEvent.click(button)
+    expect(useUIStore.getState().telemetryOpen).toBe(true)
+    // Entry points land on the overview, not the last trace.
+    expect(useTelemetryStore.getState().traceId).toBeNull()
+    expect(useTelemetryStore.getState().days).toBe(1)
+    useUIStore.getState().closeTelemetry()
+  })
+
+  it('leaves the spend out until the summary loads', () => {
     renderWithQueryClient(<AppFooter />)
-    expect(screen.getByRole('link', { name: 'Telemetry' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Spend in the last 24 hours/ })).toBeNull()
   })
 })

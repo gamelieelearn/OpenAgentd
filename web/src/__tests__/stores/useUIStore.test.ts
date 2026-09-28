@@ -8,6 +8,8 @@ function resetUIStore(): void {
     agentCapabilitiesOpen: false,
     paletteOpen: false,
     quickOpenOpen: false,
+    quickOpenQuery: '',
+    telemetryOpen: false,
   })
 }
 
@@ -52,14 +54,50 @@ describe('useUIStore utility modals', () => {
     })
   })
 
+  it('opens Quick Open already searching for a query, closing the other panels', () => {
+    useUIStore.getState().togglePalette()
+    useUIStore.getState().openQuickOpen('Button.tsx:12')
+
+    expect(useUIStore.getState()).toMatchObject({
+      quickOpenOpen: true,
+      quickOpenQuery: 'Button.tsx:12',
+      paletteOpen: false,
+    })
+  })
+
+  it('opens Quick Open empty from its shortcut after a searched opening', () => {
+    useUIStore.getState().openQuickOpen('Button.tsx')
+    useUIStore.getState().closeQuickOpen()
+    useUIStore.getState().toggleQuickOpen()
+
+    expect(useUIStore.getState()).toMatchObject({ quickOpenOpen: true, quickOpenQuery: '' })
+  })
+
   it('closeAll resets all utility panels', () => {
-    useUIStore.setState({ schedulerOpen: true, agentCapabilitiesOpen: true, paletteOpen: true, quickOpenOpen: true })
+    useUIStore.setState({ schedulerOpen: true, agentCapabilitiesOpen: true, paletteOpen: true, quickOpenOpen: true, telemetryOpen: true })
     useUIStore.getState().closeAll()
     expect(useUIStore.getState()).toMatchObject({
       schedulerOpen: false,
       agentCapabilitiesOpen: false,
       paletteOpen: false,
       quickOpenOpen: false,
+      telemetryOpen: false,
     })
+  })
+
+  it('opening telemetry closes the other overlays, and they close it', () => {
+    useUIStore.getState().toggleScheduler()
+    useUIStore.getState().openTelemetry()
+    expect(useUIStore.getState()).toMatchObject({ telemetryOpen: true, schedulerOpen: false })
+
+    useUIStore.getState().togglePalette()
+    expect(useUIStore.getState()).toMatchObject({ telemetryOpen: false, paletteOpen: true })
+  })
+
+  it('toggleTelemetry flips the overlay', () => {
+    useUIStore.getState().toggleTelemetry()
+    expect(useUIStore.getState().telemetryOpen).toBe(true)
+    useUIStore.getState().toggleTelemetry()
+    expect(useUIStore.getState().telemetryOpen).toBe(false)
   })
 })

@@ -24,10 +24,11 @@ import type { QueryClient } from '@tanstack/react-query'
 import { resolveSession } from '@/api/client'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
-import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
+import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
 import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { setTraySession } from '@/lib/tray'
 import { isEditableTarget } from '@/lib/is-editable-target'
+import { formatPlanQuote } from '@/utils/markdown-plan'
 import { attachmentToFile } from './helpers'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
@@ -44,8 +45,8 @@ export interface UseSessionBootstrapArgs {
   /** Chat entry from the workspace tree — labels the tray as "Chat". */
   chatWorkspace?: { path: string; name: string } | null
   agentWorkspace: string | null
-  hasCodingWorkspace: boolean
-  isCodingSessionLoading: boolean
+  hasWorkspace: boolean
+  isSessionLoading: boolean
   isMobile: boolean
   paletteOpen: boolean
   sessionModel: string | null
@@ -67,6 +68,7 @@ export interface UseSessionBootstrapResult {
   handleNewSession: () => void
   handleDraftValueChange: (value: string) => void
   handleAddFileComment: (path: string, startLine: number, endLine: number) => void
+  handleAddPlanComment: (selectedText: string) => void
 }
 
 export function useSessionBootstrap({
@@ -74,8 +76,8 @@ export function useSessionBootstrap({
   workspace,
   chatWorkspace = null,
   agentWorkspace,
-  hasCodingWorkspace,
-  isCodingSessionLoading,
+  hasWorkspace,
+  isSessionLoading,
   isMobile,
   paletteOpen,
   sessionModel,
@@ -98,8 +100,8 @@ export function useSessionBootstrap({
   // ── Init / reconnect ───────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (hasCodingWorkspace) loadAgentStatus(agentWorkspace)
-    if (isCodingSessionLoading) return
+    if (hasWorkspace) loadAgentStatus(agentWorkspace)
+    if (isSessionLoading) return
     if (!sessionId) return
     const store = useAgentStore.getState()
     const activeController =
@@ -197,8 +199,8 @@ export function useSessionBootstrap({
   }, [
     sessionId,
     agentWorkspace,
-    hasCodingWorkspace,
-    isCodingSessionLoading,
+    hasWorkspace,
+    isSessionLoading,
     loadAgentStatus,
     beginResolvedSession,
     consumeResolvedSessionReady,
@@ -316,8 +318,8 @@ export function useSessionBootstrap({
           prependSession(queryClient, session)
         }
         if (session.created) prependWorkspaceSession(queryClient, workspace, session)
-        saveLastCodingWorkspace(workspace)
-        navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
+        saveLastWorkspace(workspace)
+        navigate({ to: '/$sessionId', params: { sessionId: session.id } })
       } catch (err) {
         useAgentStore.setState((state) => {
           state.error = err instanceof Error ? err.message : 'Failed to create session'
@@ -351,7 +353,7 @@ export function useSessionBootstrap({
   }, [focusInput])
 
   useEffect(() => {
-    if (isMobile || paletteOpen || !workspace || isCodingSessionLoading) return
+    if (isMobile || paletteOpen || !workspace || isSessionLoading) return
 
     const handler = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
@@ -364,11 +366,17 @@ export function useSessionBootstrap({
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isCodingSessionLoading, isMobile, paletteOpen, workspace, inputRef])
+  }, [isSessionLoading, isMobile, paletteOpen, workspace, inputRef])
 
   const handleAddFileComment = useCallback((path: string, startLine: number, endLine: number) => {
     const ref = startLine === endLine ? `@${path}#L${startLine}` : `@${path}#L${startLine}-L${endLine}`
     inputRef.current?.appendValue(`${ref} `)
+    inputRef.current?.focus()
+  }, [inputRef])
+
+  // Selected plan text lands as a quote; the comment is typed beneath it.
+  const handleAddPlanComment = useCallback((selectedText: string) => {
+    inputRef.current?.appendValue(formatPlanQuote(selectedText), { paragraph: true })
     inputRef.current?.focus()
   }, [inputRef])
 
@@ -430,7 +438,7 @@ export function useSessionBootstrap({
   //   - agent currently responding → ``"Working: <ws-or-title>"``
   //     (falls back to ``"Working…"`` when no title yet — e.g. the
   //     agent is generating the first message of a brand-new chat)
-  //   - coding mode with workspace → ``"Coding: <ws>"``
+  //   - project workspace → ``"<ws>"``
   //   - chat with server-named session → ``"Chat: <title>"``
   //   - everything else → empty (tray shows ``No active session``)
   useEffect(() => {
@@ -443,7 +451,7 @@ export function useSessionBootstrap({
       // Chat's workspace name *is* "Chat", so "Chat: Chat" would be silly.
       label = isChatWorkspacePath(workspace, chatWorkspace)
         ? sessionTitle ? `Chat: ${sessionTitle}` : 'Chat'
-        : `Coding: ${workspaceName}`
+        : workspaceName
     }
     void setTraySession(label)
   }, [workspace, sessionTitle, isAgentWorking, chatWorkspace])
@@ -453,5 +461,6 @@ export function useSessionBootstrap({
     handleNewSession,
     handleDraftValueChange,
     handleAddFileComment,
+    handleAddPlanComment,
   }
 }

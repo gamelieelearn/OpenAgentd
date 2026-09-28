@@ -1,0 +1,42 @@
+{
+  "$comment": "SSE event names the backend emits. appv3 asserts every emitted name is listed here (debug builds and tests); web/src/__tests__/api/sse-contract.test.ts asserts the web client types and handles each one, or lists it as deliberately ignored.",
+  "session_stream": [
+    "session",
+    "thinking",
+    "message",
+    "tool_call",
+    "tool_start",
+    "tool_output_delta",
+    "tool_end",
+    "usage",
+    "done",
+    "error",
+    "rate_limit",
+    "provider_status",
+    "agent_status",
+    "agent_not_configured",
+    "interaction_mode",
+    "queued_turn_start",
+    "permission_asked",
+    "question_asked",
+    "question_answered",
+    "question_dismissed",
+    "summarization_start",
+    "summarization_content",
+    "summarization_end",
+    "subagent_spawned",
+    "subagent_status"
+  ],
+  "global_stream": [
+    "session_turn_started",
+    "session_turn_completed",
+    "title_update",
+    "desktop_notification",
+    "subagent_spawned",
+    "subagent_status",
+    "workspace_files_changed",
+    "config_changed",
+    "mcp_status_changed",
+    "lsp_install_required"
+  ]
+}

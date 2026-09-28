@@ -303,6 +303,34 @@ describe('App backend bootstrap', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
+  it('drops back to recovery when the bundled backend dies after startup', async () => {
+    // The desktop crash watcher sends backend-error once its automatic
+    // restarts are exhausted; a ready UI must not keep talking to a dead port.
+    render(<App />)
+    await waitFor(() => expect(routerMounted).toBe(true))
+    await waitFor(() => expect(backendErrorListener).not.toBeNull())
+
+    await act(async () => {
+      backendErrorListener?.({ payload: { message: 'The local backend stopped unexpectedly (exit status: 101).' } })
+    })
+
+    expect(screen.getByText('OpenAgentd could not start its local backend.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  })
+
+  it('follows an automatically restarted bundled backend to its new port', async () => {
+    render(<App />)
+    await waitFor(() => expect(routerMounted).toBe(true))
+    await waitFor(() => expect(backendReadyListener).not.toBeNull())
+
+    await act(async () => {
+      backendReadyListener?.({ payload: { base_url: 'http://127.0.0.1:50123', token: 'desktop-token' } })
+    })
+
+    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:50123'))
+    expect(window.__OAD_TOKEN__).toBe('desktop-token')
+  })
+
   it('keeps waiting through a slow first-run sidecar startup before offering recovery', async () => {
     const timers = useFakeTimers()
     statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false }
