@@ -13,7 +13,7 @@ import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
 import { useChatWorkspace } from '@/queries/useChatWorkspace'
 
 /**
- * Coding workspace layout for /coding and its session routes.
+ * The app layout for / (new session) and /<session id>.
  * Stays mounted across URL changes — handles navigation when a new
  * agent session_id arrives from POST /agent/chat.
  */
@@ -102,7 +102,7 @@ function AgentLayoutBase() {
           })
           void queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
           navigate({
-            to: '/coding/$sessionId',
+            to: '/$sessionId',
             params: { sessionId: session.id },
             replace: true,
           })
@@ -165,7 +165,7 @@ function AgentLayoutBase() {
         void queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
         if (workspace) saveLastCodingWorkspace(workspace)
         navigate({
-          to: '/coding/$sessionId',
+          to: '/$sessionId',
           params: { sessionId: session.id },
           replace: true,
         })
@@ -191,7 +191,7 @@ function AgentLayoutBase() {
         const workspace = workspaceRef.current
         if (workspace) saveLastCodingWorkspace(workspace)
         navigateRef.current({
-          to: '/coding/$sessionId',
+          to: '/$sessionId',
           params: { sessionId: state.sessionId },
           replace: true,
         })

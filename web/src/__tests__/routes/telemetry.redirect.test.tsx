@@ -26,13 +26,13 @@ afterEach(() => {
 })
 
 describe('/telemetry', () => {
-  it('opens the overlay on the linked range, trace, and session, then goes to /coding', () => {
+  it('opens the overlay on the linked range, trace, and session, then goes to /', () => {
     search = { days: 30, traceId: 'trace-1', session: 'sess-1' }
     render(<TelemetryPage />)
 
     expect(useUIStore.getState().telemetryOpen).toBe(true)
     expect(useTelemetryStore.getState()).toMatchObject({ days: 30, traceId: 'trace-1', session: 'sess-1' })
-    expect(navigate).toHaveBeenCalledWith({ to: '/coding', replace: true })
+    expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
   })
 
   it('ignores ranges the overlay does not offer', () => {

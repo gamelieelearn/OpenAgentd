@@ -66,7 +66,7 @@ describe('WorkspaceInfoCard', () => {
     expect(rows[1]).toContain('Fix login bug')
 
     await user.click(screen.getByRole('button', { name: /Fix login bug/ }))
-    expect(navigate.mock.calls).toEqual([[{ to: '/coding/$sessionId', params: { sessionId: 'old' } }]])
+    expect(navigate.mock.calls).toEqual([[{ to: '/$sessionId', params: { sessionId: 'old' } }]])
   })
 
   it('shows the workspace without the old git status block', () => {

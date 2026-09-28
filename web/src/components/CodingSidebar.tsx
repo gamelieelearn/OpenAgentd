@@ -1,6 +1,6 @@
 /**
- * CodingSidebar — flat workspace + session switcher for the ``/coding``
- * route. Mirrors the wireframe sidebar ``Q4zeZN`` in
+ * CodingSidebar — flat workspace + session switcher for the app's one
+ * screen. Mirrors the wireframe sidebar ``Q4zeZN`` in
  * ``.diagrams/OpenAgentd-ui.pen``:
  *
  *   • A "Workspaces" section header (VS Code view header) whose actions —
@@ -411,7 +411,7 @@ export function CodingSidebar({
 
   // Remove a workspace from the sidebar. Sessions stay in the backend —
   // reopening the same folder later resurfaces them. If the removed
-  // workspace was the active one, navigate back to the empty /coding
+  // workspace was the active one, navigate back to the empty /
   // route so the URL doesn't reference a workspace that no longer
   // appears in the sidebar. Called from the confirmation dialog below.
   const confirmRemoveWorkspace = () => {
@@ -423,7 +423,7 @@ export function CodingSidebar({
       return next
     })
     if (path === activeWorkspace) {
-      navigate({ to: '/coding', replace: true })
+      navigate({ to: '/', replace: true })
     }
     void confirmWorkspaceRemoval({
       path,

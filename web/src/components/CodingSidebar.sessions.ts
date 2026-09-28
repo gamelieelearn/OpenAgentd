@@ -25,7 +25,7 @@ export function applySessionSelection(options: {
   const workspace = options.session.workspace ?? options.workspacePath
   if (workspace) saveLastCodingWorkspace(workspace)
   options.navigate({
-    to: '/coding/$sessionId',
+    to: '/$sessionId',
     params: { sessionId: options.session.id },
   })
   options.onMobileClose?.()
@@ -52,11 +52,11 @@ export function applySessionDelete(options: {
   if (fallbackSession) {
     if (fallbackSession.workspace) saveLastCodingWorkspace(fallbackSession.workspace)
     options.navigate({
-      to: '/coding/$sessionId',
+      to: '/$sessionId',
       params: { sessionId: fallbackSession.id },
       replace: true,
     })
     return
   }
-  options.navigate({ to: '/coding', replace: true })
+  options.navigate({ to: '/', replace: true })
 }

@@ -67,7 +67,7 @@ export async function applyResolvedWorkspaceSession(options: {
     prependWorkspaceSession(options.queryClient, options.path, options.session)
   }
   await options.refreshWorkspaceTree()
-  options.navigate({ to: '/coding/$sessionId', params: { sessionId: options.session.id } })
+  options.navigate({ to: '/$sessionId', params: { sessionId: options.session.id } })
 }
 
 export async function confirmWorkspaceRemoval(options: {
@@ -76,7 +76,7 @@ export async function confirmWorkspaceRemoval(options: {
   expandedWorkspaces: Set<string>
   queryClient: QueryClient
   refreshWorkspaceTree: () => Promise<void>
-  navigate: (args: { to: '/coding'; replace: true }) => void
+  navigate: (args: { to: '/'; replace: true }) => void
   setCodingWorkspaceVisibilityFn?: typeof setCodingWorkspaceVisibility
 }): Promise<Set<string>> {
   await (options.setCodingWorkspaceVisibilityFn ?? setCodingWorkspaceVisibility)(options.path, true)
@@ -85,7 +85,7 @@ export async function confirmWorkspaceRemoval(options: {
   const next = new Set(options.expandedWorkspaces)
   next.delete(options.path)
   if (options.path === options.activeWorkspace) {
-    options.navigate({ to: '/coding', replace: true })
+    options.navigate({ to: '/', replace: true })
   }
   return next
 }

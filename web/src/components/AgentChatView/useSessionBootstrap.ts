@@ -317,7 +317,7 @@ export function useSessionBootstrap({
         }
         if (session.created) prependWorkspaceSession(queryClient, workspace, session)
         saveLastCodingWorkspace(workspace)
-        navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
+        navigate({ to: '/$sessionId', params: { sessionId: session.id } })
       } catch (err) {
         useAgentStore.setState((state) => {
           state.error = err instanceof Error ? err.message : 'Failed to create session'

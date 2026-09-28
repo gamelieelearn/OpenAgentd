@@ -9,15 +9,6 @@ const rootRoute = createRootRoute({
   notFoundComponent: NotFound,
 })
 
-// / → Coding workspace
-const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/',
-  beforeLoad: () => {
-    throw redirect({ to: '/coding' })
-  },
-})
-
 // Tauri's packaged asset URL may surface as /index.html before the root
 // effect canonicalizes it. Render Coding immediately instead of flashing the
 // not-found screen on a first desktop launch.
@@ -27,21 +18,39 @@ const packagedIndexRoute = createRoute({
   component: CodingLayout,
 })
 
-// /coding layout — coding mode without query-string mode state
-const codingLayoutRoute = createRoute({
+// The one screen: / is a new session, /<id> a session. A pathless layout so
+// switching sessions keeps the chat view mounted.
+const appLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/coding',
+  id: 'app',
   component: CodingLayout,
 })
-const codingIndexRoute = createRoute({
-  getParentRoute: () => codingLayoutRoute,
+const newSessionRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
   path: '/',
   component: () => null,
 })
-const codingSessionRoute = createRoute({
-  getParentRoute: () => codingLayoutRoute,
+const sessionRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
   path: '$sessionId',
   component: () => null,
+})
+
+// Links from older builds (bookmarks, notifications, other windows) used a
+// /coding prefix; they redirect and render nothing of their own.
+const legacyCodingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/coding',
+  beforeLoad: () => {
+    throw redirect({ to: '/', replace: true })
+  },
+})
+const legacyCodingSessionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/coding/$sessionId',
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: '/$sessionId', params: { sessionId: params.sessionId }, replace: true })
+  },
 })
 
 const telemetrySearchSchema = z.object({
@@ -55,7 +64,7 @@ const schedulerSearchSchema = z.object({
   task: z.string().optional(),
 })
 
-// /telemetry — deep-link shim: opens the telemetry overlay, then /coding
+// /telemetry — deep-link shim: opens the telemetry overlay, then /
 const telemetryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/telemetry',
@@ -72,9 +81,10 @@ const schedulerRoute = createRoute({
 })
 
 const routeTree = rootRoute.addChildren([
-  indexRoute,
   packagedIndexRoute,
-  codingLayoutRoute.addChildren([codingIndexRoute, codingSessionRoute]),
+  appLayoutRoute.addChildren([newSessionRoute, sessionRoute]),
+  legacyCodingRoute,
+  legacyCodingSessionRoute,
   telemetryRoute,
   schedulerRoute,
 ])

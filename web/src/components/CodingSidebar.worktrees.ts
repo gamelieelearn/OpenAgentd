@@ -86,7 +86,7 @@ export async function submitWorktreeSession(options: {
   prependSession(options.queryClient, session)
   prependWorkspaceSession(options.queryClient, path, session)
   await options.refreshWorkspaceTree()
-  options.navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
+  options.navigate({ to: '/$sessionId', params: { sessionId: session.id } })
   options.onMobileClose?.()
   return { kind: 'created', workspace: path, sessionId: session.id }
 }
@@ -107,7 +107,7 @@ export async function recoverCreatedWorktreeAfterTransientError(options: {
   if (!created) return null
   saveLastCodingWorkspace(created.directory)
   await options.refreshWorkspaceTree()
-  options.navigate({ to: '/coding' })
+  options.navigate({ to: '/' })
   options.onMobileClose?.()
   return { kind: 'recovered', workspace: created.directory }
 }

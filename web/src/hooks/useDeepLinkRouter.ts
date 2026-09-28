@@ -33,8 +33,8 @@ export function parseDeepLinkUrl(urlStr: string): DeepLinkParsed {
     }
 
     if (host === 'cockpit' || host === 'coding' || host === 'session') {
-      const target = `/coding/${pathname}`
-      return { kind: 'navigate', path: target.replace(/\/+$/, '') }
+      const target = `/${pathname}`.replace(/\/+$/, '')
+      return { kind: 'navigate', path: target || '/' }
     }
 
     return { kind: 'unknown' }

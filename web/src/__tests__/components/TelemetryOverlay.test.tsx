@@ -132,6 +132,6 @@ describe('TelemetryOverlay', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Open session' }))
     expect(useUIStore.getState().telemetryOpen).toBe(false)
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/coding/$sessionId', params: { sessionId: 'sess-9' } }))
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'sess-9' } }))
   })
 })

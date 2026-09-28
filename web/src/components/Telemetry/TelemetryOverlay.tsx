@@ -48,7 +48,7 @@ export function TelemetryOverlay() {
   const openSession = useCallback(
     (sessionId: string) => {
       close()
-      void navigate({ to: '/coding/$sessionId', params: { sessionId } })
+      void navigate({ to: '/$sessionId', params: { sessionId } })
     },
     [close, navigate],
   )

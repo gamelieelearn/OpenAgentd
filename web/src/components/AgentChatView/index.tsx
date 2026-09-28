@@ -707,7 +707,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 variant="default"
                 onClick={() => {
                   if (parentSessionId) {
-                    navigate({ to: '/coding/$sessionId', params: { sessionId: parentSessionId } })
+                    navigate({ to: '/$sessionId', params: { sessionId: parentSessionId } })
                   }
                 }}
                 className="shrink-0"

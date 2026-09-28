@@ -57,14 +57,14 @@ describe('coding workspace persistence', () => {
     expect(loadLastCodingWorkspace()).toBeNull()
   })
 
-  it('restores the last workspace only on the bare coding route', () => {
-    expect(shouldRestoreLastCodingWorkspace(undefined, '/coding')).toBe(true)
-    expect(shouldRestoreLastCodingWorkspace('sid', '/coding')).toBe(false)
+  it('restores the last workspace only on the new-session route', () => {
+    expect(shouldRestoreLastCodingWorkspace(undefined, '/')).toBe(true)
+    expect(shouldRestoreLastCodingWorkspace('sid', '/')).toBe(false)
   })
 
-  it('does not restore while navigating away from coding mode', () => {
-    expect(shouldRestoreLastCodingWorkspace(undefined, '/')).toBe(false)
-    expect(shouldRestoreLastCodingWorkspace(undefined, '/other')).toBe(false)
+  it('does not restore while navigating to another route', () => {
+    expect(shouldRestoreLastCodingWorkspace(undefined, '/telemetry')).toBe(false)
+    expect(shouldRestoreLastCodingWorkspace(undefined, '/coding')).toBe(false)
   })
 
   it('does not reuse a previous workspace while direct session details are loading', () => {

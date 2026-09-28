@@ -111,7 +111,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   native startup failures surface immediately, and Retry re-spawns the builtin
   backend without allowing duplicate sidecar processes `[v1.113.0]`.
 - **Workspace-required architecture and root redirect** `[v2.4.0, updated v2.19.0]` — OpenAgentd runs on one
-  screen built around workspaces. Root `/` and legacy Cockpit URLs redirect to `/coding`,
+  screen built around workspaces. Since `[v3.0.0]` that screen is the root:
+  `/` is a new session and `/{session_id}` a session; old `/coding` and
+  Cockpit URLs redirect there,
   workspaces are required across chat, scheduler, and terminals, and database
   migration permanently removes legacy workspace-less records. The workspace-less
   chat surface itself returned in v2.19.0 as a pinned Chat workspace rather than a
@@ -671,7 +673,7 @@ executes tools, manages its task list, and inspects workspace repositories.
 
 ## 3. The coding workspace
 
-Coding mode (`/coding`) opens a local project folder and runs a workspace-aware
+The coding workspace (`/`) opens a local project folder and runs a workspace-aware
 agent against it.
 
 - **Open any local project folder** `[since v1.0]` — server-local paths only.
@@ -822,9 +824,9 @@ agent against it.
   (desktop) or long-press (mobile) a changed file inside the Changes tab or a
   commit's detail view to open, copy, or otherwise act on that file, including
   deleted files, which render a dedicated deleted-file view in the editor panel.
-- **Persisted coding sessions per workspace** `[v1.18.0]` — `/coding/{session_id}`
-  restores workspace context from the saved session. Bare `/coding` is the
-  launcher or last-workspace restore. New empty sessions exist before the
+- **Persisted coding sessions per workspace** `[v1.18.0]` — `/{session_id}`
+  (`/coding/{session_id}` before v3.0.0) restores workspace context from the
+  saved session. Bare `/` is the launcher or last-workspace restore. New empty sessions exist before the
   first message.
 - **Workspace sidebar pagination** `[v1.18.0]` — each main/worktree list shows
   roughly 5 sessions and loads more on request (**Show more** since `[v3.0.0]`,

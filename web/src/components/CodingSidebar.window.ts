@@ -16,8 +16,8 @@ export async function openSessionInNewWindow(options: {
 }): Promise<void> {
   const core = await (options.importCore ?? (() => import('@tauri-apps/api/core')))()
   await core.invoke('app_new_window', {
-    initialPath: `/coding/${options.session.id}`,
-    initial_path: `/coding/${options.session.id}`,
+    initialPath: `/${options.session.id}`,
+    initial_path: `/${options.session.id}`,
   })
 }
 

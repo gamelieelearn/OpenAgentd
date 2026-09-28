@@ -156,7 +156,7 @@ export function shouldRestoreLastCodingWorkspace(
   sessionId: string | undefined,
   pathname: string,
 ): boolean {
-  return !sessionId && pathname === '/coding'
+  return !sessionId && pathname === '/'
 }
 
 export function workspaceFromSession(

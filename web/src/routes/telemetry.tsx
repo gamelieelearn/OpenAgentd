@@ -17,7 +17,7 @@ export function TelemetryPage() {
 
   useEffect(() => {
     openTelemetry({ days, traceId, session })
-    void navigate({ to: '/coding', replace: true })
+    void navigate({ to: '/', replace: true })
   }, [days, traceId, session, navigate])
 
   return (

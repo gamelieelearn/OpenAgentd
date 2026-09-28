@@ -418,7 +418,7 @@ describe('CodingSidebar helpers', () => {
       onMobileClose,
     })
     expect(selectionNavigate).toHaveBeenCalledWith({
-      to: '/coding/$sessionId',
+      to: '/$sessionId',
       params: { sessionId: 'session-1' },
     })
     expect(onMobileClose).toHaveBeenCalled()
@@ -445,7 +445,7 @@ describe('CodingSidebar helpers', () => {
     })
     expect(mutateDelete).toHaveBeenCalledWith('session-1')
     expect(deleteNavigate).toHaveBeenCalledWith({
-      to: '/coding/$sessionId',
+      to: '/$sessionId',
       params: { sessionId: 'session-2' },
       replace: true,
     })
@@ -476,7 +476,7 @@ describe('CodingSidebar helpers', () => {
     })
     expect(selected).toEqual({ skipped: false })
     expect(selectionNavigate).toHaveBeenCalledWith({
-      to: '/coding/$sessionId',
+      to: '/$sessionId',
       params: { sessionId: 'resolved-session' },
     })
     expect(refreshCount).toBe(1)
@@ -514,7 +514,7 @@ describe('CodingSidebar helpers', () => {
     })
     expect(nextExpanded.has('/repo/project')).toBe(false)
     expect(nextExpanded.has('/repo/other')).toBe(true)
-    expect(removeNavigate).toHaveBeenCalledWith({ to: '/coding', replace: true })
+    expect(removeNavigate).toHaveBeenCalledWith({ to: '/', replace: true })
   })
 
   it('exports worktree dialog helpers used by the component', async () => {
@@ -621,8 +621,8 @@ describe('CodingSidebar helpers', () => {
       importCore: async () => ({ invoke }),
     })
     expect(invoke).toHaveBeenCalledWith('app_new_window', {
-      initialPath: '/coding/session-1',
-      initial_path: '/coding/session-1',
+      initialPath: '/session-1',
+      initial_path: '/session-1',
     })
 
     expect(sessionWindowErrorDescription(new Error('boom'), 'fallback')).toBe('boom')
@@ -834,7 +834,7 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await waitFor(() => {
       expect(navigate).toHaveBeenCalledWith({
-        to: '/coding/$sessionId',
+        to: '/$sessionId',
         params: { sessionId: 'resolved-session' },
       })
     })
@@ -995,8 +995,8 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('app_new_window', {
-        initialPath: '/coding/session-1',
-        initial_path: '/coding/session-1',
+        initialPath: '/session-1',
+        initial_path: '/session-1',
       })
     })
     expect(navigate).not.toHaveBeenCalled()
@@ -1099,7 +1099,7 @@ describe('CodingSidebar workspace trust flow', () => {
       body: JSON.stringify({ workspace: '/repo/project', hidden: true }),
     }))
     expect(globalThis.fetch).not.toHaveBeenCalledWith('/api/agent/workspace/worktrees', expect.objectContaining({ method: 'DELETE' }))
-    expect(navigate).toHaveBeenCalledWith({ to: '/coding', replace: true })
+    expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
   })
 
   it('does not create a new session when the current coding session is empty and idle', async () => {
@@ -1256,7 +1256,7 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.queryByLabelText('Collapse repository project')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: /Migration plan/ }))
-    expect(navigate).toHaveBeenCalledWith({ to: '/coding/$sessionId', params: { sessionId: 'm1' } })
+    expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'm1' } })
     expect(screen.queryByRole('searchbox')).toBeNull()
     expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
   })
@@ -1368,7 +1368,7 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(section.textContent).not.toContain('Still working')
 
     await user.click(screen.getByRole('button', { name: /Confirm the release notes/ }))
-    expect(navigate).toHaveBeenCalledWith({ to: '/coding/$sessionId', params: { sessionId: 'ask-2' } })
+    expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'ask-2' } })
   })
 
   it('hides the Needs you section when nothing is waiting', async () => {
@@ -1574,7 +1574,7 @@ describe('CodingSidebar workspace trust flow', () => {
     })
     expect(useAgentStore.getState()._workspace).toBe('/data/worktrees/project/task-a')
     expect(navigate).toHaveBeenCalledWith({
-      to: '/coding/$sessionId',
+      to: '/$sessionId',
       params: { sessionId: 'resolved-worktree-session' },
     })
   })
@@ -1825,7 +1825,7 @@ describe('CodingSidebar workspace trust flow', () => {
 
     expect(deleteSessionMutate).toHaveBeenCalledWith('session-1')
     expect(navigate).toHaveBeenCalledWith({
-      to: '/coding/$sessionId',
+      to: '/$sessionId',
       params: { sessionId: 'session-2' },
       replace: true,
     })
@@ -1857,7 +1857,7 @@ describe('CodingSidebar workspace trust flow', () => {
     await user.click(screen.getByRole('button', { name: /^delete$/i }))
 
     expect(deleteSessionMutate).toHaveBeenCalledWith('session-1')
-    expect(navigate).toHaveBeenCalledWith({ to: '/coding', replace: true })
+    expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
   })
 
   it('copies repo absolute path from the workspace actions menu', async () => {
@@ -1956,7 +1956,7 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await waitFor(() => {
       expect(navigate).toHaveBeenCalledWith({
-        to: '/coding/$sessionId',
+        to: '/$sessionId',
         params: { sessionId: 'resolved-session' },
       })
     })

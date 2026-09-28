@@ -26,7 +26,7 @@ describe('openNotificationSession', () => {
     openNotificationSession({ sessionId: 'session-123', mode: 'coding' }, router)
 
     expect(navigate).toHaveBeenCalledWith({
-      to: '/coding/$sessionId',
+      to: '/$sessionId',
       params: { sessionId: 'session-123' },
     })
   })
@@ -37,7 +37,7 @@ describe('openNotificationSession', () => {
 
     expect(navigate).toHaveBeenCalledTimes(1)
     expect(navigate).toHaveBeenCalledWith({
-      to: '/coding/$sessionId',
+      to: '/$sessionId',
       params: { sessionId: 'session-456' },
     })
   })

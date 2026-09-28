@@ -793,13 +793,13 @@ mod tests {
             Some("desktop-token"),
             &external,
             "main-2",
-            Some("/coding/session-1"),
+            Some("/session-1"),
         )
         .expect("external backend init script");
 
         assert!(script.contains("http://192.168.1.10:4082"));
         assert!(!script.contains("desktop-token"));
-        assert!(script.contains("/coding/session-1"));
+        assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/session-1","#));
     }
 
     #[test]
@@ -809,17 +809,17 @@ mod tests {
             Some("desktop-token"),
             &StdHashMap::new(),
             MAIN_WINDOW,
-            Some("/coding/session-1"),
+            Some("/session-1"),
         )
         .expect("bundled backend init script");
 
         assert!(script.contains("http://127.0.0.1:4082"));
         assert!(script.contains("desktop-token"));
-        assert!(script.contains("/coding/session-1"));
+        assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/session-1","#));
     }
 
     #[test]
-    fn new_window_without_a_target_opens_coding() {
+    fn new_window_without_a_target_opens_a_new_session() {
         let script = new_window_init_script(
             Some("http://127.0.0.1:4082"),
             Some("desktop-token"),
@@ -829,7 +829,8 @@ mod tests {
         )
         .expect("bundled backend init script");
 
-        assert!(script.contains("/coding"));
+        assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/","#));
+        assert!(!script.contains("/coding"));
     }
 
     // ── inherited_external_base_url ──────────────────────────────────────────
@@ -943,11 +944,11 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_desktop_startup_opens_coding() {
+    fn unavailable_desktop_startup_opens_a_new_session() {
         let script = backend_unavailable_init_script();
 
-        assert!(script.contains("__OAD_INITIAL_ROUTE__"));
-        assert!(script.contains("/coding"));
+        assert!(script.contains(r#"'__OAD_INITIAL_ROUTE__', { value: "/","#));
+        assert!(!script.contains("/coding"));
     }
 
     #[test]
