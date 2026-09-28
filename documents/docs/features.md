@@ -113,7 +113,9 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Workspace-required architecture and root redirect** `[v2.4.0, updated v2.19.0]` — OpenAgentd runs on one
   screen built around workspaces. Since `[v3.0.0]` that screen is the root:
   `/` is a new session and `/{session_id}` a session; old `/coding` and
-  Cockpit URLs redirect there,
+  Cockpit URLs redirect there, and the app's labels no longer call it
+  "coding" (the composer reads "Ask anything in <workspace>…", the palette
+  "Toggle Sidebar", the tray just the workspace name),
   workspaces are required across chat, scheduler, and terminals, and database
   migration permanently removes legacy workspace-less records. The workspace-less
   chat surface itself returned in v2.19.0 as a pinned Chat workspace rather than a

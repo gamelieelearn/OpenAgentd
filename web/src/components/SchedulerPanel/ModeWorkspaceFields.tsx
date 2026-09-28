@@ -47,7 +47,7 @@ export function ModeWorkspaceFields({
       )}
       <p className="mt-1 text-xs text-(--color-text-muted)">
         Delivers to the coding agent for the selected workspace.{' '}
-        <span className="text-(--color-text-subtle)">Workspaces come from saved coding workspaces.</span>
+        <span className="text-(--color-text-subtle)">Workspaces come from the ones saved in the sidebar.</span>
       </p>
     </div>
   )

@@ -873,7 +873,7 @@ describe('CodingSidebar workspace trust flow', () => {
     try {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1600 })
       await renderCodingSidebarWithProps({ desktopCollapsed: false })
-      const separator = screen.getByRole('separator', { name: 'Resize coding sidebar' })
+      const separator = screen.getByRole('separator', { name: 'Resize sidebar' })
       expect(separator.getAttribute('aria-valuemax')).toBe('440')
 
       // 1000 - 400 (chat) - 340 (dock) leaves 260px for the sidebar.

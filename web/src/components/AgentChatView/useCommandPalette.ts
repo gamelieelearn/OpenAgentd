@@ -149,7 +149,7 @@ export function useCommandPalette({
       { hotkey: hotkeyOf(APP_SHORTCUTS.commandPalette), callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
       // Mod+B belongs to the general sidebar. Only the coding sidebar owns this
       // registration when coding mode is active, preventing duplicate handlers.
-      { hotkey: hotkeyOf(APP_SHORTCUTS.codingSidebar), callback: handleCodingSidebarToggle, options: { meta: { name: 'Coding sidebar' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.codingSidebar), callback: handleCodingSidebarToggle, options: { meta: { name: 'Sidebar' } } },
       {
         hotkey: hotkeyOf(APP_SHORTCUTS.focusChat),
         callback: () => {

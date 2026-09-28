@@ -430,7 +430,7 @@ export function useSessionBootstrap({
   //   - agent currently responding → ``"Working: <ws-or-title>"``
   //     (falls back to ``"Working…"`` when no title yet — e.g. the
   //     agent is generating the first message of a brand-new chat)
-  //   - coding mode with workspace → ``"Coding: <ws>"``
+  //   - project workspace → ``"<ws>"``
   //   - chat with server-named session → ``"Chat: <title>"``
   //   - everything else → empty (tray shows ``No active session``)
   useEffect(() => {
@@ -443,7 +443,7 @@ export function useSessionBootstrap({
       // Chat's workspace name *is* "Chat", so "Chat: Chat" would be silly.
       label = isChatWorkspacePath(workspace, chatWorkspace)
         ? sessionTitle ? `Chat: ${sessionTitle}` : 'Chat'
-        : `Coding: ${workspaceName}`
+        : workspaceName
     }
     void setTraySession(label)
   }, [workspace, sessionTitle, isAgentWorking, chatWorkspace])

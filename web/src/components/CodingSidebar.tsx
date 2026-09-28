@@ -553,7 +553,7 @@ export function CodingSidebar({
     onCommit: commitSidebarWidth,
     onReset: resetSidebarWidth,
     disabled: isMobile || desktopCollapsed,
-    label: 'Resize coding sidebar',
+    label: 'Resize sidebar',
   }
   const sidebarMotion = ({ width, isResizing }: LiveWidth) => ({
     animate: isMobile
@@ -1089,7 +1089,7 @@ export function CodingSidebar({
               <DialogHeader>
                 <DialogTitle>Trust this workspace?</DialogTitle>
                 <DialogDescription>
-                  Coding mode grants agents filesystem and shell access inside this exact directory.
+                  Agents get filesystem and shell access inside this exact directory.
                 </DialogDescription>
               </DialogHeader>
               <div className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">

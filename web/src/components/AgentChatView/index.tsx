@@ -611,7 +611,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
               <h2 className="text-sm font-medium text-(--color-text)">
-                {isChatWorkspace ? 'Opening chat…' : 'Opening coding session…'}
+                {isChatWorkspace ? 'Opening chat…' : 'Opening session…'}
               </h2>
               <p className="mt-1 text-xs text-(--color-text-muted)">
                 {isChatWorkspace
@@ -625,7 +625,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
               <h2 className="text-sm font-medium text-(--color-text)">
-                {isChatWorkspace ? 'Opening chat…' : 'Opening coding workspace…'}
+                {isChatWorkspace ? 'Opening chat…' : 'Opening workspace…'}
               </h2>
               <p className="mt-1 text-xs text-(--color-text-muted)">
                 {isChatWorkspace ? 'Preparing Chat' : `Preparing agents for ${workspace}`}
@@ -636,7 +636,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           <EmptyState
             icon={FolderCode}
             title="No workspace attached"
-            body="Choose a local project folder from the sidebar to start a coding session."
+            body="Choose a local project folder from the sidebar to start a session."
             action={
               <Button type="button" onClick={handleOpenWorkspaceDialog}>
                 Open workspace
@@ -733,7 +733,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             disabled={isCodingSessionLoading}
             placeholder={
               // While a turn runs the composer shows its own queue/stop hint.
-              isChatWorkspace ? 'Ask anything…' : `Coding in ${workspaceName}`
+              isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
             }
             capabilities={leadCapabilities}
             // A switch requested mid-turn is queued server-side, so the toggle
