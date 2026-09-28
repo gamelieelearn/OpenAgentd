@@ -249,6 +249,12 @@ export interface AgentStoreActions {
   reconcileTurnTail: (sessionId: string, workspace?: string | null) => Promise<void>
   beginResolvedSession: (sessionId: string | null, options: { workspace: string; interactionMode?: SessionInteractionMode; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   loadOlderMessages: () => Promise<void>
+  /**
+   * Load older pages until one holds a prompt the user wrote (at most
+   * ``maxPages``), prepending them in a single update. Resolves whether a
+   * prompt arrived.
+   */
+  loadOlderUntilPrompt: (maxPages?: number) => Promise<boolean>
   toggleSidebar: () => void
   dismissSetupRequired: () => void
   isEmptyIdleSession: () => boolean

@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand'
 import { agentStatus, sessionHistory, sessionHistorySince, updateSessionInteractionMode } from '@/api/client'
-import { applyOrphanToolResults, parseAgentBlocks, sumUsageFromMessages } from '@/utils/messages'
+import { applyOrphanToolResults, isPromptMessage, parseAgentBlocks, sumUsageFromMessages } from '@/utils/messages'
 import type { OrphanToolResult } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
 import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
@@ -8,6 +8,9 @@ import { toPendingQuestion } from './sse-reducer'
 import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, AgentStore } from './types'
 import type { ContentBlock, MessageResponse, SessionHistoryResponse, SessionInteractionMode } from '@/api/types'
+
+/** Pages ⌥⌘↑ may fetch looking for an earlier prompt, e.g. across one long agent turn. */
+const OLDER_PROMPT_PAGE_LIMIT = 10
 
 function revertBoundaryTime(session: { revert?: { message_id?: string; created_at?: string } | null; messages: MessageResponse[] }): number | null {
   if (!session.revert) return null
@@ -469,6 +472,7 @@ export type SessionSlice = Pick<
   | 'loadSession'
   | 'reconcileTurnTail'
   | 'loadOlderMessages'
+  | 'loadOlderUntilPrompt'
 >
 
 // Keyed by `${sessionId}\u0000${workspace}`. Coalesces concurrent
@@ -1199,5 +1203,33 @@ export const createSessionSlice: StateCreator<
       set((draft) => { draft._loadingOlder = false })
       throw err
     }
+  },
+
+  loadOlderUntilPrompt: async (maxPages = OLDER_PROMPT_PAGE_LIMIT) => {
+    const { sessionId, nextCursor, hasMore, _leadRevertTime, _loadingOlder, _sessionGeneration: generation } = get()
+    if (!sessionId || !hasMore || !nextCursor || _loadingOlder) return false
+    set((draft) => { draft._loadingOlder = true })
+    const pages: SessionHistoryResponse[] = []
+    let cursor: string | null = nextCursor
+    let found = false
+    try {
+      // Cursor pages are sequential; fetch them all, then prepend once, so a
+      // run of prompt-less pages (one long agent turn) costs one render.
+      while (cursor && !found && pages.length < maxPages) {
+        const history = await sessionHistory(sessionId, cursor)
+        if (get()._sessionGeneration !== generation) return false
+        pages.push(history)
+        found = messagesBeforeTime(history.lead.messages, _leadRevertTime).some(isPromptMessage)
+        cursor = history.has_more ? history.next_cursor : null
+      }
+    } finally {
+      // Keep whatever arrived, even when a later page failed.
+      set((draft) => {
+        if (draft._sessionGeneration !== generation) return
+        draft._loadingOlder = false
+        for (const history of pages) prependOlderPage(draft, history, _leadRevertTime)
+      })
+    }
+    return found
   },
 })

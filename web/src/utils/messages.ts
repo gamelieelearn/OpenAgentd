@@ -196,6 +196,15 @@ function userMessageSender(msg: MessageResponse): string | undefined {
 }
 
 /**
+ * A row that ``parseAgentBlocks`` turns into a prompt the user wrote: a user
+ * row that is not queued, a summary, or an agent's report.
+ */
+export function isPromptMessage(msg: MessageResponse): boolean {
+  if (msg.kind === 'queued' || msg.extra?.queue_status === 'queued' || msg.is_summary) return false
+  return msg.role === 'user' && !userMessageSender(msg)
+}
+
+/**
  * Parse DB messages into a flat ContentBlock[] for the agent view.
  * User messages → type:'user' block (rendered as user bubble inline)
  * Assistant messages → thinking/tool/text blocks
