@@ -40,7 +40,6 @@ import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { ErrorCard } from './AgentView/ErrorCard'
 import { PromptHeader } from './AgentView/PromptHeader'
-import { NewDivider, useNewSinceLastVisit } from './AgentView/NewDivider'
 import { PROMPT_JUMP_MARGIN, currentPromptIndex, promptElements, promptJumpTarget } from './AgentView/prompt-nav'
 import { ReplyMenu } from './AgentView/ReplyMenu'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
@@ -723,34 +722,6 @@ export function AgentView({
     [pinnedPromptId, searchableBlocks],
   )
 
-  // ── "New" line and the jump to it ───────────────────────────────────────────
-  const newBeforeId = useNewSinceLastVisit(blocks)
-  const newDividerRef = useRef<HTMLDivElement>(null)
-  const [newAbove, setNewAbove] = useState(false)
-  const updateNewAbove = useCallback(() => {
-    const root = scrollRef.current
-    const rect = newDividerRef.current?.getBoundingClientRect()
-    // A line with no height is not laid out (a hidden view), so it is not above.
-    setNewAbove(Boolean(root && rect && rect.height > 0 && rect.bottom < root.getBoundingClientRect().top))
-  }, [scrollRef])
-  useEffect(() => {
-    const root = scrollRef.current
-    if (!root) return
-    root.addEventListener('scroll', updateNewAbove, { passive: true })
-    return () => root.removeEventListener('scroll', updateNewAbove)
-  }, [scrollRef, updateNewAbove])
-  useEffect(updateNewAbove, [updateNewAbove, newBeforeId, visibleTurnItems.length])
-  const jumpToNew = useCallback(() => {
-    const root = scrollRef.current
-    const divider = newDividerRef.current
-    if (!root || !divider) return
-    const top = divider.getBoundingClientRect().top - root.getBoundingClientRect().top
-    const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    attachedRef.current = false
-    root.scrollTo({ top: root.scrollTop + top - PROMPT_JUMP_MARGIN, behavior: smooth ? 'smooth' : 'auto' })
-    setNewAbove(false)
-  }, [attachedRef, scrollRef])
-
   const cycleFind = useCallback((delta: number) => {
     if (findMatches.length === 0) return
     const next = ((clampedFindIndex + delta) % findMatches.length + findMatches.length) % findMatches.length
@@ -805,18 +776,6 @@ export function AgentView({
         onNext={() => jumpToPrompt(1)}
       />
     )}
-    {newAbove && (
-      <div className={`pointer-events-none absolute inset-x-0 z-10 flex justify-center ${pinnedPrompt !== null ? 'top-10' : 'top-1.5'}`}>
-        <button
-          type="button"
-          onClick={jumpToNew}
-          className="pointer-events-auto inline-flex h-7 items-center gap-1 rounded-full border border-(--color-accent)/40 bg-(--bg-card) px-2.5 text-xs font-medium text-(--color-accent) shadow-xs transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
-        >
-          <ChevronUp size={12} aria-hidden="true" />
-          Jump to new messages
-        </button>
-      </div>
-    )}
     <div ref={scrollRef} className="oa-chat-scroll flex-1 overflow-y-auto">
       <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
         {isEmpty && (
@@ -864,7 +823,6 @@ export function AgentView({
                        data-find-block={isTranscriptFindableBlock(item.block.type) ? item.block.id : undefined}
                       data-prompt-id={isDirectUserBlock(item.block) ? item.block.id : undefined}
                      >
-                       {item.block.id === newBeforeId && <NewDivider ref={newDividerRef} />}
                        <BlockRenderer
                          block={item.block}
                          isStreaming={false}
@@ -889,7 +847,6 @@ export function AgentView({
                      key={`turn-${item.startIndex}-${item.blocks[0]?.id ?? k}`}
                      onContextMenu={(event) => handleReplyContextMenu(event, item.blocks)}
                    >
-                   {newBeforeId !== null && item.blocks.some((block) => block.id === newBeforeId) && <NewDivider ref={newDividerRef} />}
                    <AssistantTurn
                      blocks={item.blocks}
                      startIndex={item.startIndex}
