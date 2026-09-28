@@ -15,6 +15,8 @@ use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
+// Tokio's clock (the same as std's outside paused-time tests).
+use tokio::time::Instant;
 
 pub enum RetryItem {
     Chunk(ChatCompletionChunk),
@@ -38,6 +40,30 @@ impl From<AgentError> for ModelError {
     }
 }
 
+/// Output spread over less than this came in one burst, with no
+/// measurable rate.
+const MIN_GENERATION: Duration = Duration::from_millis(100);
+
+/// When one streamed model call produced its output, for the `chat` span's
+/// time to first chunk and output speed.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StreamTiming {
+    /// From issuing the request (the attempt whose output was kept) to the
+    /// first chunk carrying output: text, reasoning, or a tool-call delta.
+    pub ttft: Option<Duration>,
+    /// From the first to the last chunk carrying output.
+    pub generation: Option<Duration>,
+}
+
+impl StreamTiming {
+    /// Output tokens (as the provider counts them) per second of streaming
+    /// output; `None` without tokens or a measurable window.
+    pub fn output_tokens_per_second(&self, output_tokens: i64) -> Option<f64> {
+        let window = self.generation.filter(|g| *g >= MIN_GENERATION)?;
+        (output_tokens > 0).then(|| output_tokens as f64 / window.as_secs_f64())
+    }
+}
+
 /// `ChunkStream` is `Send` but not `Sync`; it is only ever touched through
 /// `&mut`, so sharing `&RetryStream` across awaits is sound.
 struct SyncStream(ChunkStream);
@@ -54,6 +80,8 @@ pub struct RetryStream<'a> {
     hooks: Option<(&'a [HookRef], &'a RunContext)>,
     interrupt: Option<Event>,
     current: Option<SyncStream>,
+    /// When the current attempt's request was issued.
+    attempt_started: Instant,
     attempt: i64,
     /// Transport failures so far; budgeted apart from HTTP errors.
     network_attempt: i64,
@@ -89,6 +117,7 @@ impl<'a> RetryStream<'a> {
             hooks,
             interrupt,
             current: None,
+            attempt_started: Instant::now(),
             attempt: 0,
             network_attempt: 0,
             network_budget: Some(MAX_NETWORK_ATTEMPTS),
@@ -108,6 +137,11 @@ impl<'a> RetryStream<'a> {
 
     fn interrupted(&self) -> bool {
         self.interrupt.as_ref().map(|e| e.is_set()).unwrap_or(false)
+    }
+
+    /// When the request behind the chunks now streaming was issued.
+    pub fn attempt_started(&self) -> Instant {
+        self.attempt_started
     }
 
     /// Sleep; `true` when the interrupt fired first.
@@ -298,6 +332,7 @@ impl<'a> RetryStream<'a> {
                     self.emitted = false;
                     return Ok(Some(RetryItem::Restart));
                 }
+                self.attempt_started = Instant::now();
                 match self.provider.stream(self.messages, self.tools, &self.kwargs).await {
                     Ok(s) => self.current = Some(SyncStream(s)),
                     Err(e) => match self.on_error(e).await {
@@ -394,7 +429,7 @@ async fn wait_opt(e: Option<&Event>) {
 }
 
 /// `stream_and_assemble`.
-pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage, Option<Usage>), ModelError> {
+pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage, Option<Usage>, StreamTiming), ModelError> {
     let mut full = String::new();
     let mut reasoning = String::new();
     let mut signature = String::new();
@@ -404,6 +439,9 @@ pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage,
     let mut buf: BTreeMap<i64, TcBuf> = BTreeMap::new();
     let mut last_usage: Option<Usage> = None;
     let mut finish: Option<String> = None;
+    // (request issued, first output chunk) and the last output chunk.
+    let mut first_output: Option<(Instant, Instant)> = None;
+    let mut last_output: Option<Instant> = None;
 
     let mut wire = vec![ChatMessage::system(a.system_prompt)];
     wire.extend(a.messages.iter().cloned());
@@ -441,10 +479,23 @@ pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage,
                 items.clear();
                 buf.clear();
                 finish = None;
+                first_output = None;
+                last_output = None;
                 continue;
             }
             RetryItem::Chunk(c) => c,
         };
+        let has_output = chunk.choices.first().is_some_and(|c| {
+            let d = &c.delta;
+            d.content.as_deref().is_some_and(|s| !s.is_empty())
+                || d.reasoning_content.as_deref().is_some_and(|s| !s.is_empty())
+                || d.tool_calls.as_ref().is_some_and(|t| !t.is_empty())
+        });
+        if has_output {
+            let now = Instant::now();
+            first_output.get_or_insert((rs.attempt_started(), now));
+            last_output = Some(now);
+        }
         for h in a.hooks {
             h.on_model_delta(a.ctx, a.state, &chunk).await;
         }
@@ -577,7 +628,11 @@ pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage,
         agent_name: Some(a.agent_name.to_string()),
         meta,
     };
-    Ok((msg, last_usage))
+    let timing = match (first_output, last_output) {
+        (Some((requested, first)), Some(last)) => StreamTiming { ttft: Some(first - requested), generation: Some(last - first) },
+        _ => StreamTiming::default(),
+    };
+    Ok((msg, last_usage, timing))
 }
 
 #[cfg(test)]
@@ -585,6 +640,7 @@ mod tests {
     use super::*;
     use crate::hooks::Hook;
     use appv3_providers::mock::{MockProvider, MockTurn};
+    use appv3_providers::ChatCompletionDelta;
     use async_trait::async_trait;
     use std::sync::Mutex;
 
@@ -683,5 +739,89 @@ mod tests {
         let statuses = log.0.lock().unwrap();
         assert_eq!(statuses.len() as i64, MAX_NETWORK_ATTEMPTS);
         assert_eq!(statuses.last().unwrap().status, "exhausted");
+    }
+
+    /// Answers after `latency`, then streams each chunk after its delay.
+    struct Paced {
+        latency: Duration,
+        chunks: Mutex<Option<Vec<(Duration, ChatCompletionChunk)>>>,
+        kw: Kwargs,
+    }
+
+    #[async_trait]
+    impl LlmProvider for Paced {
+        fn model(&self) -> &str {
+            "mock"
+        }
+        fn provider_name(&self) -> Option<&str> {
+            Some("mock")
+        }
+        fn base_kwargs(&self) -> &Kwargs {
+            &self.kw
+        }
+        async fn chat(&self, _: &[ChatMessage], _: Option<&[ToolSpec]>, _: &Kwargs) -> appv3_providers::ProviderResult<AssistantMessage> {
+            unreachable!()
+        }
+        async fn stream(&self, _: &[ChatMessage], _: Option<&[ToolSpec]>, _: &Kwargs) -> appv3_providers::ProviderResult<ChunkStream> {
+            tokio::time::sleep(self.latency).await;
+            let chunks = self.chunks.lock().unwrap().take().unwrap();
+            Ok(Box::pin(futures::stream::iter(chunks).then(|(delay, chunk)| async move {
+                tokio::time::sleep(delay).await;
+                Ok(chunk)
+            })))
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timing_measures_first_output_and_generation_speed() {
+        let delta =
+            |content: Option<&str>| ChatCompletionChunk::delta("mock", "mock", ChatCompletionDelta { content: content.map(String::from), ..Default::default() }, None, None);
+        let usage = Usage { prompt_tokens: 10, completion_tokens: 100, total_tokens: 110, ..Default::default() };
+        let provider: Arc<dyn LlmProvider> = Arc::new(Paced {
+            latency: Duration::from_millis(300),
+            chunks: Mutex::new(Some(vec![
+                // A role-only opener carries no output and does not count.
+                (Duration::ZERO, delta(None)),
+                (Duration::from_millis(500), delta(Some("Hello"))),
+                (Duration::from_secs(2), delta(Some(" world"))),
+                (Duration::from_millis(100), ChatCompletionChunk::delta("mock", "mock", ChatCompletionDelta::default(), Some("stop".into()), Some(usage))),
+            ])),
+            kw: Kwargs::new(),
+        });
+        let ctx = ctx();
+        let state = AgentState::new(vec![], String::new());
+        let messages = vec![ChatMessage::user("hi")];
+        let (msg, _, timing) = stream_and_assemble(StreamArgs {
+            ctx: &ctx,
+            state: &state,
+            hooks: &[],
+            interrupt: None,
+            hard_cancel: None,
+            system_prompt: "",
+            messages: &messages,
+            tool_defs: &[],
+            provider,
+            label: "mock:mock",
+            agent_name: "lead",
+            agent_id: "lead-id",
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(msg.content.as_deref(), Some("Hello world"));
+        let near = |d: Option<Duration>, secs: f64| (d.unwrap().as_secs_f64() - secs).abs() < 0.01;
+        assert!(near(timing.ttft, 0.8), "{timing:?}");
+        assert!(near(timing.generation, 2.0), "{timing:?}");
+        assert!((timing.output_tokens_per_second(100).unwrap() - 50.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn output_speed_needs_tokens_and_a_measurable_window() {
+        let t = |ms: u64| StreamTiming { ttft: Some(Duration::from_millis(200)), generation: Some(Duration::from_millis(ms)) };
+        assert_eq!(t(1000).output_tokens_per_second(40), Some(40.0));
+        assert_eq!(t(1000).output_tokens_per_second(0), None);
+        // Everything in one burst: no rate to speak of.
+        assert_eq!(t(5).output_tokens_per_second(500), None);
+        assert_eq!(StreamTiming::default().output_tokens_per_second(40), None);
     }
 }

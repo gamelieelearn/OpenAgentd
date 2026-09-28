@@ -409,7 +409,7 @@ impl Agent {
                         let t0 = Instant::now();
                         let _ = appv3_core::otel::scope(Some(span.ctx()), Self::prepare_call(&hooks, &ctx, &mut state, req)).await;
                         let stub = AssistantMessage::default();
-                        o.end_model_span(&span, t0, crate::hooks::otel::ModelOutcome::Ok(&stub));
+                        o.end_model_span(&span, t0, crate::hooks::otel::ModelOutcome::Ok(&stub, Default::default()));
                     }
                     None => {
                         let _ = Self::prepare_call(&hooks, &ctx, &mut state, req).await;
@@ -445,7 +445,7 @@ impl Agent {
             if let Some((o, span, t0)) = &model_span {
                 use crate::hooks::otel::ModelOutcome;
                 match &call {
-                    Ok((a, _)) => o.end_model_span(span, *t0, ModelOutcome::Ok(a)),
+                    Ok((a, _, timing)) => o.end_model_span(span, *t0, ModelOutcome::Ok(a, *timing)),
                     Err(ModelError::Agent(AgentError::Cancelled)) => {
                         span.exit_with_exception("asyncio.exceptions.CancelledError", "");
                     }
@@ -457,7 +457,7 @@ impl Agent {
                 }
             }
             let (mut assistant, usage): (AssistantMessage, Option<Usage>) = match call {
-                Ok(r) => r,
+                Ok((a, u, _)) => (a, u),
                 Err(ModelError::Agent(e)) => return Err(e),
                 // The turn's stream retries transport failures until the
                 // network is back or the user stops, so it does not end here.

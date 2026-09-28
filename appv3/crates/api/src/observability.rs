@@ -17,8 +17,12 @@
 //! same per-turn rule (spans outside a run use their own conversation id
 //! and their own `provider:model`). The session filter is a set: the route
 //! adds the selected session's sub-agent sessions.
+//! Also v3: streaming speed from `chat` spans — time to first chunk
+//! (`latency_ms.ttft_*`, `by_model[].ttft_p50_ms`) and output tokens per
+//! second (`output_tps`, `by_model[].output_tps_p50`). Calls recorded
+//! before spans carried them count as calls but not as samples.
 
-use appv3_agent::hooks::otel::WORKSPACE_ATTR;
+use appv3_agent::hooks::otel::{OUTPUT_TPS_ATTR, TTFT_ATTR, WORKSPACE_ATTR};
 use appv3_core::pymath::py_round;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use indexmap::IndexMap;
@@ -555,7 +559,7 @@ fn span_windows() -> &'static SpanWindowCache {
 // ── summary ─────────────────────────────────────────────────────────────────
 
 fn empty_summary(start: DateTime<Utc>, end: DateTime<Utc>) -> Value {
-    let mut v = summary_json(start, end, Totals::default(), [0.0; 4], Breakdowns::default());
+    let mut v = summary_json(start, end, Totals::default(), [0.0; 6], [0.0; 2], Breakdowns::default());
     v["facets"] = json!({"workspaces": [], "models": []});
     v
 }
@@ -584,7 +588,9 @@ struct Breakdowns {
     by_session: Vec<Value>,
 }
 
-fn summary_json(start: DateTime<Utc>, end: DateTime<Utc>, t: Totals, lat: [f64; 4], b: Breakdowns) -> Value {
+/// `lat`: turn, LLM-call and time-to-first-chunk p50/p95 (ms); `tps`:
+/// output tokens per second p50 and p5 (the slow tail).
+fn summary_json(start: DateTime<Utc>, end: DateTime<Utc>, t: Totals, lat: [f64; 6], tps: [f64; 2], b: Breakdowns) -> Value {
     json!({
         "window_start": py_iso(start),
         "window_end": py_iso(end),
@@ -601,7 +607,8 @@ fn summary_json(start: DateTime<Utc>, end: DateTime<Utc>, t: Totals, lat: [f64; 
             "estimated_cost_usd": t.cost,
             "errors": t.errors,
         },
-        "latency_ms": {"turn_p50": lat[0], "turn_p95": lat[1], "llm_p50": lat[2], "llm_p95": lat[3]},
+        "latency_ms": {"turn_p50": lat[0], "turn_p95": lat[1], "llm_p50": lat[2], "llm_p95": lat[3], "ttft_p50": lat[4], "ttft_p95": lat[5]},
+        "output_tps": {"p50": tps[0], "p5": tps[1]},
         "daily_turns": b.daily,
         "by_model": b.by_model,
         "cache_by_step": b.by_step,
@@ -620,6 +627,8 @@ struct ModelAgg {
     cache_write_tok: i64,
     cost: f64,
     durations: Vec<f64>,
+    ttfts: Vec<f64>,
+    tps: Vec<f64>,
 }
 
 #[derive(Default)]
@@ -668,6 +677,8 @@ fn run_queries(spans: &[&Map<String, Value>], index: &TurnIndex, start: DateTime
     let mut t = Totals::default();
     let mut turn_d = vec![];
     let mut llm_d = vec![];
+    let mut ttft_d = vec![];
+    let mut tps_d = vec![];
     let mut daily: IndexMap<String, DayAgg> = IndexMap::new();
     let mut models: IndexMap<(String, String), ModelAgg> = IndexMap::new();
     let mut steps: IndexMap<(String, String, String), ModelAgg> = IndexMap::new();
@@ -727,6 +738,10 @@ fn run_queries(spans: &[&Map<String, Value>], index: &TurnIndex, start: DateTime
             } else if is_tool {
                 t.tool_calls += 1;
             }
+            let ttft_ms = num(attrs.get(TTFT_ATTR)).map(|s| s * 1000.0);
+            let tps = num(attrs.get(OUTPUT_TPS_ATTR));
+            ttft_d.extend(ttft_ms);
+            tps_d.extend(tps);
             let it = safe_int(attrs.get("gen_ai.usage.input_tokens"));
             let ot = safe_int(attrs.get("gen_ai.usage.output_tokens"));
             let ct = safe_int(attrs.get("gen_ai.usage.cache_read.input_tokens"));
@@ -765,6 +780,8 @@ fn run_queries(spans: &[&Map<String, Value>], index: &TurnIndex, start: DateTime
                 m.cache_write_tok += cw;
                 m.cost += cost;
                 m.durations.push(dur);
+                m.ttfts.extend(ttft_ms);
+                m.tps.extend(tps);
             }
             if attrs.contains_key("gen_ai.usage.input_tokens") || attrs.contains_key("gen_ai.usage.cache_read.input_tokens") {
                 let step = match attrs.get("gen_ai.operation.name").filter(|v| truthy(v)) {
@@ -808,6 +825,8 @@ fn run_queries(spans: &[&Map<String, Value>], index: &TurnIndex, start: DateTime
                 "cache_percent": percent(d.cached_tok as f64, d.in_tok as f64),
                 "estimated_cost_usd": py_round(d.cost, 8),
                 "p95_ms": py_round(quantile(&d.durations, 0.95), 1),
+                "ttft_p50_ms": py_round(quantile(&d.ttfts, 0.5), 1),
+                "output_tps_p50": py_round(quantile(&d.tps, 0.5), 1),
             })
         })
         .collect();
@@ -862,8 +881,9 @@ fn run_queries(spans: &[&Map<String, Value>], index: &TurnIndex, start: DateTime
         .collect();
 
     t.cost = py_round(t.cost, 8);
-    let lat = [py_round(quantile(&turn_d, 0.5), 1), py_round(quantile(&turn_d, 0.95), 1), py_round(quantile(&llm_d, 0.5), 1), py_round(quantile(&llm_d, 0.95), 1)];
-    summary_json(start, end, t, lat, Breakdowns { daily: daily_turns, by_model, by_step, by_tool, by_workspace, by_session })
+    let q = |v: &[f64], p: f64| py_round(quantile(v, p), 1);
+    let lat = [q(&turn_d, 0.5), q(&turn_d, 0.95), q(&llm_d, 0.5), q(&llm_d, 0.95), q(&ttft_d, 0.5), q(&ttft_d, 0.95)];
+    summary_json(start, end, t, lat, [q(&tps_d, 0.5), q(&tps_d, 0.05)], Breakdowns { daily: daily_turns, by_model, by_step, by_tool, by_workspace, by_session })
 }
 
 /// `summarize(days)`, narrowed by `filters`. `facets` always covers the
@@ -1172,6 +1192,40 @@ mod tests {
         let v = facets(&fixture());
         assert_eq!(v["workspaces"], json!(["/w/app", "/w/site"]));
         assert_eq!(v["models"], json!(["openai:gpt", "anthropic:claude"]));
+    }
+
+    #[test]
+    fn summary_reports_time_to_first_chunk_and_output_speed() {
+        let base = 1_700_000_000e9;
+        let chat = |trace: &str, model: &str, timing: Option<(f64, f64)>| {
+            let (provider, model) = model.split_once(':').unwrap();
+            let mut attrs = json!({"gen_ai.provider.name": provider, "gen_ai.request.model": model, "gen_ai.usage.input_tokens": 100, "gen_ai.usage.output_tokens": 10});
+            if let Some((ttft_s, tps)) = timing {
+                attrs[TTFT_ATTR] = json!(ttft_s);
+                attrs[OUTPUT_TPS_ATTR] = json!(tps);
+            }
+            span("chat m", trace, "OK", base, attrs)
+        };
+        let spans = vec![
+            chat("0x1", "openai:gpt", Some((0.5, 40.0))),
+            chat("0x2", "openai:gpt", Some((1.5, 60.0))),
+            // Recorded before timing was: counts as a call, not as a sample.
+            chat("0x3", "openai:gpt", None),
+            chat("0x4", "anthropic:claude", Some((2.0, 100.0))),
+        ];
+        let v = summary_for(&spans, &Filters::default());
+        assert_eq!(v["latency_ms"]["ttft_p50"], 1500.0);
+        assert_eq!(v["latency_ms"]["ttft_p95"], 1950.0);
+        assert_eq!(v["output_tps"]["p50"], 60.0);
+        assert_eq!(v["output_tps"]["p5"], 42.0);
+        let gpt = v["by_model"].as_array().unwrap().iter().find(|m| m["provider_model"] == "openai:gpt").unwrap();
+        assert_eq!(gpt["calls"], 3);
+        assert_eq!(gpt["ttft_p50_ms"], 1000.0);
+        assert_eq!(gpt["output_tps_p50"], 50.0);
+
+        let v = summary_for(&fixture(), &Filters::default());
+        assert_eq!(v["latency_ms"]["ttft_p50"], 0.0);
+        assert_eq!(v["by_model"][0]["output_tps_p50"], 0.0);
     }
 
     #[test]

@@ -4,6 +4,7 @@
 //! current for the wrapped future.
 
 use super::{AgentState, Hook, ModelRequest, RunContext};
+use crate::streaming::StreamTiming;
 use appv3_core::otel::{self, Span, SpanCtx, SpanKind};
 use appv3_providers::{AssistantMessage, ToolCall};
 use async_trait::async_trait;
@@ -14,6 +15,12 @@ use std::time::Instant;
 /// Span attribute naming the turn's workspace root (v3 addition; GenAI
 /// semantic conventions have no workspace notion).
 pub const WORKSPACE_ATTR: &str = "openagentd.workspace";
+/// `chat` span attribute (GenAI semconv): seconds from issuing the request
+/// to the first chunk carrying output (see [`StreamTiming::ttft`]).
+pub const TTFT_ATTR: &str = "gen_ai.response.time_to_first_chunk";
+/// `chat` span attribute (v3 addition): output tokens per second while the
+/// model streamed output (see [`StreamTiming::output_tokens_per_second`]).
+pub const OUTPUT_TPS_ATTR: &str = "openagentd.response.output_tokens_per_second";
 
 /// `set_usage_span_attributes` (usage dict from `usage_to_dict`).
 pub fn set_usage_span_attributes(span: &Span, usage: &Value) {
@@ -59,6 +66,7 @@ pub fn parse_model_id(model_id: Option<&str>) -> (String, String) {
 
 struct Instruments {
     op_duration: otel::Histogram,
+    time_to_first_chunk: otel::Histogram,
     token_usage: otel::Histogram,
     tool_duration: otel::Histogram,
     runs: otel::Counter,
@@ -68,6 +76,7 @@ fn instruments() -> &'static Instruments {
     static I: OnceLock<Instruments> = OnceLock::new();
     I.get_or_init(|| Instruments {
         op_duration: otel::histogram("gen_ai.client.operation.duration", "GenAI operation duration", "s"),
+        time_to_first_chunk: otel::histogram("gen_ai.client.operation.time_to_first_chunk", "Time to receive the first chunk of a streaming response", "s"),
         token_usage: otel::histogram("gen_ai.client.token.usage", "Number of input and output tokens used", "{token}"),
         tool_duration: otel::histogram("openagentd.tool.execution.duration", "Tool execution duration", "s"),
         runs: otel::counter("openagentd.agent.runs.total", "Total completed agent runs"),
@@ -76,7 +85,7 @@ fn instruments() -> &'static Instruments {
 
 /// How a wrapped model call ended.
 pub enum ModelOutcome<'a> {
-    Ok(&'a AssistantMessage),
+    Ok(&'a AssistantMessage, StreamTiming),
     /// `(python class name, qualified name, message)`.
     Err(&'a str, &'a str, &'a str),
 }
@@ -131,17 +140,27 @@ impl OtelHook {
                 span.set_error();
                 span.exit_with_exception(qualified, msg);
             }
-            ModelOutcome::Ok(result) => {
+            ModelOutcome::Ok(result, timing) => {
                 let elapsed = started.elapsed().as_secs_f64();
                 let usage = result.meta.extra.as_ref().and_then(|e| e.get("usage")).cloned().unwrap_or(json!({}));
                 set_usage_span_attributes(span, &usage);
                 if let Some(m) = result.meta.extra.as_ref().and_then(|e| e.get("model")).filter(|m| crate::util::truthy(m)) {
                     span.set_attr("gen_ai.response.model", m.clone());
                 }
+                if let Some(ttft) = timing.ttft {
+                    span.set_attr(TTFT_ATTR, ttft.as_secs_f64());
+                }
+                let output_tokens = usage.get("output").and_then(Value::as_i64).unwrap_or(0);
+                if let Some(tps) = timing.output_tokens_per_second(output_tokens) {
+                    span.set_attr(OUTPUT_TPS_ATTR, appv3_core::pymath::py_round(tps, 1));
+                }
                 span.set_ok();
                 span.end();
                 let attrs = || vec![("gen_ai.operation.name", json!("chat")), ("gen_ai.provider.name", json!(self.provider)), ("gen_ai.request.model", json!(self.model))];
                 instruments().op_duration.record_in(Some(span.ctx()), elapsed, attrs());
+                if let Some(ttft) = timing.ttft {
+                    instruments().time_to_first_chunk.record_in(Some(span.ctx()), ttft.as_secs_f64(), attrs());
+                }
                 let input = usage.get("input").cloned().unwrap_or(json!(0));
                 let output = usage.get("output").cloned().unwrap_or(json!(0));
                 if crate::util::truthy(&input) {
@@ -245,5 +264,33 @@ impl Hook for OtelHook {
         if let Some(span) = self.agent_span.lock().unwrap().as_ref() {
             span.add_event("rate_limit", vec![("retry_after_s", json!(retry_after as f64)), ("attempt", json!(attempt)), ("max_attempts", json!(max_attempts))]);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn answer(output_tokens: i64) -> AssistantMessage {
+        let mut a = AssistantMessage::default();
+        a.meta.extra = Some(serde_json::Map::from_iter([("usage".to_string(), json!({"input": 10, "output": output_tokens}))]));
+        a
+    }
+
+    #[test]
+    fn chat_span_records_time_to_first_chunk_and_output_speed() {
+        let hook = OtelHook::new("lead", Some("mock:mock"));
+        let timing = StreamTiming { ttft: Some(Duration::from_millis(800)), generation: Some(Duration::from_secs(2)) };
+        let span = Span::start_with_parent("chat mock", SpanKind::Client, None, vec![]);
+        hook.end_model_span(&span, Instant::now(), ModelOutcome::Ok(&answer(100), timing));
+        assert!(span.has_attr(TTFT_ATTR));
+        assert!(span.has_attr(OUTPUT_TPS_ATTR));
+
+        // Nothing streamed (or no usage): neither is recorded.
+        let span = Span::start_with_parent("chat mock", SpanKind::Client, None, vec![]);
+        hook.end_model_span(&span, Instant::now(), ModelOutcome::Ok(&answer(0), StreamTiming::default()));
+        assert!(!span.has_attr(TTFT_ATTR));
+        assert!(!span.has_attr(OUTPUT_TPS_ATTR));
     }
 }

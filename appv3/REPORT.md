@@ -377,6 +377,15 @@ explicitly.
     database), whole-window filter `facets`, and
     `daily_turns[].estimated_cost_usd`. Trace rows add `workspace`. v2 has
     none of these.
+  - `chat` spans carry `gen_ai.response.time_to_first_chunk` (GenAI semconv,
+    seconds to the first chunk with text, reasoning or a tool-call delta)
+    and `openagentd.response.output_tokens_per_second` (output tokens over
+    the first-to-last output chunk window, when it is at least 100 ms), and
+    feed the `gen_ai.client.operation.time_to_first_chunk` histogram
+    (`agent/src/streaming.rs` `StreamTiming`, `agent/src/hooks/otel.rs`).
+    The summary adds `latency_ms.ttft_p50`/`ttft_p95`, `output_tps`
+    (`p50`, `p5`), and `by_model[].ttft_p50_ms`/`output_tps_p50`. v2
+    records neither.
   - The v3 MCP client now numbers JSON-RPC ids from 1 like the v2 SDK. It
     previously started at 0.
 - **Alembic migrations:** v3 replays v2's chain 00000001…00000022 from
