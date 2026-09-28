@@ -275,7 +275,6 @@ components:
     padding: 2px
   segmented-item-active:
     backgroundColor: "{colors.bg-card}"
-    borderColor: "{colors.border-strong}"
     textColor: "{colors.on-surface}"
     rounded: "{rounded.xs}"
   input:
@@ -649,7 +648,7 @@ width on hover — that causes a 1px layout jump.
 
 **Segmented Controls & Connected Tabs**:
 - **Container**: `rounded-sm`, 1px `border-(--color-border)`, `bg-(--bg-key)` (or `bg-card`), `p-0.5`.
-- **Active Segment**: `rounded-xs`, `bg-(--bg-card)` (or `bg-page`), 1px `border-(--color-border-strong)`, `text-(--color-text)`, `font-medium`.
+- **Active Segment**: `rounded-xs`, `bg-(--bg-card)` (or `bg-page`), no border colour (the fill alone marks it), `text-(--color-text)`, `font-medium`.
 - **Inactive Segment**: `rounded-xs`, 1px `border-transparent`, `text-(--color-text-muted)`, hover `text-(--color-text-2)`.
 - **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow).
 

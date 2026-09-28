@@ -21,3 +21,13 @@ it('moves focus and selection with arrows, skipping disabled tabs', () => {
   fireEvent.keyDown(second, { key: 'Home' })
   expect(document.activeElement).toBe(first)
 })
+
+it('marks the active tab with its fill alone, never a border colour', () => {
+  render(<Tabs defaultValue="one"><TabsList size="sm">
+    <TabsTrigger value="one">One</TabsTrigger>
+    <TabsTrigger value="two">Two</TabsTrigger>
+  </TabsList></Tabs>)
+  const active = screen.getByRole('tab', { name: 'One' }).className
+  expect(active).toContain('data-active:bg-(--bg-card)')
+  expect(active).not.toMatch(/data-active:border-/)
+})
