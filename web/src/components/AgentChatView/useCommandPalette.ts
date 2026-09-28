@@ -21,6 +21,7 @@ import { getPlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
 import { routeFindShortcut } from '@/lib/find-shortcut'
 import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
+import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
@@ -56,7 +57,8 @@ export interface UseCommandPaletteResult {
   quickOpenWorkspaceFiles: WorkspaceFileInfo[]
   /** The backend listing hit its file cap — surfaced in the Quick Open footer. */
   quickOpenFilesTruncated: boolean
-  handleQuickOpenFileOpen: (file: WorkspaceFileInfo) => void
+  /** Opens the pick in the dock, at ``line`` when the query named one. */
+  handleQuickOpenFileOpen: (file: WorkspaceFileInfo, line?: number) => void
 }
 
 export function useCommandPalette({
@@ -130,10 +132,11 @@ export function useCommandPalette({
   const quickOpenWorkspaceFiles = quickOpenOpen ? (paletteFilesData?.files ?? []) : []
   const quickOpenFilesTruncated = quickOpenOpen && Boolean(paletteFilesData?.truncated)
 
-  const handleQuickOpenFileOpen = useCallback((file: WorkspaceFileInfo) => {
+  const handleQuickOpenFileOpen = useCallback((file: WorkspaceFileInfo, line?: number) => {
     setFileViewer(file)
     setFileOpenKey((k) => k + 1)
     setWorkspacePanel((prev) => prev ?? 'files')
+    if (line) useFileRevealStore.getState().reveal(file.path, line)
   }, [setFileViewer, setFileOpenKey, setWorkspacePanel])
 
   const { os } = getPlatform()

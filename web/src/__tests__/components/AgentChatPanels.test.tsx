@@ -35,6 +35,7 @@ function panels(open: { scheduler?: boolean; settings?: boolean }) {
       showPalette={false}
       paletteCommands={[]}
       quickOpenOpen={false}
+      quickOpenQuery=""
       quickOpenWorkspaceFiles={[]}
       onQuickOpenFileOpen={() => {}}
       onClosePalette={() => {}}

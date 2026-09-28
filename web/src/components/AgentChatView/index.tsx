@@ -268,6 +268,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
   const paletteOpen = useUIStore((s) => s.paletteOpen)
   const quickOpenOpen = useUIStore((s) => s.quickOpenOpen)
+  const quickOpenQuery = useUIStore((s) => s.quickOpenQuery)
   const toggleScheduler = useUIStore((s) => s.toggleScheduler)
   const toggleAgentCapabilities = useUIStore((s) => s.toggleAgentCapabilities)
   const togglePalette = useUIStore((s) => s.togglePalette)
@@ -825,6 +826,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         showPalette={paletteOpen}
         paletteCommands={paletteCommands}
         quickOpenOpen={quickOpenOpen}
+        quickOpenQuery={quickOpenQuery}
         quickOpenWorkspaceFiles={quickOpenWorkspaceFiles}
         quickOpenFilesTruncated={quickOpenFilesTruncated}
         onQuickOpenFileOpen={handleQuickOpenFileOpen}

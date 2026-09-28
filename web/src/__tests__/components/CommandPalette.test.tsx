@@ -574,3 +574,49 @@ describe("QuickOpen — > command mode", () => {
     expect(screen.getByText(">").closest("kbd")).toBeTruthy()
   })
 })
+
+describe("QuickOpen — a query with a line", () => {
+  const files: WorkspaceFileInfo[] = [
+    { path: 'web/src/Button.tsx', name: 'Button.tsx', size: 0, mtime: 0, mime: 'text/plain' },
+    { path: 'app/ui/Button.tsx', name: 'Button.tsx', size: 0, mtime: 0, mime: 'text/plain' },
+    { path: 'web/src/App.tsx', name: 'App.tsx', size: 0, mtime: 0, mime: 'text/plain' },
+  ]
+
+  it("opens already searching for its initial query, the query selected", () => {
+    render(<QuickOpen workspaceFiles={files} initialQuery="Button.tsx" onFileOpen={() => {}} onClose={() => {}} />)
+
+    const input = screen.getByPlaceholderText("Search files…") as HTMLInputElement
+    expect(input.value).toBe("Button.tsx")
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Button.tsx".length])
+    expect(screen.getAllByText("Button.tsx")).toHaveLength(2)
+    expect(screen.queryByText("App.tsx")).toBeNull()
+  })
+
+  it("searches by the path before :line and opens the pick at that line", async () => {
+    const user = userEvent.setup()
+    let opened: { path: string; line?: number } | null = null
+    render(
+      <QuickOpen
+        workspaceFiles={files}
+        initialQuery="app/ui/Button.tsx:42"
+        onFileOpen={(file, line) => { opened = { path: file.path, line } }}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.keyboard("{Enter}")
+
+    expect(opened as { path: string; line?: number } | null).toEqual({ path: 'app/ui/Button.tsx', line: 42 })
+  })
+
+  it("opens a pick without a line when the query has none", async () => {
+    const user = userEvent.setup()
+    let opened: { path: string; line?: number } | null = null
+    render(<QuickOpen workspaceFiles={files} onFileOpen={(file, line) => { opened = { path: file.path, line } }} onClose={() => {}} />)
+
+    await user.type(screen.getByPlaceholderText("Search files…"), "App.tsx")
+    await user.keyboard("{Enter}")
+
+    expect(opened as { path: string; line?: number } | null).toEqual({ path: 'web/src/App.tsx', line: undefined })
+  })
+})

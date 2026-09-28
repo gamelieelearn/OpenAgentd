@@ -5,6 +5,8 @@
  * surfaces reuse the same searchable overlay and keyboard navigation.
  * Typing ``>`` in Quick Open searches commands instead (VS Code habit), and a
  * command with a ``page`` opens a nested list in place (Switch Session…).
+ * A trailing ``:line`` (``Button.tsx:42``) searches for the path and opens the
+ * pick at that line, as VS Code's Go to File does.
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
@@ -37,6 +39,15 @@ export interface Command {
 // dialog cap to keep the list snappy with large workspaces.
 const MAX_FILE_ROWS = 30
 
+const LINE_SUFFIX = /:(\d+)(?::\d+)?$/
+
+/** A file query split into the path to search for and the line to open at. */
+function splitLine(query: string): { text: string; line?: number } {
+  const match = LINE_SUFFIX.exec(query)
+  if (!match || Number(match[1]) < 1) return { text: query }
+  return { text: query.slice(0, match.index), line: Number(match[1]) }
+}
+
 interface CommandPaletteProps {
   commands: Command[]
   onClose: () => void
@@ -59,8 +70,10 @@ interface PaletteOverlayProps {
    * "my file isn't in the palette" mystery repeat.
    */
   filesTruncated?: boolean
-  /** Called when the user selects a file row. */
-  onFileOpen?: (file: WorkspaceFileInfo) => void
+  /** Called when the user selects a file row, with the query's ``:line``. */
+  onFileOpen?: (file: WorkspaceFileInfo, line?: number) => void
+  /** Query the overlay opens with, selected so typing replaces it. */
+  initialQuery?: string
 }
 
 interface QuickOpenProps {
@@ -68,11 +81,14 @@ interface QuickOpenProps {
   filesTruncated?: boolean
   /** Searched instead of files while the query starts with ``>``. */
   commands?: Command[]
-  onFileOpen: (file: WorkspaceFileInfo) => void
+  /** ``line`` is set when the query ended in ``:line``. */
+  onFileOpen: (file: WorkspaceFileInfo, line?: number) => void
   onClose: () => void
+  /** Query to open with, e.g. a file reference that matched several files. */
+  initialQuery?: string
 }
 
-export function QuickOpen({ workspaceFiles, filesTruncated = false, commands = [], onFileOpen, onClose }: QuickOpenProps) {
+export function QuickOpen({ workspaceFiles, filesTruncated = false, commands = [], onFileOpen, onClose, initialQuery }: QuickOpenProps) {
   return (
     <PaletteOverlay
       commands={commands}
@@ -80,6 +96,7 @@ export function QuickOpen({ workspaceFiles, filesTruncated = false, commands = [
       filesTruncated={filesTruncated}
       onFileOpen={onFileOpen}
       onClose={onClose}
+      initialQuery={initialQuery}
     />
   )
 }
@@ -88,9 +105,9 @@ export function CommandPalette({ commands, onClose, workspaceFiles, filesTruncat
   return <PaletteOverlay commands={commands} workspaceFiles={workspaceFiles} filesTruncated={filesTruncated} onFileOpen={onFileOpen} onClose={onClose} />
 }
 
-function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated = false, onFileOpen }: PaletteOverlayProps) {
-  const [query, setQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
+function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated = false, onFileOpen, initialQuery = '' }: PaletteOverlayProps) {
+  const [query, setQuery] = useState(initialQuery)
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery)
   const [page, setPage] = useState<{ title: string; page: CommandPage } | null>(null)
   const updateDebouncedQuery = useDebouncedCallback(
     (val: string) => setDebouncedQuery(val),
@@ -106,9 +123,10 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
   const [activeIdx, setActiveIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  // Focus input on open
+  // Focus input on open, selecting a handed-in query so typing replaces it.
   useEffect(() => {
     inputRef.current?.focus()
+    inputRef.current?.select()
   }, [])
 
   // Build the flat filtered+grouped list in one memoised pass.
@@ -134,7 +152,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
   const { rows, totalCount, byIdx } = useMemo(() => {
     const prefixed = page === null && hasFiles && query.startsWith('>')
     const q = (prefixed ? query.slice(1) : query).trim().toLowerCase()
-    const fileQ = (debouncedQuery || query).trim().toLowerCase()
+    const fileQ = splitLine((debouncedQuery || query).trim()).text.toLowerCase()
 
     // ── Commands ──────────────────────────────────────────────────────────────
     const listCommands = page ? page.page.commands : commandMode ? commands : []
@@ -225,8 +243,8 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
   )
 
   const runFile = useCallback(
-    (file: WorkspaceFileInfo) => { onClose(); onFileOpen?.(file) },
-    [onClose, onFileOpen],
+    (file: WorkspaceFileInfo) => { onClose(); onFileOpen?.(file, splitLine(query.trim()).line) },
+    [onClose, onFileOpen, query],
   )
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

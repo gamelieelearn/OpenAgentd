@@ -8,6 +8,7 @@ function resetUIStore(): void {
     agentCapabilitiesOpen: false,
     paletteOpen: false,
     quickOpenOpen: false,
+    quickOpenQuery: '',
     telemetryOpen: false,
   })
 }
@@ -51,6 +52,25 @@ describe('useUIStore utility modals', () => {
       quickOpenOpen: false,
       paletteOpen: true,
     })
+  })
+
+  it('opens Quick Open already searching for a query, closing the other panels', () => {
+    useUIStore.getState().togglePalette()
+    useUIStore.getState().openQuickOpen('Button.tsx:12')
+
+    expect(useUIStore.getState()).toMatchObject({
+      quickOpenOpen: true,
+      quickOpenQuery: 'Button.tsx:12',
+      paletteOpen: false,
+    })
+  })
+
+  it('opens Quick Open empty from its shortcut after a searched opening', () => {
+    useUIStore.getState().openQuickOpen('Button.tsx')
+    useUIStore.getState().closeQuickOpen()
+    useUIStore.getState().toggleQuickOpen()
+
+    expect(useUIStore.getState()).toMatchObject({ quickOpenOpen: true, quickOpenQuery: '' })
   })
 
   it('closeAll resets all utility panels', () => {

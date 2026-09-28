@@ -171,6 +171,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   opens files in the active workspace; `⌘K`/`Ctrl+K` searches app actions.
   Both use the compact warm-paper search surface, keyboard navigation, and a
   visible warning when a capped workspace listing omits files.
+  A Quick Open query ending in `:line` (`Button.tsx:42`) opens the pick at
+  that line `[v3.0.0]`.
   `⌘F`/`Ctrl+F` finds user, assistant, and thinking text in the current transcript
   and highlights each match in place;
   `⌘D`/`Ctrl+D` toggles the files and git dock. `⌘N`/`Ctrl+N` starts a new

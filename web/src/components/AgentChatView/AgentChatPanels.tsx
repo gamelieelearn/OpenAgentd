@@ -29,10 +29,12 @@ interface AgentChatPanelsProps {
   showPalette: boolean
   paletteCommands: Command[]
   quickOpenOpen: boolean
+  /** Query Quick Open opens with; empty from its shortcut. */
+  quickOpenQuery: string
   quickOpenWorkspaceFiles: WorkspaceFileInfo[]
   /** Backend hit its file cap — Quick Open says so instead of silently hiding. */
   quickOpenFilesTruncated?: boolean
-  onQuickOpenFileOpen: (file: WorkspaceFileInfo) => void
+  onQuickOpenFileOpen: (file: WorkspaceFileInfo, line?: number) => void
   onClosePalette: () => void
   onCloseQuickOpen: () => void
 }
@@ -52,6 +54,7 @@ export function AgentChatPanels({
   showPalette,
   paletteCommands,
   quickOpenOpen,
+  quickOpenQuery,
   quickOpenWorkspaceFiles,
   quickOpenFilesTruncated,
   onQuickOpenFileOpen,
@@ -87,7 +90,7 @@ export function AgentChatPanels({
         <CommandPalette commands={paletteCommands} onClose={onClosePalette} />
       )}
       {quickOpenOpen && (
-        <QuickOpen workspaceFiles={quickOpenWorkspaceFiles} filesTruncated={quickOpenFilesTruncated} commands={paletteCommands} onFileOpen={onQuickOpenFileOpen} onClose={onCloseQuickOpen} />
+        <QuickOpen workspaceFiles={quickOpenWorkspaceFiles} filesTruncated={quickOpenFilesTruncated} commands={paletteCommands} onFileOpen={onQuickOpenFileOpen} onClose={onCloseQuickOpen} initialQuery={quickOpenQuery} />
       )}
     </>
   )

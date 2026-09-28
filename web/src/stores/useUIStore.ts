@@ -25,6 +25,8 @@ interface UIStore {
   agentCapabilitiesOpen: boolean
   paletteOpen: boolean
   quickOpenOpen: boolean
+  /** What Quick Open searches for as it opens; empty from its shortcut. */
+  quickOpenQuery: string
   /** Telemetry overlay (mounted at the app root, reachable from any route). */
   telemetryOpen: boolean
   /** Task the scheduler should open on next (a sidebar click); taken once. */
@@ -34,6 +36,8 @@ interface UIStore {
   toggleAgentCapabilities: () => void
   togglePalette: () => void
   toggleQuickOpen: () => void
+  /** Open Quick Open already searching, e.g. for a file reference that matched several files. */
+  openQuickOpen: (query: string) => void
   openTelemetry: () => void
   toggleTelemetry: () => void
   closeScheduler: () => void
@@ -50,6 +54,7 @@ export const useUIStore = create<UIStore>()(
     agentCapabilitiesOpen: false,
     paletteOpen: false,
     quickOpenOpen: false,
+    quickOpenQuery: '',
     telemetryOpen: false,
     scheduledTaskFocus: null,
     focusScheduledTask: (taskId) => set((state) => { state.scheduledTaskFocus = taskId }),
@@ -97,6 +102,7 @@ export const useUIStore = create<UIStore>()(
         const nextOpen = !state.quickOpenOpen
         state.quickOpenOpen = nextOpen
         if (nextOpen) {
+          state.quickOpenQuery = ''
           state.schedulerOpen = false
           state.agentCapabilitiesOpen = false
           state.paletteOpen = false
@@ -104,6 +110,17 @@ export const useUIStore = create<UIStore>()(
         }
       })
       if (useUIStore.getState().quickOpenOpen) _closeSettings?.()
+    },
+    openQuickOpen: (query) => {
+      set((state) => {
+        state.quickOpenOpen = true
+        state.quickOpenQuery = query
+        state.schedulerOpen = false
+        state.agentCapabilitiesOpen = false
+        state.paletteOpen = false
+        state.telemetryOpen = false
+      })
+      _closeSettings?.()
     },
     openTelemetry: () => {
       set((state) => {
