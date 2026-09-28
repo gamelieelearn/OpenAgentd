@@ -40,7 +40,7 @@ fn save_store(path: &Path, store: &Value) -> std::io::Result<()> {
     std::fs::rename(tmp, path)
 }
 
-fn format_items(items: &[Value]) -> String {
+pub fn format_items(items: &[Value]) -> String {
     if items.is_empty() {
         return "No todos.".into();
     }

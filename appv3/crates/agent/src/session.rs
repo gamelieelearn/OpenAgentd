@@ -876,8 +876,12 @@ impl AgentSession {
         checkpointer.mark_loaded(&history);
         hooks.push(Arc::new(ToolResultOffloadHook::default()));
         if is_lead {
+            let plan_dir = appv3_tools::denied::session_artifacts_dir(Some(&sid));
             if let Some(h) = build_summarization_hook(provider_for_hooks.clone(), agent_mode, effective_model.as_deref(), provider_for_hooks.support_interrupt()) {
                 hooks.push(Arc::new(h));
+            }
+            if interaction == "plan" {
+                hooks.push(Arc::new(crate::plan::PlanCaptureHook { dir: plan_dir }));
             }
         }
 
