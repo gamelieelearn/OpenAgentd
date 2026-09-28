@@ -5,7 +5,7 @@
  * every hook that needs them can import without pulling in extra deps.
  */
 import { resolveApiUrl } from '@/api/client'
-import type { MessageAttachment } from '@/api/types'
+import type { ContentBlock, MessageAttachment } from '@/api/types'
 import type { SlashCommand } from '../InputComposer'
 
 /** Built-in slash commands always available, ahead of any user-defined ones. */
@@ -30,6 +30,18 @@ export function parseBuiltInSlashCommand(content: string): string | null {
   const command = trimmed.slice(1).trim().toLowerCase()
   if (command === 'redo_all') return 'redo-all'
   return BUILT_IN_SLASH_COMMAND_IDS.has(command) ? command : null
+}
+
+/**
+ * The newest user block with ``prompt``'s text, compared trimmed as composer
+ * history dedupes it, so a recalled prompt maps to the one it came from.
+ */
+export function newestUserBlockId(blocks: readonly ContentBlock[], prompt: string): string | undefined {
+  const text = prompt.trim()
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i].type === 'user' && blocks[i].content.trim() === text) return blocks[i].id
+  }
+  return undefined
 }
 
 export interface FilterSlashCommandsContext {

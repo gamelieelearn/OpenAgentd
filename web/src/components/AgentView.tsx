@@ -69,8 +69,10 @@ interface ViewHold {
   pending: number
 }
 
-/** A previous-prompt press past the oldest rendered prompt, waiting on a hold to land it. */
-interface OlderPromptJob {
+/** A prompt jump waiting on a hold for the turns it needs to render or load. */
+interface PendingPromptJump {
+  /** The block to land on; ``null`` for the nearest prompt above the first rendered turn (⌥⌘↑). */
+  targetId: string | null
   /** Jump once the prompt renders; scrolling by hand or ↓ clears it. */
   jump: boolean
 }
@@ -569,14 +571,14 @@ export function AgentView({
 
   // A jump just made; the next press steps on from its target.
   const pendingJumpRef = useRef<{ id: string; until: number } | null>(null)
-  const olderJumpRef = useRef<OlderPromptJob | null>(null)
+  const promptJumpRef = useRef<PendingPromptJump | null>(null)
   const viewHoldRef = useRef<ViewHold | null>(null)
 
   const handleLoadOlderTopTrigger = useCallback(() => {
     // A prompt jump owns the scroll position until it lands: revealing or
     // loading turns above it now would restore the view out from under it.
     const jump = pendingJumpRef.current
-    if (olderJumpRef.current || (jump && performance.now() < jump.until)) return
+    if (promptJumpRef.current || (jump && performance.now() < jump.until)) return
     onLoadOlderTopRef.current()
   }, [])
 
@@ -684,13 +686,26 @@ export function AgentView({
       : null
   }, [attachedRef, scrollRef])
 
+  /** Start a jump that lands once a reveal or load renders its turns; call the result when that has settled. */
+  const beginPromptJump = useCallback((targetId: string | null) => {
+    const job: PendingPromptJump = { targetId, jump: true }
+    promptJumpRef.current = job
+    const release = holdView()
+    return () => {
+      release()
+      requestAnimationFrame(() => {
+        if (promptJumpRef.current === job) promptJumpRef.current = null
+      })
+    }
+  }, [holdView])
+
   /**
    * Previous prompt when none is rendered above: find it in the loaded turns,
    * else load pages until one holds it, then render only down to it and jump
    * (see the layout effect below).
    */
   const requestOlderPrompt = useCallback(() => {
-    const pending = olderJumpRef.current
+    const pending = promptJumpRef.current
     if (pending) {
       pending.jump = true
       return
@@ -701,32 +716,24 @@ export function AgentView({
       onLoadOlderTopRef.current()
       return
     }
-    const job: OlderPromptJob = { jump: true }
-    olderJumpRef.current = job
-    const release = holdView()
-    const settle = () => {
-      release()
-      requestAnimationFrame(() => {
-        if (olderJumpRef.current === job) olderJumpRef.current = null
-      })
-    }
+    const settle = beginPromptJump(null)
     if (target >= 0) {
       setRenderedTurnCount((count) => Math.max(count, turnItems.length - target))
       settle()
       return
     }
     void useAgentStore.getState().loadOlderUntilPrompt().catch(() => false).then(settle)
-  }, [hiddenTurnCount, holdView, turnItems])
+  }, [beginPromptJump, hiddenTurnCount, turnItems])
 
   // Earlier turns landed: hold the view where it was, then make a pending
-  // ⌥⌘↑ jump. Before paint, so neither the shift nor the reveal flashes.
+  // prompt jump. Before paint, so neither the shift nor the reveal flashes.
   useLayoutEffect(() => {
     const hold = viewHoldRef.current
     const root = scrollRef.current
     if (!hold || !root) return
     if (hold.sessionId !== sessionId) {
       viewHoldRef.current = null
-      olderJumpRef.current = null
+      promptJumpRef.current = null
       return
     }
     const anchor = hold.anchorId === null ? undefined : blockElement(root, hold.anchorId)
@@ -735,30 +742,60 @@ export function AgentView({
       if (top !== hold.anchorTop) root.scrollTop += top - hold.anchorTop
       hold.anchorTop = top
     }
-    if (!olderJumpRef.current?.jump || hold.anchorId === null) return
-    const target = previousPromptTurn(turnItems, turnIndexOfBlock(turnItems, hold.anchorId))
+    const jump = promptJumpRef.current
+    if (!jump?.jump) return
+    const target = jump.targetId !== null
+      ? turnIndexOfBlock(turnItems, jump.targetId)
+      : hold.anchorId === null ? -1 : previousPromptTurn(turnItems, turnIndexOfBlock(turnItems, hold.anchorId))
     if (target < 0) return
     if (target < hiddenTurnCount) {
       setRenderedTurnCount(turnItems.length - target)
       return
     }
     const item = turnItems[target]
-    const id = item.kind === 'user' ? item.block.id : undefined
-    const prompt = promptElements(root).find((el) => el.dataset.promptId === id)
+    const id = jump.targetId ?? (item.kind === 'user' ? item.block.id : undefined)
+    const prompt = id === undefined ? undefined : blockElement(root, id)
     if (!prompt) return
-    olderJumpRef.current = null
+    promptJumpRef.current = null
     scrollPromptIntoView(prompt)
   }, [hiddenTurnCount, scrollPromptIntoView, scrollRef, sessionId, turnItems])
 
   // Scrolling by hand while earlier turns load means the reader went elsewhere.
-  const cancelOlderJump = useCallback(() => {
-    if (olderJumpRef.current) olderJumpRef.current.jump = false
+  const cancelPromptJump = useCallback(() => {
+    if (promptJumpRef.current) promptJumpRef.current.jump = false
+  }, [])
+
+  /** Bring a loaded prompt into view by block id, rendering down to it when it is hidden. */
+  const showPrompt = useCallback((id: string) => {
+    const root = scrollRef.current
+    if (!root) return
+    cancelPromptJump()
+    const rendered = blockElement(root, id)
+    if (rendered) {
+      scrollPromptIntoView(rendered)
+      return
+    }
+    const index = turnIndexOfBlock(turnItems, id)
+    if (index < 0 || index >= hiddenTurnCount) return
+    const settle = beginPromptJump(id)
+    setRenderedTurnCount((count) => Math.max(count, turnItems.length - index))
+    settle()
+  }, [beginPromptJump, cancelPromptJump, hiddenTurnCount, scrollPromptIntoView, scrollRef, turnItems])
+
+  // The composer's ↑/↓ recall shows the prompt it recalled.
+  const showPromptRef = useRef(showPrompt)
+  useEffect(() => {
+    showPromptRef.current = showPrompt
+  })
+  useEffect(() => {
+    useTranscriptFollowStore.setState({ showPrompt: (id) => showPromptRef.current(id) })
+    return () => useTranscriptFollowStore.setState({ showPrompt: null })
   }, [])
 
   const jumpToPrompt = useCallback((direction: -1 | 1) => {
     const root = scrollRef.current
     if (!root) return
-    if (direction > 0) cancelOlderJump()
+    if (direction > 0) cancelPromptJump()
     const rootTop = root.getBoundingClientRect().top
     const prompts = promptElements(root)
     const pending = pendingJumpRef.current
@@ -776,7 +813,7 @@ export function AgentView({
     // Past the newest prompt is the live end; before the oldest, earlier turns.
     if (direction > 0) scrollToBottom('smooth')
     else requestOlderPrompt()
-  }, [cancelOlderJump, requestOlderPrompt, scrollPromptIntoView, scrollRef, scrollToBottom])
+  }, [cancelPromptJump, requestOlderPrompt, scrollPromptIntoView, scrollRef, scrollToBottom])
 
   const { os } = getPlatform()
   useHotkeys(
@@ -839,7 +876,7 @@ export function AgentView({
       />
     )}
     <div className="group/transcript relative flex min-h-0 flex-1 flex-col">
-    <div ref={scrollRef} onWheel={cancelOlderJump} onTouchMove={cancelOlderJump} className="oa-chat-scroll flex-1 overflow-y-auto">
+    <div ref={scrollRef} onWheel={cancelPromptJump} onTouchMove={cancelPromptJump} className="oa-chat-scroll flex-1 overflow-y-auto">
       <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
         {isEmpty && (
            emptyState ?? (

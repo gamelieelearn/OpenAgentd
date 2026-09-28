@@ -250,6 +250,19 @@ describe("InputComposer — input history", () => {
     expect(textarea.value).toBe("newer")
   })
 
+  it("reports each recalled prompt, and the return to an empty draft", async () => {
+    const user = userEvent.setup()
+    const onHistoryRecall = mock((..._args: unknown[]) => {})
+    render(<InputComposer onSubmit={() => {}} historyPrompts={["newer", "older"]} onHistoryRecall={onHistoryRecall} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.click(textarea)
+
+    await user.keyboard("{ArrowUp}{ArrowUp}{ArrowUp}{ArrowDown}{ArrowDown}")
+
+    // The third ↑ is past the oldest prompt and recalls nothing new.
+    expect(onHistoryRecall.mock.calls.map((call) => call[0])).toEqual(["newer", "older", "newer", null])
+  })
+
   it("does not hijack modified arrow keys", async () => {
     const user = userEvent.setup()
     render(<InputComposer onSubmit={() => {}} historyPrompts={["persisted"]} />)

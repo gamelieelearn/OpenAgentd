@@ -27,6 +27,7 @@ import { useProvidersQuery } from '@/queries'
 import { renameSession } from '@/queries/session-rename'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
@@ -65,7 +66,7 @@ import { useOverlayState } from './useOverlayState'
 import { useSessionBootstrap } from './useSessionBootstrap'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
-import { parseBuiltInSlashCommand } from './helpers'
+import { newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
 import { deliverFromComposer, stopTurn, useReleaseHeldMessages } from './heldMessages'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
@@ -335,6 +336,19 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       .filter((block) => block.type === 'user' && block.content.trim())
       .map((block) => block.content)
   ), [leadBlocks])
+  // ↑/↓ recall in the composer shows the recalled prompt in the transcript;
+  // walking back out to an empty draft returns to the live end, as ⌥⌘↓ past
+  // the newest prompt does. Reads blocks at call time to stay stable.
+  const handleHistoryRecall = useCallback((prompt: string | null) => {
+    const transcript = useTranscriptFollowStore.getState()
+    if (prompt === null) {
+      transcript.jumpToLatest?.()
+      return
+    }
+    const { leadName, agentStreams } = useAgentStore.getState()
+    const id = newestUserBlockId((leadName ? agentStreams[leadName]?.blocks : undefined) ?? EMPTY_BLOCKS, prompt)
+    if (id) transcript.showPrompt?.(id)
+  }, [])
 
   const { data: todosData } = useTodosQuery(sessionIdState)
   const todos = todosData?.todos ?? []
@@ -724,6 +738,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             slashCommands={slashCommands}
             snippetCommands={snippetCommands}
             historyPrompts={historyPrompts}
+            onHistoryRecall={handleHistoryRecall}
             onValueChange={handleDraftValueChange}
             fileRefs={fileRefs}
             onFileRefsNeeded={() => setFileRefsEnabled(true)}

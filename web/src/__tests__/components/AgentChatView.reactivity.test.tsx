@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { forwardRef, useImperativeHandle } from 'react'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import type { ContentBlock } from '@/api/types'
 
 // lucide-react is deliberately NOT mocked here. Bun validates every static
@@ -59,12 +60,16 @@ mock.module('@/components/AgentChatView/AgentChatHeader', () => ({
     </>
   ),
 }))
+/** The composer's ``onHistoryRecall``, as the mounted chat view passed it. */
+let recall: ((prompt: string | null) => void) | undefined
+
 mock.module('@/components/FloatingInputComposer', () => ({
   FloatingInputComposer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
-    { historyPrompts?: string[] }
-  >(function FloatingInputComposerMock({ historyPrompts }, ref) {
+    { historyPrompts?: string[]; onHistoryRecall?: (prompt: string | null) => void }
+  >(function FloatingInputComposerMock({ historyPrompts, onHistoryRecall }, ref) {
     useImperativeHandle(ref, () => ({ setValue: () => {}, setFiles: () => {} }))
+    recall = onHistoryRecall
     return <div data-testid="history-prompts">{(historyPrompts ?? []).join(',')}</div>
   }),
 }))
@@ -187,6 +192,28 @@ describe('AgentChatView reactive derived state', () => {
     })
 
     expect(screen.getByTestId('history-prompts').textContent).toBe('loaded prompt')
+  })
+
+  it('shows the prompt the composer recalls, the newest with that text, and the live end on leaving recall', () => {
+    const showPrompt = mock((..._args: unknown[]) => {})
+    const jumpToLatest = mock(() => {})
+    useTranscriptFollowStore.setState({ showPrompt, jumpToLatest })
+    useAgentStore.setState((state) => {
+      state.agentStreams.lead.blocks = [
+        { ...userBlock('fix it'), id: 'older' },
+        { id: 'a1', type: 'text', content: 'done' },
+        { ...userBlock(' fix it '), id: 'newer' },
+      ]
+    })
+    render(<AgentChatView sessionId="session-1" workspace="/repo/project" />)
+
+    act(() => recall?.('fix it'))
+    act(() => recall?.('never sent here'))
+    act(() => recall?.(null))
+
+    expect(showPrompt.mock.calls).toEqual([['newer']])
+    expect(jumpToLatest).toHaveBeenCalledTimes(1)
+    useTranscriptFollowStore.setState({ showPrompt: null, jumpToLatest: null })
   })
 
   it('sums current session costs exactly and excludes stale agent streams', () => {

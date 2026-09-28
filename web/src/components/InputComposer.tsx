@@ -163,6 +163,11 @@ export interface InputComposerProps {
   onSuggestionsMenuChange?: (open: boolean) => void
   /** Newest-first prompt history supplied by the parent, e.g. loaded chat history. */
   historyPrompts?: string[]
+  /**
+   * ``↑``/``↓`` recalled a history prompt into the input (its text), or
+   * walked back out to an empty draft (``null``).
+   */
+  onHistoryRecall?: (prompt: string | null) => void
 }
 
 export interface InputComposerHandle {
@@ -217,6 +222,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   onValueChange,
   onSuggestionsMenuChange,
   historyPrompts = [],
+  onHistoryRecall,
 }, ref) {
   const [value, setValue] = useState('')
   const {
@@ -365,6 +371,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         setMentionRange(null)
         setSnippetRange(null)
         requestAnimationFrame(resize)
+        onHistoryRecall?.(null)
         return true
       }
       if (nextIndex >= history.length) return true
@@ -378,10 +385,11 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         el?.setSelectionRange(next.length, next.length)
         resize()
       })
+      onHistoryRecall?.(next)
       return true
     }
     return false
-  }, [history, value, historyIndex, resize, setMentionRange, setSnippetRange])
+  }, [history, value, historyIndex, resize, setMentionRange, setSnippetRange, onHistoryRecall])
 
   // Shared bookkeeping for every programmatic draft mutation: leave history
   // navigation and close any open picker — a value replacement invalidates

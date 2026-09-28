@@ -135,6 +135,7 @@ interface FloatingInputComposerProps {
   onRedo?: () => void
   onRedoAll?: () => void
   historyPrompts?: string[]
+  onHistoryRecall?: (prompt: string | null) => void
   value?: string
   onValueChange?: (value: string) => void
 }

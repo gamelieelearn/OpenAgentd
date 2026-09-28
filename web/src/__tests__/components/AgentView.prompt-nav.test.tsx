@@ -6,6 +6,7 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 import { AgentView } from '@/components/AgentView'
 import { PROMPT_JUMP_MARGIN } from '@/components/AgentView/prompt-nav'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import type { ContentBlock } from '@/api/types'
 
 beforeEach(() => {
@@ -89,6 +90,17 @@ describe('AgentView — prompt navigation', () => {
     fireEvent.keyDown(document, { key: 'ArrowDown', ctrlKey: true, altKey: true })
     expect(lastTop(scrollTo)).toBe(landing(500))
   })
+
+  it('brings a prompt into view by id, for the composer’s ↑/↓ recall, while mounted', () => {
+    const { container, unmount } = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
+    const scrollTo = layOut(container, { u1: -900, u2: -300, u3: 500 })
+
+    act(() => useTranscriptFollowStore.getState().showPrompt?.('u1'))
+    expect(lastTop(scrollTo)).toBe(landing(-900))
+
+    unmount()
+    expect(useTranscriptFollowStore.getState().showPrompt).toBeNull()
+  })
 })
 
 /**
@@ -159,6 +171,19 @@ describe('AgentView — previous prompt that is not loaded yet', () => {
 
     expect(container.querySelector('[data-prompt-id="p9"]')).not.toBeNull()
     expect(container.querySelector('[data-prompt-id="p8"]')).toBeNull()
+    expect(lastTop(scrollTo)).toBe(el.scrollTop - 300 - PROMPT_JUMP_MARGIN)
+  })
+
+  it('reveals a prompt shown by id down to it, then lands on it', () => {
+    const blocks = Array.from({ length: 50 }, (_, i) => turn(`p${i}`)).flat()
+    TOPS = { p3: -300, p10: PROMPT_JUMP_MARGIN }
+    const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    const { el, scrollTo } = scroller(container)
+
+    act(() => useTranscriptFollowStore.getState().showPrompt?.('p3'))
+
+    expect(container.querySelector('[data-prompt-id="p3"]')).not.toBeNull()
+    expect(container.querySelector('[data-prompt-id="p2"]')).toBeNull()
     expect(lastTop(scrollTo)).toBe(el.scrollTop - 300 - PROMPT_JUMP_MARGIN)
   })
 
