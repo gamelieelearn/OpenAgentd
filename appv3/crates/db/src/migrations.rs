@@ -417,7 +417,8 @@ CREATE UNIQUE INDEX ix_scheduled_task_name ON scheduled_task (name);
         upgrade(&mut lf).await.unwrap();
         let mut crlf = SqliteConnection::connect("sqlite::memory:").await.unwrap();
         for (rev, sql) in MIGRATIONS.iter() {
-            apply(&mut crlf, rev, &sql.replace('\n', "\r\n")).await.unwrap();
+            // From LF first: on a Windows CI checkout `sql` is already CRLF.
+            apply(&mut crlf, rev, &sql.replace("\r\n", "\n").replace('\n', "\r\n")).await.unwrap();
         }
         assert_eq!(master(&mut crlf).await, master(&mut lf).await);
     }
