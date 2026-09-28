@@ -15,7 +15,7 @@ import { Folder, MessageCircle } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useCodingWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
+import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { formatCompactRelative } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
@@ -34,7 +34,7 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false, currentSes
   const navigate = useNavigate()
   const unreadIds = useUnreadStore((state) => state.ids)
   // Same key as the sidebar's workspace list, so this adds no request there.
-  const { data } = useCodingWorkspaceSessionsQuery(workspace, !chatWorkspace)
+  const { data } = useWorkspaceSessionsQuery(workspace, !chatWorkspace)
 
   if (chatWorkspace) {
     return (

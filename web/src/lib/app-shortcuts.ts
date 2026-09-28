@@ -28,7 +28,7 @@ export const APP_SHORTCUTS = {
   tasks: { key: 'T' },
   quickOpen: { key: 'P' },
   commandPalette: { key: 'K' },
-  codingSidebar: { key: 'B' },
+  sidebar: { key: 'B' },
   focusChat: { key: 'I' },
   closeTab: { key: 'W' },
   settings: { key: ',' },

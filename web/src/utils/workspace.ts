@@ -51,10 +51,10 @@ export function workspaceLabel(
   return pathBasename(workspace)
 }
 
-export const CODING_WORKSPACES_KEY = 'oa-coding-workspaces'
-const LAST_CODING_WORKSPACE_KEY = 'oa-last-coding-workspace'
+export const WORKSPACES_KEY = 'oa-coding-workspaces'
+const LAST_WORKSPACE_KEY = 'oa-last-coding-workspace'
 
-export interface CodingWorkspaceEntry {
+export interface WorkspaceEntry {
   id: string
   path: string
   createdAt: string
@@ -68,7 +68,7 @@ function workspaceId(workspace: string): string {
   return `w${(hash >>> 0).toString(36)}`
 }
 
-function parseEntries(raw: unknown): CodingWorkspaceEntry[] {
+function parseEntries(raw: unknown): WorkspaceEntry[] {
   if (!Array.isArray(raw)) return []
   return raw
     .map((item, index) => {
@@ -81,31 +81,31 @@ function parseEntries(raw: unknown): CodingWorkspaceEntry[] {
       }
       return null
     })
-    .filter((item): item is CodingWorkspaceEntry => item !== null)
+    .filter((item): item is WorkspaceEntry => item !== null)
 }
 
-export function loadCodingWorkspaces(): string[] {
-  return loadCodingWorkspaceEntries().map((entry) => entry.path)
+export function loadWorkspaces(): string[] {
+  return loadWorkspaceEntries().map((entry) => entry.path)
 }
 
-export function loadCodingWorkspaceEntries(): CodingWorkspaceEntry[] {
+export function loadWorkspaceEntries(): WorkspaceEntry[] {
   try {
-    const raw = localStorage.getItem(CODING_WORKSPACES_KEY)
+    const raw = localStorage.getItem(WORKSPACES_KEY)
     return parseEntries(raw ? JSON.parse(raw) : [])
   } catch {
     return []
   }
 }
 
-export function saveCodingWorkspace(workspace: string): CodingWorkspaceEntry {
-  const entries = loadCodingWorkspaceEntries()
+export function saveWorkspace(workspace: string): WorkspaceEntry {
+  const entries = loadWorkspaceEntries()
   const existing = entries.find((item) => item.path === workspace)
   const entry = existing ?? { id: workspaceId(workspace), path: workspace, createdAt: new Date().toISOString() }
   const next = existing ? entries : [...entries, entry]
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
   try {
-    localStorage.setItem(CODING_WORKSPACES_KEY, JSON.stringify(next))
-    window.dispatchEvent(new CustomEvent('coding-workspaces-changed'))
+    localStorage.setItem(WORKSPACES_KEY, JSON.stringify(next))
+    window.dispatchEvent(new CustomEvent('workspaces-changed'))
   } catch {
     // ignore storage failures
   }
@@ -118,41 +118,41 @@ export function saveCodingWorkspace(workspace: string): CodingWorkspaceEntry {
  * resurface them. Also clears the "last opened" pointer if it was this
  * workspace, so a stale id doesn't get auto-restored on next launch.
  */
-export function removeCodingWorkspace(workspace: string): void {
+export function removeWorkspace(workspace: string): void {
   try {
-    const entries = loadCodingWorkspaceEntries().filter((entry) => entry.path !== workspace)
-    localStorage.setItem(CODING_WORKSPACES_KEY, JSON.stringify(entries))
-    const lastId = localStorage.getItem(LAST_CODING_WORKSPACE_KEY)
+    const entries = loadWorkspaceEntries().filter((entry) => entry.path !== workspace)
+    localStorage.setItem(WORKSPACES_KEY, JSON.stringify(entries))
+    const lastId = localStorage.getItem(LAST_WORKSPACE_KEY)
     if (lastId && !entries.some((entry) => entry.id === lastId)) {
-      localStorage.removeItem(LAST_CODING_WORKSPACE_KEY)
+      localStorage.removeItem(LAST_WORKSPACE_KEY)
     }
-    window.dispatchEvent(new CustomEvent('coding-workspaces-changed'))
+    window.dispatchEvent(new CustomEvent('workspaces-changed'))
   } catch {
     // ignore storage failures
   }
 }
 
-export function saveLastCodingWorkspace(workspace: string): CodingWorkspaceEntry {
-  const entry = saveCodingWorkspace(workspace)
+export function saveLastWorkspace(workspace: string): WorkspaceEntry {
+  const entry = saveWorkspace(workspace)
   try {
-    localStorage.setItem(LAST_CODING_WORKSPACE_KEY, entry.id)
+    localStorage.setItem(LAST_WORKSPACE_KEY, entry.id)
   } catch {
     // ignore storage failures
   }
   return entry
 }
 
-export function loadLastCodingWorkspace(): CodingWorkspaceEntry | null {
+export function loadLastWorkspace(): WorkspaceEntry | null {
   try {
-    const id = localStorage.getItem(LAST_CODING_WORKSPACE_KEY)
+    const id = localStorage.getItem(LAST_WORKSPACE_KEY)
     if (!id) return null
-    return loadCodingWorkspaceEntries().find((entry) => entry.id === id) ?? null
+    return loadWorkspaceEntries().find((entry) => entry.id === id) ?? null
   } catch {
     return null
   }
 }
 
-export function shouldRestoreLastCodingWorkspace(
+export function shouldRestoreLastWorkspace(
   sessionId: string | undefined,
   pathname: string,
 ): boolean {

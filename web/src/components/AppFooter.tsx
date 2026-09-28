@@ -83,11 +83,11 @@ export const AppFooter = memo(function AppFooter({
   const spend = useObservabilitySummaryQuery(1, {}, { refetchInterval: SPEND_REFRESH_MS }).data?.totals.estimated_cost_usd
   const spendLabel = spend === undefined ? null : formatSpend(spend)
 
-  const isCoding = Boolean(workspace) && !chatWorkspace
+  const isProject = Boolean(workspace) && !chatWorkspace
   const statusQuery = useQuery({
     queryKey: queryKeys.coding.status(workspace ?? ''),
     queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace!, signal),
-    enabled: isCoding,
+    enabled: isProject,
     staleTime: 10_000,
   })
 
@@ -121,7 +121,7 @@ export const AppFooter = memo(function AppFooter({
       <div className="flex min-w-0 items-center gap-1 overflow-hidden">
         <HealthDot labeled />
 
-        {isCoding && isGit && branch && (
+        {isProject && isGit && branch && (
           <>
             <Divider />
             <Tooltip>

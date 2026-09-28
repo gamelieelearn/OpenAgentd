@@ -47,7 +47,7 @@ export function workspaceFilesQueryOptions(sessionId: string) {
 }
 
 /** `GET /agent/workspace/files/list` — coding-mode workspace. */
-export function codingWorkspaceFilesQueryOptions(workspace: string) {
+export function workspaceFileListQueryOptions(workspace: string) {
   return {
     queryKey: queryKeys.coding.files(workspace),
     queryFn: ({ signal }: { signal: AbortSignal }): Promise<CodingWorkspaceFilesResponse> =>

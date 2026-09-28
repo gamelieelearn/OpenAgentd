@@ -42,7 +42,7 @@ describe('useOverlayState dock views', () => {
 
     act(() => result.current.handleToggleTasks())
 
-    expect(result.current.codingPanel).toBe('changed')
+    expect(result.current.workspacePanel).toBe('changed')
     expect(result.current.dockViewRequest).toEqual({ view: 'tasks', key: 1 })
     expect(result.current.showTodos).toBe(false)
   })
@@ -54,7 +54,7 @@ describe('useOverlayState dock views', () => {
     act(() => result.current.setDockActiveView('tasks'))
 
     act(() => result.current.handleToggleTasks())
-    expect(result.current.codingPanel).toBeNull()
+    expect(result.current.workspacePanel).toBeNull()
   })
 
   it('switches views without hiding when another view is focused', () => {
@@ -63,7 +63,7 @@ describe('useOverlayState dock views', () => {
     act(() => result.current.setDockActiveView('tasks'))
 
     act(() => result.current.handleToggleScheduler())
-    expect(result.current.codingPanel).toBe('changed')
+    expect(result.current.workspacePanel).toBe('changed')
     expect(result.current.dockViewRequest).toEqual({ view: 'schedule', key: 2 })
     expect(useUIStore.getState().schedulerOpen).toBe(false)
   })
@@ -80,14 +80,14 @@ describe('useOverlayState dock views', () => {
     act(() => result.current.handleToggleScheduler())
     expect(args.toggleScheduler).not.toHaveBeenCalled()
     expect(useUIStore.getState().schedulerOpen).toBe(false)
-    expect(result.current.codingPanel).toBe('changed')
+    expect(result.current.workspacePanel).toBe('changed')
     expect(result.current.dockViewRequest).toEqual({ view: 'schedule', key: 1 })
     // Opening the sheet closes the tasks popover (single-overlay rule).
     expect(result.current.showTodos).toBe(false)
 
     act(() => result.current.setDockActiveView('schedule'))
     act(() => result.current.handleToggleScheduler())
-    expect(result.current.codingPanel).toBeNull()
+    expect(result.current.workspacePanel).toBeNull()
   })
 
   it('keeps the scheduler overlay on mobile without a workspace', () => {
@@ -107,6 +107,6 @@ describe('useOverlayState dock views', () => {
 
     act(() => result.current.handleToggleScheduler())
     expect(args.toggleScheduler).toHaveBeenCalledTimes(1)
-    expect(result.current.codingPanel).toBeNull()
+    expect(result.current.workspacePanel).toBeNull()
   })
 })

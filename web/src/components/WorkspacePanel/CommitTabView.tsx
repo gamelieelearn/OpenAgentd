@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { DiffPreview } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { cn } from '@/lib/utils'
-import { COMMIT_DIFF_STALE_MS, codingCommitDiffQueryOptions } from '@/queries/workspace-git'
+import { COMMIT_DIFF_STALE_MS, commitDiffQueryOptions } from '@/queries/workspace-git'
 import type { GitCommit } from '@/api/types'
 import { ChangeCounts } from './ChangeCounts'
 import {
@@ -35,7 +35,7 @@ export interface CommitTabViewProps {
 
 export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
   const commitDiff = useQuery({
-    ...codingCommitDiffQueryOptions(workspace, commit.sha),
+    ...commitDiffQueryOptions(workspace, commit.sha),
     staleTime: COMMIT_DIFF_STALE_MS,
   })
   const diffText = commitDiff.data?.diff

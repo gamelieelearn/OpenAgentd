@@ -44,7 +44,7 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
   const isWorking = ctx.isAgentWorking ?? false
   const revertedCount = ctx.revertedCount ?? 0
   const hasVisible = ctx.hasVisibleMessages ?? false
-  const isCoding = ctx.hasWorkspace ?? false
+  const inWorkspace = ctx.hasWorkspace ?? false
 
   return BASE_SLASH_COMMANDS.filter((cmd) => {
     switch (cmd.id) {
@@ -57,7 +57,7 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
       case 'redo-all':
         return revertedCount > 0 && !isWorking
       case 'init':
-        return isCoding
+        return inWorkspace
       case 'new':
         return true
       default:

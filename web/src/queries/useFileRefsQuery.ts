@@ -31,7 +31,7 @@ interface WorkspaceFileListing {
 }
 import {
   WORKSPACE_FILES_STALE_MS,
-  codingWorkspaceFilesQueryOptions,
+  workspaceFileListQueryOptions,
 } from './workspace-files'
 
 interface UseFileRefsQueryArgs {
@@ -63,7 +63,7 @@ export function useFileRefsQuery({
   workspace,
   enabled = true,
 }: UseFileRefsQueryArgs) {
-  const options = codingWorkspaceFilesQueryOptions(workspace ?? '')
+  const options = workspaceFileListQueryOptions(workspace ?? '')
 
   const query = useQuery<WorkspaceFileListing, Error, WorkspaceFileListing, readonly unknown[]>({
     queryKey: options.queryKey,

@@ -29,7 +29,7 @@ interface UseAgentCommandsArgs {
   /** Opens scheduled tasks (dock Schedule tab with a workspace, overlay otherwise). */
   toggleScheduler: () => void
   handleWorkspaceFiles: () => void
-  handleCodingSidebarToggle: () => void
+  handleSidebarToggle: () => void
 
   // Session
   handleNewSession: () => void
@@ -46,7 +46,7 @@ export function useAgentCommands({
   toggleTasks,
   toggleScheduler,
   handleWorkspaceFiles,
-  handleCodingSidebarToggle,
+  handleSidebarToggle,
   handleNewSession,
   handleOpenTerminal,
   handleFindInTranscript,
@@ -64,7 +64,7 @@ export function useAgentCommands({
     ...(handleToggleDockMaximized
       ? [{ id: 'maximize-dock', group: 'View' as const, label: 'Maximize Review Dock', description: 'Give the review dock the full width for diffs, files, and terminals', shortcut: shortcutLabel(KEYS.maximizeDock, os), action: handleToggleDockMaximized }]
       : []),
-    { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: shortcutLabel(KEYS.codingSidebar, os), action: handleCodingSidebarToggle },
+    { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: shortcutLabel(KEYS.sidebar, os), action: handleSidebarToggle },
     { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', action: toggleScheduler },
     { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'Interactive shell in the workspace (runs on the connected server)', shortcut: shortcutLabel(KEYS.terminal, os), action: handleOpenTerminal },
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
@@ -77,5 +77,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleCodingSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme])
+  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme])
 }

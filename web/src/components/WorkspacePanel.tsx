@@ -21,13 +21,13 @@ import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries'
 import {
   WORKSPACE_TREE_STALE_MS,
-  codingWorkspaceFilesQueryOptions,
+  workspaceFileListQueryOptions,
 } from '@/queries/workspace-files'
 import {
   COMMIT_DIFF_STALE_MS,
   WORKSPACE_DIFF_STALE_MS,
-  codingCommitDiffQueryOptions,
-  codingWorkspaceDiffQueryOptions,
+  commitDiffQueryOptions,
+  workspaceDiffQueryOptions,
 } from '@/queries/workspace-git'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { PanelResizeHandle, ResizableAside, type LiveWidth } from '@/components/ResizableAside'
@@ -225,12 +225,12 @@ export function WorkspacePanel({
 
   // ── Server state ──────────────────────────────────────────────────────────
   const files = useQuery({
-    ...codingWorkspaceFilesQueryOptions(workspace),
+    ...workspaceFileListQueryOptions(workspace),
     enabled: open,
     staleTime: WORKSPACE_TREE_STALE_MS,
   })
   const diff = useQuery({
-    ...codingWorkspaceDiffQueryOptions(workspace),
+    ...workspaceDiffQueryOptions(workspace),
     enabled: open && !chatWorkspace,
     staleTime: WORKSPACE_DIFF_STALE_MS,
   })
@@ -296,7 +296,7 @@ export function WorkspacePanel({
   const upstream = workspaceStatus.data?.upstream ?? null
 
   const commitDiff = useQuery({
-    ...codingCommitDiffQueryOptions(workspace, expandedCommitSha ?? ''),
+    ...commitDiffQueryOptions(workspace, expandedCommitSha ?? ''),
     enabled: open && !chatWorkspace && activeTabId === REVIEW_TAB_ID && subTab === 'commits' && expandedCommitSha !== null,
     staleTime: COMMIT_DIFF_STALE_MS,
   })

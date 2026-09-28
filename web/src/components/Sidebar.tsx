@@ -60,7 +60,7 @@ import { useDeleteSessionMutation, useSessionsQuery, useUpdateSessionTitleMutati
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceTree, listWorktrees } from '@/api/client'
-import { CODING_WORKSPACES_KEY, workspaceLabel } from '@/utils/workspace'
+import { WORKSPACES_KEY, workspaceLabel } from '@/utils/workspace'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
@@ -108,7 +108,7 @@ import {
 } from './Sidebar.sessions'
 import {
   confirmWorkspaceRemoval,
-  selectCodingWorkspace,
+  openWorkspaceSession,
 } from './Sidebar.workspace'
 import {
   consumeTrustedWorkspace,
@@ -185,13 +185,13 @@ export function Sidebar({
   const deleteSession = useDeleteSessionMutation()
   const updateSessionTitle = useUpdateSessionTitleMutation()
 
-  const codingSessions = useMemo(
+  const workspaceSessions = useMemo(
     () => (sessions.data?.pages.flatMap((page) => page.data) ?? []).filter((session) => session.workspace),
     [sessions.data],
   )
-  // Indexed once per `codingSessions` change instead of re-filtering the full
+  // Indexed once per `workspaceSessions` change instead of re-filtering the full
   // session list for every workspace/worktree row on every render.
-  const sessionsByWorkspace = useMemo(() => groupSessionsByWorkspace(codingSessions), [codingSessions])
+  const sessionsByWorkspace = useMemo(() => groupSessionsByWorkspace(workspaceSessions), [workspaceSessions])
 
   const [workspaceTree, setWorkspaceTree] = useState<CodingWorkspaceTreeRepository[]>(
     () => queryClient.getQueryData<{ repositories: CodingWorkspaceTreeRepository[] }>(queryKeys.coding.tree())?.repositories ?? [],
@@ -348,12 +348,12 @@ export function Sidebar({
     // Other windows also write storage for unrelated state (unread marks on
     // every finished turn, theme…); only the saved workspace list moves the tree.
     const onStorage = (event: StorageEvent) => {
-      if (event.key === null || event.key === CODING_WORKSPACES_KEY) handler()
+      if (event.key === null || event.key === WORKSPACES_KEY) handler()
     }
-    window.addEventListener('coding-workspaces-changed', handler)
+    window.addEventListener('workspaces-changed', handler)
     window.addEventListener('storage', onStorage)
     return () => {
-      window.removeEventListener('coding-workspaces-changed', handler)
+      window.removeEventListener('workspaces-changed', handler)
       window.removeEventListener('storage', onStorage)
     }
   }, [refreshWorkspaceTree])
@@ -387,7 +387,7 @@ export function Sidebar({
     const requestedCreate = opts.create === true
     setPendingWorkspace(path)
     try {
-      const result = await selectCodingWorkspace({
+      const result = await openWorkspaceSession({
         path,
         requestedCreate,
         currentSessionId,
@@ -664,7 +664,7 @@ export function Sidebar({
     applySessionDelete({
       deleteTarget,
       currentSessionId,
-      codingSessions,
+      workspaceSessions,
       mutateDelete: deleteSession.mutate,
       navigate,
     })
@@ -677,7 +677,7 @@ export function Sidebar({
       <AnimatePresence>
         {isMobile && (mobileOpen || mobileDragOffset !== null) && (
           <motion.div
-            key="coding-sidebar-backdrop"
+            key="sidebar-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: mobileDragOffset !== null ? Math.max(0, Math.min(1, 1 + mobileDragOffset / 280)) : 1 }}
             exit={{ opacity: 0 }}

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
-import { loadCodingWorkspaceEntries, workspaceLabel } from '@/utils/workspace'
+import { loadWorkspaceEntries, workspaceLabel } from '@/utils/workspace'
 
 export function ModeWorkspaceFields({
   workspace,
@@ -14,7 +14,7 @@ export function ModeWorkspaceFields({
   workspaceErrorId?: string
 }) {
   const savedWorkspaces = useMemo(() => {
-    const paths = loadCodingWorkspaceEntries().map((entry) => entry.path)
+    const paths = loadWorkspaceEntries().map((entry) => entry.path)
     if (workspace && !paths.includes(workspace)) paths.push(workspace)
     return paths.sort()
   }, [workspace])

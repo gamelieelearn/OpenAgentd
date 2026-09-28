@@ -14,7 +14,7 @@ import { useHotkeys } from '@tanstack/react-hotkeys'
 import { useQuery } from '@tanstack/react-query'
 import {
   WORKSPACE_FILES_STALE_MS,
-  codingWorkspaceFilesQueryOptions,
+  workspaceFileListQueryOptions,
 } from '@/queries/workspace-files'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getPlatform } from '@/hooks/use-platform'
@@ -31,12 +31,12 @@ export interface UseCommandPaletteArgs {
   workspace: string | null
   quickOpenOpen: boolean
   sessionIdState: string | null
-  /** True while the review dock is mounted (``codingPanel !== null``). */
-  codingPanelOpen: boolean
+  /** True while the review dock is mounted (``workspacePanel !== null``). */
+  workspacePanelOpen: boolean
 
   handleNewSession: () => void
   handleWorkspaceFiles: () => void
-  handleCodingSidebarToggle: () => void
+  handleSidebarToggle: () => void
   handleToggleAgentCapabilities: () => void
   /** Desktop + workspace: the dock's Tasks tab; otherwise the popover. */
   handleToggleTasks: () => void
@@ -46,9 +46,9 @@ export interface UseCommandPaletteArgs {
   handleOpenTerminal: () => void
   handleFindInTranscript: () => void
 
-  setCodingFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
-  setCodingFileOpenKey: Dispatch<SetStateAction<number>>
-  setCodingPanel: Dispatch<SetStateAction<null | 'changed' | 'files'>>
+  setFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
+  setFileOpenKey: Dispatch<SetStateAction<number>>
+  setWorkspacePanel: Dispatch<SetStateAction<null | 'changed' | 'files'>>
 }
 
 export interface UseCommandPaletteResult {
@@ -63,10 +63,10 @@ export function useCommandPalette({
   workspace,
   quickOpenOpen,
   sessionIdState,
-  codingPanelOpen,
+  workspacePanelOpen,
   handleNewSession,
   handleWorkspaceFiles,
-  handleCodingSidebarToggle,
+  handleSidebarToggle,
   handleToggleAgentCapabilities,
   handleToggleTasks,
   handleTogglePalette,
@@ -74,9 +74,9 @@ export function useCommandPalette({
   handleToggleScheduler,
   handleOpenTerminal,
   handleFindInTranscript,
-  setCodingFileViewer,
-  setCodingFileOpenKey,
-  setCodingPanel,
+  setFileViewer,
+  setFileOpenKey,
+  setWorkspacePanel,
 }: UseCommandPaletteArgs): UseCommandPaletteResult {
   const isMobile = useIsMobile()
 
@@ -85,20 +85,20 @@ export function useCommandPalette({
   const handleToggleDockMaximized = useCallback(() => {
     if (!workspace || isMobile) return
     const layout = useLayoutStore.getState()
-    if (!codingPanelOpen) {
-      setCodingPanel('changed')
+    if (!workspacePanelOpen) {
+      setWorkspacePanel('changed')
       layout.setDockMaximized(true)
       return
     }
     layout.toggleDockMaximized()
-  }, [codingPanelOpen, isMobile, setCodingPanel, workspace])
+  }, [workspacePanelOpen, isMobile, setWorkspacePanel, workspace])
 
   const agentCommands = useAgentCommands({
     toggleAgentCapabilities: handleToggleAgentCapabilities,
     toggleTasks: handleToggleTasks,
     toggleScheduler: handleToggleScheduler,
     handleWorkspaceFiles,
-    handleCodingSidebarToggle,
+    handleSidebarToggle,
     handleNewSession,
     handleOpenTerminal,
     handleFindInTranscript,
@@ -113,7 +113,7 @@ export function useCommandPalette({
   // the same query key as the @-mention picker so the two
   // share a cache entry — no extra network request when both are warm.
   const hasQuickOpenWorkspace = Boolean(workspace)
-  const quickOpenQueryOptions = codingWorkspaceFilesQueryOptions(workspace ?? '')
+  const quickOpenQueryOptions = workspaceFileListQueryOptions(workspace ?? '')
   const { data: paletteFilesData } = useQuery<
     { files: WorkspaceFileInfo[]; truncated?: boolean },
     Error,
@@ -131,10 +131,10 @@ export function useCommandPalette({
   const quickOpenFilesTruncated = quickOpenOpen && Boolean(paletteFilesData?.truncated)
 
   const handleQuickOpenFileOpen = useCallback((file: WorkspaceFileInfo) => {
-    setCodingFileViewer(file)
-    setCodingFileOpenKey((k) => k + 1)
-    setCodingPanel((prev) => prev ?? 'files')
-  }, [setCodingFileViewer, setCodingFileOpenKey, setCodingPanel])
+    setFileViewer(file)
+    setFileOpenKey((k) => k + 1)
+    setWorkspacePanel((prev) => prev ?? 'files')
+  }, [setFileViewer, setFileOpenKey, setWorkspacePanel])
 
   const { os } = getPlatform()
   useHotkeys(
@@ -149,7 +149,7 @@ export function useCommandPalette({
       { hotkey: hotkeyOf(APP_SHORTCUTS.commandPalette), callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
       // Mod+B belongs to the general sidebar. Only the coding sidebar owns this
       // registration when coding mode is active, preventing duplicate handlers.
-      { hotkey: hotkeyOf(APP_SHORTCUTS.codingSidebar), callback: handleCodingSidebarToggle, options: { meta: { name: 'Sidebar' } } },
+      { hotkey: hotkeyOf(APP_SHORTCUTS.sidebar), callback: handleSidebarToggle, options: { meta: { name: 'Sidebar' } } },
       {
         hotkey: hotkeyOf(APP_SHORTCUTS.focusChat),
         callback: () => {

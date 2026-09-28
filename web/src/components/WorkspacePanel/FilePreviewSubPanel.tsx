@@ -2,7 +2,7 @@ import { Download } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FilePreviewContent, CopyButton, canCopyFileContents } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
-import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
+import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { formatBytes } from '@/utils/format'
 import type { WorkspaceFileInfo } from '@/api/types'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
@@ -42,7 +42,7 @@ export function FilePreviewSubPanel({
               render={
                 <button
                   type="button"
-                  onClick={() => void downloadCodingWorkspaceFile(workspace, file)}
+                  onClick={() => void downloadWorkspaceFile(workspace, file)}
                   disabled={deleted}
                   aria-label={downloadLabel}
                   className={DOCK_ACTION_BUTTON_CLASS}

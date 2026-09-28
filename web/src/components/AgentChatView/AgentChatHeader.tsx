@@ -24,7 +24,7 @@ interface AgentChatHeaderProps {
   /** Chat entry from the workspace tree — labels the chat root as "Chat". */
   chatWorkspace?: CodingWorkspaceTreeChat | null
   sessionTitle: string | null
-  onCodingSidebarToggle: () => void
+  onSidebarToggle: () => void
   headerTokens?: AgentTopbarTokens
   sessionId: string | null
   todos: TodoItem[]
@@ -32,7 +32,7 @@ interface AgentChatHeaderProps {
   onToggleTasks: () => void
   /** Whether the task list is showing (popover open, or Tasks tab focused). */
   tasksViewActive: boolean
-  codingPanel: null | 'changed' | 'files'
+  workspacePanel: null | 'changed' | 'files'
   onWorkspaceFiles: () => void
   agentCapabilitiesOpen: boolean
   onToggleAgentCapabilities: () => void
@@ -58,13 +58,13 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   workspace,
   chatWorkspace = null,
   sessionTitle,
-  onCodingSidebarToggle,
+  onSidebarToggle,
   headerTokens,
   sessionId,
   todos,
   onToggleTasks,
   tasksViewActive,
-  codingPanel,
+  workspacePanel,
   onWorkspaceFiles,
   agentCapabilitiesOpen,
   onToggleAgentCapabilities,
@@ -94,8 +94,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   // share one), so it keeps revealing the real path for coding workspaces —
   // but never the home path for chat, whose label is already unambiguous.
   const workspaceTooltip = isChatWorkspace ? workspaceName : workspace
-  const dockOpen = codingPanel !== null
-  const sidebarShortcut = shortcutLabel(APP_SHORTCUTS.codingSidebar, os)
+  const dockOpen = workspacePanel !== null
+  const sidebarShortcut = shortcutLabel(APP_SHORTCUTS.sidebar, os)
   const dockShortcut = shortcutLabel(APP_SHORTCUTS.workspaceFiles, os)
 
   return (
@@ -115,7 +115,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                 <button
                   type="button"
                   onClick={() => {
-                    onCodingSidebarToggle()
+                    onSidebarToggle()
                   }}
                   aria-label="Toggle sidebar"
                   className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
@@ -217,7 +217,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               Icon={PanelRight}
               label="Workspace files"
               onClick={workspace ? onWorkspaceFiles : undefined}
-              active={codingPanel !== null}
+              active={workspacePanel !== null}
               disabled={!workspace}
             />
             <MobileHeaderAction

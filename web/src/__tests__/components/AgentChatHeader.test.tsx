@@ -19,13 +19,13 @@ function renderHeader(
     isMobile: true,
     workspace: '/Users/name/Workspace A',
     sessionTitle: 'Fix updater restart',
-    onCodingSidebarToggle: () => undefined,
+    onSidebarToggle: () => undefined,
     headerTokens: undefined,
     sessionId: 'session-1',
     todos: [],
     onToggleTasks: () => undefined,
     tasksViewActive: false,
-    codingPanel: null,
+    workspacePanel: null,
     onWorkspaceFiles: () => undefined,
     agentCapabilitiesOpen: false,
     onToggleAgentCapabilities: () => undefined,
@@ -186,7 +186,7 @@ describe('AgentChatHeader', () => {
   })
 
   it('reflects the review dock state on its toggle', () => {
-    const { rerender } = renderHeader({ isMobile: false, codingPanel: null })
+    const { rerender } = renderHeader({ isMobile: false, workspacePanel: null })
     expect(screen.getByRole('button', { name: 'Changed files and workspace files' })).toHaveAttribute('aria-pressed', 'false')
 
     rerender(
@@ -196,12 +196,12 @@ describe('AgentChatHeader', () => {
         isMobile={false}
         workspace="/Users/name/Workspace A"
         sessionTitle={null}
-        onCodingSidebarToggle={() => undefined}
+        onSidebarToggle={() => undefined}
         sessionId="session-1"
         todos={[]}
         onToggleTasks={() => undefined}
         tasksViewActive={false}
-        codingPanel="changed"
+        workspacePanel="changed"
         onWorkspaceFiles={() => undefined}
         agentCapabilitiesOpen={false}
         onToggleAgentCapabilities={() => undefined}

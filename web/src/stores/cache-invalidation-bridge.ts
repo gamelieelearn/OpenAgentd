@@ -30,7 +30,7 @@ export function applyCacheInvalidations(
         queryClient.invalidateQueries({
           queryKey: queryKeys.coding.status(event.workspace),
         })
-        void patchCodingDiffForPaths(queryClient, event.workspace, event.paths)
+        void patchDiffForPaths(queryClient, event.workspace, event.paths)
         break
       case 'scheduler':
         queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
@@ -52,7 +52,7 @@ export function applyCacheInvalidations(
   }
 }
 
-async function patchCodingDiffForPaths(
+async function patchDiffForPaths(
   queryClient: BridgeQueryClient,
   workspace: string,
   paths: string[],

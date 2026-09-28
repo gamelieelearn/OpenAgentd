@@ -41,7 +41,7 @@ describe('useOverlayState app events', () => {
 
     act(() => dispatchAppEvent(APP_EVENTS.toggleScheduler))
 
-    expect(result.current.codingPanel).toBe('changed')
+    expect(result.current.workspacePanel).toBe('changed')
     expect(result.current.dockViewRequest).toEqual({ view: 'schedule', key: 1 })
   })
 
@@ -61,7 +61,7 @@ describe('useOverlayState app events', () => {
     act(() => dispatchAppEvent(APP_EVENTS.openScheduler))
     act(() => dispatchAppEvent(APP_EVENTS.openScheduler))
 
-    expect(result.current.codingPanel).toBe('changed')
+    expect(result.current.workspacePanel).toBe('changed')
     expect(result.current.dockViewRequest).toEqual({ view: 'schedule', key: 2 })
 
     cleanup()
@@ -78,7 +78,7 @@ describe('useOverlayState app events', () => {
     act(() => dispatchAppEvent(APP_EVENTS.openWorkspace))
 
     expect(result.current.openWorkspaceDialogKey).toBe(1)
-    expect(result.current.codingSidebarCollapsed).toBe(false)
+    expect(result.current.sidebarCollapsed).toBe(false)
   })
 
   it('opens a terminal tab on openTerminal', () => {
@@ -86,7 +86,7 @@ describe('useOverlayState app events', () => {
 
     act(() => dispatchAppEvent(APP_EVENTS.openTerminal))
 
-    expect(result.current.codingPanel).toBe('files')
+    expect(result.current.workspacePanel).toBe('files')
     expect(result.current.terminalOpenKey).toBe(1)
   })
 

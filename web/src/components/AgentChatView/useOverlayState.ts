@@ -71,12 +71,12 @@ export interface UseOverlayStateArgs {
 export interface UseOverlayStateResult {
   mobileSidebarOpen: boolean
   setMobileSidebarOpen: Dispatch<SetStateAction<boolean>>
-  codingPanel: null | 'changed' | 'files'
-  setCodingPanel: Dispatch<SetStateAction<null | 'changed' | 'files'>>
-  codingFileViewer: WorkspaceFileInfo | null
-  setCodingFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
-  codingFileOpenKey: number
-  setCodingFileOpenKey: Dispatch<SetStateAction<number>>
+  workspacePanel: null | 'changed' | 'files'
+  setWorkspacePanel: Dispatch<SetStateAction<null | 'changed' | 'files'>>
+  fileViewer: WorkspaceFileInfo | null
+  setFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
+  fileOpenKey: number
+  setFileOpenKey: Dispatch<SetStateAction<number>>
   terminalOpenKey: number
   handledTerminalOpenKeyRef: React.RefObject<number>
   dockViewRequest: DockViewRequest | null
@@ -88,17 +88,17 @@ export interface UseOverlayStateResult {
   dockViewsEnabled: boolean
   /** True when the scheduler opens as a dock tab (any platform + workspace). */
   schedulerInDock: boolean
-  codingSidebarCollapsed: boolean
-  setCodingSidebarCollapsed: Dispatch<SetStateAction<boolean>>
+  sidebarCollapsed: boolean
+  setSidebarCollapsed: Dispatch<SetStateAction<boolean>>
   openWorkspaceDialogKey: number
   showTodos: boolean
   showMobileActions: boolean
 
   closeOtherMobileOverlays: (keep: MobileOverlay) => void
   handleWorkspaceFiles: () => void
-  handleCodingSidebarToggle: () => void
+  handleSidebarToggle: () => void
   handleOpenWorkspaceDialog: () => void
-  handleCodingFileSelect: (file: WorkspaceFileInfo | null) => void
+  handleFileSelect: (file: WorkspaceFileInfo | null) => void
   handleMentionFileOpen: (path: string) => Promise<void>
   /** Open a clicked ``path:line`` from the transcript, at its line. */
   handleFileRefOpen: (ref: FileRef) => Promise<void>
@@ -122,7 +122,7 @@ export interface UseOverlayStateResult {
   edgeSwipeHandlers: EdgeSwipeHandlers
   sidebarDragOffset: number | null
   actionsDragOffset: number | null
-  codingPanelDragOffset: number | null
+  workspacePanelDragOffset: number | null
 }
 
 export function useOverlayState({
@@ -135,9 +135,9 @@ export function useOverlayState({
 }: UseOverlayStateArgs): UseOverlayStateResult {
   const queryClient = useQueryClient()
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [codingPanel, setCodingPanel] = useState<null | 'changed' | 'files'>(null)
-  const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
-  const [codingFileOpenKey, setCodingFileOpenKey] = useState(0)
+  const [workspacePanel, setWorkspacePanel] = useState<null | 'changed' | 'files'>(null)
+  const [fileViewer, setFileViewer] = useState<WorkspaceFileInfo | null>(null)
+  const [fileOpenKey, setFileOpenKey] = useState(0)
   // Terminal is available in coding workspaces.
   const [terminalOpenKey, setTerminalOpenKey] = useState(0)
   const handledTerminalOpenKeyRef = useRef(0)
@@ -150,8 +150,8 @@ export function useOverlayState({
   // toggles it once, wide windows open with the sidebar expanded.
   const storedSidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed)
   const wideViewport = useViewportAtLeast(SIDEBAR_AUTO_EXPAND_MIN_VIEWPORT)
-  const codingSidebarCollapsed = resolveSidebarCollapsed(storedSidebarCollapsed, wideViewport)
-  const setCodingSidebarCollapsed = useCallback<Dispatch<SetStateAction<boolean>>>((value) => {
+  const sidebarCollapsed = resolveSidebarCollapsed(storedSidebarCollapsed, wideViewport)
+  const setSidebarCollapsed = useCallback<Dispatch<SetStateAction<boolean>>>((value) => {
     useLayoutStore.getState().setSidebarCollapsed(
       value,
       resolveSidebarCollapsed(useLayoutStore.getState().sidebarCollapsed, wideViewport),
@@ -162,14 +162,14 @@ export function useOverlayState({
   const [showMobileActions, setShowMobileActions] = useState(false)
 
   useEffect(() => {
-    setCodingFileViewer(null)
+    setFileViewer(null)
   }, [workspace])
 
   // Maximize is a per-opening affordance: closing the dock always restores
   // the chat so the next ⌘D opens side by side.
   useEffect(() => {
-    if (codingPanel === null) useLayoutStore.getState().setDockMaximized(false)
-  }, [codingPanel])
+    if (workspacePanel === null) useLayoutStore.getState().setDockMaximized(false)
+  }, [workspacePanel])
 
   useEffect(() => {
     if (isMobile) {
@@ -179,11 +179,11 @@ export function useOverlayState({
 
   const closeOtherMobileOverlays = useCallback((keep: MobileOverlay) => {
     const toClose = new Set(overlaysToClose(keep))
-    if (isMobile && (toClose.has('sidebar') || toClose.has('actions') || toClose.has('coding-panel'))) {
+    if (isMobile && (toClose.has('sidebar') || toClose.has('actions') || toClose.has('workspace-panel'))) {
       setMobileSidebarOpen(false)
       setShowMobileActions(false)
-      setCodingPanel(null)
-      setCodingFileViewer(null)
+      setWorkspacePanel(null)
+      setFileViewer(null)
     }
     if (toClose.has('todos')) setShowTodos(false)
     const ui = useUIStore.getState()
@@ -197,18 +197,18 @@ export function useOverlayState({
 
   const handleWorkspaceFiles = useCallback(() => {
     if (workspace) {
-        if (isMobile) { setMobileSidebarOpen(false); closeOtherMobileOverlays('coding-panel') }
-        setCodingPanel((value) => (value === null ? 'changed' : null))
+        if (isMobile) { setMobileSidebarOpen(false); closeOtherMobileOverlays('workspace-panel') }
+        setWorkspacePanel((value) => (value === null ? 'changed' : null))
       } else {
-        setCodingSidebarCollapsed(false)
+        setSidebarCollapsed(false)
         setOpenWorkspaceDialogKey((value) => value + 1)
       }
-  }, [closeOtherMobileOverlays, isMobile, setCodingSidebarCollapsed, workspace])
+  }, [closeOtherMobileOverlays, isMobile, setSidebarCollapsed, workspace])
 
-  const handleCodingSidebarToggle = useCallback(() => {
+  const handleSidebarToggle = useCallback(() => {
     if (isMobile) {
-      setCodingPanel(null)
-      setCodingFileViewer(null)
+      setWorkspacePanel(null)
+      setFileViewer(null)
       setMobileSidebarOpen((value) => {
         const next = !value
         if (next) closeOtherMobileOverlays('sidebar')
@@ -216,26 +216,26 @@ export function useOverlayState({
       })
       return
     }
-    setCodingSidebarCollapsed((value) => !value)
-  }, [closeOtherMobileOverlays, isMobile, setCodingSidebarCollapsed])
+    setSidebarCollapsed((value) => !value)
+  }, [closeOtherMobileOverlays, isMobile, setSidebarCollapsed])
 
   const handleOpenWorkspaceDialog = useCallback(() => {
-    setCodingSidebarCollapsed(false)
+    setSidebarCollapsed(false)
     setOpenWorkspaceDialogKey((value) => value + 1)
-  }, [setCodingSidebarCollapsed])
+  }, [setSidebarCollapsed])
 
-  const handleCodingFileSelect = useCallback((file: WorkspaceFileInfo | null) => {
-    setCodingFileViewer(file)
+  const handleFileSelect = useCallback((file: WorkspaceFileInfo | null) => {
+    setFileViewer(file)
   }, [])
 
   /** Show a workspace-relative file in the dock; false when it is not listed. */
   const openWorkspaceFile = useCallback(async (cleanPath: string): Promise<boolean> => {
     if (!workspace) return false
-    const current = codingFileViewer?.path === cleanPath ? codingFileViewer : null
+    const current = fileViewer?.path === cleanPath ? fileViewer : null
     if (current) {
-      setCodingFileViewer(current)
-      setCodingFileOpenKey((value) => value + 1)
-      setCodingPanel((value) => value ?? 'files')
+      setFileViewer(current)
+      setFileOpenKey((value) => value + 1)
+      setWorkspacePanel((value) => value ?? 'files')
       return true
     }
     try {
@@ -246,15 +246,15 @@ export function useOverlayState({
       })
       const file = result.files.find((item) => item.path === cleanPath)
       if (!file) return false
-      setCodingFileViewer(file)
-      setCodingFileOpenKey((value) => value + 1)
-      setCodingPanel((value) => value ?? 'files')
+      setFileViewer(file)
+      setFileOpenKey((value) => value + 1)
+      setWorkspacePanel((value) => value ?? 'files')
       return true
     } catch {
       // Keep the current panel state; the panel query will surface listing errors.
       return false
     }
-  }, [codingFileViewer, queryClient, workspace])
+  }, [fileViewer, queryClient, workspace])
 
   const handleMentionFileOpen = useCallback(async (path: string) => {
     const cleanPath = path.split('#', 1)[0]
@@ -295,14 +295,14 @@ export function useOverlayState({
   // Second press of the same view's shortcut hides the dock; otherwise the
   // dock opens (if needed) and focuses that view's tab.
   const toggleDockView = useCallback((view: DockView) => {
-    if (codingPanel !== null && dockActiveView === view) {
-      setCodingPanel(null)
+    if (workspacePanel !== null && dockActiveView === view) {
+      setWorkspacePanel(null)
       return
     }
-    closeOtherMobileOverlays('coding-panel')
-    setCodingPanel((value) => value ?? 'changed')
+    closeOtherMobileOverlays('workspace-panel')
+    setWorkspacePanel((value) => value ?? 'changed')
     setDockViewRequest((prev) => ({ view, key: (prev?.key ?? 0) + 1 }))
-  }, [closeOtherMobileOverlays, codingPanel, dockActiveView])
+  }, [closeOtherMobileOverlays, workspacePanel, dockActiveView])
 
   const handleToggleScheduler = useCallback(() => {
     if (schedulerInDock) {
@@ -315,8 +315,8 @@ export function useOverlayState({
 
   const handleOpenScheduler = useCallback(() => {
     if (schedulerInDock) {
-      closeOtherMobileOverlays('coding-panel')
-      setCodingPanel((value) => value ?? 'changed')
+      closeOtherMobileOverlays('workspace-panel')
+      setWorkspacePanel((value) => value ?? 'changed')
       setDockViewRequest((prev) => ({ view: 'schedule', key: (prev?.key ?? 0) + 1 }))
       return
     }
@@ -367,7 +367,7 @@ export function useOverlayState({
   // terminal UI (kept simple; may return later behind its own entry point).
   const handleOpenTerminal = useCallback(() => {
     if (!workspace) return
-    setCodingPanel((prev) => prev ?? 'files')
+    setWorkspacePanel((prev) => prev ?? 'files')
     setTerminalOpenKey((k) => k + 1)
   }, [workspace])
 
@@ -395,7 +395,7 @@ export function useOverlayState({
   // Right-edge target depends on context: in a coding workspace it opens
   // the workspace panel (changed files / tree); otherwise the chat-actions
   // menu. Left-edge always opens the session sidebar.
-  const codingPanelOpenForSwipe = Boolean(workspace)
+  const workspacePanelOpenForSwipe = Boolean(workspace)
 
   // Single source of truth for "what is open right now". Closing routes to
   // whichever drawer the id names, so swipe-to-close hits the right one.
@@ -403,43 +403,43 @@ export function useOverlayState({
     ? 'sidebar'
     : showMobileActions
       ? 'actions'
-      : codingPanel !== null
-        ? 'coding-panel'
+      : workspacePanel !== null
+        ? 'workspace-panel'
         : null
 
   const closeAllDrawers = useCallback(() => {
     setMobileSidebarOpen(false)
     setShowMobileActions(false)
-    setCodingPanel(null)
-    setCodingFileViewer(null)
+    setWorkspacePanel(null)
+    setFileViewer(null)
   }, [])
 
   const openLeftDrawer = useCallback(() => {
     // Opening the sidebar must vacate every other overlay first.
     closeOtherMobileOverlays('sidebar')
     setShowMobileActions(false)
-    setCodingPanel(null)
-    setCodingFileViewer(null)
+    setWorkspacePanel(null)
+    setFileViewer(null)
     setMobileSidebarOpen(true)
   }, [closeOtherMobileOverlays])
 
   const openRightDrawer = useCallback(() => {
     // Opening a right drawer must vacate the sidebar + other overlays first.
     setMobileSidebarOpen(false)
-    if (codingPanelOpenForSwipe) {
-      closeOtherMobileOverlays('coding-panel')
+    if (workspacePanelOpenForSwipe) {
+      closeOtherMobileOverlays('workspace-panel')
       setShowMobileActions(false)
-      setCodingPanel((value) => value ?? 'changed')
+      setWorkspacePanel((value) => value ?? 'changed')
     } else {
       closeOtherMobileOverlays('actions')
       setShowMobileActions(true)
     }
-  }, [closeOtherMobileOverlays, codingPanelOpenForSwipe])
+  }, [closeOtherMobileOverlays, workspacePanelOpenForSwipe])
 
   const { handlers: edgeSwipeHandlers, drag: edgeSwipeDrag } = useEdgeSwipe({
     activeDrawer,
     left: { id: 'sidebar', open: openLeftDrawer },
-    right: { id: codingPanelOpenForSwipe ? 'coding-panel' : 'actions', open: openRightDrawer },
+    right: { id: workspacePanelOpenForSwipe ? 'workspace-panel' : 'actions', open: openRightDrawer },
     close: closeAllDrawers,
   })
 
@@ -447,17 +447,17 @@ export function useOverlayState({
   // finger. Each drawer reads only its own id; null when not being dragged.
   const sidebarDragOffset = edgeSwipeDrag?.drawerId === 'sidebar' ? edgeSwipeDrag.offset : null
   const actionsDragOffset = edgeSwipeDrag?.drawerId === 'actions' ? edgeSwipeDrag.offset : null
-  const codingPanelDragOffset = edgeSwipeDrag?.drawerId === 'coding-panel' ? edgeSwipeDrag.offset : null
+  const workspacePanelDragOffset = edgeSwipeDrag?.drawerId === 'workspace-panel' ? edgeSwipeDrag.offset : null
 
   return {
     mobileSidebarOpen,
     setMobileSidebarOpen,
-    codingPanel,
-    setCodingPanel,
-    codingFileViewer,
-    setCodingFileViewer,
-    codingFileOpenKey,
-    setCodingFileOpenKey,
+    workspacePanel,
+    setWorkspacePanel,
+    fileViewer,
+    setFileViewer,
+    fileOpenKey,
+    setFileOpenKey,
     terminalOpenKey,
     handledTerminalOpenKeyRef,
     dockViewRequest,
@@ -466,17 +466,17 @@ export function useOverlayState({
     setDockActiveView,
     dockViewsEnabled,
     schedulerInDock,
-    codingSidebarCollapsed,
-    setCodingSidebarCollapsed,
+    sidebarCollapsed,
+    setSidebarCollapsed,
     openWorkspaceDialogKey,
     showTodos,
     showMobileActions,
 
     closeOtherMobileOverlays,
     handleWorkspaceFiles,
-    handleCodingSidebarToggle,
+    handleSidebarToggle,
     handleOpenWorkspaceDialog,
-    handleCodingFileSelect,
+    handleFileSelect,
     handleMentionFileOpen,
     handleFileRefOpen,
     closeMobileActionsMenu,
@@ -497,6 +497,6 @@ export function useOverlayState({
     edgeSwipeHandlers,
     sidebarDragOffset,
     actionsDragOffset,
-    codingPanelDragOffset,
+    workspacePanelDragOffset,
   }
 }

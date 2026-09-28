@@ -7,7 +7,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { initBroadcastSync, broadcastMessage } from '@/lib/broadcast-sync'
 import { queryKeys } from '@/queries'
-import { loadLastCodingWorkspace, removeCodingWorkspace, saveLastCodingWorkspace, shouldRestoreLastCodingWorkspace, workspaceFromSession, workspaceLabel } from '@/utils/workspace'
+import { loadLastWorkspace, removeWorkspace, saveLastWorkspace, shouldRestoreLastWorkspace, workspaceFromSession, workspaceLabel } from '@/utils/workspace'
 import { syncDesktopWindowTitle } from '@/lib/window-title'
 import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
 import { useChatWorkspace } from '@/queries/useChatWorkspace'
@@ -20,7 +20,6 @@ import { useChatWorkspace } from '@/queries/useChatWorkspace'
 function AgentLayoutBase() {
   const params = useParams({ strict: false }) as Record<string, string>
   const sessionId = params.sessionId as string | undefined
-  const mode = 'coding' as const
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const cachedSessionPages = queryClient.getQueryData<{
@@ -51,18 +50,16 @@ function AgentLayoutBase() {
 
   const navigateRef = useRef(navigate)
   const sessionIdRef = useRef(sessionId)
-  const modeRef = useRef(mode)
   const workspaceRef = useRef<string | null>(null)
   useEffect(() => {
     navigateRef.current = navigate
     sessionIdRef.current = sessionId
-    modeRef.current = mode
     workspaceRef.current = workspace
   })
 
   useEffect(() => {
-    if (workspace) saveLastCodingWorkspace(workspace)
-  }, [mode, workspace])
+    if (workspace) saveLastWorkspace(workspace)
+  }, [workspace])
 
   useEffect(() => {
     syncDesktopWindowTitle({ workspace, workspaceName, needsYou, sessionTitle: useAgentStore.getState().sessionTitle })
@@ -71,14 +68,14 @@ function AgentLayoutBase() {
         syncDesktopWindowTitle({ workspace, workspaceName, needsYou, sessionTitle: state.sessionTitle })
       }
     })
-  }, [mode, workspace, workspaceName, needsYou])
+  }, [workspace, workspaceName, needsYou])
 
   useEffect(() => {
     if (sessionId) return
     let cancelled = false
     const restore = window.setTimeout(() => {
-      if (!shouldRestoreLastCodingWorkspace(sessionId, window.location.pathname)) return
-      const lastWorkspace = loadLastCodingWorkspace()
+      if (!shouldRestoreLastWorkspace(sessionId, window.location.pathname)) return
+      const lastWorkspace = loadLastWorkspace()
       if (!lastWorkspace) return
       ;(async () => {
         const current = useAgentStore.getState()
@@ -108,7 +105,7 @@ function AgentLayoutBase() {
           })
         } catch {
           if (cancelled) return
-          removeCodingWorkspace(lastWorkspace.path)
+          removeWorkspace(lastWorkspace.path)
           useAgentStore.setState((state) => {
             state.error = null
           })
@@ -119,7 +116,7 @@ function AgentLayoutBase() {
       cancelled = true
       window.clearTimeout(restore)
     }
-  }, [mode, navigate, queryClient, sessionId])
+  }, [navigate, queryClient, sessionId])
 
   // Keep ``useAgentStore._workspace`` in sync with the URL-derived
   // workspace path the moment we render the layout. The SSE reducer
@@ -134,7 +131,7 @@ function AgentLayoutBase() {
     useAgentStore.setState((state) => {
       state._workspace = workspace ?? null
     })
-  }, [mode, workspace])
+  }, [workspace])
 
   useEffect(() => {
     if (sessionId) return
@@ -163,7 +160,7 @@ function AgentLayoutBase() {
           thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
         })
         void queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
-        if (workspace) saveLastCodingWorkspace(workspace)
+        if (workspace) saveLastWorkspace(workspace)
         navigate({
           to: '/$sessionId',
           params: { sessionId: session.id },
@@ -179,7 +176,7 @@ function AgentLayoutBase() {
     return () => {
       cancelled = true
     }
-  }, [mode, navigate, queryClient, sessionId, workspace])
+  }, [navigate, queryClient, sessionId, workspace])
 
   // When agent store gets a new sessionId, navigate to the matching session route.
   useEffect(() => initBroadcastSync(queryClient), [queryClient])
@@ -189,7 +186,7 @@ function AgentLayoutBase() {
         void queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
         void queryClient.refetchQueries({ queryKey: queryKeys.session.sessions.infinite(), type: 'active' })
         const workspace = workspaceRef.current
-        if (workspace) saveLastCodingWorkspace(workspace)
+        if (workspace) saveLastWorkspace(workspace)
         navigateRef.current({
           to: '/$sessionId',
           params: { sessionId: state.sessionId },
@@ -234,7 +231,7 @@ function AgentLayoutBase() {
       <AgentChatView
         sessionId={sessionId}
         workspace={workspace}
-        codingSessionLoading={mode === 'coding' && Boolean(sessionId) && !workspace && sessionQuery.isLoading}
+        sessionLoading={Boolean(sessionId) && !workspace && sessionQuery.isLoading}
       />
       <Outlet />
     </>

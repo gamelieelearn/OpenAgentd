@@ -1,18 +1,18 @@
 import type { SessionResponse } from '@/api/types'
-import { saveLastCodingWorkspace } from '@/utils/workspace'
+import { saveLastWorkspace } from '@/utils/workspace'
 
 export function getFallbackSessionAfterDelete(
   deleteTarget: SessionResponse,
   currentSessionId: string | undefined,
-  codingSessions: SessionResponse[],
+  workspaceSessions: SessionResponse[],
 ): SessionResponse | null {
   if (deleteTarget.id !== currentSessionId) return null
   if (deleteTarget.parent_session_id) {
-    const parent = codingSessions.find((s) => s.id === deleteTarget.parent_session_id)
+    const parent = workspaceSessions.find((s) => s.id === deleteTarget.parent_session_id)
     if (parent) return parent
   }
-  return codingSessions.find((session) => session.id !== deleteTarget.id && session.workspace === deleteTarget.workspace)
-    ?? codingSessions.find((session) => session.id !== deleteTarget.id)
+  return workspaceSessions.find((session) => session.id !== deleteTarget.id && session.workspace === deleteTarget.workspace)
+    ?? workspaceSessions.find((session) => session.id !== deleteTarget.id)
     ?? null
 }
 
@@ -23,7 +23,7 @@ export function applySessionSelection(options: {
   onMobileClose?: () => void
 }): void {
   const workspace = options.session.workspace ?? options.workspacePath
-  if (workspace) saveLastCodingWorkspace(workspace)
+  if (workspace) saveLastWorkspace(workspace)
   options.navigate({
     to: '/$sessionId',
     params: { sessionId: options.session.id },
@@ -34,14 +34,14 @@ export function applySessionSelection(options: {
 export function applySessionDelete(options: {
   deleteTarget: SessionResponse
   currentSessionId: string | undefined
-  codingSessions: SessionResponse[]
+  workspaceSessions: SessionResponse[]
   mutateDelete: (target: string | { id: string; parent_session_id?: string | null }) => void
   navigate: (args: { to: string; params?: { sessionId: string }; replace: true }) => void
 }): void {
   const fallbackSession = getFallbackSessionAfterDelete(
     options.deleteTarget,
     options.currentSessionId,
-    options.codingSessions,
+    options.workspaceSessions,
   )
   options.mutateDelete(
     options.deleteTarget.parent_session_id
@@ -50,7 +50,7 @@ export function applySessionDelete(options: {
   )
   if (options.deleteTarget.id !== options.currentSessionId) return
   if (fallbackSession) {
-    if (fallbackSession.workspace) saveLastCodingWorkspace(fallbackSession.workspace)
+    if (fallbackSession.workspace) saveLastWorkspace(fallbackSession.workspace)
     options.navigate({
       to: '/$sessionId',
       params: { sessionId: fallbackSession.id },

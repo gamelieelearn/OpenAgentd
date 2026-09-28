@@ -24,7 +24,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { resolveSession } from '@/api/client'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
-import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
+import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
 import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { setTraySession } from '@/lib/tray'
 import { isEditableTarget } from '@/lib/is-editable-target'
@@ -44,8 +44,8 @@ export interface UseSessionBootstrapArgs {
   /** Chat entry from the workspace tree — labels the tray as "Chat". */
   chatWorkspace?: { path: string; name: string } | null
   agentWorkspace: string | null
-  hasCodingWorkspace: boolean
-  isCodingSessionLoading: boolean
+  hasWorkspace: boolean
+  isSessionLoading: boolean
   isMobile: boolean
   paletteOpen: boolean
   sessionModel: string | null
@@ -74,8 +74,8 @@ export function useSessionBootstrap({
   workspace,
   chatWorkspace = null,
   agentWorkspace,
-  hasCodingWorkspace,
-  isCodingSessionLoading,
+  hasWorkspace,
+  isSessionLoading,
   isMobile,
   paletteOpen,
   sessionModel,
@@ -98,8 +98,8 @@ export function useSessionBootstrap({
   // ── Init / reconnect ───────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (hasCodingWorkspace) loadAgentStatus(agentWorkspace)
-    if (isCodingSessionLoading) return
+    if (hasWorkspace) loadAgentStatus(agentWorkspace)
+    if (isSessionLoading) return
     if (!sessionId) return
     const store = useAgentStore.getState()
     const activeController =
@@ -197,8 +197,8 @@ export function useSessionBootstrap({
   }, [
     sessionId,
     agentWorkspace,
-    hasCodingWorkspace,
-    isCodingSessionLoading,
+    hasWorkspace,
+    isSessionLoading,
     loadAgentStatus,
     beginResolvedSession,
     consumeResolvedSessionReady,
@@ -316,7 +316,7 @@ export function useSessionBootstrap({
           prependSession(queryClient, session)
         }
         if (session.created) prependWorkspaceSession(queryClient, workspace, session)
-        saveLastCodingWorkspace(workspace)
+        saveLastWorkspace(workspace)
         navigate({ to: '/$sessionId', params: { sessionId: session.id } })
       } catch (err) {
         useAgentStore.setState((state) => {
@@ -351,7 +351,7 @@ export function useSessionBootstrap({
   }, [focusInput])
 
   useEffect(() => {
-    if (isMobile || paletteOpen || !workspace || isCodingSessionLoading) return
+    if (isMobile || paletteOpen || !workspace || isSessionLoading) return
 
     const handler = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
@@ -364,7 +364,7 @@ export function useSessionBootstrap({
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isCodingSessionLoading, isMobile, paletteOpen, workspace, inputRef])
+  }, [isSessionLoading, isMobile, paletteOpen, workspace, inputRef])
 
   const handleAddFileComment = useCallback((path: string, startLine: number, endLine: number) => {
     const ref = startLine === endLine ? `@${path}#L${startLine}` : `@${path}#L${startLine}-L${endLine}`

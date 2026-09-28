@@ -41,8 +41,8 @@ describe('useOverlayState — opening file references', () => {
 
     await act(() => result.current.handleFileRefOpen({ path: `${WORKSPACE}/src/a.ts`, line: 12 }))
 
-    expect(result.current.codingFileViewer?.path).toBe('src/a.ts')
-    expect(result.current.codingPanel).toBe('files')
+    expect(result.current.fileViewer?.path).toBe('src/a.ts')
+    expect(result.current.workspacePanel).toBe('files')
     expect(useFileRevealStore.getState().request).toMatchObject({ path: 'src/a.ts', line: 12 })
   })
 
@@ -51,7 +51,7 @@ describe('useOverlayState — opening file references', () => {
 
     await act(() => result.current.handleFileRefOpen({ path: 'src/missing.ts', line: 3 }))
 
-    expect(result.current.codingFileViewer).toBeNull()
+    expect(result.current.fileViewer).toBeNull()
     expect(useFileRevealStore.getState().request).toBeNull()
     expect(useToastStore.getState().toasts.at(-1)).toMatchObject({ title: 'File not found' })
   })

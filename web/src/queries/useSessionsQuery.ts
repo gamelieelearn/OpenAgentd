@@ -20,7 +20,7 @@ export function useSessionsQuery() {
   })
 }
 
-export function useCodingWorkspaceSessionsQuery(workspace: string, enabled = true) {
+export function useWorkspaceSessionsQuery(workspace: string, enabled = true) {
   return useInfiniteQuery({
     queryKey: queryKeys.session.sessions.workspace(workspace),
     queryFn: ({ pageParam, signal }) =>

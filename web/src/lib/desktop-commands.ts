@@ -31,7 +31,7 @@ function runDesktopCommand(command: unknown): void {
       dispatchAppShortcut(APP_SHORTCUTS.findInTranscript, getPlatform().os)
       break
     case 'toggle_sidebar':
-      dispatchAppShortcut(APP_SHORTCUTS.codingSidebar, getPlatform().os)
+      dispatchAppShortcut(APP_SHORTCUTS.sidebar, getPlatform().os)
       break
     case 'terminal':
       dispatchAppEvent(APP_EVENTS.openTerminal)

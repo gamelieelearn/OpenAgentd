@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { ChevronRight, Loader2, Pencil, Trash2 } from 'lucide-react'
-import { useCodingWorkspaceSessionsQuery, useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
+import { useWorkspaceSessionsQuery, useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
@@ -337,7 +337,7 @@ export function WorkspaceSessionList({
   onSessionLongPress: (session: SessionResponse) => void
   onSessionContextActions: (session: SessionResponse, event: React.MouseEvent) => void
 }) {
-  const sessions = useCodingWorkspaceSessionsQuery(path, !collapsed)
+  const sessions = useWorkspaceSessionsQuery(path, !collapsed)
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = sessions
   const workspaceSessions = collapsed
     ? (runningSessions ?? [])

@@ -109,7 +109,7 @@ describe('WorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () => {
   it('calls onFileSelect(null) on Ctrl+W so the parent clears its file state (prevents re-open bug)', async () => {
     // Regression: Cmd+W only cleared local tab state but never notified the
     // parent. When the panel was closed then reopened the parent still held
-    // codingFileViewer, so the tab was immediately re-opened on mount.
+    // fileViewer, so the tab was immediately re-opened on mount.
     const { WorkspacePanel } = await import('@/components/WorkspacePanel')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const onFileSelect = mock(() => {})
@@ -134,7 +134,7 @@ describe('WorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () => {
 
     await act(async () => { document.dispatchEvent(buildKeyEvent('w', { ctrlKey: true })) })
 
-    // Must notify parent with null so it can clear codingFileViewer
+    // Must notify parent with null so it can clear fileViewer
     expect(onFileSelect).toHaveBeenCalledTimes(1)
     expect(onFileSelect).toHaveBeenCalledWith(null)
   })

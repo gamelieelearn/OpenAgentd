@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import { FileLightbox } from './FileLightbox'
 import { Check, Copy, Download, ExternalLink, FileText, Loader2, Plus } from 'lucide-react'
 import { codingWorkspaceFileUrl } from '@/api/client'
-import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
+import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { cn } from '@/lib/utils'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { formatBytes } from '@/utils/format'
@@ -459,7 +459,7 @@ function BinaryPreview({ workspace, file }: { workspace: string; file: Workspace
         <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key)">
           <ExternalLink size={12} /> Open in new tab
         </a>
-        <button type="button" onClick={() => void downloadCodingWorkspaceFile(workspace, file)} className="flex items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)">
+        <button type="button" onClick={() => void downloadWorkspaceFile(workspace, file)} className="flex items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)">
           <Download size={12} /> Download
         </button>
       </div>

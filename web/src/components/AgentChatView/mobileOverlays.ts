@@ -15,7 +15,7 @@
 export type MobileOverlay =
   | 'sidebar'
   | 'actions'
-  | 'coding-panel'
+  | 'workspace-panel'
   | 'todos'
   | 'files'
   | 'scheduler'
@@ -23,7 +23,7 @@ export type MobileOverlay =
   | 'palette'
 
 /** The three overlays owned by the edge-swipe drawer controller. */
-const DRAWER_OVERLAYS: MobileOverlay[] = ['sidebar', 'actions', 'coding-panel']
+const DRAWER_OVERLAYS: MobileOverlay[] = ['sidebar', 'actions', 'workspace-panel']
 
 const ALL_OVERLAYS: MobileOverlay[] = [
   ...DRAWER_OVERLAYS,

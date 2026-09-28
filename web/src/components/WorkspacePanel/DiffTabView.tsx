@@ -13,7 +13,7 @@ import { ExternalLink } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { DiffPreview } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
-import { WORKSPACE_DIFF_STALE_MS, codingWorkspaceDiffQueryOptions } from '@/queries/workspace-git'
+import { WORKSPACE_DIFF_STALE_MS, workspaceDiffQueryOptions } from '@/queries/workspace-git'
 import { collectChangedFiles, collectDiffSections } from './diff-helpers'
 import { DOCK_ACTION_BUTTON_CLASS } from './dock-tab-styles'
 import { ChangeCounts } from './ChangeCounts'
@@ -25,7 +25,7 @@ export interface DiffTabViewProps {
 }
 
 export function DiffTabView({ workspace, path, onOpenFile }: DiffTabViewProps) {
-  const diff = useQuery({ ...codingWorkspaceDiffQueryOptions(workspace), staleTime: WORKSPACE_DIFF_STALE_MS })
+  const diff = useQuery({ ...workspaceDiffQueryOptions(workspace), staleTime: WORKSPACE_DIFF_STALE_MS })
   const changed = useMemo(
     () => collectChangedFiles(diff.data).find((file) => file.path === path) ?? null,
     [diff.data, path],

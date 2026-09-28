@@ -37,7 +37,7 @@ function makeArgs(overrides: Partial<Parameters<typeof useAgentCommands>[0]> = {
     toggleTasks: noop,
     toggleScheduler: noop,
     handleWorkspaceFiles: noop,
-    handleCodingSidebarToggle: noop,
+    handleSidebarToggle: noop,
     handleOpenTerminal: noop,
     handleNewSession: noop,
     handleFindInTranscript: noop,

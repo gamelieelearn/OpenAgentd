@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
-import { loadLastCodingWorkspace } from '@/utils/workspace'
+import { loadLastWorkspace } from '@/utils/workspace'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -30,7 +30,7 @@ import {
 } from '@/components/Sidebar.sessions'
 import {
   confirmWorkspaceRemoval,
-  selectCodingWorkspace,
+  openWorkspaceSession,
 } from '@/components/Sidebar.workspace'
 import {
   consumeTrustedWorkspace,
@@ -237,7 +237,7 @@ mock.module('@/queries/useSessionsQuery', () => ({
     isFetching: false,
     refetch: mock(() => {}),
   }),
-  useCodingWorkspaceSessionsQuery: () => ({
+  useWorkspaceSessionsQuery: () => ({
     data: { pages: [{ data: workspaceSessionsData }] },
     isLoading: false,
     hasNextPage: workspaceHasNextPage,
@@ -428,7 +428,7 @@ describe('Sidebar helpers', () => {
     applySessionDelete({
       deleteTarget: session,
       currentSessionId: 'session-1',
-      codingSessions: [
+      workspaceSessions: [
         session,
         {
           id: 'session-2',
@@ -455,7 +455,7 @@ describe('Sidebar helpers', () => {
     const selectionNavigate = mock(() => {})
     const queryClient = new QueryClient()
     let refreshCount = 0
-    const selected = await selectCodingWorkspace({
+    const selected = await openWorkspaceSession({
       path: '/repo/project',
       requestedCreate: false,
       currentSessionId: undefined,
@@ -487,7 +487,7 @@ describe('Sidebar helpers', () => {
       agentNames: ['lead'],
       agentStreams: { lead: createDefaultAgentStream() },
     })
-    const skipped = await selectCodingWorkspace({
+    const skipped = await openWorkspaceSession({
       path: '/repo/project',
       requestedCreate: true,
       currentSessionId: 'session-1',
@@ -828,7 +828,7 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByText('Trust this workspace?')).toBeTruthy()
     expect(screen.getByText('/repo/project')).toBeTruthy()
     expect(navigate).not.toHaveBeenCalled()
-    expect(loadLastCodingWorkspace()).toBeNull()
+    expect(loadLastWorkspace()).toBeNull()
 
     await user.click(screen.getByRole('button', { name: /trust and open/i }))
 
@@ -844,7 +844,7 @@ describe('Sidebar workspace trust flow', () => {
       thinking_level: null,
       create: false,
     })
-    expect(loadLastCodingWorkspace()?.path).toBe('/repo/project')
+    expect(loadLastWorkspace()?.path).toBe('/repo/project')
   })
 
   it('uses the native desktop folder picker on Linux desktop too', async () => {
@@ -923,7 +923,7 @@ describe('Sidebar workspace trust flow', () => {
 
     expect(screen.getByText('Open workspace')).toBeTruthy()
     expect(navigate).not.toHaveBeenCalled()
-    expect(loadLastCodingWorkspace()).toBeNull()
+    expect(loadLastWorkspace()).toBeNull()
   })
 
   it('shows validation errors without showing the trust confirmation', async () => {
@@ -934,7 +934,7 @@ describe('Sidebar workspace trust flow', () => {
     expect(await screen.findByText('Workspace does not exist')).toBeTruthy()
     expect(screen.queryByText('Trust this workspace?')).toBeNull()
     expect(navigate).not.toHaveBeenCalled()
-    expect(loadLastCodingWorkspace()).toBeNull()
+    expect(loadLastWorkspace()).toBeNull()
   })
 
   it('keeps the server-local browser fallback outside desktop', async () => {
@@ -1829,7 +1829,7 @@ describe('Sidebar workspace trust flow', () => {
       params: { sessionId: 'session-2' },
       replace: true,
     })
-    expect(loadLastCodingWorkspace()?.path).toBe('/repo/project')
+    expect(loadLastWorkspace()?.path).toBe('/repo/project')
   })
 
   it('requires confirmation before deleting a coding session', async () => {

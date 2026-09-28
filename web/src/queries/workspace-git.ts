@@ -18,7 +18,7 @@ export const WORKSPACE_DIFF_STALE_MS = 5_000
 export const COMMIT_DIFF_STALE_MS = 30_000
 
 /** ``GET /agent/workspace/git-diff/view`` — whole working-tree diff. */
-export function codingWorkspaceDiffQueryOptions(workspace: string) {
+export function workspaceDiffQueryOptions(workspace: string) {
   return {
     queryKey: queryKeys.coding.diff(workspace),
     queryFn: ({ signal }: { signal: AbortSignal }): Promise<WorkspaceGitDiffResponse> =>
@@ -27,7 +27,7 @@ export function codingWorkspaceDiffQueryOptions(workspace: string) {
 }
 
 /** ``GET /agent/workspace/git/commit-diff`` — one commit's patch. */
-export function codingCommitDiffQueryOptions(workspace: string, sha: string) {
+export function commitDiffQueryOptions(workspace: string, sha: string) {
   return {
     queryKey: queryKeys.coding.commitDiff(workspace, sha),
     queryFn: ({ signal }: { signal: AbortSignal }): Promise<WorkspaceCommitDiffResponse> =>

@@ -12,7 +12,7 @@ import { queryKeys } from '@/queries'
 import { useSessionsQuery } from '@/queries/useSessionsQuery'
 import { useToastStore } from '@/stores/useToastStore'
 import { applySessionSelection } from '../Sidebar.sessions'
-import { selectCodingWorkspace } from '../Sidebar.workspace'
+import { openWorkspaceSession } from '../Sidebar.workspace'
 import type { Command } from '../CommandPalette'
 import { buildSwitchCommands } from './paletteSwitchCommands'
 
@@ -44,7 +44,7 @@ export function usePaletteSwitchCommands({
     {
       openSession: (session) => applySessionSelection({ session, workspacePath: session.workspace ?? '', navigate }),
       openWorkspace: (path) => {
-        selectCodingWorkspace({
+        openWorkspaceSession({
           path,
           requestedCreate: false,
           currentSessionId: sessionId ?? undefined,

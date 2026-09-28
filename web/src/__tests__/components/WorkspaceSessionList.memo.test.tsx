@@ -25,7 +25,7 @@ const listResult = {
 }
 let rowRenders = 0
 mock.module('@/queries/useSessionsQuery', () => ({
-  useCodingWorkspaceSessionsQuery: () => listResult,
+  useWorkspaceSessionsQuery: () => listResult,
   useSessionSubagentsQuery: () => {
     rowRenders += 1
     return { data: undefined }

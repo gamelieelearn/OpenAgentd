@@ -4,9 +4,9 @@ import { resolveSession, setCodingWorkspaceVisibility } from '@/api/client'
 import { queryKeys } from '@/queries'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { saveLastCodingWorkspace } from '@/utils/workspace'
+import { saveLastWorkspace } from '@/utils/workspace'
 
-export async function selectCodingWorkspace(options: {
+export async function openWorkspaceSession(options: {
   path: string
   requestedCreate: boolean
   currentSessionId?: string
@@ -24,7 +24,7 @@ export async function selectCodingWorkspace(options: {
   )
   if (options.requestedCreate && !create) return { skipped: true }
 
-  saveLastCodingWorkspace(options.path)
+  saveLastWorkspace(options.path)
   state.beginResolvedSession(null, {
     workspace: options.path,
     model: state.sessionModel,

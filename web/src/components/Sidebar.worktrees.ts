@@ -3,7 +3,7 @@ import type { WorktreeInfo } from '@/api/types'
 import { removeWorktree, resolveSession } from '@/api/client'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { saveLastCodingWorkspace } from '@/utils/workspace'
+import { saveLastWorkspace } from '@/utils/workspace'
 import { isTransientNetworkError } from '@/utils/errors'
 import { worktreeNameSlug } from './Sidebar/utils'
 
@@ -75,7 +75,7 @@ export async function submitWorktreeSession(options: {
   })
   const path = session.workspace
   if (!path) throw new Error('Worktree session did not return a workspace')
-  saveLastCodingWorkspace(path)
+  saveLastWorkspace(path)
   const nextState = useAgentStore.getState()
   nextState.beginResolvedSession(session.id, {
     workspace: path,
@@ -105,7 +105,7 @@ export async function recoverCreatedWorktreeAfterTransientError(options: {
   const items = await options.loadWorktreesForSource(options.worktreeTarget)
   const created = items.find((item) => item.name === expectedName)
   if (!created) return null
-  saveLastCodingWorkspace(created.directory)
+  saveLastWorkspace(created.directory)
   await options.refreshWorkspaceTree()
   options.navigate({ to: '/' })
   options.onMobileClose?.()
