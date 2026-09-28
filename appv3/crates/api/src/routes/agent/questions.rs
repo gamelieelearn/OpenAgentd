@@ -1,4 +1,4 @@
-//! `questions.py`, `todos.py`, `permissions.py`.
+//! `questions.py`, `todos.py`, `permissions.py`, and the v3 session plan.
 
 use super::helpers::get_or_start;
 use crate::error::{loc, verr, ApiError, ApiResult};
@@ -21,6 +21,7 @@ pub fn router() -> Router<AppState> {
         .route("/{session_id}/question/{question_id}/answer", post(answer))
         .route("/{session_id}/question/{question_id}/dismiss", post(dismiss))
         .route("/sessions/{session_id}/todos", get(todos))
+        .route("/sessions/{session_id}/plan", get(get_plan).delete(delete_plan))
         .route("/{session_id}/permissions", get(list_permissions))
         .route("/{session_id}/permissions/{request_id}/reply", post(reply_permission))
 }
@@ -207,6 +208,24 @@ async fn todos(AxPath(sid): AxPath<String>) -> ApiResult<Response> {
         Some(out)
     };
     Ok(json(json!({"todos": parsed().unwrap_or_default()})))
+}
+
+/// The saved Plan-mode plan (`appv3_agent::plan`); v2 has no such route.
+async fn get_plan(AxPath(sid): AxPath<String>) -> ApiResult<Response> {
+    if py_uuid(&sid).is_none() {
+        return Err(ApiError::bad_request("Invalid session id."));
+    }
+    let dir = appv3_tools::denied::session_artifacts_dir(Some(&sid));
+    let plan = appv3_agent::plan::load(&dir).map(|(content, updated)| json!({"content": content, "updated_at": updated.to_rfc3339()}));
+    Ok(json(json!({"plan": plan})))
+}
+
+async fn delete_plan(AxPath(sid): AxPath<String>) -> ApiResult<Response> {
+    if py_uuid(&sid).is_none() {
+        return Err(ApiError::bad_request("Invalid session id."));
+    }
+    let deleted = appv3_agent::plan::clear(&appv3_tools::denied::session_artifacts_dir(Some(&sid)))?;
+    Ok(json(json!({"deleted": deleted})))
 }
 
 /// The v2 route sees the process-default `AutoAllowPermissionService`

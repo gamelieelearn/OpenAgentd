@@ -192,6 +192,25 @@ async fn http_api_end_to_end() {
     assert_eq!(v["status"], "accepted");
     let sid = v["session_id"].as_str().unwrap().to_string();
 
+    // ── session plan (v3 only) ───────────────────────────────────────────
+    let plan_uri = format!("/api/agent/sessions/{sid}/plan");
+    let (st, v) = c.json("GET", &plan_uri, None).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"plan": null})));
+    let plan_dir = root.path().join("data").join("sessions").join(&sid);
+    std::fs::create_dir_all(&plan_dir).unwrap();
+    std::fs::write(plan_dir.join("plan.md"), "## Summary\nShip it.\n").unwrap();
+    let (st, v) = c.json("GET", &plan_uri, None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(v["plan"]["content"], "## Summary\nShip it.");
+    assert!(v["plan"]["updated_at"].is_string(), "{v}");
+    let (st, v) = c.json("DELETE", &plan_uri, None).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"deleted": true})));
+    assert!(!plan_dir.join("plan.md").exists());
+    let (st, v) = c.json("DELETE", &plan_uri, None).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"deleted": false})));
+    let (st, _) = c.json("GET", "/api/agent/sessions/not-a-uuid/plan", None).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+
     let req = Request::get(format!("/api/agent/{sid}/stream")).body(Body::empty()).unwrap();
     let (st, h, raw) = tokio::time::timeout(std::time::Duration::from_secs(20), c.send(req)).await.expect("stream ends");
     assert_eq!(st, StatusCode::OK);

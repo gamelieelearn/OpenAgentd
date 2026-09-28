@@ -474,6 +474,15 @@ explicitly.
   `agent/tests/thinking_duration.rs`). It is an extra key in the existing
   JSON column, not a schema change. v2 never writes it, and the web client
   shows "Thought" without a duration when it is absent.
+- **Session plan** (`agent/src/plan.rs`): a lead Plan-mode turn that ends
+  with a closed `<proposed_plan>` saves its body as
+  `<data_dir>/sessions/<sid>/plan.md`, and compaction inserts a pinned,
+  hidden `note` row (`extra.session_plan`) restating it before the summary
+  (tested in `agent/tests/plan_capture.rs` and the summarization hook).
+  `GET`/`DELETE /api/agent/sessions/{id}/plan` read and clear the file. The
+  `mode_plan`/`mode_code` notes mention the plan. v2 has none of this; it
+  ignores the file and the extra key, and the web client treats the v2 404
+  as "no plan".
 - **Transport retries** (`agent/src/retry.rs`, `agent/src/streaming.rs`):
   a dropped connection, DNS failure or timeout retries on a flat, jittered
   3–5 s interval. The turn's model call retries without limit until the
