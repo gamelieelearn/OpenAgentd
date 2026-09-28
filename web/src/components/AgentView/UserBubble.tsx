@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, memo } from 'react'
 import { Check, ChevronDown, ChevronUp, Copy, History, Pencil } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { MarkdownBlock } from '@/utils/markdown'
 
 import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from '../FileLightbox'
 import { FileTypeIcon } from '../FileTypeIcon'
@@ -258,7 +258,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
               isSubagentLongReport && !reportExpanded && "max-h-36 overflow-hidden",
             )}
           >
-            <LazyMarkdownBlock content={content} />
+            <MarkdownBlock content={content} />
             {isSubagentLongReport && !reportExpanded && (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-(--bg-card) via-(--bg-card)/80 to-transparent" />
             )}

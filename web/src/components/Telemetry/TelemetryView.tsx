@@ -1,5 +1,5 @@
 /**
- * Body of the telemetry overlay (lazy chunk): the overview, or one turn's
+ * Body of the telemetry overlay: the overview, or one turn's
  * trace when ``traceId`` is set. All view state lives in useTelemetryStore
  * so deep links and the palette can open any of it.
  *

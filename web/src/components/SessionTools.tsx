@@ -15,7 +15,7 @@ import { ChevronDown, Plug, Wrench } from 'lucide-react'
 import type { AgentInfo } from '@/api/types'
 import { SearchBar } from '@/components/ui/search-bar'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { MarkdownBlock } from '@/utils/markdown'
 
 const TOOL_SEARCH_THRESHOLD = 8
 
@@ -93,7 +93,7 @@ function ToolRow({ name, description }: { name: string; description: string }) {
             className="overflow-hidden"
           >
             <div className="tool-desc border-t border-(--color-border) px-3 py-2">
-              <LazyMarkdownBlock content={description.trim()} />
+              <MarkdownBlock content={description.trim()} />
             </div>
           </motion.div>
         )}

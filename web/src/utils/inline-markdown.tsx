@@ -1,7 +1,7 @@
 /**
  * Inline-only markdown for short, model-authored strings.
  *
- * Deliberately its own module rather than a call to ``LazyMarkdownBlock``:
+ * Deliberately its own module rather than a call to ``MarkdownBlock``:
  *
  * - **Block markup is wrong here.** That renderer emits an ``oa-prose``
  *   wrapper and ``<p>`` elements, which break a compact card's layout.

@@ -19,7 +19,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
 import { useHotkeys } from '@tanstack/react-hotkeys'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
-import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { MarkdownBlock } from '@/utils/markdown'
 import { ChevronDown, ChevronUp, Clock } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
@@ -364,14 +364,14 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       if (sleepPrefix !== null) {
         return (
           <div>
-            {sleepPrefix && <LazyMarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
+            {sleepPrefix && <MarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
             <p className="text-xs text-(--color-text-subtle) italic">— idle —</p>
           </div>
         )
       }
       return (
         <div>
-          <LazyMarkdownBlock content={block.content} sessionId={sessionId} isStreaming={isStreaming} />
+          <MarkdownBlock content={block.content} sessionId={sessionId} isStreaming={isStreaming} />
         </div>
       )
     }

@@ -16,7 +16,7 @@
  * divider re-renders on every delta, so the user sees the summary
  * being written in real time.
  */
-import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { MarkdownBlock } from '@/utils/markdown'
 
 interface CompactionDividerProps {
   state: 'compacting' | 'compacted'
@@ -27,7 +27,7 @@ interface CompactionDividerProps {
   sessionId?: string
   /** Whether the summary is still being streamed in via SSE deltas.
    *  Defaults to ``true`` when ``state === 'compacting'`` so that
-   *  ``LazyMarkdownBlock`` activates the smooth-stream hook and renders
+   *  ``MarkdownBlock`` activates the smooth-stream hook and renders
    *  each incoming chunk as it arrives. Pass ``false`` explicitly to
    *  suppress animation (e.g. during cold-replay where the content is
    *  already complete). */
@@ -71,7 +71,7 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
         // as a regular assistant text block, just dimmed via --color-text-2
         // to signal it is a derived/system artefact rather than a fresh reply.
         <div className="text-sm text-(--color-text-2)">
-          <LazyMarkdownBlock content={content} sessionId={sessionId} isStreaming={effectiveIsStreaming} />
+          <MarkdownBlock content={content} sessionId={sessionId} isStreaming={effectiveIsStreaming} />
         </div>
       )}
     </div>

@@ -5,7 +5,7 @@ import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownl
 import { openExternalUrl } from '@/lib/open-external'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { MarkdownBlock } from '@/utils/markdown'
 import { getPlatform } from '@/hooks/use-platform'
 import { cn } from '@/lib/utils'
 
@@ -415,7 +415,7 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
             </div>
           </DialogHeader>
           <div className="max-h-[24rem] overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 text-(--color-text)">
-            <LazyMarkdownBlock
+            <MarkdownBlock
               content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes...'}${error ? `\n\nCould not load GitHub release notes: ${error}` : ''}`}
             />
           </div>

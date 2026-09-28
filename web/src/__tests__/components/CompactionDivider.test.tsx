@@ -6,7 +6,7 @@
  *  - Animated ellipsis present only while compacting
  *  - Summary body rendered when non-empty and state != error
  *  - Summary body hidden when empty, whitespace-only, or error
- *  - ``isStreaming`` forwarded to ``LazyMarkdownBlock`` so that streaming
+ *  - ``isStreaming`` forwarded to ``MarkdownBlock`` so that streaming
  *    content actually displays during the compacting phase (regression for
  *    the bug where summarization streaming content did not show properly)
  */
@@ -18,17 +18,17 @@ import { CompactionDivider } from '@/components/CompactionDivider'
 afterEach(cleanup)
 
 // ---------------------------------------------------------------------------
-// Mock LazyMarkdownBlock so we can:
-//   1. avoid Suspense / lazy-import complexity in unit tests
+// Mock MarkdownBlock so we can:
+//   1. keep the full Markdown pipeline out of unit tests
 //   2. assert which props are forwarded (especially isStreaming)
 // ---------------------------------------------------------------------------
 
-let lastLazyProps: Record<string, unknown> = {}
+let lastMarkdownProps: Record<string, unknown> = {}
 
-mock.module('@/utils/LazyMarkdownBlock', () => ({
-  LazyMarkdownBlock: (props: Record<string, unknown>) => {
-    lastLazyProps = props
-    return <div data-testid="lazy-markdown">{String(props.content ?? '')}</div>
+mock.module('@/utils/markdown', () => ({
+  MarkdownBlock: (props: Record<string, unknown>) => {
+    lastMarkdownProps = props
+    return <div data-testid="markdown">{String(props.content ?? '')}</div>
   },
 }))
 
@@ -82,45 +82,45 @@ describe('CompactionDivider — animated ellipsis', () => {
 describe('CompactionDivider — summary body', () => {
   it('renders the summary body when non-empty and state is compacted', () => {
     render(<CompactionDivider state="compacted" summary="Context was summarised here." />)
-    expect(screen.getByTestId('lazy-markdown')).toBeTruthy()
+    expect(screen.getByTestId('markdown')).toBeTruthy()
     expect(screen.getByText('Context was summarised here.')).toBeTruthy()
   })
 
   it('renders the summary body while compacting (streaming phase)', () => {
     render(<CompactionDivider state="compacting" summary="Partial summary so far…" />)
-    expect(screen.getByTestId('lazy-markdown')).toBeTruthy()
+    expect(screen.getByTestId('markdown')).toBeTruthy()
     expect(screen.getByText('Partial summary so far…')).toBeTruthy()
   })
 
   it('hides the summary body when summary is empty string', () => {
     render(<CompactionDivider state="compacted" summary="" />)
-    expect(screen.queryByTestId('lazy-markdown')).toBeNull()
+    expect(screen.queryByTestId('markdown')).toBeNull()
   })
 
   it('hides the summary body when summary is whitespace only', () => {
     render(<CompactionDivider state="compacted" summary="   " />)
-    expect(screen.queryByTestId('lazy-markdown')).toBeNull()
+    expect(screen.queryByTestId('markdown')).toBeNull()
   })
 
   it('hides the summary body when summary is undefined', () => {
     render(<CompactionDivider state="compacted" />)
-    expect(screen.queryByTestId('lazy-markdown')).toBeNull()
+    expect(screen.queryByTestId('markdown')).toBeNull()
   })
 
   it('hides the summary body on error even when summary is non-empty', () => {
     render(<CompactionDivider state="compacted" error summary="Should not appear" />)
-    expect(screen.queryByTestId('lazy-markdown')).toBeNull()
+    expect(screen.queryByTestId('markdown')).toBeNull()
   })
 
   it('trims leading/trailing whitespace from summary before rendering', () => {
     render(<CompactionDivider state="compacted" summary="  trimmed content  " />)
     // The mock renders props.content — it must receive the trimmed value
-    expect(screen.getByTestId('lazy-markdown').textContent).toBe('trimmed content')
+    expect(screen.getByTestId('markdown').textContent).toBe('trimmed content')
   })
 })
 
 // ---------------------------------------------------------------------------
-// Regression: isStreaming must be forwarded to LazyMarkdownBlock so that
+// Regression: isStreaming must be forwarded to MarkdownBlock so that
 // the smooth-stream hook activates during the compacting phase and the
 // summary content actually renders as it arrives via SSE deltas.
 // ---------------------------------------------------------------------------
@@ -131,50 +131,50 @@ describe('CompactionDivider — isStreaming forwarding (regression)', () => {
     // stream hook never activated and streaming content did not render live.
     // Now CompactionDivider defaults to state === 'compacting' when the prop
     // is absent.
-    lastLazyProps = {}
+    lastMarkdownProps = {}
     render(<CompactionDivider state="compacting" summary="Streaming text" />)
-    expect(screen.getByTestId('lazy-markdown')).toBeTruthy()
-    expect(lastLazyProps.isStreaming).toBe(true)
+    expect(screen.getByTestId('markdown')).toBeTruthy()
+    expect(lastMarkdownProps.isStreaming).toBe(true)
   })
 
   it('defaults isStreaming=false when state is compacted and isStreaming prop is omitted', () => {
-    lastLazyProps = {}
+    lastMarkdownProps = {}
     render(<CompactionDivider state="compacted" summary="Final summary" />)
-    expect(screen.getByTestId('lazy-markdown')).toBeTruthy()
-    expect(lastLazyProps.isStreaming).toBe(false)
+    expect(screen.getByTestId('markdown')).toBeTruthy()
+    expect(lastMarkdownProps.isStreaming).toBe(false)
   })
 
   it('respects an explicit isStreaming=false override even when state is compacting', () => {
     // Cold-replay scenario: content already complete but block still shows as compacting.
-    lastLazyProps = {}
+    lastMarkdownProps = {}
     render(<CompactionDivider state="compacting" summary="Already done" isStreaming={false} />)
-    expect(lastLazyProps.isStreaming).toBe(false)
+    expect(lastMarkdownProps.isStreaming).toBe(false)
   })
 
   it('respects an explicit isStreaming=true override even when state is compacted', () => {
-    lastLazyProps = {}
+    lastMarkdownProps = {}
     render(<CompactionDivider state="compacted" summary="Still streaming" isStreaming={true} />)
-    expect(lastLazyProps.isStreaming).toBe(true)
+    expect(lastMarkdownProps.isStreaming).toBe(true)
   })
 
-  it('does not render LazyMarkdownBlock at all on error (no isStreaming concern)', () => {
-    lastLazyProps = {}
+  it('does not render MarkdownBlock at all on error (no isStreaming concern)', () => {
+    lastMarkdownProps = {}
     render(<CompactionDivider state="compacting" error summary="Irrelevant" />)
-    expect(screen.queryByTestId('lazy-markdown')).toBeNull()
-    // lastLazyProps untouched — LazyMarkdownBlock was never called
-    expect(Object.keys(lastLazyProps)).toHaveLength(0)
+    expect(screen.queryByTestId('markdown')).toBeNull()
+    // lastMarkdownProps untouched — MarkdownBlock was never called
+    expect(Object.keys(lastMarkdownProps)).toHaveLength(0)
   })
 
-  it('forwards the sessionId to LazyMarkdownBlock', () => {
-    lastLazyProps = {}
+  it('forwards the sessionId to MarkdownBlock', () => {
+    lastMarkdownProps = {}
     render(<CompactionDivider state="compacted" summary="Some text" sessionId="sess-abc" />)
-    expect(lastLazyProps.sessionId).toBe('sess-abc')
+    expect(lastMarkdownProps.sessionId).toBe('sess-abc')
   })
 
-  it('passes untrimmed summary to LazyMarkdownBlock during active streaming to preserve smooth typewriter animation', () => {
-    lastLazyProps = {}
+  it('passes untrimmed summary to MarkdownBlock during active streaming to preserve smooth typewriter animation', () => {
+    lastMarkdownProps = {}
     render(<CompactionDivider state="compacting" summary="Streaming text with trailing space " isStreaming={true} />)
-    expect(lastLazyProps.content).toBe('Streaming text with trailing space ')
-    expect(lastLazyProps.isStreaming).toBe(true)
+    expect(lastMarkdownProps.content).toBe('Streaming text with trailing space ')
+    expect(lastMarkdownProps.isStreaming).toBe(true)
   })
 })

@@ -23,7 +23,7 @@ import { ICON_SIZE } from '@/components/settings/tokens'
 import { Button } from '@/components/ui/button'
 import { checkForUpdates, downloadUpdate, fetchReleaseNotes, installUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
-import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { MarkdownBlock } from '@/utils/markdown'
 import { useHealthQuery } from '@/queries'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { cn } from '@/lib/utils'
@@ -169,7 +169,7 @@ function UpdateSettingsCard() {
               </div>
             </div>
             <div className="max-h-[24rem] overflow-y-auto px-4 py-3 text-(--color-text)">
-              <LazyMarkdownBlock content={`${releaseNotes?.body ?? status.notes ?? 'Loading release notes...'}${releaseNotesError ? `\n\nCould not load GitHub release notes: ${releaseNotesError}` : ''}`} />
+              <MarkdownBlock content={`${releaseNotes?.body ?? status.notes ?? 'Loading release notes...'}${releaseNotesError ? `\n\nCould not load GitHub release notes: ${releaseNotesError}` : ''}`} />
             </div>
           </div>
         </div>

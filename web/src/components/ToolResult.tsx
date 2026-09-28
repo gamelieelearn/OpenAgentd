@@ -17,7 +17,7 @@ import type { LucideIcon } from 'lucide-react'
 import { useContext, type ReactNode } from 'react'
 import { FileRefButton, FileRefContext, LinkifiedText } from './FileRefLink'
 import type { FileRef } from '@/utils/file-refs'
-import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { MarkdownBlock } from '@/utils/markdown'
 import { truncateForDisplay } from './ToolCall/displayText'
 
 // ---------------------------------------------------------------------------
@@ -913,7 +913,7 @@ function TeamToolResult({ result }: { result: string }) {
 
       {output && (
         <div className="max-h-[calc(16*1.55em)] overflow-y-auto rounded bg-(--bg-card)/40 p-2 border border-(--color-border-subtle) text-xs">
-          <LazyMarkdownBlock content={truncateForDisplay(output)} />
+          <MarkdownBlock content={truncateForDisplay(output)} />
         </div>
       )}
 
@@ -936,7 +936,7 @@ function TeamToolResult({ result }: { result: string }) {
                 </div>
                 {resOutput && (
                   <div className="max-h-48 overflow-y-auto text-xs">
-                    <LazyMarkdownBlock content={truncateForDisplay(resOutput)} />
+                    <MarkdownBlock content={truncateForDisplay(resOutput)} />
                   </div>
                 )}
               </div>

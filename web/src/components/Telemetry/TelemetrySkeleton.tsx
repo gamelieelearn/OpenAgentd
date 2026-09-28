@@ -1,6 +1,6 @@
 /**
  * Loading shape for the telemetry overview: filter bar, stat strip, chart,
- * and a breakdown row, so the lazy chunk and first fetch do not shift layout.
+ * and a breakdown row, so the first fetch does not shift layout.
  */
 import { Skeleton } from '@/components/ui/skeleton'
 
