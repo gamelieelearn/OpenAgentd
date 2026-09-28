@@ -150,7 +150,7 @@ function Dropdown({
   const { mounted: panelMounted, closing: panelClosing } = useDeferredUnmount(open, 100)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0, flipsUp: false })
   const uid = useId()
   /** Index of the keyboard's active option, or -1 for none. */
   const [highlight, setHighlight] = useState(-1)
@@ -169,6 +169,7 @@ function Dropdown({
       top: flipsUp ? rect.top - panelH - 4 + window.scrollY : rect.bottom + 4 + window.scrollY,
       left: left + window.scrollX,
       width: rect.width,
+      flipsUp,
     })
   }, [align])
 
@@ -368,7 +369,15 @@ function Dropdown({
             'min-w-[var(--dropdown-anchor-width)]',
             'rounded-sm border border-(--color-border) bg-(--bg-card)',
             'p-1 shadow-md outline-none',
-            'duration-100',
+            // Only the entrance animation gets a duration: ``duration-*`` also
+            // sets ``transition-duration``, and with ``transition-property``
+            // at its ``all`` default the panel slid from where it first mounted
+            // to where it measured itself into place.
+            'animation-duration-100',
+            // Grow out of the corner at the trigger.
+            pos.flipsUp
+              ? (align === 'end' ? 'origin-bottom-right' : 'origin-bottom-left')
+              : (align === 'end' ? 'origin-top-right' : 'origin-top-left'),
             panelClosing
               ? 'animate-out fade-out-0 zoom-out-95'
               : 'animate-in fade-in-0 zoom-in-95',

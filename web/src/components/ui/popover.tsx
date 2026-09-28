@@ -232,7 +232,10 @@ function PopoverContent({
         'flex w-[min(18rem,calc(100vw-1rem))] flex-col gap-2.5',
         'rounded-sm border border-(--color-border) bg-(--bg-card)',
         'p-3.5 text-xs text-(--color-text) shadow-md outline-none',
-        'duration-100',
+        // Animation only: ``duration-*`` would also transition ``top``/``left``
+        // (``transition-property`` defaults to ``all``) as the content moves
+        // from where it mounts, hidden, to where it measures itself into place.
+        'animation-duration-100',
         closing
           ? 'animate-out fade-out-0 zoom-out-95'
           : 'animate-in fade-in-0',
