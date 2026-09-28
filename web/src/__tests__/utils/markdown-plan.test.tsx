@@ -1,8 +1,8 @@
 import { describe, it, expect, mock } from 'bun:test'
-import { render } from '@testing-library/react'
+import { act, fireEvent, render } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MarkdownBlock } from '@/utils/markdown'
-import { normalizeProposedPlanTags, PlanActionContext } from '@/utils/markdown-plan'
+import { formatPlanQuote, normalizeProposedPlanTags, PlanActionContext } from '@/utils/markdown-plan'
 
 describe('normalizeProposedPlanTags', () => {
   it('returns untouched content if no proposed_plan tag exists', () => {
@@ -226,5 +226,74 @@ Done.
     expect(planDivider).not.toBeNull()
     expect(planDivider?.textContent).toContain('Final Step')
     expect(planDivider?.textContent).toContain('Done.')
+  })
+})
+
+describe('formatPlanQuote', () => {
+  it('quotes every line and leaves a blank line for the comment', () => {
+    expect(formatPlanQuote('  Step A\r\n\r\n\r\nStep B  ')).toBe('> Step A\n>\n> Step B\n\n')
+  })
+
+  it('caps long selections', () => {
+    const quote = formatPlanQuote('x'.repeat(2000))
+    expect(quote.length).toBeLessThan(820)
+    expect(quote.trimEnd().endsWith('…')).toBe(true)
+  })
+})
+
+describe('ProposedPlanCard comments', () => {
+  const content = `
+Before the plan.
+
+<proposed_plan>
+### Steps
+- Step A
+- Step B
+</proposed_plan>
+`
+
+  function select(node: Node) {
+    act(() => {
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      const selection = window.getSelection()!
+      selection.removeAllRanges()
+      selection.addRange(range)
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+  }
+
+  it('offers Comment for text selected in the plan and quotes it', () => {
+    const onComment = mock(() => {})
+    const { container, queryByRole, getByRole } = render(
+      <PlanActionContext.Provider value={{ onComment }}>
+        <MarkdownBlock content={content} />
+      </PlanActionContext.Provider>,
+    )
+    expect(queryByRole('button', { name: 'Comment on selection' })).toBeNull()
+
+    select(container.querySelector('[data-testid="proposed-plan-divider"] li')!)
+    act(() => {
+      fireEvent.click(getByRole('button', { name: 'Comment on selection' }))
+    })
+    expect(onComment).toHaveBeenCalledWith('Step A')
+    expect(queryByRole('button', { name: 'Comment on selection' })).toBeNull()
+  })
+
+  it('ignores selections outside the plan', () => {
+    const onComment = mock(() => {})
+    const { container, queryByRole } = render(
+      <PlanActionContext.Provider value={{ onComment }}>
+        <MarkdownBlock content={content} />
+      </PlanActionContext.Provider>,
+    )
+    select(container.querySelector('p')!)
+    expect(queryByRole('button', { name: 'Comment on selection' })).toBeNull()
+  })
+
+  it('offers no Comment without a handler', () => {
+    const { container, queryByRole } = render(<MarkdownBlock content={content} />)
+    select(container.querySelector('[data-testid="proposed-plan-divider"] li')!)
+    expect(queryByRole('button', { name: 'Comment on selection' })).toBeNull()
   })
 })

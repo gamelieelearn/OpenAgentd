@@ -165,6 +165,8 @@ export interface AssistantTurnProps {
   size?: 'compact' | 'roomy'
   /** Callback to switch to Code mode and start implementation of a proposed plan. */
   onStartImplementing?: () => void
+  /** Quote selected plan text into the composer; offered on finished turns. */
+  onCommentOnPlan?: (quote: string) => void
   /** True when interaction mode is actively transitioning to Code mode. */
   isSwitchingInteractionMode?: boolean
   /** Passed to the footer. */
@@ -189,6 +191,7 @@ export const AssistantTurn = memo(function AssistantTurn({
   renderBlock,
   size = 'compact',
   onStartImplementing,
+  onCommentOnPlan,
   isSwitchingInteractionMode = false,
   showModel,
   reader = false,
@@ -201,8 +204,9 @@ export const AssistantTurn = memo(function AssistantTurn({
     () => ({
       onStartImplementing: !turnIsOpen ? onStartImplementing : undefined,
       isSwitching: isSwitchingInteractionMode,
+      onComment: !turnIsOpen ? onCommentOnPlan : undefined,
     }),
-    [turnIsOpen, onStartImplementing, isSwitchingInteractionMode],
+    [turnIsOpen, onStartImplementing, isSwitchingInteractionMode, onCommentOnPlan],
   )
   const awaitsUser = useQuestionAwaitsUser()
   const segments = useMemo(() => (reader ? readerSegments(blocks, awaitsUser) : null), [reader, blocks, awaitsUser])

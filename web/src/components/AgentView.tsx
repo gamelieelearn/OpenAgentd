@@ -273,6 +273,8 @@ interface AgentViewProps {
   fileRefOpener?: FileRefOpener
   /** Callback to switch to Code mode and start implementation of a proposed plan. */
   onStartImplementing?: () => void
+  /** Quote selected plan text into the composer (lead sessions only). */
+  onCommentOnPlan?: (quote: string) => void
   /** Resend the latest prompt; offered under the latest finished answer. */
   onRetry?: () => void
   /** Pick another model; offered with Retry on the error a turn ended with. */
@@ -420,6 +422,7 @@ export function AgentView({
   onMentionFileOpen,
   fileRefOpener,
   onStartImplementing,
+  onCommentOnPlan,
   onRetry,
   onSwitchModel,
   isSwitchingInteractionMode = false,
@@ -962,6 +965,7 @@ export function AgentView({
                       totalBlocks={totalLen}
                       size="roomy"
                       onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
+                      onCommentOnPlan={onCommentOnPlan}
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
                      showModel={modelChangeStarts.has(item.startIndex)}
                      reader={readerTranscript}

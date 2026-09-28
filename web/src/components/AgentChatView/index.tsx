@@ -82,6 +82,7 @@ interface ActiveAgentViewProps {
   onMentionFileOpen?: (path: string) => void
   fileRefOpener?: FileRefOpener
   onStartImplementing?: () => void
+  onCommentOnPlan?: (quote: string) => void
   onRetry?: () => void
   onSwitchModel?: () => void
   isSwitchingInteractionMode?: boolean
@@ -100,6 +101,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
   onMentionFileOpen,
   fileRefOpener,
   onStartImplementing,
+  onCommentOnPlan,
   onRetry,
   onSwitchModel,
   isSwitchingInteractionMode,
@@ -135,6 +137,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
       fileRefOpener={fileRefOpener}
       emptyState={emptyState}
       onStartImplementing={onStartImplementing}
+      onCommentOnPlan={onCommentOnPlan}
       onRetry={onRetry}
       onSwitchModel={onSwitchModel}
       isSwitchingInteractionMode={isSwitchingInteractionMode}
@@ -394,6 +397,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleNewSession,
     handleDraftValueChange,
     handleAddFileComment,
+    handleAddPlanComment,
   } = useSessionBootstrap({
     sessionId,
     workspace,
@@ -657,6 +661,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               onMentionFileOpen={handleMentionFileOpen}
               fileRefOpener={fileRefOpener}
               onStartImplementing={handleStartImplementing}
+              onCommentOnPlan={parentSessionId ? undefined : handleAddPlanComment}
               onRetry={handleRetry}
               onSwitchModel={handleSwitchModel}
               isSwitchingInteractionMode={isSwitchingInteractionMode}
