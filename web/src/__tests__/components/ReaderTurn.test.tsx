@@ -5,12 +5,16 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { AssistantTurn } from '@/components/AssistantTurnFooter'
 import { FileRefContext, type FileRefOpener } from '@/components/FileRefLink'
+import { useAgentStore } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
 
 beforeEach(() => {
   Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.resolve() }, configurable: true, writable: true })
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  useAgentStore.setState({ sessionId: null, pendingQuestion: null, resolvedQuestions: {} })
+})
 
 const patchArgs = (...lines: string[]) => JSON.stringify({ patch_text: ['*** Begin Patch', ...lines, '*** End Patch'].join('\n') })
 
@@ -93,5 +97,39 @@ describe('AssistantTurn — reader mode', () => {
 
     renderTurn([{ id: 'think', type: 'thinking', content: 'Hmm.' }, { id: 'answer', type: 'text', content: 'Hi.' }])
     expect(screen.getByRole('button', { name: /^Thought/ })).toBeTruthy()
+  })
+})
+
+describe('AssistantTurn — reader mode, ask_user', () => {
+  const PLACEHOLDER = 'Waiting for the user to answer. Do not continue until their reply arrives.'
+  const ask = (toolResult: string): ContentBlock => ({
+    id: 'ask', type: 'tool', content: '', toolName: 'ask_user', toolCallId: 'call-q', toolArgs: '{"questions":[]}', toolDone: true, toolResult,
+  })
+  const read = finished[1]
+  const shell: ContentBlock = { id: 'run', type: 'tool', content: '', toolName: 'shell', toolArgs: '{"command":"ls"}', toolDone: true, toolResult: 'ok' }
+  const answer = finished[4]
+
+  it('folds an answered question with the rest of the work', () => {
+    renderTurn([read, ask('User has answered your questions: "Which?"="A". Continue with the user\'s answers in mind.'), shell, answer])
+
+    expect(rendered('ask')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /1 read/ }))
+    expect(rendered('ask')).not.toBeNull()
+  })
+
+  it('folds a question answered here before the transcript catches up', () => {
+    useAgentStore.setState({ sessionId: 's-1', pendingQuestion: null, resolvedQuestions: { 'call-q': { questions: [], answers: [['A']], reason: null } } })
+
+    renderTurn([read, ask(PLACEHOLDER), shell, answer])
+
+    expect(rendered('ask')).toBeNull()
+  })
+
+  it('keeps the open question out of the fold', () => {
+    useAgentStore.setState({ sessionId: 's-1', pendingQuestion: { id: 'q-1', sessionId: 's-1', toolCallId: 'call-q', questions: [] }, resolvedQuestions: {} })
+
+    renderTurn([read, ask(PLACEHOLDER)])
+
+    expect(rendered('ask')).not.toBeNull()
   })
 })

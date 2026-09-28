@@ -25,6 +25,8 @@ const storeState = {
   _loadingOlder: false,
   _pendingMessages: [] as unknown[],
   loadOlderMessages: mockLoadOlderMessages,
+  pendingQuestion: null,
+  resolvedQuestions: {},
 }
 
 mock.module("@/stores/useAgentStore", () => ({

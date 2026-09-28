@@ -468,8 +468,9 @@ run from the terminal (the native Rust binary since v3.0.0).
     counted; while the turn runs it names the current step ("Working ·
     Shell: Run web tests"). Opening it shows the steps as in the detailed
     transcript, and transcript find opens it when it matches inside.
-  - Questions, interactive MCP apps, errors, and compaction dividers stay
-    in place.
+  - A question waiting on the user, interactive MCP apps, errors, and
+    compaction dividers stay in place; once answered or closed, a question
+    folds in with the rest of the work.
   - A finished turn lists the files its `patch` calls changed, with line
     counts; each opens in the review dock.
 - **The composer while the agent works** `[v3.0.0]`:

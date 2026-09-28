@@ -21,17 +21,49 @@
  * request. The frame is fluid — it takes the transcript's width at every
  * breakpoint rather than switching to a separate mobile presentation.
  */
-import type { ReactNode } from 'react'
+import { useCallback, type ReactNode } from 'react'
 import { MessageCircleQuestion } from 'lucide-react'
 
 import { useAgentStore } from '@/stores/useAgentStore'
-import type { ResolvedQuestion } from '@/stores/useAgentStore'
-import type { QuestionItem } from '@/api/types'
+import type { AgentStoreState, ResolvedQuestion } from '@/stores/useAgentStore'
+import type { ContentBlock, QuestionItem } from '@/api/types'
 import { QuestionCard } from './QuestionCard'
 import { useQuestionResolver } from './useQuestionResolver'
 
 /** Mirrors ``question_service.PLACEHOLDER_RESULT``. */
 const PLACEHOLDER_PREFIX = 'Waiting for the user to answer'
+
+/** The ``tool_call_id`` of the question open in this session, or ``null``. */
+function selectOpenQuestionCallId(state: AgentStoreState): string | null {
+  const question = state.pendingQuestion
+  return question !== null && state.sessionId !== null && question.sessionId === state.sessionId
+    ? question.toolCallId
+    : null
+}
+
+/** A persisted result that closes nothing yet: none, or the server's placeholder. */
+function isUnsettledResult(result: string | undefined): boolean {
+  const text = (result ?? '').trim()
+  return !text || text.startsWith(PLACEHOLDER_PREFIX)
+}
+
+/**
+ * Whether an ``ask_user`` block's card still reads "Needs your input": it holds
+ * the open question, or nothing has closed it yet. Reader mode keeps such a
+ * card out of the work fold and folds it once it settles.
+ */
+export function useQuestionAwaitsUser(): (block: ContentBlock) => boolean {
+  const openCallId = useAgentStore(selectOpenQuestionCallId)
+  const resolvedQuestions = useAgentStore((state) => state.resolvedQuestions)
+  return useCallback(
+    (block: ContentBlock) => {
+      const id = block.toolCallId
+      if (openCallId !== null && id === openCallId) return true
+      return !(id && resolvedQuestions[id]) && isUnsettledResult(block.toolResult)
+    },
+    [openCallId, resolvedQuestions],
+  )
+}
 
 /**
  * Recovers the reason from the persisted sentence, which is all a cold load
@@ -80,16 +112,12 @@ export function AskUser({
   result?: string
 }) {
   const pendingQuestion = useAgentStore((state) => state.pendingQuestion)
-  const sessionId = useAgentStore((state) => state.sessionId)
+  const openCallId = useAgentStore(selectOpenQuestionCallId)
   const resolved = useAgentStore((state) =>
     toolCallId ? state.resolvedQuestions[toolCallId] : undefined,
   )
 
-  const isOpen =
-    pendingQuestion !== null &&
-    sessionId !== null &&
-    pendingQuestion.sessionId === sessionId &&
-    pendingQuestion.toolCallId === toolCallId
+  const isOpen = pendingQuestion !== null && openCallId === toolCallId
   const { submitting, error, answer, dismiss } = useQuestionResolver(isOpen ? pendingQuestion : null)
 
   if (!isOpen) {
@@ -164,14 +192,14 @@ function describeResolution(
     }
   }
 
-  const text = (result ?? '').trim()
   // A cold load mid-wait: the row still holds the placeholder, and the store had
   // no open question for this call (another device answered, or this client
   // reconnected after the fact). Still unanswered, so the label stays "waiting".
-  if (!text || text.startsWith(PLACEHOLDER_PREFIX)) {
+  if (isUnsettledResult(result)) {
     return { waiting: true, body: <QuestionNote text="Waiting for an answer…" /> }
   }
 
+  const text = (result ?? '').trim()
   const pairs = [...text.matchAll(/"([^"]*)"="([^"]*)"/g)].map(([, question, answer]) => ({
     question,
     answer,

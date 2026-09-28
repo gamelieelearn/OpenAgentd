@@ -8,8 +8,9 @@
  * another call moves into the fold, as it turns out to be narration.
  *
  * A few blocks never fold, because the user must see or act on them:
- * ``ask_user`` cards, interactive MCP apps, provider errors and notices, and
- * compaction dividers.
+ * interactive MCP apps, provider errors and notices, and compaction dividers.
+ * An ``ask_user`` card stays out only while it waits on the user; once
+ * answered or closed it is one more step of the work.
  */
 import type { ContentBlock } from '@/api/types'
 
@@ -22,22 +23,26 @@ export type ReaderSegment =
   | { kind: 'work'; indices: number[] }
   | { kind: 'block'; index: number }
 
-function isWork(block: ContentBlock): boolean {
+/** Whether an ``ask_user`` block's card still reads "Needs your input". */
+export type AwaitsUser = (block: ContentBlock) => boolean
+
+function isWork(block: ContentBlock, awaitsUser: AwaitsUser): boolean {
   if (block.type === 'thinking') return true
-  if (block.type !== 'tool' || block.toolName === 'ask_user') return false
+  if (block.type !== 'tool') return false
+  if (block.toolName === 'ask_user') return !awaitsUser(block)
   return !(block.extra as { mcp_app?: unknown } | null | undefined)?.mcp_app
 }
 
 /** A turn's blocks as reader mode shows them: one work fold, the rest in order. */
-export function readerSegments(blocks: readonly ContentBlock[]): ReaderSegment[] {
+export function readerSegments(blocks: readonly ContentBlock[], awaitsUser: AwaitsUser): ReaderSegment[] {
   let lastWork = -1
-  for (let i = blocks.length - 1; i >= 0 && lastWork < 0; i--) if (isWork(blocks[i])) lastWork = i
+  for (let i = blocks.length - 1; i >= 0 && lastWork < 0; i--) if (isWork(blocks[i], awaitsUser)) lastWork = i
   if (lastWork < 0) return blocks.map((_, index) => ({ kind: 'block', index }))
 
   const work: number[] = []
   const segments: ReaderSegment[] = []
   blocks.forEach((block, index) => {
-    if (!isWork(block) && !(block.type === 'text' && index < lastWork)) {
+    if (!isWork(block, awaitsUser) && !(block.type === 'text' && index < lastWork)) {
       segments.push({ kind: 'block', index })
       return
     }

@@ -11,12 +11,14 @@ function tool(id: string, toolName: string, args: unknown = {}, extra: Partial<C
 function patch(id: string, lines: string[], extra: Partial<ContentBlock> = {}): ContentBlock {
   return tool(id, 'patch', { patch_text: ['*** Begin Patch', ...lines, '*** End Patch'].join('\n') }, extra)
 }
+/** No ``ask_user`` card is waiting on the user. */
+const settled = () => false
 
 describe('readerSegments — what folds behind the work summary', () => {
   it('folds thinking, tool calls, and narration; the text after the last work is the answer', () => {
     const blocks = [thinking('t1'), tool('r1', 'read'), text('n1', 'Let me check the tests.'), tool('s1', 'shell'), text('a1'), text('a2')]
 
-    expect(readerSegments(blocks)).toEqual([
+    expect(readerSegments(blocks, settled)).toEqual([
       { kind: 'work', indices: [0, 1, 2, 3] },
       { kind: 'block', index: 4 },
       { kind: 'block', index: 5 },
@@ -24,7 +26,7 @@ describe('readerSegments — what folds behind the work summary', () => {
   })
 
   it('leaves a turn with no work as it is', () => {
-    expect(readerSegments([text('a1'), text('a2')])).toEqual([{ kind: 'block', index: 0 }, { kind: 'block', index: 1 }])
+    expect(readerSegments([text('a1'), text('a2')], settled)).toEqual([{ kind: 'block', index: 0 }, { kind: 'block', index: 1 }])
   })
 
   it('keeps what the user must see or act on out of the fold, in order', () => {
@@ -38,7 +40,7 @@ describe('readerSegments — what folds behind the work summary', () => {
       { id: 'e1', type: 'provider_status', content: 'boom', extra: { status: 'error' } } as ContentBlock,
     ]
 
-    expect(readerSegments(blocks)).toEqual([
+    expect(readerSegments(blocks, (block) => block.id === 'q1')).toEqual([
       { kind: 'block', index: 0 },
       { kind: 'work', indices: [1, 4] },
       { kind: 'block', index: 2 },
@@ -48,8 +50,14 @@ describe('readerSegments — what folds behind the work summary', () => {
     ])
   })
 
+  it('folds a question once it no longer waits on the user', () => {
+    const blocks = [tool('r1', 'read'), text('n1', 'One thing first.'), tool('q1', 'ask_user'), tool('s1', 'shell'), text('a1')]
+
+    expect(readerSegments(blocks, settled)).toEqual([{ kind: 'work', indices: [0, 1, 2, 3] }, { kind: 'block', index: 4 }])
+  })
+
   it('folds text a live turn has since followed with more work', () => {
-    expect(readerSegments([text('n1'), tool('s1', 'shell', {}, { toolDone: false })])).toEqual([{ kind: 'work', indices: [0, 1] }])
+    expect(readerSegments([text('n1'), tool('s1', 'shell', {}, { toolDone: false })], settled)).toEqual([{ kind: 'work', indices: [0, 1] }])
   })
 })
 

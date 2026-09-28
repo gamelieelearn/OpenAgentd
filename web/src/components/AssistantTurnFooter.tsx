@@ -14,6 +14,7 @@ import { formatTime, formatFullDateTime, lastTurnText, shortModelName } from '@/
 import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
 import { PlanActionContext } from '@/utils/markdown-plan'
 import type { ContentBlock } from '@/api/types'
+import { useQuestionAwaitsUser } from '@/components/AskUser'
 import { TurnChangedFiles, WorkSummaryRow } from '@/components/ReaderTurn'
 import { readerSegments, turnChangedFiles } from '@/components/ReaderTurn/segments'
 
@@ -203,7 +204,8 @@ export const AssistantTurn = memo(function AssistantTurn({
     }),
     [turnIsOpen, onStartImplementing, isSwitchingInteractionMode],
   )
-  const segments = useMemo(() => (reader ? readerSegments(blocks) : null), [reader, blocks])
+  const awaitsUser = useQuestionAwaitsUser()
+  const segments = useMemo(() => (reader ? readerSegments(blocks, awaitsUser) : null), [reader, blocks, awaitsUser])
   const changedFiles = useMemo(() => (reader && !turnIsOpen ? turnChangedFiles(blocks) : []), [reader, turnIsOpen, blocks])
 
   const renderAt = (j: number) => {
