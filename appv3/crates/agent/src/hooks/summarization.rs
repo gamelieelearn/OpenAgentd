@@ -2,6 +2,7 @@
 
 use super::{AgentState, Hook, ModelRequest, RunContext};
 use crate::events::{self, UsageFrame};
+use crate::plan;
 use crate::prompts;
 use crate::stream_store::store;
 use crate::streaming::{merge_consecutive_user_messages, RetryItem, RetryStream};
@@ -9,6 +10,7 @@ use appv3_providers::{registry::get_model_limits, usage::usage_to_dict, ChatMess
 use async_trait::async_trait;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use super::otel::set_usage_span_attributes;
@@ -57,6 +59,8 @@ pub struct SummarizationHook {
     support_interrupt: bool,
     at_last_summary: Mutex<usize>,
     pending: Mutex<bool>,
+    /// Session artifacts directory holding `plan.md`; see [`crate::plan`].
+    plan_dir: Option<PathBuf>,
 }
 
 /// `build_summarization_hook`.
@@ -84,6 +88,7 @@ pub fn build_summarization_hook(provider: Arc<dyn LlmProvider>, mode: &str, mode
         support_interrupt,
         at_last_summary: Mutex::new(0),
         pending: Mutex::new(false),
+        plan_dir: None,
     })
 }
 
@@ -208,7 +213,38 @@ fn active_mode_note(messages: &[ChatMessage], pool: &[usize]) -> Option<usize> {
     pool.iter().rev().copied().find(|&i| extra_truthy(&messages[i], "interaction_mode_prompt"))
 }
 
+/// Restate the session plan in a pinned note just before the summary at
+/// `summary_at`, so the summary (latest progress and request) is still read
+/// last and the plan survives the reload window like the mode note does.
+///
+/// Skipped while the plan is still in context: an earlier plan note or the
+/// plan message itself left in the kept window. Earlier notes that were
+/// summarised are already excluded and unpinned like any other message.
+fn carry_plan(state: &mut AgentState, summary_at: usize, note: Option<String>, saved: Option<&str>) -> bool {
+    let Some(note) = note else {
+        return false;
+    };
+    let in_context = state.messages.iter().filter(|m| !m.meta().exclude_from_context).any(|m| {
+        extra_truthy(m, plan::SESSION_PLAN_KEY)
+            || (matches!(m, ChatMessage::Assistant(_)) && saved.is_some() && m.content().and_then(plan::extract_proposed_plan).as_deref() == saved)
+    });
+    if in_context {
+        return false;
+    }
+    let mut extra = Map::new();
+    extra.insert("hidden_from_user".into(), json!(true));
+    extra.insert(plan::SESSION_PLAN_KEY.into(), json!(true));
+    let meta = MessageMeta { kind: "note".into(), pinned: true, extra: Some(extra), ..Default::default() };
+    state.messages.insert(summary_at, ChatMessage::User { content: Some(note), parts: None, meta });
+    true
+}
+
 impl SummarizationHook {
+    pub fn with_plan_dir(mut self, dir: PathBuf) -> Self {
+        self.plan_dir = Some(dir);
+        self
+    }
+
     fn at_user_turn_boundary(state: &AgentState) -> bool {
         let visible = state.messages_for_llm();
         let Some(last) = visible.last() else {
@@ -398,13 +434,22 @@ impl SummarizationHook {
         }
         let has_prior = to_summarise.iter().any(|&i| state.messages[i].meta().is_summary());
         let request_line = prompts::s(if has_prior { "summary_merge" } else { "summary_request" });
+        let saved_plan = self.plan_dir.as_deref().and_then(plan::load).map(|(text, _)| text);
+        let plan_note = self.plan_dir.as_deref().and_then(plan::carry_note);
         let mut prefix = Vec::new();
         if !system_prompt.is_empty() {
             prefix.push(ChatMessage::system(system_prompt));
         }
-        prefix.extend(to_summarise.iter().map(|&i| state.messages[i].clone()));
+        // An earlier plan note is restated fresh from the file below; the
+        // summariser would only copy it into the summary.
+        prefix.extend(to_summarise.iter().filter(|&&i| !extra_truthy(&state.messages[i], plan::SESSION_PLAN_KEY)).map(|&i| state.messages[i].clone()));
         let mut msgs = merge_consecutive_user_messages(prefix);
-        msgs.push(ChatMessage::user(format!("{request_line}\n\n{}", self.summary_prompt)));
+        let mut request = format!("{request_line}\n\n{}", self.summary_prompt);
+        if plan_note.is_some() {
+            request.push_str("\n\n");
+            request.push_str(plan::PLAN_SUMMARY_RULE);
+        }
+        msgs.push(ChatMessage::user(request));
         span.set_attr("summarization.messages_to_summarise", to_summarise.len());
         span.set_attr("summarization.keep_last_assistants", self.keep_last);
         span.set_attr("summarization.has_prior_summary", has_prior);
@@ -462,9 +507,11 @@ impl SummarizationHook {
             meta.extra = Some(e);
         }
         state.messages.insert(first_kept, ChatMessage::User { content: Some(text.clone()), parts: None, meta });
+        let plan_carried = carry_plan(state, first_kept, plan_note, saved_plan.as_deref());
         *self.at_last_summary.lock().unwrap() = state.messages.len();
         span.set_attr("summarization.summary_length", text.chars().count());
         span.set_attr("summarization.kept", eligible.len() - to_summarise.len());
+        span.set_attr("summarization.plan_carried", plan_carried);
         span.set_ok();
 
         if let Some(sid) = &ctx.session_id {
@@ -539,8 +586,12 @@ mod tests {
     use appv3_providers::mock::MockProvider;
 
     fn hook(keep_last: usize) -> SummarizationHook {
+        hook_with(Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")])), keep_last)
+    }
+
+    fn hook_with(provider: Arc<MockProvider>, keep_last: usize) -> SummarizationHook {
         SummarizationHook {
-            provider: Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")])),
+            provider,
             model_id: None,
             threshold: 1,
             keep_last,
@@ -550,6 +601,7 @@ mod tests {
             support_interrupt: true,
             at_last_summary: Mutex::new(0),
             pending: Mutex::new(false),
+            plan_dir: None,
         }
     }
 
@@ -568,9 +620,16 @@ mod tests {
     }
 
     async fn compact(keep_last: usize, messages: Vec<ChatMessage>) -> AgentState {
-        let ctx = RunContext { session_id: None, run_id: "run".into(), agent_name: "test".into(), workspace: None };
+        compact_with(&hook(keep_last), messages).await
+    }
+
+    fn ctx() -> RunContext {
+        RunContext { session_id: None, run_id: "run".into(), agent_name: "test".into(), workspace: None }
+    }
+
+    async fn compact_with(hook: &SummarizationHook, messages: Vec<ChatMessage>) -> AgentState {
         let mut state = AgentState::new(messages, String::new());
-        assert!(hook(keep_last).summarise(&ctx, &mut state, "sys").await, "compaction did not run");
+        assert!(hook.summarise(&ctx(), &mut state, "sys").await, "compaction did not run");
         state
     }
 
@@ -656,5 +715,100 @@ mod tests {
         let (note_idx, _) = find(&state, &note_text);
         assert!(summary < kept_reply && kept_reply < note_idx, "summary {summary}, kept reply {kept_reply}, note {note_idx}");
         assert!(visible(&state, &note_text));
+    }
+
+    const PLAN: &str = "## Steps\n1. Build\n2. Test";
+
+    fn plan_reply() -> ChatMessage {
+        ChatMessage::assistant(format!("Findings.\n<proposed_plan>\n{PLAN}\n</proposed_plan>"))
+    }
+
+    fn plan_notes(state: &AgentState) -> Vec<(usize, &ChatMessage)> {
+        state.messages.iter().enumerate().filter(|(_, m)| extra_truthy(m, plan::SESSION_PLAN_KEY)).collect()
+    }
+
+    fn summariser_request(provider: &MockProvider, call: usize) -> Vec<ChatMessage> {
+        provider.calls.lock().unwrap()[call].0.clone()
+    }
+
+    /// Coding workspaces keep no assistant message verbatim, so without the
+    /// note the approved plan only survived as summary bullets and the agent
+    /// drifted off it after compaction.
+    #[tokio::test]
+    async fn compaction_restates_the_saved_plan_before_the_summary() {
+        let dir = tempfile::tempdir().unwrap();
+        plan::save(dir.path(), PLAN).unwrap();
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")]));
+        let hook = hook_with(provider.clone(), 0).with_plan_dir(dir.path().to_path_buf());
+        let state = compact_with(
+            &hook,
+            vec![mode_note("code"), ChatMessage::user("Plan it."), plan_reply(), ChatMessage::user("Approve, proceed."), ChatMessage::assistant("Implementing step 1.")],
+        )
+        .await;
+
+        let notes = plan_notes(&state);
+        assert_eq!(notes.len(), 1);
+        let (idx, note) = notes[0];
+        assert!(note.meta().pinned && !note.meta().exclude_from_context);
+        assert_eq!(note.meta().kind, "note");
+        assert_eq!(idx + 1, summary_index(&state), "the summary is read after the plan");
+        assert!(note.content().unwrap().contains(&format!("\n{PLAN}\n</session_plan>")));
+        assert!(!state.messages_for_llm().iter().any(|m| m.content().is_some_and(|c| c.contains("<proposed_plan>"))));
+
+        let request = summariser_request(&provider, 0);
+        assert!(request.last().unwrap().content().unwrap().ends_with(plan::PLAN_SUMMARY_RULE));
+    }
+
+    #[tokio::test]
+    async fn a_later_compaction_replaces_the_plan_note() {
+        let dir = tempfile::tempdir().unwrap();
+        plan::save(dir.path(), PLAN).unwrap();
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary one."), MockProvider::text("Summary two.")]));
+        let hook = hook_with(provider.clone(), 0).with_plan_dir(dir.path().to_path_buf());
+        let mut state = compact_with(&hook, vec![ChatMessage::user("Plan it."), plan_reply()]).await;
+        plan::save(dir.path(), "## Steps\n1. Build\n2. Test\n3. Ship").unwrap();
+        state.messages.push(ChatMessage::user("Add a ship step."));
+        state.messages.push(ChatMessage::assistant("Added."));
+        assert!(hook.summarise(&ctx(), &mut state, "sys").await);
+
+        let notes = plan_notes(&state);
+        assert_eq!(notes.len(), 2);
+        let (old, new) = (notes[0].1, notes[1].1);
+        assert!(old.meta().exclude_from_context && !old.meta().pinned);
+        assert!(new.meta().pinned && !new.meta().exclude_from_context);
+        assert!(new.content().unwrap().contains("3. Ship"));
+        let request = summariser_request(&provider, 1);
+        assert!(!request.iter().any(|m| m.content().is_some_and(|c| c.contains("<session_plan path="))), "old note reached the summariser");
+    }
+
+    #[tokio::test]
+    async fn no_plan_file_adds_no_note_or_rule() {
+        let dir = tempfile::tempdir().unwrap();
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")]));
+        let hook = hook_with(provider.clone(), 0).with_plan_dir(dir.path().to_path_buf());
+        let state = compact_with(&hook, vec![ChatMessage::user("Hi."), ChatMessage::assistant("Hello.")]).await;
+        assert!(plan_notes(&state).is_empty());
+        assert!(!summariser_request(&provider, 0).last().unwrap().content().unwrap().contains(plan::PLAN_SUMMARY_RULE));
+    }
+
+    #[tokio::test]
+    async fn plan_message_still_in_the_kept_window_is_not_duplicated() {
+        let dir = tempfile::tempdir().unwrap();
+        plan::save(dir.path(), PLAN).unwrap();
+        let hook = hook(2).with_plan_dir(dir.path().to_path_buf());
+        let state = compact_with(
+            &hook,
+            vec![
+                ChatMessage::user("first"),
+                ChatMessage::assistant("first reply"),
+                ChatMessage::user("Plan it."),
+                plan_reply(),
+                ChatMessage::user("ok"),
+                ChatMessage::assistant("ok reply"),
+            ],
+        )
+        .await;
+        assert!(plan_notes(&state).is_empty());
+        assert!(state.messages_for_llm().iter().any(|m| m.content().is_some_and(|c| c.contains("<proposed_plan>"))));
     }
 }
