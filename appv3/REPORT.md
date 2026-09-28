@@ -241,6 +241,11 @@ explicitly.
     it keeps first skill loads. v2 summarises it away, and because a Plan
     note is only re-added when none exists in history, a compacted Plan
     session loses its Plan instructions until the next mode switch.
+  - *Subagent modes* (`agent/src/interaction_mode.rs`). Each task sent to a
+    member aligns the member with its lead's current Plan/Code mode and
+    appends the same transition note. v2 copies the lead's mode only when
+    the member is spawned, so a member spawned in Code mode keeps edit
+    access after the lead enters Plan mode, where `delegate` is allowed.
 - **Version:** the workspace `Cargo.toml` version follows `app/version.txt`
   (from 3.0.0 on; `scripts/bump_version.sh` sets it and
   `scripts/check_version_consistency.sh` enforces it). It shows in

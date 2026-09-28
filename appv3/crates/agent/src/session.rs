@@ -435,7 +435,7 @@ impl AgentSession {
 
         crate::history::heal_orphaned_tool_calls(&self.pool, &sid).await?;
         if let Some(row) = db::get_session(&self.pool, &sid).await? {
-            let mode = interaction_mode::normalize(&row.interaction_mode);
+            let mode = interaction_mode::follow_lead(&self.pool, &sid, &row).await?;
             if mode == "plan" {
                 interaction_mode::ensure_prompt(&self.pool, &sid, mode).await?;
             }
