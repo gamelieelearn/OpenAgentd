@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { CalendarClock, MoreHorizontal, Search, TerminalSquare, X } from 'lucide-react'
+import { CalendarClock, ChevronDown, ChevronUp, Command, FileSearch, MoreHorizontal, Search, TerminalSquare, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { workspaceLabel } from '@/utils/workspace'
@@ -14,7 +14,15 @@ export interface MobileChatActionsProps {
   onScheduler: () => void
   onFindInTranscript?: () => void
   onOpenTerminal?: () => void
+  /** Touch stand-ins for ⌥⌘↑ / ⌥⌘↓; disabled when omitted. */
+  onPreviousPrompt?: () => void
+  onNextPrompt?: () => void
+  /** Quick Open over the workspace files; disabled when omitted. */
+  onQuickOpen?: () => void
+  onCommandPalette?: () => void
 }
+
+const ROW_CLASS = 'flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key) active:bg-(--bg-key)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 disabled:opacity-45'
 
 export function MobileChatActions({
   open,
@@ -24,6 +32,10 @@ export function MobileChatActions({
   onScheduler,
   onFindInTranscript,
   onOpenTerminal,
+  onPreviousPrompt,
+  onNextPrompt,
+  onQuickOpen,
+  onCommandPalette,
 }: MobileChatActionsProps) {
   // Reduced motion: fade the drawer instead of sliding it 280px. `x` is still
   // applied while a drag is in flight — the drawer has to track the finger,
@@ -103,24 +115,41 @@ export function MobileChatActions({
                   type="button"
                   onClick={onFindInTranscript}
                   disabled={!onFindInTranscript}
-                  className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key) active:bg-(--bg-key)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 disabled:opacity-45"
+                  className={ROW_CLASS}
                 >
                   <Search size={15} aria-hidden="true" />
                   <span className="flex-1">Find in transcript</span>
                 </button>
-                <button type="button" onClick={onScheduler} className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key) active:bg-(--bg-key)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40">
+                <button type="button" onClick={onPreviousPrompt} disabled={!onPreviousPrompt} className={ROW_CLASS}>
+                  <ChevronUp size={15} aria-hidden="true" />
+                  <span className="flex-1">Previous prompt</span>
+                </button>
+                <button type="button" onClick={onNextPrompt} disabled={!onNextPrompt} className={ROW_CLASS}>
+                  <ChevronDown size={15} aria-hidden="true" />
+                  <span className="flex-1">Next prompt</span>
+                </button>
+                <button type="button" onClick={onScheduler} className={ROW_CLASS}>
                   <CalendarClock size={15} aria-hidden="true" />
                   <span className="flex-1">Scheduler</span>
                 </button>
                 <div className="px-2 py-2 text-xs font-medium text-(--color-text-muted)">Workspace</div>
+                <button type="button" onClick={onQuickOpen} disabled={!onQuickOpen} className={ROW_CLASS}>
+                  <FileSearch size={15} aria-hidden="true" />
+                  <span className="flex-1">Search files</span>
+                </button>
                 <button
                   type="button"
                   onClick={onOpenTerminal}
                   disabled={!onOpenTerminal}
-                  className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key) active:bg-(--bg-key)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 disabled:opacity-45"
+                  className={ROW_CLASS}
                 >
                   <TerminalSquare size={15} aria-hidden="true" />
                   <span className="flex-1">Open terminal</span>
+                </button>
+                <div className="px-2 py-2 text-xs font-medium text-(--color-text-muted)">App</div>
+                <button type="button" onClick={onCommandPalette} disabled={!onCommandPalette} className={ROW_CLASS}>
+                  <Command size={15} aria-hidden="true" />
+                  <span className="flex-1">Command palette</span>
                 </button>
               </div>
             </motion.aside>

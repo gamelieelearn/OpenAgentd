@@ -578,6 +578,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         onOpenTerminal={workspace && !isChatWorkspace ? handleOpenTerminal : undefined}
         onCloseMobileActionsMenu={closeMobileActionsMenu}
         onOpenPalette={handleTogglePalette}
+        onQuickOpen={workspace ? handleToggleQuickOpen : undefined}
         onRenameSession={handleRenameSession}
       />
 

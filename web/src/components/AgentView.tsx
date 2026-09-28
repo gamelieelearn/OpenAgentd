@@ -820,6 +820,16 @@ export function AgentView({
     else requestOlderPrompt()
   }, [cancelPromptJump, requestOlderPrompt, scrollPromptIntoView, scrollRef, scrollToBottom])
 
+  // The mobile chat actions step prompts without a keyboard.
+  const jumpToPromptRef = useRef(jumpToPrompt)
+  useEffect(() => {
+    jumpToPromptRef.current = jumpToPrompt
+  })
+  useEffect(() => {
+    useTranscriptFollowStore.setState({ jumpToPrompt: (direction) => jumpToPromptRef.current(direction) })
+    return () => useTranscriptFollowStore.setState({ jumpToPrompt: null })
+  }, [])
+
   const { os } = getPlatform()
   useHotkeys(
     [

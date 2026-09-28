@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
 import { CommandCenterButton } from './CommandCenterButton'
@@ -42,8 +43,10 @@ interface AgentChatHeaderProps {
   onFindInTranscript: () => void
   onOpenTerminal?: () => void
   onCloseMobileActionsMenu: () => void
-  /** Desktop command-center entry; hidden when omitted. */
+  /** Desktop command center and the mobile drawer's palette row; hidden or disabled when omitted. */
   onOpenPalette?: () => void
+  /** Mobile drawer's file search; disabled when omitted (no workspace). */
+  onQuickOpen?: () => void
   /** Rename a session; makes the desktop title editable in place. */
   onRenameSession?: (sessionId: string, title: string) => void
 }
@@ -73,9 +76,13 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   onOpenTerminal,
   onCloseMobileActionsMenu,
   onOpenPalette,
+  onQuickOpen,
   onRenameSession,
 }: AgentChatHeaderProps) {
   const { os } = usePlatform()
+  // Published by the mounted transcript; a new chat has no prompts to step.
+  const publishedJumpToPrompt = useTranscriptFollowStore((s) => s.jumpToPrompt)
+  const jumpToPrompt = sessionId ? publishedJumpToPrompt : null
   // Keyed by session so a switch mid-edit drops the field instead of carrying
   // the old title onto the new session.
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
@@ -230,6 +237,10 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               onScheduler={() => { onToggleScheduler(); onCloseMobileActionsMenu() }}
               onFindInTranscript={() => { onFindInTranscript(); onCloseMobileActionsMenu() }}
               onOpenTerminal={onOpenTerminal ? () => { onOpenTerminal(); onCloseMobileActionsMenu() } : undefined}
+              onPreviousPrompt={jumpToPrompt ? () => { jumpToPrompt(-1); onCloseMobileActionsMenu() } : undefined}
+              onNextPrompt={jumpToPrompt ? () => { jumpToPrompt(1); onCloseMobileActionsMenu() } : undefined}
+              onQuickOpen={onQuickOpen ? () => { onQuickOpen(); onCloseMobileActionsMenu() } : undefined}
+              onCommandPalette={onOpenPalette ? () => { onOpenPalette(); onCloseMobileActionsMenu() } : undefined}
             />
           </>
         ) : (

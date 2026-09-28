@@ -461,7 +461,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     Markdown.
   - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your
     prompts; `⌥⌘↑` reaches earlier prompts in one press, loading them when
-    they are not loaded yet.
+    they are not loaded yet. On mobile, Previous prompt and Next prompt in the
+    chat actions menu do the same.
   - `path:line` and `path:start-end` references (also `#L42-L58`) in replies
     and tool output open the file in the review dock with those lines
     selected. A bare name or partial path (`Button.tsx`,
@@ -567,6 +568,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   haptics, and legibility guards optimized for small screens `[v1.45.2]`;
   long-press rows get native impact haptics (`tauri-plugin-haptics`) and an
   iOS-style press-and-hold scale animation `[v1.47.0]`.
+  The chat actions menu also opens Search files (Quick Open) and the command
+  palette `[v3.0.0]`.
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
 - **Restored desktop window size** `[v1.52.0]` — desktop windows reopen at the

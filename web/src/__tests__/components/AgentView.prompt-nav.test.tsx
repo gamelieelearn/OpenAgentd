@@ -101,6 +101,20 @@ describe('AgentView — prompt navigation', () => {
     unmount()
     expect(useTranscriptFollowStore.getState().showPrompt).toBeNull()
   })
+
+  it('steps between prompts without a keyboard, for the mobile chat actions, while mounted', () => {
+    const { container, unmount } = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
+    const scrollTo = layOut(container, { u1: -900, u2: -300, u3: 500 })
+
+    act(() => useTranscriptFollowStore.getState().jumpToPrompt?.(-1))
+    expect(lastTop(scrollTo)).toBe(landing(-300))
+
+    act(() => useTranscriptFollowStore.getState().jumpToPrompt?.(1))
+    expect(lastTop(scrollTo)).toBe(landing(500))
+
+    unmount()
+    expect(useTranscriptFollowStore.getState().jumpToPrompt).toBeNull()
+  })
 })
 
 /**

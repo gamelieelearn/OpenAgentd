@@ -5,6 +5,7 @@ import '@testing-library/jest-dom'
 import userEvent from '@testing-library/user-event'
 
 import { AgentChatHeader } from '@/components/AgentChatView/AgentChatHeader'
+import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 
 function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>> = {}) {
   const props: ComponentProps<typeof AgentChatHeader> = {
@@ -112,6 +113,42 @@ describe('AgentChatHeader', () => {
     expect(onFindInTranscript).toHaveBeenCalledTimes(1)
     expect(onOpenTerminal).toHaveBeenCalledTimes(1)
     expect(onCloseMobileActionsMenu).toHaveBeenCalledTimes(2)
+  })
+
+  it('steps prompts, searches files, and opens the palette from the mobile drawer, then closes it', async () => {
+    const user = userEvent.setup()
+    const jumpToPrompt = mock((..._args: unknown[]) => {})
+    const onQuickOpen = mock(() => {})
+    const onOpenPalette = mock(() => {})
+    const onCloseMobileActionsMenu = mock(() => {})
+    useTranscriptFollowStore.setState({ jumpToPrompt })
+    try {
+      renderHeader({ showMobileActions: true, onQuickOpen, onOpenPalette, onCloseMobileActionsMenu })
+
+      await user.click(screen.getByRole('button', { name: 'Previous prompt' }))
+      await user.click(screen.getByRole('button', { name: 'Next prompt' }))
+      await user.click(screen.getByRole('button', { name: 'Search files' }))
+      await user.click(screen.getByRole('button', { name: 'Command palette' }))
+
+      expect(jumpToPrompt.mock.calls).toEqual([[-1], [1]])
+      expect(onQuickOpen).toHaveBeenCalledTimes(1)
+      expect(onOpenPalette).toHaveBeenCalledTimes(1)
+      expect(onCloseMobileActionsMenu).toHaveBeenCalledTimes(4)
+    } finally {
+      useTranscriptFollowStore.setState({ jumpToPrompt: null })
+    }
+  })
+
+  it('disables mobile prompt stepping in a chat with no session yet', () => {
+    useTranscriptFollowStore.setState({ jumpToPrompt: () => {} })
+    try {
+      renderHeader({ showMobileActions: true, sessionId: null })
+
+      expect(screen.getByRole('button', { name: 'Previous prompt' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Next prompt' })).toBeDisabled()
+    } finally {
+      useTranscriptFollowStore.setState({ jumpToPrompt: null })
+    }
   })
 
   it('labels the chat workspace "Chat" instead of its home-directory basename', () => {

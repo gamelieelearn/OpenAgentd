@@ -44,4 +44,49 @@ describe('MobileChatActions', () => {
 
     expect(screen.getByRole('button', { name: 'Open terminal' })).toBeDisabled()
   })
+
+  it('gives touch users prompt stepping, file search, and the command palette', () => {
+    const onPreviousPrompt = mock(() => {})
+    const onNextPrompt = mock(() => {})
+    const onQuickOpen = mock(() => {})
+    const onCommandPalette = mock(() => {})
+
+    render(
+      <MobileChatActions
+        open
+        onOpenChange={() => {}}
+        workspace="/repo/app"
+        onScheduler={() => {}}
+        onPreviousPrompt={onPreviousPrompt}
+        onNextPrompt={onNextPrompt}
+        onQuickOpen={onQuickOpen}
+        onCommandPalette={onCommandPalette}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous prompt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next prompt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Search files' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Command palette' }))
+
+    expect(onPreviousPrompt).toHaveBeenCalledTimes(1)
+    expect(onNextPrompt).toHaveBeenCalledTimes(1)
+    expect(onQuickOpen).toHaveBeenCalledTimes(1)
+    expect(onCommandPalette).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables prompt stepping and file search when there is nothing to step or search', () => {
+    render(
+      <MobileChatActions
+        open
+        onOpenChange={() => {}}
+        workspace={null}
+        onScheduler={() => {}}
+      />,
+    )
+
+    for (const name of ['Previous prompt', 'Next prompt', 'Search files', 'Command palette']) {
+      expect(screen.getByRole('button', { name })).toBeDisabled()
+    }
+  })
 })
