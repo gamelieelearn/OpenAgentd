@@ -834,7 +834,8 @@ agent against it.
   the workspaces, from every workspace and however old, each with its
   workspace name and a count. The list updates as questions are asked and
   answered, and a click opens the session. The same count badges the app icon
-  in the dock (macOS and Linux) and prefixes the browser tab title, e.g.
+  in the dock (macOS and Linux) and on iOS once notifications are allowed,
+  and prefixes the browser tab title, e.g.
   `(2) Fix updater restart`.
 - **Scheduled in the sidebar** `[v3.0.0]` — the bottom of the coding sidebar
   lists the next five enabled scheduled tasks, soonest first, each with its next
