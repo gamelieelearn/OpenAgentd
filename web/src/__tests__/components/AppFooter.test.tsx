@@ -44,15 +44,27 @@ mock.module('@/queries/useHealthQuery', () => ({
   }),
 }))
 
-function renderWithQueryClient(ui: React.ReactElement, spendUsd?: number) {
+let requested: string[] = []
+
+function renderWithQueryClient(ui: React.ReactElement, spendUsd?: number, gitStatus?: Record<string, unknown>) {
   const client = new QueryClient({
     defaultOptions: {
-      queries: { retry: false },
+      queries: { retry: false, staleTime: Infinity },
     },
   })
   if (spendUsd !== undefined) {
     client.setQueryData(queryKeys.observability.summary(1, { workspace: null, model: null, session: null }), {
       totals: { estimated_cost_usd: spendUsd },
+    })
+  }
+  if (gitStatus) {
+    client.setQueryData(queryKeys.coding.status('/path/to/project'), {
+      workspace: '/path/to/project',
+      name: 'project',
+      is_git_repo: true,
+      branch: 'main',
+      dirty: { staged: 1, unstaged: 2, untracked: 0 },
+      ...gitStatus,
     })
   }
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
@@ -66,8 +78,12 @@ describe('AppFooter', () => {
     mockPreloadTelemetry.mockClear()
     healthError = false
     backendExternal = false
-    // The spend summary stays pending unless a test seeds it.
-    globalThis.fetch = (() => new Promise(() => {})) as unknown as typeof fetch
+    requested = []
+    // Requests stay pending unless a test seeds the cache.
+    globalThis.fetch = ((input: unknown) => {
+      requested.push(String(input))
+      return new Promise(() => {})
+    }) as unknown as typeof fetch
   })
   afterEach(() => {
     globalThis.fetch = realFetch
@@ -98,6 +114,28 @@ describe('AppFooter', () => {
     healthError = true
     renderWithQueryClient(<AppFooter />)
     expect(screen.getByRole('button', { name: /Backend error\. Change backend connection/ })).toBeTruthy()
+  })
+
+  it('shows the git branch for a coding workspace', async () => {
+    renderWithQueryClient(<AppFooter workspace="/path/to/project" />, undefined, {})
+
+    expect(await screen.findByText('main')).toBeTruthy()
+  })
+
+  it('shows ahead/behind sync counts beside the branch', async () => {
+    renderWithQueryClient(<AppFooter workspace="/path/to/project" />, undefined, { commits_ahead: 2, commits_behind: 1, upstream: 'origin/main' })
+
+    expect(await screen.findByLabelText('2 commits to push')).toBeTruthy()
+    expect(screen.getByLabelText('1 commits to pull')).toBeTruthy()
+    expect(screen.getByText('*3')).toBeTruthy()
+  })
+
+  it('skips the git branch and its probe for the chat workspace', () => {
+    renderWithQueryClient(<AppFooter workspace="/Users/name" chatWorkspace />)
+
+    expect(screen.getByRole('status', { name: 'Application status' })).toBeTruthy()
+    expect(screen.queryByText('main')).toBeNull()
+    expect(requested.some((url) => url.includes('/workspace/status'))).toBe(false)
   })
 
   it('renders model name and thinking level when provided and triggers session settings', async () => {

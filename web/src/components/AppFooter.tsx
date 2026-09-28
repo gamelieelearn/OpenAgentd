@@ -2,8 +2,8 @@
  * AppFooter — full-width desktop status bar (VS Code / Zed convention).
  *
  * Left cluster is workspace-scoped, right cluster is session-scoped:
- *   • left:  backend health, only for an external or unhealthy backend (the
- *            git branch sits in the header)
+ *   • left:  backend health, only for an external or unhealthy backend · git
+ *            branch with ahead/behind + dirty count
  *   • right: active model (thinking level) · fast mode · 24h spend · settings
  *
  * The command palette entry lives in the header's command center, so the
@@ -12,10 +12,12 @@
  */
 import { memo } from 'react'
 import {
+  GitBranch,
   Settings,
   Sparkles,
   Zap,
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 
 import { HealthDot } from './HealthDot'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -28,17 +30,27 @@ import { openTelemetry } from '@/stores/useTelemetryStore'
 import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
 import { useObservabilitySummaryQuery } from '@/queries/useObservabilitySummaryQuery'
 import { formatSpend } from '@/utils/telemetryFormat'
+import { queryKeys } from '@/queries/keys'
+import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
 
 // The summary endpoint only refreshes on demand; poll so spend follows turns.
 const SPEND_REFRESH_MS = 60_000
 
 export interface AppFooterProps {
+  workspace?: string | null
+  /**
+   * True when ``workspace`` is the chat root (see ``useChatWorkspace``). Chat
+   * workspaces are not repositories, so the branch + dirty indicator is
+   * dropped and the git status probe is skipped.
+   */
+  chatWorkspace?: boolean
   sessionId?: string | null
   sessionModel?: string | null
   sessionThinkingLevel?: string | null
   sessionFastMode?: boolean
   onToggleSessionSettings?: () => void
+  onOpenGitChanges?: () => void
   className?: string
 }
 
@@ -52,11 +64,21 @@ function Divider() {
   return <div className="mx-0.5 h-3 w-px shrink-0 bg-(--color-border-subtle)" aria-hidden="true" />
 }
 
+function syncLabel(ahead: number | null | undefined, behind: number | null | undefined): string | null {
+  const parts: string[] = []
+  if (ahead) parts.push(`${ahead} to push`)
+  if (behind) parts.push(`${behind} to pull`)
+  return parts.length > 0 ? parts.join(', ') : null
+}
+
 export const AppFooter = memo(function AppFooter({
+  workspace,
+  chatWorkspace = false,
   sessionModel,
   sessionThinkingLevel,
   sessionFastMode,
   onToggleSessionSettings,
+  onOpenGitChanges,
   className,
 }: AppFooterProps) {
   const { os } = usePlatform()
@@ -67,6 +89,31 @@ export const AppFooter = memo(function AppFooter({
   const spend = useObservabilitySummaryQuery(1, {}, { refetchInterval: SPEND_REFRESH_MS }).data?.totals.estimated_cost_usd
   const spendLabel = spend === undefined ? null : formatSpend(spend)
 
+  const isCoding = Boolean(workspace) && !chatWorkspace
+  const statusQuery = useQuery({
+    queryKey: queryKeys.coding.status(workspace ?? ''),
+    queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace!, signal),
+    enabled: isCoding,
+    staleTime: 10_000,
+  })
+
+  const gitStatus = statusQuery.data
+  const isGit = gitStatus?.is_git_repo === true
+  const branch = gitStatus?.branch
+  const staged = gitStatus?.dirty?.staged ?? 0
+  const unstaged = gitStatus?.dirty?.unstaged ?? 0
+  const untracked = gitStatus?.dirty?.untracked ?? 0
+  const dirtyTotal = staged + unstaged + untracked
+  const ahead = gitStatus?.commits_ahead ?? null
+  const behind = gitStatus?.commits_behind ?? null
+  const sync = syncLabel(ahead, behind)
+
+  const branchTooltip = [
+    `Git branch: ${branch}`,
+    dirtyTotal > 0 ? `${dirtyTotal} changed files` : null,
+    sync,
+  ].filter(Boolean).join(' · ')
+
   return (
     <footer
       className={cn(
@@ -76,9 +123,35 @@ export const AppFooter = memo(function AppFooter({
       role="status"
       aria-label="Application status"
     >
-      {/* Left cluster — connection. */}
+      {/* Left cluster — workspace scope: connection, repository state. */}
       <div className="flex min-w-0 items-center gap-1 overflow-hidden">
         {showHealth && <HealthDot labeled />}
+
+        {isCoding && isGit && branch && (
+          <>
+            {showHealth && <Divider />}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={onOpenGitChanges}
+                    className={cn(ITEM, 'max-w-[240px] font-mono')}
+                  >
+                    <GitBranch size={11} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+                    <span className="truncate">{branch}</span>
+                    {ahead ? <span className="shrink-0" aria-label={`${ahead} commits to push`}>↑{ahead}</span> : null}
+                    {behind ? <span className="shrink-0" aria-label={`${behind} commits to pull`}>↓{behind}</span> : null}
+                    {dirtyTotal > 0 && (
+                      <span className="shrink-0 rounded-xs bg-(--accent-orange-soft) px-1 font-semibold text-(--accent-orange-text)">*{dirtyTotal}</span>
+                    )}
+                  </button>
+                }
+              />
+              <TooltipContent>{branchTooltip}</TooltipContent>
+            </Tooltip>
+          </>
+        )}
       </div>
 
       {/* Right cluster — session scope, then app utilities. */}

@@ -569,7 +569,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         onOpenPalette={handleTogglePalette}
         onRenameSession={handleRenameSession}
         onOpenActiveSessions={handleOpenActiveSessions}
-        onOpenGitChanges={handleWorkspaceFiles}
       />
 
       {/* Body row — sidebar (or coding rail) + main content column. On
@@ -802,11 +801,14 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
       </div>
 
       <AppFooter
+        workspace={workspace}
+        chatWorkspace={isChatWorkspace}
         sessionId={sessionIdState}
         sessionModel={sessionModel}
         sessionThinkingLevel={sessionThinkingLevel}
         sessionFastMode={storeState.sessionFastMode}
         onToggleSessionSettings={handleToggleAgentCapabilities}
+        onOpenGitChanges={workspace ? handleWorkspaceFiles : undefined}
       />
 
       <AgentChatPanels

@@ -728,12 +728,11 @@ agent against it.
 - **Desktop workbench layout** `[v3.0.0]` — the desktop coding view is split into
   a header with a command center (**Search or run a command**, `Ctrl/⌘+K`), the
   sidebar, the chat, the review dock and a status bar. The status bar shows
-  the session model, the last 24 hours of spend (a click opens Telemetry on
-  that range), and backend health only when the backend is external or
-  failing; scheduled tasks and the theme moved to the sidebar, the palette and
-  Settings. The header reads `repo ▸ branch ·
-  session title`; the branch shows commits to push/pull and uncommitted
-  changes, and a click opens the review dock. The sidebar opens expanded on windows at least 1280px
+  backend health only when the backend is external or failing, the branch with
+  commits to push/pull and uncommitted changes (a click opens the review dock),
+  the session model, and the last 24 hours of spend (a click opens Telemetry on
+  that range); scheduled tasks and the theme moved to the sidebar, the palette
+  and Settings. The sidebar opens expanded on windows at least 1280px
   wide and resizes between 220 and 440px. The dock takes a share of the chat
   area and always leaves the chat at least 400px; on narrower windows it opens
   over the chat instead. Both dividers resize by drag or keyboard (arrow keys,
