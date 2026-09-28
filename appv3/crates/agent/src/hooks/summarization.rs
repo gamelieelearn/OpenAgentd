@@ -197,6 +197,17 @@ fn skill_tool_pairs(messages: &[ChatMessage], pool: &[usize]) -> HashSet<usize> 
     expand_tool_pairs(messages, pool, ids)
 }
 
+/// The newest Plan/Code instruction note in `pool`, if any.
+///
+/// The note is appended once per mode switch and is not re-added while it
+/// exists in history, so compacting it away would leave the model without
+/// the active mode's rules (Plan mode's read-only workflow and
+/// `<proposed_plan>` format) until the next switch. Older notes are
+/// superseded and compact like anything else.
+fn active_mode_note(messages: &[ChatMessage], pool: &[usize]) -> Option<usize> {
+    pool.iter().rev().copied().find(|&i| extra_truthy(&messages[i], "interaction_mode_prompt"))
+}
+
 impl SummarizationHook {
     fn at_user_turn_boundary(state: &AgentState) -> bool {
         let visible = state.messages_for_llm();
@@ -374,7 +385,10 @@ impl SummarizationHook {
         let cutoff = find_assistant_cutoff(&refs, self.keep_last);
         let seed: HashSet<usize> = if cutoff > 0 { eligible[..cutoff].iter().copied().collect() } else { eligible.iter().copied().collect() };
         let to_ids = expand_tool_pairs(&state.messages, &eligible, seed);
-        let retained = skill_tool_pairs(&state.messages, &eligible);
+        let mut retained = skill_tool_pairs(&state.messages, &eligible);
+        // A mode note already in the kept window stays where it is; retaining
+        // it would move the summary below it.
+        retained.extend(active_mode_note(&state.messages, &eligible).filter(|i| to_ids.contains(i)));
         let to_summarise: Vec<usize> = eligible.iter().copied().filter(|i| to_ids.contains(i)).collect();
         if to_summarise.is_empty() {
             tracing::debug!("summarization_skipped_all_messages_in_keep_window session_id={:?}", ctx.session_id);
@@ -516,5 +530,131 @@ impl Hook for SummarizationHook {
             return false;
         }
         self.summarise(ctx, state, system_prompt).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use appv3_providers::mock::MockProvider;
+
+    fn hook(keep_last: usize) -> SummarizationHook {
+        SummarizationHook {
+            provider: Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")])),
+            model_id: None,
+            threshold: 1,
+            keep_last,
+            summary_prompt: "test summary prompt".into(),
+            max_token_length: 0,
+            min_since_last: 0,
+            support_interrupt: true,
+            at_last_summary: Mutex::new(0),
+            pending: Mutex::new(false),
+        }
+    }
+
+    /// A persisted Plan/Code instruction note as history loading yields it.
+    fn mode_note(mode: &str) -> ChatMessage {
+        let mut m = ChatMessage::user(format!("<interaction_mode>\n## {mode} mode\n</interaction_mode>"));
+        let meta = m.meta_mut();
+        meta.kind = "note".into();
+        meta.pinned = true;
+        let mut extra = Map::new();
+        extra.insert("hidden_from_user".into(), json!(true));
+        extra.insert("interaction_mode".into(), json!(mode));
+        extra.insert("interaction_mode_prompt".into(), json!(true));
+        meta.extra = Some(extra);
+        m
+    }
+
+    async fn compact(keep_last: usize, messages: Vec<ChatMessage>) -> AgentState {
+        let ctx = RunContext { session_id: None, run_id: "run".into(), agent_name: "test".into(), workspace: None };
+        let mut state = AgentState::new(messages, String::new());
+        assert!(hook(keep_last).summarise(&ctx, &mut state, "sys").await, "compaction did not run");
+        state
+    }
+
+    fn find<'a>(state: &'a AgentState, content: &str) -> (usize, &'a ChatMessage) {
+        state.messages.iter().enumerate().find(|(_, m)| m.content() == Some(content)).unwrap_or_else(|| panic!("no message {content:?}"))
+    }
+
+    fn summary_index(state: &AgentState) -> usize {
+        state.messages.iter().position(|m| m.meta().is_summary()).expect("summary inserted")
+    }
+
+    fn visible(state: &AgentState, content: &str) -> bool {
+        state.messages_for_llm().iter().any(|m| m.content() == Some(content))
+    }
+
+    /// Compacting a Plan-mode session must not drop the Plan instructions: the
+    /// note is appended once per switch and not re-added while it exists in
+    /// history, so losing it leaves the model without the read-only workflow
+    /// and `<proposed_plan>` format for the rest of the mode.
+    #[tokio::test]
+    async fn active_plan_mode_note_stays_in_context_after_compaction() {
+        let note = mode_note("plan");
+        let note_text = note.content().unwrap().to_string();
+        let state = compact(0, vec![note, ChatMessage::user("Redesign the settings screen."), ChatMessage::assistant("I will inspect the current UI.")]).await;
+
+        assert!(visible(&state, &note_text), "Plan-mode note left the LLM window");
+        let (idx, kept) = find(&state, &note_text);
+        // Pinned so the derived DB window (pinned rows + rows after the
+        // summary) still contains it when the session is reloaded.
+        assert!(kept.meta().pinned);
+        assert!(idx < summary_index(&state));
+        assert!(!visible(&state, "Redesign the settings screen."));
+        assert!(!visible(&state, "I will inspect the current UI."));
+    }
+
+    #[tokio::test]
+    async fn only_the_newest_mode_note_survives_compaction() {
+        let plan = mode_note("plan");
+        let code = mode_note("code");
+        let (plan_text, code_text) = (plan.content().unwrap().to_string(), code.content().unwrap().to_string());
+        let state = compact(
+            0,
+            vec![
+                plan,
+                ChatMessage::user("Plan the redesign."),
+                ChatMessage::assistant("<proposed_plan>…</proposed_plan>"),
+                code,
+                ChatMessage::user("Approve, proceed."),
+                ChatMessage::assistant("Implementing step 1."),
+            ],
+        )
+        .await;
+
+        assert!(visible(&state, &code_text));
+        assert!(find(&state, &code_text).1.meta().pinned);
+        assert!(!visible(&state, &plan_text));
+        let (_, plan) = find(&state, &plan_text);
+        assert!(plan.meta().exclude_from_context);
+        assert!(!plan.meta().pinned);
+    }
+
+    /// Retention must not move the summary below a note it never covered.
+    #[tokio::test]
+    async fn mode_note_inside_the_kept_window_is_left_in_place() {
+        let note = mode_note("plan");
+        let note_text = note.content().unwrap().to_string();
+        let state = compact(
+            2,
+            vec![
+                ChatMessage::user("first"),
+                ChatMessage::assistant("first reply"),
+                ChatMessage::user("second"),
+                ChatMessage::assistant("second reply"),
+                note,
+                ChatMessage::user("third"),
+                ChatMessage::assistant("third reply"),
+            ],
+        )
+        .await;
+
+        let summary = summary_index(&state);
+        let (kept_reply, _) = find(&state, "second reply");
+        let (note_idx, _) = find(&state, &note_text);
+        assert!(summary < kept_reply && kept_reply < note_idx, "summary {summary}, kept reply {kept_reply}, note {note_idx}");
+        assert!(visible(&state, &note_text));
     }
 }
