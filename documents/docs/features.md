@@ -1218,6 +1218,10 @@ MCP.
   and the socket is pinned to the validated address, so a DNS answer cannot
   change between validation and connection. Repeated fetches reuse one pooled
   HTTP client that is closed on server shutdown.
+- **Anti-bot block detection** `[v3.2.0]` — when a page is blocked by
+  anti-bot protection (Cloudflare, DataDome, PerimeterX, Reddit, Vercel, AWS
+  WAF), `web_fetch` returns a clear "Browser verification required" error
+  that names the vendor, instead of the interstitial's text.
 - **50k character read limit** `[v2.0.0]` — expanded `read` tool context limit to
   50,000 characters for reviewing larger source files in a single pass.
 - **Symbol outline mode for `read` tool** `[v2.4.0]` — `read` supports `outline=True`

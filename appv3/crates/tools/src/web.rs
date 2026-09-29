@@ -8,6 +8,9 @@
 //!
 //! Difference (inherent): search scrapes DuckDuckGo's HTML endpoint instead of
 //! the `ddgs` library, then falls back to Exa MCP exactly like v2.
+//!
+//! v3 addition: known anti-bot interstitials become a typed "browser
+//! verification" error instead of junk content.
 
 use crate::args::Args;
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
@@ -27,6 +30,11 @@ const MAX_RESPONSE_BYTES: usize = MAX_RESPONSE_MB * 1024 * 1024;
 const DEFAULT_TIMEOUT: f64 = 30.0;
 const MAX_TIMEOUT: f64 = 120.0;
 const MAX_REDIRECTS: usize = 10;
+/// Error bodies are read only this far, to look for anti-bot markers.
+const MAX_ERROR_BODY_BYTES: usize = 256 * 1024;
+/// A 2xx body larger than this is a real page, never an interstitial; the
+/// size bound keeps articles that merely mention a marker from tripping it.
+const MAX_INTERSTITIAL_BYTES: usize = 100 * 1024;
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36";
 
 fn accept(fmt: &str) -> &'static str {
@@ -52,6 +60,50 @@ fn render(e: FetchError) -> String {
         Some(h) => format!("Fetch failed: {}\n{h}", e.message),
         None => format!("Fetch failed: {}", e.message),
     }
+}
+
+fn blocked(vendor: &str) -> FetchError {
+    fe("Browser verification required.", Some(format!("Direct HTTP fetching was blocked by {vendor} anti-bot protection. Try another source or use a browser-capable tool.")))
+}
+
+/// Which anti-bot product answered instead of the page, if any. Headers are
+/// authoritative; body markers are ones only interstitials carry. Vendors
+/// whose headers or scripts also appear on normal pages count only on errors.
+fn bot_wall(status: u16, headers: &reqwest::header::HeaderMap, body: &[u8]) -> Option<&'static str> {
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok()).map(|v| v.trim().to_ascii_lowercase());
+    if header("cf-mitigated").as_deref() == Some("challenge") {
+        return Some("Cloudflare");
+    }
+    if header("x-vercel-mitigated").as_deref() == Some("challenge") {
+        return Some("Vercel");
+    }
+    if matches!(header("x-amzn-waf-action").as_deref(), Some("challenge" | "captcha")) {
+        return Some("AWS WAF");
+    }
+    let error = status >= 400;
+    if !error && body.len() > MAX_INTERSTITIAL_BYTES {
+        return None;
+    }
+    let has = |needle: &str| memchr::memmem::find(body, needle.as_bytes()).is_some();
+    if has("window._cf_chl_opt") {
+        return Some("Cloudflare");
+    }
+    if has("name=\"js_challenge\"") {
+        return Some("Reddit");
+    }
+    if !error {
+        return None;
+    }
+    if headers.contains_key("x-datadome") || has("captcha-delivery.com") {
+        return Some("DataDome");
+    }
+    if has("px-captcha") || has("_pxAppId") {
+        return Some("PerimeterX");
+    }
+    if has("blocked by network security") {
+        return Some("Reddit");
+    }
+    None
 }
 
 fn is_global(ip: IpAddr) -> bool {
@@ -150,12 +202,6 @@ async fn fetch(url: reqwest::Url, fmt: &str, timeout: f64) -> Result<Fetched, Fe
                 }
             })?;
         let status = resp.status().as_u16();
-        if status == 403 && resp.headers().get("cf-mitigated").and_then(|v| v.to_str().ok()).map(|v| v.eq_ignore_ascii_case("challenge")).unwrap_or(false) {
-            return Err(fe(
-                "Browser verification required.",
-                Some("Direct HTTP fetching was blocked by anti-bot protection. Try another source or use a browser-capable tool.".into()),
-            ));
-        }
         if (300..400).contains(&status) {
             let Some(loc) = resp.headers().get("location").and_then(|v| v.to_str().ok()) else {
                 return Err(http_error(status));
@@ -168,26 +214,47 @@ async fn fetch(url: reqwest::Url, fmt: &str, timeout: f64) -> Result<Fetched, Fe
             continue;
         }
         if status >= 400 {
-            return Err(http_error(status));
+            let headers = resp.headers().clone();
+            let body = read_body(resp, MAX_ERROR_BODY_BYTES, true).await.unwrap_or_default();
+            return Err(match bot_wall(status, &headers, &body) {
+                Some(vendor) => blocked(vendor),
+                None => http_error(status),
+            });
         }
         if let Some(len) = resp.content_length() {
             if len as usize > MAX_RESPONSE_BYTES {
                 return Err(too_large(len as usize));
             }
         }
-        let content_type = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).map(String::from);
-        let mut content = vec![];
-        let mut stream = resp.bytes_stream();
-        use futures::StreamExt;
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|_| fe("Network error.", Some("The request could not reach the server. Retrying may succeed.".into())))?;
-            content.extend_from_slice(&chunk);
-            if content.len() > MAX_RESPONSE_BYTES {
-                return Err(too_large(content.len()));
-            }
+        let headers = resp.headers().clone();
+        let content_type = headers.get("content-type").and_then(|v| v.to_str().ok()).map(String::from);
+        let content = read_body(resp, MAX_RESPONSE_BYTES, false).await?;
+        let html = matches!(parse_ct(content_type.as_deref()).0.as_deref(), Some("text/html" | "application/xhtml+xml"));
+        if let Some(vendor) = bot_wall(status, &headers, &content).filter(|_| html) {
+            return Err(blocked(vendor));
         }
         return Ok(Fetched { status, content_type, content });
     }
+}
+
+/// Streams the body up to `limit` bytes: past it, `truncate` keeps the head,
+/// otherwise the response is rejected as too large.
+async fn read_body(resp: reqwest::Response, limit: usize, truncate: bool) -> Result<Vec<u8>, FetchError> {
+    use futures::StreamExt;
+    let mut content = vec![];
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|_| fe("Network error.", Some("The request could not reach the server. Retrying may succeed.".into())))?;
+        content.extend_from_slice(&chunk);
+        if content.len() > limit {
+            if truncate {
+                content.truncate(limit);
+                break;
+            }
+            return Err(too_large(content.len()));
+        }
+    }
+    Ok(content)
 }
 
 fn too_large(size: usize) -> FetchError {
@@ -902,6 +969,30 @@ verify the installation by printing its version number as shown.</p>
         assert!(!is_global("169.254.1.1".parse().unwrap()));
         assert!(!is_global("::1".parse().unwrap()));
         assert!(is_global("8.8.8.8".parse().unwrap()));
+    }
+
+    fn headers(pairs: &[(&'static str, &'static str)]) -> reqwest::header::HeaderMap {
+        pairs.iter().map(|(k, v)| (reqwest::header::HeaderName::from_static(k), reqwest::header::HeaderValue::from_static(v))).collect()
+    }
+
+    #[test]
+    fn anti_bot_interstitials_are_recognised() {
+        let none = headers(&[]);
+        assert_eq!(bot_wall(403, &headers(&[("cf-mitigated", "Challenge")]), b""), Some("Cloudflare"));
+        assert_eq!(bot_wall(429, &headers(&[("x-vercel-mitigated", "challenge")]), b""), Some("Vercel"));
+        assert_eq!(bot_wall(202, &headers(&[("x-amzn-waf-action", "challenge")]), b""), Some("AWS WAF"));
+        assert_eq!(bot_wall(200, &none, b"<script>window._cf_chl_opt={}</script>"), Some("Cloudflare"));
+        assert_eq!(bot_wall(200, &none, br#"<input type="hidden" name="js_challenge" value="1"/>"#), Some("Reddit"));
+        assert_eq!(bot_wall(403, &none, b"You've been blocked by network security."), Some("Reddit"));
+        assert_eq!(bot_wall(403, &none, b"<script src='https://ct.captcha-delivery.com/c.js'>"), Some("DataDome"));
+        assert_eq!(bot_wall(403, &none, b"<div id='px-captcha'></div>"), Some("PerimeterX"));
+        // DataDome tags normal pages too; only an error is a block.
+        assert_eq!(bot_wall(200, &headers(&[("x-datadome", "protected")]), b"<p>shop</p>"), None);
+        assert_eq!(bot_wall(403, &headers(&[("x-datadome", "protected")]), b""), Some("DataDome"));
+        // A full page that merely mentions a marker is content, not a wall.
+        let article = format!("<p>{}</p><code>window._cf_chl_opt</code>", "x".repeat(MAX_INTERSTITIAL_BYTES));
+        assert_eq!(bot_wall(200, &none, article.as_bytes()), None);
+        assert_eq!(bot_wall(404, &none, b"<h1>Not found</h1>"), None);
     }
 
     #[test]

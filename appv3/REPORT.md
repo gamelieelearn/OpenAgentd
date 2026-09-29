@@ -336,6 +336,11 @@ explicitly.
   - Short pages (≤ ~100 characters of body text) reproduce Python's
     baseline output, because go-trafilatura's last step there duplicates
     text.
+- **`web_fetch` bot walls (v3 only):** anti-bot interstitials (Cloudflare,
+  Reddit, DataDome, PerimeterX, Vercel, AWS WAF) return "Browser
+  verification required." with the vendor named. v2 recognises only
+  Cloudflare's `cf-mitigated` 403 and otherwise returns the interstitial's
+  text.
 - **`web_search`:** scrapes DuckDuckGo's HTML endpoint instead of using the
   `ddgs` library, then falls back to Exa the same way v2 does.
 - **Copilot:** catalog cached for 5 min; reasoning-effort gating resolved at
