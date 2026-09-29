@@ -526,7 +526,11 @@ async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
 async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response> {
     let before = q.opt("before");
     let limit = q.int("limit", 20, Some(1), Some(100))?;
-    let workspace = q.opt("workspace");
+    // `workspaces` (repeatable) is a v3 addition: sessions in any listed path,
+    // so the sidebar lists a repository and its worktrees as one page. v2
+    // ignores it. A `workspace` value joins the same list.
+    let mut workspaces: Vec<String> = q.opt("workspace").into_iter().collect();
+    workspaces.extend(q.get_all("workspaces"));
     let running = running_set();
     let awaiting = db::sessions_awaiting_input(&st.pool).await?;
     // v3 addition: every session running or waiting on the user, in one page,
@@ -535,13 +539,13 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     let (sessions, next_cursor, has_more) = if q.opt("active").as_deref() == Some("true") {
         let ids: Vec<String> = running.iter().chain(awaiting.iter()).cloned().collect();
         let mut rows = db::get_sessions_by_ids(&st.pool, &ids).await?;
-        rows.retain(|s| s.parent_session_id.is_none() && workspace.as_deref().is_none_or(|w| s.workspace == w));
+        rows.retain(|s| s.parent_session_id.is_none() && (workspaces.is_empty() || workspaces.contains(&s.workspace)));
         rows.sort_by(|a, b| (&b.created_at, &b.id).cmp(&(&a.created_at, &a.id)));
         (rows, None, false)
     } else {
         // `q` is a v3 addition too (sidebar search); v2 ignores it.
         let title_query = q.opt("q");
-        db::list_sessions_page(&st.pool, before.as_deref(), limit, workspace.as_deref(), title_query.as_deref().map(str::trim))
+        db::list_sessions_page(&st.pool, before.as_deref(), limit, &workspaces, title_query.as_deref().map(str::trim))
             .await
             .map_err(|_| ApiError::unprocessable("Invalid 'before' cursor."))?
     };

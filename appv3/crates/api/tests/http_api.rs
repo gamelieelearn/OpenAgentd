@@ -274,6 +274,33 @@ async fn http_api_end_to_end() {
         assert_eq!(v["data"], json!([]), "q={miss}: {v}");
     }
 
+    // `workspaces` (v3 addition, repeatable) keeps sessions in any listed
+    // path: one sidebar list across a repository and its worktrees.
+    let tree = "/elsewhere/tree-a";
+    let other = appv3_db::create_session(&pool, appv3_db::NewSession { workspace: tree.into(), ..Default::default() }).await.unwrap();
+    let other_id = appv3_db::codec::api_uuid(&other.id);
+    // The stored path is canonical (`/private/var/…` on macOS), not `wss`.
+    let (_, detail) = c.json("GET", &format!("/api/agent/sessions/{sid}"), None).await;
+    let sid_ws = detail["workspace"].as_str().expect("session workspace").to_string();
+    let enc = |p: &str| form_urlencoded::byte_serialize(p.as_bytes()).collect::<String>();
+    let ids = |v: &Value| v["data"].as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+    let (st, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}&workspaces={}", enc(&sid_ws), enc(tree)), None).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(ids(&v), vec![other_id.clone(), sid.clone()], "newest first across both paths: {v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}", enc(tree)), None).await;
+    assert_eq!(ids(&v), vec![other_id.clone()], "{v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?workspaces={}&limit=1", enc(&sid_ws)), None).await;
+    assert_eq!((ids(&v), v["has_more"].clone()), (vec![sid.clone()], json!(false)), "{v}");
+    let (_, v) = c.json("GET", "/api/agent/sessions?workspaces=%2Fnowhere", None).await;
+    assert_eq!(v["data"], json!([]), "{v}");
+    // ...and narrows the active list the same way.
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?active=true&workspaces={}&workspaces={}", enc(tree), enc(&sid_ws)), None).await;
+    assert_eq!(ids(&v), vec![sid.clone()], "{v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?active=true&workspaces={}", enc(tree)), None).await;
+    assert_eq!(v["data"], json!([]), "{v}");
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{other_id}"), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
     assert!(!appv3_agent::snapshot::snapshot_dir(&sid).exists());

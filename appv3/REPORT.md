@@ -533,6 +533,13 @@ explicitly.
   (`db/src/queries/sessions.rs`, tested in `api/tests/http_api.rs`) and
   backs the sidebar's session search. v2 ignores `q`, and the web client then
   filters the page it gets.
+- **Multi-workspace session list:** `GET /api/agent/sessions?workspaces=…`
+  (repeatable) keeps sessions in any of the listed paths, newest first, and
+  pages like the normal list; a `workspace` value joins the same list, and
+  `active=true` is narrowed the same way (`api/src/routes/agent/chat.rs`,
+  `db/src/queries/sessions.rs`, tested in `api/tests/http_api.rs`). The
+  sidebar uses it to list a repository and its worktrees as one list. v2
+  ignores `workspaces`, and the web client then filters the page it gets.
 
 ## 4. Layout
 
