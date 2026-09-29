@@ -48,7 +48,7 @@ full suite was not re-run; the other rows cover code this change did not touch.
 | `diff_migrations.py` | Alembic replay from an empty DB and from every revision, seeded rows | 22/22 identical |
 | `diff_yaml.py` | PyYAML `safe_load` (PyYAML test corpus, repo YAML, edge cases, fuzz) and `safe_dump` | load 30,722/30,728 (the other 6 are documented deviations); dump 22,303/22,303 byte-identical (9 unrepresentable values skipped) |
 | `diff_prune.py` | `_prune_unknown_tools_from_file` rewrites | 2,016/2,017 (1 documented anchors case) |
-| `diff_cli.py` | CLI argparse tree: help/usage at 8 widths, 3.14 colour theme, error texts, abbreviations, parsed namespace, 3,000 fuzzed argv | 3,307/3,307 identical |
+| `diff_cli.py` | CLI argparse tree: help/usage at 8 widths, 3.14 colour theme, error texts, abbreviations, parsed namespace, 3,000 fuzzed argv | 3,307/3,307 identical (superseded in v3.1.0: the CLI moved to `clap`, §3) |
 | `diff_cli_cmds.py` | CLI commands in seeded sandboxes: doctor, `server start/status/health/restart/stop` against live daemons, logs, auth, cleanup (dry/apply/vacuum), transfer export/import/migrate (incl. bad archives), `run` (mock provider, tool loop), lsp, and a pty run for the TTY colour paths | 24 scenarios / 81 commands, 0 diffs (outputs, file trees, DB rows, archive members) |
 | `diff_scrubber.py` | secret scrubber fuzz (v2 `.py` vs `secret_scrubber.ts` in QuickJS) | seeds 11, 7, 3, 99: 20,000 cases each, 0 mismatches |
 | `diff_auth.py` | access key / desktop token, 401s, exempt paths, WS 403, CORS, `--generate-token` handshake, non-loopback refusal | 0 diffs |
@@ -257,38 +257,45 @@ explicitly.
 - **`.env` handling:** v3 loads `config_dir/.env` into its own process
   environment. Checks for whether a provider is configured ignore these
   injected values, the same way v2 does.
-- **CLI:** `crates/cli/src/argparse.rs` ports the CPython 3.14 argparse
-  subset v2 uses (help/usage wrapping via a `textwrap` port, the colour
-  theme, `COLUMNS`/terminal width, abbreviations, error texts, exit 2), and
-  `crates/cli/src/cmd/` ports every command. Deviations:
-  - An exception that v2 leaves uncaught prints a full traceback. v3 prints
-    only the last line (`ExcType: message`); the exit status is 1 in both.
-    A few class names are approximations: OAuth login failures print as
-    `RuntimeError` unless the flow already printed its `failed` message,
-    and DB errors in `cleanup` print as `sqlalchemy.exc.OperationalError`.
-  - `doctor`'s first check reads `Rust runtime (openagentd vX)` instead of
-    the Python version. The pass count is the same. "Alembic config
-    bundled" always passes because the migrations are compiled in.
-  - The start banner labels the URL `Server:` instead of `Open:`. v2 serves
-    the web UI at that address; v3 is API-only, so the URL is what the
-    desktop or mobile app connects to.
+- **CLI:** since v3.1.0 the CLI is built on `clap` (`crates/cli/src/cli.rs`)
+  and no longer reproduces v2's argparse help, usage and error texts. It
+  keeps v2's command groups, flags, PID/log paths, exit 2 for usage errors,
+  the `--version` string, and the `server serve` sidecar contract.
+  Deliberate differences:
+  - Errors print one `error: <message>` line on stderr and exit 1, instead
+    of Python exception names or tracebacks.
+  - Bare `openagentd` prints help (the name is kept for a future TUI); v2
+    started the background server.
+  - `server status` also runs v2's `server health` checks and exits 1 when
+    the server is stopped or a check fails; `server health` is a hidden
+    alias. The LAN check appears only when listening on all interfaces.
   - `server start` daemonises this binary's `server serve --host H --port P`
-    instead of uvicorn, with the binary's directory as cwd (v2: the package
-    root). The PID file, log file, banner, `--wait` polling and stop
-    semantics are the same. The daemon child skips the sidecar
-    `openagentd: sidecar bootstrap` stderr line.
+    with the binary's directory as cwd, and the child inherits `APP_ENV`
+    (the CLI defaults it to `production`) instead of having it forced. The
+    daemon keeps log records off stderr, since its stderr is appended to
+    `app.log` next to the JSON sink. `--wait` exits 1 if the server dies or
+    is not ready within 30 s.
+  - `server logs` prints each JSON record's `text` field instead of the raw
+    record, and follows the file in-process on every OS (no `tail`).
+  - `run` adds `-C/--cd`, `-c/--continue`, `--session ID` and `--json`
+    (one `{"event", "data"}` line per stream event, `session` first).
+  - `auth list` and `auth logout <provider>` are new; `upgrade` has an
+    `update` alias.
+  - `doctor` loads the config `.env` before checking keys, checks the
+    token file of an OAuth lead provider, and tests the configured port.
+    The "Rust runtime" and "Alembic config bundled" checks are gone.
+  - `cleanup` lists candidates (`--limit`, default 20), refuses `--vacuum`
+    without `--apply`, and skips the pass without touching the database
+    when there is no database or sessions table yet.
+  - The start banner labels the URL `Server:` instead of `Open:`, because
+    v3 is API-only.
   - `upgrade` runs `brew upgrade` for Homebrew installs and otherwise
     updates itself from the GitHub release archives (`cmd/self_update.rs`:
-    sha256-verified, swapped by rename, `<exe>.old` on Windows). v2's
-    uv/pipx/pip paths are gone because v3 is not on PyPI. A binary inside
-    the desktop app's `sidecar/bin` refuses and defers to the app updater.
-  - `--key` without a TTY prints `Warning: Password input may be echoed.`
-    instead of Python's `GetPassWarning` with its source location.
+    sha256-verified, swapped by rename, `<exe>.old` on Windows). A binary
+    inside the desktop app's `sidecar/bin` defers to the app updater.
   - `transfer export` writes GNU tar headers (no PAX mtime records or
     uname/gname). Member names, types, sizes and contents match v2's
     archives, and v2's `transfer import` reads them.
-  - `transfer import` reports tar damage after the first header as
-    `unexpected end of data`. v2 raises it out of `getmembers()`.
 - **Plugins:** v3 loads `*.ts`/`*.js` plugin files and never reads `*.py`
   (§5). v2 loads only `*.py`. The same plugin dir therefore serves both
   versions, but every plugin needs a TS/JS port. The four user plugins are

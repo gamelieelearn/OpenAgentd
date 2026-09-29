@@ -101,7 +101,7 @@ OpenAgentd v3 replaces the Python backend and CLI with a native Rust binary (`ap
 
 ## Existing OpenAgentd Installs
 
-If you already use OpenAgentd before `1.0.0`, you do not need to uninstall first. Install or update OpenAgentd normally, then launch the desktop app or run `openagentd`.
+If you already use OpenAgentd before `1.0.0`, you do not need to uninstall first. Install or update OpenAgentd normally, then launch the desktop app or run `openagentd server start`.
 
 The CLI and desktop app share the same production paths:
 

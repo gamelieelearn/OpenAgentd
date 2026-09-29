@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-28
+updated: 2026-09-29
 ---
 
 # Features
@@ -1527,30 +1527,52 @@ Desktop is primary. CLI / server is the developer path.
   CLI commands and `openagentd upgrade` say that v2 gets no further updates and
   print the v3 install command plus the step that removes the uv/pipx/pip copy.
   `OPENAGENTD_HIDE_V2_NOTICE=1` hides it; the desktop sidecar never shows it.
-- **CLI server control** `[v1.41.0, v2.4.0]` — `openagentd server restart`,
-  `openagentd server status`, `openagentd server health`, and `openagentd server
+- **Concise native CLI** `[v3.1.0]` — `openagentd --help` lists eight command
+  groups with short examples, errors print as one `error: …` line, and usage
+  errors exit 2. Bare `openagentd` prints help instead of starting the server
+  (use `openagentd server start`); the name is kept for a future terminal UI.
+- **CLI server control** `[v1.41.0, v2.4.0, v3.1.0]` — `openagentd server start|stop|restart`,
+  `openagentd server status`, `openagentd server logs`, and `openagentd server
   start --host 0.0.0.0 --key` make the CLI the control plane for desktop/mobile backends.
+  Since v3.1.0 `server status` also runs the port, live, ready, and LAN checks
+  (the former `server health`, still accepted) and exits 1 when the server is
+  stopped or unhealthy, and `server logs` shows readable log lines instead of
+  raw JSON records.
 - **Foreground CLI agent execution** `[v2.4.0]` — `openagentd run --prompt "..."`
   validates the current directory as a coding workspace, starts one persisted
   agent session, and streams only the agent's response text to standard
   output. `--model provider:model` and `--thinking` apply per-turn overrides;
   auto-approved tool permissions continue normally, while interactive agent
   questions stop the non-interactive command instead of leaving a suspended run.
+  Since `[v3.1.0]`, `-C/--cd DIR` picks another workspace, `-c/--continue`
+  continues the workspace's latest session, `--session ID` continues a given
+  session, and `--json` prints every stream event as one JSON line.
 - **CLI start --wait** `[v1.73.0, v2.4.0]` — `openagentd server start --wait`
   starts the background server and polls `/api/health/ready` until the database
-  connection and the agent session are fully ready.
+  connection and the agent session are fully ready; since v3.1.0 it exits 1 when
+  the server dies or is not ready within 30 seconds.
 - **CLI upgrade** `[v1.41.0, self-update v3.0.0]` — `openagentd upgrade` in v3 stops the
   background server, downloads the latest prebuilt release archive from GitHub, verifies
   its SHA-256 checksum, swaps the binaries in place, and restarts the server if it was
   running. Homebrew installations delegate to `brew upgrade`. In v2.27.0, `openagentd upgrade`
-  migrates existing uv/pipx/pip installations to the v3 native binary.
+  migrates existing uv/pipx/pip installations to the v3 native binary. `openagentd update`
+  is an alias `[v3.1.0]`.
+- **CLI OAuth login status** `[v3.1.0]` — `openagentd auth list` shows which
+  OAuth providers (Codex, GitHub Copilot, Grok) are logged in, and
+  `openagentd auth logout <provider>` deletes the saved login.
+  `openagentd auth <provider>` still logs in.
+- **CLI doctor** `[since v0.1.0, v3.1.0]` — `openagentd doctor` checks provider credentials
+  (including keys saved in Settings → Providers and the lead agent's OAuth
+  login), the database, the configured server port, and the agents directory,
+  and exits 1 when a check fails.
 - **CLI artifact cleanup** `[v2.18.0]` — `openagentd cleanup` previews a dry run
   and, with `--apply`, deletes sessions older than `--older-than-days`
   (default 14) together with their messages, session artifacts, undo/redo
   snapshot repos, and app-managed telemetry, logging, and worktree state that
   no live session owns. `--vacuum` then rebuilds the SQLite file so pages freed
   by the deleted rows return to disk; a lock held by a running server is
-  reported rather than failing the pass.
+  reported rather than failing the pass. Since v3.1.0 the preview lists the
+  largest candidates with their size and reason (`--limit N`, `0` for all).
 - **Docker** *(deprecated, removed in v1.23.0)* — the `Dockerfile`,
   `docker-compose.yaml`, and the `ghcr.io/lthoangg/openagentd` image are
   no longer maintained. Use the CLI install paths above; revisit if there
