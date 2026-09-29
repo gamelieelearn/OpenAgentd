@@ -743,6 +743,9 @@ agent against it.
   list existing worktrees, edit sidebar titles without renaming git directories,
   and remove OpenAgentd-managed worktrees. Removing a worktree asks for confirmation
   first, warning that uncommitted changes will be lost `[v1.101.0]`.
+  Since `[v3.1.0]` these actions live in the repository's checkout menu (see
+  **Compact coding sidebar**), where **New worktree…**, **Rename** and
+  **Remove** act on the worktree the list is narrowed to.
 - **Warm-paper workspace refresh** `[v1.74.0]` — coding panels, chat-adjacent
   surfaces, scheduled tasks, telemetry, home, provider/settings detail views,
   command/file search, and input attachments now share the custom warm-paper
@@ -814,7 +817,14 @@ agent against it.
   collapse-all and **Open folder** actions, workspace rows with chevrons and indent guides,
   a **…** actions menu on worktrees, 28px session rows showing a compact age that swaps to
   edit/delete on hover, and a **Show more** button instead of scroll-triggered loading.
-- **Nested subagent sessions in the coding sidebar** `[v2.16.0]` — lead sessions with
+  Since `[v3.1.0]` the sidebar is one level deep: worktrees are no longer rows.
+  A repository lists the sessions of its own checkout and every worktree as one
+  list, newest first, and a worktree's sessions carry its name as a tag. A
+  chip on the repository row (the branch icon and the worktree count) opens
+  its checkout menu: **All checkouts**, **Main worktree**, or one worktree
+  narrows the list, **+** then starts sessions in that checkout, and a row
+  above the sessions names the filter with a **Show all** button. Opening a
+  session the filter hides shows every checkout again.
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0, updated v2.17.0]` — lead sessions with
   delegated subagents render an expandable accordion of child sessions that defaults to
   expanded while a child is running, waiting on the lead, or selected, and collapses to a
@@ -822,6 +832,9 @@ agent against it.
   can be deleted from the sidebar with instant cache pruning `[v2.17.0]`, falling back cleanly to the
   parent lead session, and opening one shows a read-only banner with a
   **Return to Lead** action.
+  Since `[v3.1.0]` the count pill beside the title is the toggle, so sessions
+  without subagents keep no chevron gutter, and child rows sit flat under the
+  lead's title without another indent guide.
 - **Rename sessions in place** `[v3.0.0]` — the pencil, a double-click on a
   sidebar row, **Edit title** in its menu, or a click on the session title in
   the desktop header turns the title into a text field. Enter or clicking away
@@ -878,7 +891,8 @@ agent against it.
   first message.
 - **Workspace sidebar pagination** `[v1.18.0]` — each main/worktree list shows
   roughly 5 sessions and loads more on request (**Show more** since `[v3.0.0]`,
-  previously on scroll), so one busy workspace doesn't crowd the others.
+  previously on scroll), so one busy workspace doesn't crowd the others. Since
+  `[v3.1.0]` a repository and its worktrees page as one list.
 - **Remove a workspace from the sidebar** `[v1.42.0, updated v3.0.0]` — a
   repository's **Remove from sidebar** action hides it and its worktrees
   without deleting anything; its sessions stay, and reopening the folder lists
