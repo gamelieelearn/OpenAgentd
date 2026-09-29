@@ -31,6 +31,7 @@ fn root() -> &'static Path {
             std::env::set_var(k, dir.path().join(d));
         }
         std::env::set_var("HOME", dir.path().join("home"));
+        std::env::set_var("USERPROFILE", dir.path().join("home"));
         std::env::remove_var("CHAT_WORKSPACE_DIR");
         std::fs::create_dir_all(dir.path().join("home")).unwrap();
         // Title generation would take scripted turns off the mock provider.
@@ -307,6 +308,7 @@ async fn chat_workspace_keeps_plan_in_data_dir() {
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "# Chat plan\n");
     assert!(!home.join(".openagentd").exists());
     let result = h.last_tool_result(1);
-    assert!(result.starts_with("Plan saved as revision 1 (1 line) at /"), "{result}");
-    assert!(result.contains(&format!("{}/plan.md", h.sid)), "{result}");
+    assert!(result.starts_with("Plan saved as revision 1 (1 line) at "), "{result}");
+    assert!(result.contains(&h.sid), "{result}");
+    assert!(result.ends_with(&format!("{}.", plan::PLAN_FILENAME)), "{result}");
 }
