@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v3.1.0 · September 29, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.1.0)
+**Latest release:** v3.2.0 · September 29, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.2.0)
 
 ---
 
@@ -197,7 +197,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   Open searches
   commands instead of files. The desktop app adds Reload Window, since `⌘R`
   no longer reloads.
-- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.1.0]` — the expanded composer switches an
+- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
@@ -223,7 +223,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   queued and applied when that turn closes, so it binds from the next turn and
   any message queued behind it. The toggle shows the queued mode in italics
   until it lands. Use stop if you actually want to interrupt the turn.
-  - **Saved session plan** `[v3.0.0, updated v3.1.0]` — in a project
+  - **Saved session plan** `[v3.0.0, updated v3.2.0]` — in a project
     workspace the plan is a Markdown file in `.openagentd/plans/`, which
     ignores itself in git unless you delete its `.gitignore`; chat sessions
     keep it in the session's data directory. You can edit it in the Plan tab
@@ -539,7 +539,7 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Persistent timing on every reply + tool call** `[v1.21.0]` — reply durations
   measure full user-turn wall-clock time; tool durations measure execution time.
   Both stay visible while streaming and after reloading a session.
-- **Effective model on assistant replies** `[v1.42.0]` — assistant footers show
+- **Effective model on assistant replies** `[v1.42.0, updated v3.2.0]` — assistant footers show
   the model that produced the reply, including fallback transitions, next to the
   copy and timing metadata, followed by the thinking level the reply ran at
   (e.g. `gpt-5 · high`). Every reply footer names them, and each prompt's
