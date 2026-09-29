@@ -8,8 +8,8 @@ usage() {
     cat <<'EOF'
 Usage: scripts/bump_version.sh <version>
 
-Update all release-facing version files from app/version.txt or the provided
-version, then refresh lockfiles.
+Update all release-facing version files to the provided version (or to the
+appv3/Cargo.toml workspace version with --from-file), then refresh lockfiles.
 
 Examples:
   scripts/bump_version.sh 1.66.0
@@ -28,7 +28,7 @@ if [ "$version" = "--from-file" ]; then
         echo "error: --from-file does not accept extra arguments" >&2
         exit 2
     fi
-    version=$(tr -d '[:space:]' < app/version.txt)
+    version=$(scripts/release_version.sh)
 elif [ $# -eq 1 ]; then
     :
 else
@@ -45,10 +45,7 @@ case "$version" in
         ;;
 esac
 
-current_version=$(tr -d '[:space:]' < app/version.txt)
-if [ "$current_version" != "$version" ]; then
-    printf '%s\n' "$version" > app/version.txt
-fi
+current_version=$(scripts/release_version.sh)
 
 replace_exact_line() {
     file=$1
@@ -84,9 +81,6 @@ path.write_text(json.dumps(data, indent=2) + "\n")
 PY
 }
 
-replace_exact_line pyproject.toml \
-    "version = \"$current_version\"  # keep in sync with app/version.txt" \
-    "version = \"$version\"  # keep in sync with app/version.txt"
 replace_json_version web/package.json
 replace_exact_line desktop/src-tauri/Cargo.toml "version = \"$current_version\"" "version = \"$version\""
 replace_json_version desktop/src-tauri/tauri.conf.json
@@ -94,8 +88,7 @@ replace_exact_line mobile/src-tauri/Cargo.toml "version = \"$current_version\"" 
 replace_json_version mobile/src-tauri/tauri.conf.json
 # appv3 (native CLI and desktop sidecar): every crate inherits the
 # workspace version, which the binary reports in --version and /health.
-appv3_version=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\([^"]*\)".*/\1/p;}' appv3/Cargo.toml)
-replace_exact_line appv3/Cargo.toml "version = \"$appv3_version\"" "version = \"$version\""
+replace_exact_line appv3/Cargo.toml "version = \"$current_version\"" "version = \"$version\""
 
 release_date_iso=$(date -u +%F)
 release_date_human=$(LC_ALL=C date -u '+%B %-d, %Y' 2>/dev/null || LC_ALL=C date -u '+%B %d, %Y' | sed 's/ 0/ /')
@@ -105,8 +98,6 @@ replace_exact_line documents/docs/features.md \
 replace_exact_line documents/docs/features.md \
     "**Latest release:** v$(sed -n 's/^\*\*Latest release:\*\* v\([^ ]*\) .*$/\1/p' documents/docs/features.md | head -n 1) · $(sed -n 's/^\*\*Latest release:\*\* v[^·]* · \([^[]*\) \[release notes\].*$/\1/p' documents/docs/features.md | head -n 1) [release notes](https://github.com/lthoangg/openagentd/releases/tag/v$(sed -n 's/^\*\*Latest release:\*\* v\([^ ]*\) .*$/\1/p' documents/docs/features.md | head -n 1))" \
     "**Latest release:** v$version · $release_date_human · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v$version)"
-
-uv sync
 
 # ``cargo update --workspace`` refreshes only the workspace member's own entry
 # in Cargo.lock, which is all a version bump needs. ``cargo generate-lockfile``

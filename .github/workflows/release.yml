@@ -50,7 +50,7 @@ jobs:
       - name: Read version
         id: version
         run: |
-          VERSION=$(tr -d '[:space:]' < app/version.txt)
+          VERSION=$(scripts/release_version.sh)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 

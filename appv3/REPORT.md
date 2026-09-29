@@ -246,9 +246,10 @@ explicitly.
     appends the same transition note. v2 copies the lead's mode only when
     the member is spawned, so a member spawned in Code mode keeps edit
     access after the lead enters Plan mode, where `delegate` is allowed.
-- **Version:** the workspace `Cargo.toml` version follows `app/version.txt`
+- **Version:** the workspace `Cargo.toml` version is the release version
   (from 3.0.0 on; `scripts/bump_version.sh` sets it and
-  `scripts/check_version_consistency.sh` enforces it). It shows in
+  `scripts/check_version_consistency.sh` holds every other release-facing
+  file to it). It shows in
   `openagentd --version`, the sidecar handshake, `/api/health/live` and
   `/api/health/ready`, the provider client headers (codex, copilot, grok),
   OTEL `telemetry.sdk.version`, and the JS plugin host's `version`.

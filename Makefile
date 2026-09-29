@@ -92,7 +92,7 @@ verify-docs: ## Validate documentation links, metadata, and repository reference
 
 verify-version: ## Verify release-facing versions and release docs stay synchronized
 	scripts/check_version_consistency.sh
-	@VERSION=$$(tr -d '[:space:]' < app/version.txt); \
+	@VERSION=$$(scripts/release_version.sh); \
 		grep -F "**Latest release:** v$${VERSION} ·" documents/docs/features.md; \
 		grep -E '^updated: [0-9]{4}-[0-9]{2}-[0-9]{2}$$' documents/docs/features.md
 

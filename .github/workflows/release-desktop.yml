@@ -7,8 +7,8 @@ name: Release Desktop
 #   - Linux x64  (.AppImage, .deb)
 #
 # Each app bundles the native appv3 backend (sidecar-bundle/bin/openagentd).
-# Outputs are attached to the GitHub Release matching `app/version.txt`
-# (tag ``v<X.Y.Z>`` — the same tag ``release.yml`` creates for the
+# Outputs are attached to the GitHub Release matching the appv3/Cargo.toml
+# workspace version (tag ``v<X.Y.Z>`` — the same tag ``release.yml`` creates for the
 # CLI archives). Run ``release.yml`` first so the tag + release exist,
 # then ``release-desktop.yml`` appends the desktop installers via
 # ``gh release upload --clobber``. If the order is reversed, this
@@ -65,7 +65,7 @@ jobs:
         # can compare-link to. The publish job below uploads with
         # ``--clobber`` so it does not matter which workflow runs first.
         run: |
-          VERSION=$(cat app/version.txt | tr -d '[:space:]')
+          VERSION=$(scripts/release_version.sh)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
       - id: matrix
@@ -237,7 +237,7 @@ jobs:
           mkdir -p desktop/sidecar-bundle/bin
           cp "appv3/target/$target/dist/openagentd$exe" "desktop/sidecar-bundle/bin/openagentd$exe"
           if [ -z "$exe" ]; then strip "desktop/sidecar-bundle/bin/openagentd"; fi
-          VERSION=$(tr -d '[:space:]' < app/version.txt)
+          VERSION=$(scripts/release_version.sh)
           reported=$("desktop/sidecar-bundle/bin/openagentd$exe" --version | tr -d '\r')
           [ "$reported" = "openagentd v$VERSION" ] || { echo "sidecar version mismatch: $reported"; exit 1; }
           du -sh desktop/sidecar-bundle

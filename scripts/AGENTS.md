@@ -15,9 +15,10 @@ analysis.
 - `generate_icons.py`: shared source-icon conversion for native targets.
 - `make_updater_manifest.py` and `generate_updater_keys.sh`: desktop updater
   metadata and local key setup.
-- `bump_version.sh`, `check_version_consistency.sh`, and
+- `release_version.sh`, `bump_version.sh`, `check_version_consistency.sh`, and
   `release_commits_since_last_tag.sh`: synchronized release metadata and
-  release-note inputs.
+  release-note inputs. The `[workspace.package]` version in
+  `appv3/Cargo.toml` is the release version.
 - `bench_chat_db.py`: local persistence benchmark, not a correctness test.
 
 Python scripts use the repository `uv` environment unless the script's help or
@@ -34,9 +35,9 @@ by default, repository-root-relative, and portable across supported platforms.
 - Sidecar bundles, Cargo targets, web distributions, and generated native
   platform trees are build output. Change source inputs and rerun their owning
   script/Make target.
-- Version changes must use the release workflow so Python, web, desktop,
-  mobile, Tauri configs, lockfiles, and feature-catalogue metadata stay in
-  sync. `make verify-version` is the gate.
+- Version changes must use the release workflow so the appv3 workspace, web,
+  desktop, mobile, Tauri configs, lockfiles, and feature-catalogue metadata
+  stay in sync. `make verify-version` is the gate.
 
 ## Checks
 
