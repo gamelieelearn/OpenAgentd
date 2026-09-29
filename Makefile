@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: all run dev dev-lan kill-dev-ports test coverage verify verify-backend verify-web verify-docs verify-version verify-native verify-shell-core verify-desktop verify-mobile scenarios scenarios-chat scenarios-mentions scenarios-questions scenarios-lsp scenarios-performance health health-json prompt-budget prompt-budget-json migrate revision build-web icons build dist clean help
+.PHONY: all run dev dev-lan kill-dev-ports test coverage verify verify-backend verify-scripts verify-web verify-docs verify-version verify-native verify-shell-core verify-desktop verify-mobile scenarios scenarios-chat scenarios-mentions scenarios-questions scenarios-lsp scenarios-performance health health-json prompt-budget prompt-budget-json migrate revision build-web icons build dist clean help
 .PHONY: run-v2 dev-v2 run-v3 dev-v3 run3 dev3 build-v3 verify-v3
 
 # Default target
@@ -74,13 +74,16 @@ test: ## Run tests
 coverage: ## Run tests with coverage report (terminal + htmlcov/)
 	uv run pytest --cov=app --cov-report=term-missing:skip-covered --cov-report=html tests/
 
-verify: verify-v3 verify-backend verify-web verify-docs verify-version ## Run the portable pre-merge contract
+verify: verify-v3 verify-backend verify-scripts verify-web verify-docs verify-version ## Run the portable pre-merge contract
 
 verify-backend: ## Lint, format-check, type-check, and test the Python backend
 	uv run ruff check app/ tests/
 	uv run ruff format --check app/ tests/
 	uv run ty check app/
 	uv run pytest -n 4 -q
+
+verify-scripts: ## Test maintainer scripts, installers, and release/workflow contracts
+	uv run --with pytest --with pyyaml --with pillow python -m pytest scripts/tests -q
 
 verify-web: ## Lint, type-check, and test the web frontend
 	cd web && bun run lint

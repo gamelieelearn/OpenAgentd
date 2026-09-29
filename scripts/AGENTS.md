@@ -20,6 +20,8 @@ analysis.
   release-note inputs. The `[workspace.package]` version in
   `appv3/Cargo.toml` is the release version.
 - `bench_chat_db.py`: local persistence benchmark, not a correctness test.
+- `tests/`: pytest checks for these scripts and for installer, native-shell
+  config, and release-workflow contracts; run them with `make verify-scripts`.
 
 Python scripts use the repository `uv` environment unless the script's help or
 owning Make target explicitly uses system Python. Keep scripts non-interactive
@@ -48,6 +50,7 @@ uv run python scripts/validate_docs.py
 uv run python scripts/build_sidecar.py --help
 uv run python scripts/make_updater_manifest.py --help
 uv run python -m scripts.codehealth --help
+make verify-scripts
 make verify-docs
 make verify-version
 ```

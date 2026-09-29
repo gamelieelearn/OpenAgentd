@@ -44,7 +44,9 @@ worktrees are not part of the tracked instruction hierarchy.
 - `tests/`: pytest suite mirroring `app/`; `tests/manual/` holds standalone
   service scenarios.
 - `manual/`: live-server and provider smoke/debug scripts.
-- `scripts/`: packaging, release, docs validation, and code-health utilities.
+- `scripts/`: packaging, release, docs validation, and code-health utilities;
+  `scripts/tests/` holds their pytest checks plus installer and workflow
+  contracts.
 - `documents/`: public feature catalogue and referenced assets.
 - `.openagentd/`: tracked repository commands, snippets, and agent skills;
   runtime state beneath ignored subdirectories is not source.
@@ -122,13 +124,14 @@ Choose every target covering the paths changed:
 ```bash
 make verify-v3       # v3 Rust: cargo fmt check, clippy -D warnings, tests
 make verify-backend  # v2 Python: ruff lint/format check, ty, pytest
+make verify-scripts  # pytest for scripts, installers, and workflow contracts (uv)
 make verify-web      # ESLint, app/test TypeScript, Bun tests
 make verify-docs     # Markdown links/frontmatter/Make references
 make verify-version  # synchronized release versions and catalogue metadata
 make verify-desktop  # locked desktop cargo check/test/clippy
 make verify-mobile   # locked mobile cargo check
 make verify-shell-core # shared native crate fmt/clippy/test
-make verify          # portable v3 + v2 backend + web + docs + version checks
+make verify          # portable v3 + v2 backend + scripts + web + docs + version checks
 make verify-native   # shell-core + desktop + mobile; native system dependencies required
 ```
 
