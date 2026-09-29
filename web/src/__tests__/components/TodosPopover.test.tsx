@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { TodosPopover } from '@/components/TodosPopover'
 import type { TodoItem } from '@/api/types'
@@ -49,6 +49,18 @@ describe('TodosPopover', () => {
   it('has no plan row without a saved plan', () => {
     render(<TodosPopover open onOpenChange={() => {}} todos={TODOS} />)
     expect(screen.queryByRole('button', { name: 'View plan' })).toBeNull()
+  })
+
+  it('closes itself and opens the Plan tab from the plan row', () => {
+    const plan = { content: '## Summary\nDo it.', updated_at: new Date().toISOString() }
+    const onOpenChange = mock(() => {})
+    const onOpenPlan = mock(() => {})
+    render(<TodosPopover open onOpenChange={onOpenChange} todos={[]} plan={plan} onClearPlan={() => {}} onOpenPlan={onOpenPlan} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open plan' }))
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(onOpenPlan).toHaveBeenCalledTimes(1)
   })
 
   it('renders a flat checklist sorted in_progress → pending → completed → cancelled', () => {

@@ -28,7 +28,6 @@ import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
 import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { setTraySession } from '@/lib/tray'
 import { isEditableTarget } from '@/lib/is-editable-target'
-import { formatPlanQuote } from '@/utils/markdown-plan'
 import { attachmentToFile } from './helpers'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
@@ -68,7 +67,6 @@ export interface UseSessionBootstrapResult {
   handleNewSession: () => void
   handleDraftValueChange: (value: string) => void
   handleAddFileComment: (path: string, startLine: number, endLine: number) => void
-  handleAddPlanComment: (selectedText: string) => void
 }
 
 export function useSessionBootstrap({
@@ -374,12 +372,6 @@ export function useSessionBootstrap({
     inputRef.current?.focus()
   }, [inputRef])
 
-  // Selected plan text lands as a quote; the comment is typed beneath it.
-  const handleAddPlanComment = useCallback((selectedText: string) => {
-    inputRef.current?.appendValue(formatPlanQuote(selectedText), { paragraph: true })
-    inputRef.current?.focus()
-  }, [inputRef])
-
   // Restore a queued message's text and files into the composer (fired by
   // the X button on PendingMessageQueue). Overwrites any current draft —
   // matches the /undo restore semantics above. Files come back as the
@@ -461,6 +453,5 @@ export function useSessionBootstrap({
     handleNewSession,
     handleDraftValueChange,
     handleAddFileComment,
-    handleAddPlanComment,
   }
 }

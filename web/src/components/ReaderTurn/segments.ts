@@ -13,8 +13,8 @@
  *
  * A few blocks never fold, because the user must see or act on them:
  * interactive MCP apps, provider errors and notices, and compaction dividers.
- * An ``ask_user`` card stays out only while it waits on the user; once
- * answered or closed it is one more step of the work.
+ * An ``ask_user`` or ``submit_plan`` card stays out only while it waits on the
+ * user; once answered or closed it is one more step of the work.
  */
 import type { ContentBlock } from '@/api/types'
 
@@ -27,13 +27,16 @@ export type ReaderSegment =
   | { kind: 'work'; indices: number[] }
   | { kind: 'block'; index: number }
 
-/** Whether an ``ask_user`` block's card still reads "Needs your input". */
+/** Whether an ``ask_user`` / ``submit_plan`` block's card still waits on the user. */
 export type AwaitsUser = (block: ContentBlock) => boolean
+
+/** Tools that pause the turn on the user; see ``useQuestionAwaitsUser``. */
+const USER_GATED_TOOLS = new Set(['ask_user', 'submit_plan'])
 
 function isWork(block: ContentBlock, awaitsUser: AwaitsUser): boolean {
   if (block.type === 'thinking') return true
   if (block.type !== 'tool') return false
-  if (block.toolName === 'ask_user') return !awaitsUser(block)
+  if (USER_GATED_TOOLS.has(block.toolName ?? '')) return !awaitsUser(block)
   return !(block.extra as { mcp_app?: unknown } | null | undefined)?.mcp_app
 }
 

@@ -187,4 +187,29 @@ describe('loadSession — pending question hydration', () => {
     expect(useAgentStore.getState().pendingQuestion).toBeNull()
     expect(useAgentStore.getState().agentStreams.lead.status).toBe('idle')
   })
+
+  it('restores a plan review with its kind and revision', async () => {
+    mockSessionHistory.mockImplementation(() =>
+      Promise.resolve(
+        historyWithQuestion({
+          pending_question: {
+            id: 'q-plan',
+            session_id: 'lead-sess',
+            tool_call_id: 'call-plan',
+            questions: WIRE_QUESTIONS,
+            created_at: '2026-07-01T00:00:02Z',
+            kind: 'plan_review',
+            plan_revision: 3,
+          },
+        }),
+      ),
+    )
+
+    await useAgentStore.getState().loadSession('lead-sess')
+
+    const pending = useAgentStore.getState().pendingQuestion
+    expect(pending?.kind).toBe('plan_review')
+    expect(pending?.planRevision).toBe(3)
+    expect(useAgentStore.getState().agentStreams.lead.status).toBe('waiting_input')
+  })
 })

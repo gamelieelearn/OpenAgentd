@@ -1,38 +1,14 @@
 /**
- * TanStack Markdown extension and UI container for `<proposed_plan>` blocks.
+ * TanStack Markdown extension and read-only card for `<proposed_plan>` blocks.
  *
- * Catches `<proposed_plan>` and `</proposed_plan>` XML tags output by the agent
- * during Plan mode, suppressing the raw XML tags from view and rendering the
- * plan inside a styled warm-paper plan card.
+ * Plan mode used to end with a `<proposed_plan>` block; the agent now writes
+ * the plan with the `plan` tool and submits it for review in the Plan tab.
+ * Older transcripts still carry the tag, so it keeps rendering as a card
+ * (with the raw tags hidden) that offers no actions.
  */
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, memo, type ReactNode, type RefObject } from 'react'
-import { Loader2, MessageSquareQuote, Play } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { memo, type ReactNode } from 'react'
 import type { BlockNode, BlockParseContext, MarkdownExtension } from '@tanstack/markdown'
-
-export interface PlanActionContextValue {
-  onStartImplementing?: () => void
-  isSwitching?: boolean
-  /** Quote selected plan text into the composer so the user can comment on it. */
-  onComment?: (quote: string) => void
-}
-
-export const PlanActionContext = createContext<PlanActionContextValue>({})
-
-/** Longest selection quoted into a comment; the agent has the full plan. */
-const PLAN_QUOTE_MAX = 800
-
-/**
- * Selected plan text as a Markdown quote followed by a blank line, so the
- * comment typed next reads as a reply to it. The Plan-mode prompt asks the
- * agent to answer every quoted comment with a full revised plan.
- */
-export function formatPlanQuote(text: string): string {
-  let quote = text.replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
-  if (quote.length > PLAN_QUOTE_MAX) quote = `${quote.slice(0, PLAN_QUOTE_MAX - 1).trimEnd()}…`
-  return `${quote.split('\n').map((line) => (line ? `> ${line}` : '>')).join('\n')}\n\n`
-}
 
 /**
  * Find all intervals [start, end] in markdown text that are inside code,
@@ -271,36 +247,7 @@ export interface ProposedPlanCardProps {
   children?: ReactNode
 }
 
-/**
- * The text selected inside `body`, and where its bottom edge sits relative to
- * `body`. Follows `selectionchange`, so pointer drags, keyboard selection and
- * touch selection handles all update it.
- */
-function usePlanSelection(bodyRef: RefObject<HTMLDivElement | null>, enabled: boolean) {
-  const [selection, setSelection] = useState<{ text: string; top: number } | null>(null)
-  const update = useCallback(() => {
-    const body = bodyRef.current
-    const sel = window.getSelection()
-    if (!body || !sel || sel.isCollapsed || sel.rangeCount === 0) return setSelection(null)
-    const range = sel.getRangeAt(0)
-    const text = sel.toString().trim()
-    if (!text || !body.contains(range.commonAncestorContainer)) return setSelection(null)
-    const top = Math.max(0, range.getBoundingClientRect().bottom - body.getBoundingClientRect().top)
-    setSelection((prev) => (prev && prev.text === text && prev.top === top ? prev : { text, top }))
-  }, [bodyRef])
-  useEffect(() => {
-    if (!enabled) return
-    document.addEventListener('selectionchange', update)
-    return () => document.removeEventListener('selectionchange', update)
-  }, [enabled, update])
-  return { selection: enabled ? selection : null, clear: () => setSelection(null) }
-}
-
 export const ProposedPlanCard = memo(function ProposedPlanCard({ children }: ProposedPlanCardProps) {
-  const { onStartImplementing, isSwitching, onComment } = useContext(PlanActionContext)
-  const bodyRef = useRef<HTMLDivElement>(null)
-  const { selection, clear } = usePlanSelection(bodyRef, Boolean(onComment))
-
   return (
     <div
       data-testid="proposed-plan-divider"
@@ -328,52 +275,10 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({ children }: Pro
        * omitted: `.oa-prose`'s own paragraph/list/heading margins are
        * unlayered and already win over the utility layer.
        */}
-      <div ref={bodyRef} className="relative text-(--color-text)">
-        {children}
-        {selection && onComment && (
-          <Button
-            type="button"
-            variant="default"
-            size="xs"
-            // Keep the selection: a mousedown on the button would collapse it.
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              onComment(selection.text)
-              window.getSelection()?.removeAllRanges()
-              clear()
-            }}
-            className="absolute right-0 z-10 gap-1 shadow-xs"
-            style={{ top: selection.top + 4 }}
-            aria-label="Comment on selection"
-          >
-            <MessageSquareQuote size={11} aria-hidden="true" />
-            Comment
-          </Button>
-        )}
-      </div>
+      <div className="text-(--color-text)">{children}</div>
 
-      {/* Bottom divider with embedded action (Option A) */}
-      <div className="flex items-center gap-3 pt-1">
-        <span className="h-px flex-1 bg-(--color-border)" aria-hidden />
-        {onStartImplementing && (
-          <Button
-            type="button"
-            variant="primary"
-            size="xs"
-            disabled={isSwitching}
-            onClick={onStartImplementing}
-            className="gap-1 rounded-full font-medium shadow-xs"
-            aria-label="Approve"
-          >
-            {isSwitching ? (
-              <Loader2 size={10} className="animate-spin" aria-hidden="true" />
-            ) : (
-              <Play size={10} className="fill-current" aria-hidden="true" />
-            )}
-            Approve
-          </Button>
-        )}
-        <span className="h-px flex-1 bg-(--color-border)" aria-hidden />
+      <div className="pt-1" aria-hidden>
+        <span className="block h-px bg-(--color-border)" />
       </div>
     </div>
   )

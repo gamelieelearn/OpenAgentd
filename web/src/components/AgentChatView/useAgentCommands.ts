@@ -40,6 +40,10 @@ interface UseAgentCommandsArgs {
   handleFindInTranscript: () => void
   /** Opens the review dock if needed and toggles it over the chat column. */
   handleToggleDockMaximized?: () => void
+  /** Only while the session has a plan: opens it (dock Plan tab, or the task popover without a workspace). */
+  handleOpenPlan?: () => void
+  /** The plan is waiting for the user's review. */
+  planAwaitingReview?: boolean
 }
 
 export function useAgentCommands({
@@ -52,6 +56,8 @@ export function useAgentCommands({
   handleOpenTerminal,
   handleFindInTranscript,
   handleToggleDockMaximized,
+  handleOpenPlan,
+  planAwaitingReview = false,
 }: UseAgentCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
   const { setPreference: setTheme } = useThemePreference()
@@ -62,6 +68,16 @@ export function useAgentCommands({
     { id: 'new-chat', group: 'Session', label: 'New Session', description: 'Start a fresh conversation', shortcut: shortcutLabel(KEYS.newSession, os), action: handleNewSession },
     { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: shortcutLabel(KEYS.sessionSettings, os), action: toggleAgentCapabilities },
     { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: shortcutLabel(KEYS.tasks, os), action: toggleTasks },
+    ...(handleOpenPlan
+      ? [{
+          id: 'open-plan',
+          group: 'View' as const,
+          label: 'Open Plan',
+          description: planAwaitingReview ? 'Waiting for your review · approve or request changes' : "View or edit this session's plan",
+          keywords: 'plan review approve request changes comment',
+          action: handleOpenPlan,
+        }]
+      : []),
     { id: 'find-transcript',  group: 'View',       label: 'Find in Transcript', description: 'Search user and assistant text in this session', shortcut: shortcutLabel(KEYS.findInTranscript, os), action: handleFindInTranscript },
     { id: 'workspace-files',  group: 'View',       label: 'Open Changed & Files', description: 'Browse changed files and workspace files', shortcut: shortcutLabel(KEYS.workspaceFiles, os), action: handleWorkspaceFiles },
     ...(handleToggleDockMaximized
@@ -90,5 +106,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme, readerMode, toggleReaderMode])
+  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme, readerMode, toggleReaderMode])
 }

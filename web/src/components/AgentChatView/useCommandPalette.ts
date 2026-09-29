@@ -46,6 +46,9 @@ export interface UseCommandPaletteArgs {
   handleToggleScheduler: () => void
   handleOpenTerminal: () => void
   handleFindInTranscript: () => void
+  /** Only while the session has a plan; lists Open Plan. */
+  handleOpenPlan?: () => void
+  planAwaitingReview?: boolean
 
   setFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
   setFileOpenKey: Dispatch<SetStateAction<number>>
@@ -76,6 +79,8 @@ export function useCommandPalette({
   handleToggleScheduler,
   handleOpenTerminal,
   handleFindInTranscript,
+  handleOpenPlan,
+  planAwaitingReview,
   setFileViewer,
   setFileOpenKey,
   setWorkspacePanel,
@@ -105,6 +110,8 @@ export function useCommandPalette({
     handleOpenTerminal,
     handleFindInTranscript,
     handleToggleDockMaximized: workspace && !isMobile ? handleToggleDockMaximized : undefined,
+    handleOpenPlan,
+    planAwaitingReview,
   })
   const switchCommands = usePaletteSwitchCommands({ workspace, sessionId: sessionIdState })
   const paletteCommands = useMemo(() => [...agentCommands, ...switchCommands], [agentCommands, switchCommands])

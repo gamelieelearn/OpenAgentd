@@ -625,10 +625,18 @@ export interface TodosResponse {
   todos: TodoItem[]
 }
 
-/** The session's saved Plan-mode plan (``plan.md``); v3 only. */
+/** The session plan the lead writes with the ``plan`` tool; v3 only. */
 export interface SessionPlan {
   content: string
   updated_at: string
+  /** Bumped by every change, including edits made outside the app. */
+  revision?: number
+  /** The revision the user approved in a plan review, if any. */
+  approved_revision?: number | null
+  /** Absolute path of the plan file. */
+  path?: string
+  /** Workspace-relative path, for a plan kept in the project workspace. */
+  workspace_path?: string | null
 }
 
 export interface SessionPlanResponse {
@@ -698,6 +706,9 @@ export interface PendingQuestionResponse {
   tool_call_id: string
   questions: QuestionItem[]
   created_at: string
+  /** ``plan_review`` for a ``submit_plan`` review; absent for ``ask_user``. */
+  kind?: string | null
+  plan_revision?: number | null
 }
 
 export interface PendingQuestionEnvelope {
@@ -710,6 +721,10 @@ export interface PendingQuestion {
   sessionId: string
   toolCallId: string
   questions: QuestionItem[]
+  /** ``plan_review`` when the lead waits on a plan review (``submit_plan``). */
+  kind?: 'plan_review'
+  /** The plan revision the review was opened for. */
+  planRevision?: number
 }
 
 export interface QuestionResolveResult {

@@ -744,6 +744,39 @@ describe("ToolCall — todo_manage display", () => {
   })
 })
 
+describe("ToolCall — plan display", () => {
+  it("shows a write as the plan Markdown, and says when it finished", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ action: "write", content: "# Ship it\n\n1. Write the migration" })
+    const { rerender } = render(<ToolCall name="plan" args={args} done={false} />)
+
+    expect(getHeader("Plan: Writing plan…")).toBeTruthy()
+    rerender(<ToolCall name="plan" args={args} done result="Plan saved as revision 1 (3 lines) at plan.md." />)
+    expect(getHeader("Plan: Wrote plan")).toBeTruthy()
+
+    await user.click(screen.getByRole("button", { name: /Expand plan details/ }))
+    expect(screen.getByText(/1\. Write the migration/)).toBeTruthy()
+    expect(screen.queryByText(/"content"/)).toBeNull()
+  })
+
+  it("shows an edit as a -/+ diff with its change count", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ action: "edit", edits: [{ old: "1. Old step", new: "1. New step" }, { old: "2. B", new: "2. C" }] })
+    const { container } = render(<ToolCall name="plan" args={args} done result="Plan saved as revision 2 (3 lines) at plan.md." />)
+
+    expect(getHeader("Plan: Edited plan · 2 changes")).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: /Expand plan details/ }))
+    const pre = Array.from(container.querySelectorAll("pre")).find((node) => node.textContent?.includes("Old step"))
+    expect(pre?.textContent).toBe("- 1. Old step\n+ 1. New step\n\n- 2. B\n+ 2. C")
+  })
+
+  it("reads a running edit as in progress", () => {
+    const args = JSON.stringify({ action: "edit", edits: [{ old: "a", new: "b" }] })
+    render(<ToolCall name="plan" args={args} done={false} />)
+    expect(getHeader("Plan: Editing plan…")).toBeTruthy()
+  })
+})
+
 describe("ToolCall — schedule_task display", () => {
   it("shows create summary and schedule prompt args", async () => {
     const user = userEvent.setup()

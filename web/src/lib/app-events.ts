@@ -15,6 +15,8 @@ export const APP_EVENTS = {
   openTerminal: 'oa:open-terminal',
   // ⌘F while focus is in the sidebar (see ``routeFindShortcut``).
   searchSessions: 'oa:search-sessions',
+  // A transcript plan-review card asks for the session plan.
+  openPlan: 'oa:open-plan',
 } as const
 
 export type AppEvent = (typeof APP_EVENTS)[keyof typeof APP_EVENTS]

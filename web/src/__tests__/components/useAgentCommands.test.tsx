@@ -90,6 +90,24 @@ describe("useAgentCommands — shortcut labels", () => {
     byId(result.current, "todos").action()
     expect(toggleTasks).toHaveBeenCalledTimes(1)
   })
+
+  it("lists Open Plan only while the session has a plan", () => {
+    const noPlan = renderHook(() => useAgentCommands(makeArgs()))
+    expect(noPlan.result.current.find((c) => c.id === "open-plan")).toBeUndefined()
+
+    const handleOpenPlan = mock(() => {})
+    const withPlan = renderHook(() => useAgentCommands(makeArgs({ handleOpenPlan })))
+    const cmd = byId(withPlan.result.current, "open-plan")
+    expect(cmd.label).toBe("Open Plan")
+    expect(cmd.description).toBe("View or edit this session's plan")
+    cmd.action()
+    expect(handleOpenPlan).toHaveBeenCalledTimes(1)
+  })
+
+  it("says when the plan is waiting for review", () => {
+    const { result } = renderHook(() => useAgentCommands(makeArgs({ handleOpenPlan: () => {}, planAwaitingReview: true })))
+    expect(byId(result.current, "open-plan").description).toMatch(/^Waiting for your review/)
+  })
 })
 
 // ════════════════════════════════════════════════════════════════════════════

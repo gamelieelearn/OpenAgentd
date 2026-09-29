@@ -1,17 +1,21 @@
 /**
- * useOverlayState — dock views (Tasks / Schedule).
+ * useOverlayState — dock views (Tasks / Schedule / Plan).
  *
  * On desktop with a workspace, Tasks / Scheduled Tasks open review-dock tabs; a second press
  * while that tab is focused hides the dock. Phones with a workspace open the
  * scheduler in the dock sheet too but keep the Tasks popover; without a
- * workspace both fall back to the popover / overlay.
+ * workspace both fall back to the popover / overlay. The Plan tab opens in the
+ * dock (or the mobile sheet) whenever there is a workspace, and a new plan
+ * review brings it forward on desktop.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useOverlayState, type UseOverlayStateArgs } from '@/components/AgentChatView/useOverlayState'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { useUIStore } from '@/stores/useUIStore'
+import type { PendingQuestion } from '@/api/types'
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
@@ -32,8 +36,21 @@ function renderOverlay(overrides: Partial<UseOverlayStateArgs> = {}) {
 
 beforeEach(() => {
   useUIStore.setState({ schedulerOpen: false, agentCapabilitiesOpen: false, paletteOpen: false, quickOpenOpen: false })
+  useAgentStore.setState({ pendingQuestion: null })
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  useAgentStore.setState({ pendingQuestion: null })
+})
+
+const planReview = (id: string): PendingQuestion => ({
+  id,
+  sessionId: 's-1',
+  toolCallId: `call-${id}`,
+  kind: 'plan_review',
+  planRevision: 1,
+  questions: [{ question: 'Review plan revision 1.', header: 'Plan review', multiple: false, custom: true, options: [] }],
+})
 
 describe('useOverlayState dock views', () => {
   it('opens the dock with a tasks request on desktop instead of the popover', () => {
@@ -108,5 +125,68 @@ describe('useOverlayState dock views', () => {
     act(() => result.current.handleToggleScheduler())
     expect(args.toggleScheduler).toHaveBeenCalledTimes(1)
     expect(result.current.workspacePanel).toBeNull()
+  })
+})
+
+describe('useOverlayState Plan view', () => {
+  it('opens the dock with a plan request when there is a workspace', () => {
+    const { result } = renderOverlay()
+
+    act(() => result.current.handleOpenPlan())
+
+    expect(result.current.workspacePanel).toBe('changed')
+    expect(result.current.dockViewRequest).toEqual({ view: 'plan', key: 1 })
+  })
+
+  it('opens the dock sheet on mobile too, closing the tasks popover', () => {
+    const { result } = renderOverlay({ isMobile: true })
+    act(() => result.current.handleToggleTasks())
+    expect(result.current.showTodos).toBe(true)
+
+    act(() => result.current.handleOpenPlan())
+
+    expect(result.current.dockViewRequest).toEqual({ view: 'plan', key: 1 })
+    expect(result.current.showTodos).toBe(false)
+  })
+
+  it('falls back to the tasks popover without a workspace', () => {
+    const { result } = renderOverlay({ workspace: null })
+
+    act(() => result.current.handleOpenPlan())
+
+    expect(result.current.showTodos).toBe(true)
+    expect(result.current.dockViewRequest).toBeNull()
+  })
+
+  it('brings the plan forward once per new plan review on desktop', () => {
+    const { result } = renderOverlay()
+
+    act(() => useAgentStore.setState({ pendingQuestion: planReview('q-1') }))
+    expect(result.current.dockViewRequest).toEqual({ view: 'plan', key: 1 })
+
+    // The user closes the dock; the same review must not reopen it.
+    act(() => result.current.setWorkspacePanel(null))
+    act(() => useAgentStore.setState({ pendingQuestion: { ...planReview('q-1') } }))
+    expect(result.current.workspacePanel).toBeNull()
+
+    act(() => useAgentStore.setState({ pendingQuestion: planReview('q-2') }))
+    expect(result.current.dockViewRequest).toEqual({ view: 'plan', key: 2 })
+  })
+
+  it('leaves the chat on screen for a plan review on mobile', () => {
+    const { result } = renderOverlay({ isMobile: true })
+
+    act(() => useAgentStore.setState({ pendingQuestion: planReview('q-1') }))
+
+    expect(result.current.dockViewRequest).toBeNull()
+    expect(result.current.workspacePanel).toBeNull()
+  })
+
+  it('does not open the dock for an ask_user question', () => {
+    const { result } = renderOverlay()
+
+    act(() => useAgentStore.setState({ pendingQuestion: { ...planReview('q-1'), kind: undefined } }))
+
+    expect(result.current.dockViewRequest).toBeNull()
   })
 })

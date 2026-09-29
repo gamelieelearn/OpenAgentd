@@ -1,5 +1,5 @@
 import type { ContentBlock, PendingQuestion } from '@/api/types'
-import type { AgentStream, ResolvedQuestion } from './types'
+import type { AgentStream, CacheInvalidation, ResolvedQuestion } from './types'
 
 /**
  * Close the open question and record how it ended.
@@ -12,11 +12,16 @@ import type { AgentStream, ResolvedQuestion } from './types'
  * The outcome is kept against the *tool call*: the persisted tool result is
  * only rewritten server-side at the end of the turn, so without this the card
  * would fall back to "waiting" for the seconds until history reconciles.
+ *
+ * Closing a plan review also refreshes the plan: an approval records the
+ * approved revision, and the user may have edited it during the review.
  */
 export function applyQuestionResolution(
   draft: {
     pendingQuestion: PendingQuestion | null
     resolvedQuestions: Record<string, ResolvedQuestion>
+    sessionId?: string | null
+    cacheInvalidations?: CacheInvalidation[]
   },
   /** ``null`` closes whatever is open — used by turn-level events that end a
    *  question without naming it. */
@@ -30,6 +35,9 @@ export function applyQuestionResolution(
     questions: draft.pendingQuestion.questions,
     answers,
     reason,
+  }
+  if (draft.pendingQuestion.kind === 'plan_review' && draft.sessionId) {
+    draft.cacheInvalidations?.push({ kind: 'plan', sessionId: draft.sessionId })
   }
   draft.pendingQuestion = null
 }
@@ -122,6 +130,9 @@ export const FS_MUTATING_TOOLS = new Set([
 export const SCHEDULER_MUTATING_TOOLS = new Set(['schedule_task'])
 
 export const TODO_MUTATING_TOOLS = new Set(['todo_manage'])
+
+/** Tools whose completion may have changed the session plan. */
+export const PLAN_MUTATING_TOOLS = new Set(['plan'])
 
 const PATH_BEARING_TOOLS = new Set(['patch'])
 

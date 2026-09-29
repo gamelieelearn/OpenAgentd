@@ -11,7 +11,7 @@
  * and file tabs a sibling close button, which roving-tabindex tab semantics
  * do not model well.
  */
-import { CalendarClock, FileDiff, GitCommitHorizontal, GitCompare, ListTodo, Maximize2, Minimize2, RefreshCw, TerminalSquare, X } from 'lucide-react'
+import { CalendarClock, FileDiff, FileText, GitCommitHorizontal, GitCompare, ListTodo, Maximize2, Minimize2, RefreshCw, TerminalSquare, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { TerminalTabButton } from '../Terminal/TerminalTabButton'
@@ -53,6 +53,8 @@ function TabIcon({ tab }: { tab: DockTab }) {
       return <ListTodo size={12} className="shrink-0" aria-hidden="true" />
     case 'schedule':
       return <CalendarClock size={12} className="shrink-0" aria-hidden="true" />
+    case 'plan':
+      return <FileText size={12} className="shrink-0" aria-hidden="true" />
     case 'file':
       return <FileTypeIcon name={tab.file.name || tab.file.path} size={13} />
     case 'diff':

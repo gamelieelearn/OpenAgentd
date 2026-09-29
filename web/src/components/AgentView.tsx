@@ -29,7 +29,7 @@ import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels } from '@/utils/turns'
-import { countBlocksAfter, hasPlanContent, liveBlockTail } from '@/utils/blocks'
+import { countBlocksAfter, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -268,16 +268,10 @@ interface AgentViewProps {
   onMentionFileOpen?: (path: string) => void
   /** Opens ``path:line`` references in replies and tool output. */
   fileRefOpener?: FileRefOpener
-  /** Callback to switch to Code mode and start implementation of a proposed plan. */
-  onStartImplementing?: () => void
-  /** Quote selected plan text into the composer (lead sessions only). */
-  onCommentOnPlan?: (quote: string) => void
   /** Resend the latest prompt; offered under the latest finished answer. */
   onRetry?: () => void
   /** Pick another model; offered with Retry on the error a turn ended with. */
   onSwitchModel?: () => void
-  /** True when interaction mode is actively transitioning to Code mode. */
-  isSwitchingInteractionMode?: boolean
   findOpen?: boolean
   findQuery?: string
   findActiveIndex?: number
@@ -419,11 +413,8 @@ export function AgentView({
   emptyState,
   onMentionFileOpen,
   fileRefOpener,
-  onStartImplementing,
-  onCommentOnPlan,
   onRetry,
   onSwitchModel,
-  isSwitchingInteractionMode = false,
   findOpen = false,
   findQuery = '',
   findActiveIndex = 0,
@@ -434,7 +425,6 @@ export function AgentView({
 }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
-  const sessionInteractionMode = useAgentStore((s) => s.sessionInteractionMode)
   const loadingOlderRef = useRef(false)
   const hiddenTurnCountRef = useRef(0)
   const showEarlierTurnsRef = useRef<() => void>(() => {})
@@ -900,11 +890,6 @@ export function AgentView({
                   // own start mark, the prompt's time survives a reload.
                   const prompt = isTrailingTurn ? turnItems[globalTurnIndex - 1] : undefined
                   const turnStartedAt = prompt?.kind === 'user' ? prompt.block.timestamp?.getTime() : undefined
-                  const canStartImplementing =
-                    isTrailingTurn &&
-                    !isWorking &&
-                    sessionInteractionMode === 'plan' &&
-                    hasPlanContent(item.blocks)
                  return (
                    <AssistantTurn
                      key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}
@@ -916,9 +901,6 @@ export function AgentView({
                      isTrailingTurn={isTrailingTurn}
                       totalBlocks={totalLen}
                       size="roomy"
-                      onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
-                      onCommentOnPlan={onCommentOnPlan}
-                     isSwitchingInteractionMode={isSwitchingInteractionMode}
                      reader={readerTranscript}
                      startedAt={turnStartedAt}
                      findHitBlockIds={readerTranscript ? findHitBlockIds : undefined}
