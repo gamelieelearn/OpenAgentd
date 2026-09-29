@@ -1,38 +1,44 @@
-//! `openagentd auth` — port of `app/cli/commands/auth.py`.
+//! `openagentd auth <provider>`, `auth list`, `auth logout <provider>`.
 
-use crate::argparse::Ns;
-use crate::cmd::server::{ns_bool, ns_str};
+use crate::cli::{AuthArgs, AuthCmd};
+use crate::ui::{bold, dim, green};
+use anyhow::{anyhow, Context, Result};
+use appv3_providers::oauth::{oauth_path, PROVIDERS};
+use std::process::ExitCode;
 
-const PROVIDERS: &[(&str, &str)] = &[
-    ("copilot", "GitHub Copilot — device-flow OAuth"),
-    ("codex", "OpenAI Codex — PKCE OAuth (ChatGPT subscription)"),
-    ("grok", "Grok Build — device-flow OAuth (Grok subscription)"),
-];
-
-fn list_providers() {
-    println!("Available OAuth providers:\n");
-    let mut sorted: Vec<_> = PROVIDERS.to_vec();
-    sorted.sort();
-    for (name, desc) in sorted {
-        println!("  {name:<15}  {desc}");
+pub fn auth(args: &AuthArgs) -> Result<ExitCode> {
+    match (&args.action, &args.provider) {
+        (Some(AuthCmd::Logout { provider }), _) => logout(provider).map(|_| ExitCode::SUCCESS),
+        (None, Some(provider)) if !args.list => login(provider, args.device),
+        _ => {
+            list();
+            Ok(ExitCode::SUCCESS)
+        }
     }
-    let names: Vec<&str> = PROVIDERS.iter().map(|(n, _)| *n).collect();
-    println!("\nUsage: openagentd auth <{}>", names.join("|"));
 }
 
-pub fn cmd_auth(ns: &Ns) {
-    let provider = ns_str(ns, "provider").filter(|p| !p.is_empty());
-    let Some(provider) = provider.filter(|_| !ns_bool(ns, "list_providers")) else {
-        list_providers();
-        return;
-    };
-    if !PROVIDERS.iter().any(|(n, _)| *n == provider) {
-        println!("Unknown provider: '{provider}'");
-        list_providers();
-        crate::cmd::server::system_exit_code(1);
+fn logged_in(provider: &str) -> bool {
+    oauth_path(provider).is_some_and(|p| p.is_file())
+}
+
+fn list() {
+    let mut providers = PROVIDERS.to_vec();
+    providers.sort();
+    println!();
+    println!("  {}", bold("OAuth providers"));
+    println!();
+    for (id, desc) in providers {
+        let state = if logged_in(id) { green("logged in    ") } else { dim("not logged in") };
+        println!("  {}  {state}  {}", bold(&format!("{id:<8}")), dim(desc));
     }
-    let device = ns_bool(ns, "device");
-    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("tokio runtime");
+    println!();
+    println!("  {}  openagentd auth <provider>", dim("Log in: "));
+    println!("  {}  openagentd auth logout <provider>", dim("Log out:"));
+    println!();
+}
+
+fn login(provider: &str, device: bool) -> Result<ExitCode> {
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let res = rt.block_on(async move {
         match provider {
             "copilot" => appv3_providers::copilot::login(None, None).await,
@@ -40,10 +46,25 @@ pub fn cmd_auth(ns: &Ns) {
             _ => appv3_providers::grok::login(None).await,
         }
     });
-    if let Err(e) = res {
-        if !appv3_providers::codex::cli_failure_reported() {
-            crate::pystr::uncaught("RuntimeError", &e);
-        }
-        crate::cmd::server::system_exit_code(1);
+    match res {
+        Ok(()) => Ok(ExitCode::SUCCESS),
+        // The flow already printed why it failed.
+        Err(_) if appv3_providers::codex::cli_failure_reported() => Ok(ExitCode::FAILURE),
+        Err(e) => Err(anyhow!("{provider} login failed: {e}")),
     }
+}
+
+fn logout(provider: &str) -> Result<()> {
+    let path = oauth_path(provider).ok_or_else(|| anyhow!("unknown OAuth provider {provider:?}"))?;
+    let removed = path.is_file();
+    if removed {
+        std::fs::remove_file(&path).with_context(|| format!("remove {}", path.display()))?;
+    }
+    let _ = appv3_core::runtime_settings::forget_provider_models(provider);
+    if removed {
+        println!("  {}  Logged out of {provider}", green("✓"));
+    } else {
+        println!("  {provider} was not logged in");
+    }
+    Ok(())
 }

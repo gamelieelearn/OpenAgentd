@@ -1,60 +1,62 @@
-//! `openagentd` (v3) — the Rust backend binary and a drop-in port of the v2
-//! CLI (`app/cli/main.py`): the same argparse tree, help/usage/error texts,
-//! and command behaviour. `server start` daemonises this binary's
-//! `server serve` in place of uvicorn.
+//! `openagentd` (v3): the Rust backend binary and its command-line interface.
+//! `server serve` is the foreground server the desktop sidecar runs, and
+//! `server start` runs it as a background daemon.
 
-mod argparse;
+mod cli;
 mod cmd;
 mod logging;
 mod net;
-mod parser;
 mod paths;
-mod pystr;
-mod textwrap;
 mod ui;
 
-use argparse::Val;
+use clap::{CommandFactory, Parser};
+use cli::{Cli, Command, ServerCmd, TransferCmd};
+use std::process::ExitCode;
 
-fn main() {
+fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
+    let done = |r: anyhow::Result<()>| r.map(|()| ExitCode::SUCCESS);
+    match command {
+        Command::Server(s) => match s {
+            ServerCmd::Start(a) => cmd::server::start(&a),
+            ServerCmd::Stop => done(cmd::server::stop()),
+            ServerCmd::Restart(a) => cmd::server::restart(&a),
+            ServerCmd::Status(a) => cmd::server::status(&a),
+            ServerCmd::Logs(a) => done(cmd::server::logs(&a)),
+            ServerCmd::Serve(a) => done(cmd::serve::serve(&a)),
+        },
+        Command::Run(a) => done(cmd::run::run(&a)),
+        Command::Auth(a) => cmd::auth::auth(&a),
+        Command::Doctor => cmd::doctor::doctor(),
+        Command::Cleanup(a) => done(cmd::cleanup::cleanup(&a)),
+        Command::Transfer(t) => done(match t {
+            TransferCmd::Migrate(a) => cmd::transfer::migrate(&a),
+            TransferCmd::Export(a) => cmd::transfer::export(&a),
+            TransferCmd::Import(a) => cmd::transfer::import(&a),
+        }),
+        Command::Lsp(l) => done(cmd::lsp::lsp(&l)),
+        Command::Upgrade => cmd::upgrade::upgrade(),
+    }
+}
+
+fn main() -> ExitCode {
     logging::mark_start();
-    // `app/cli/__init__.py`: the installed CLI is a production launcher.
+    // The installed CLI is a production launcher; `server start` passes this
+    // on to the daemon so both use the same state dir.
     if std::env::var_os("APP_ENV").is_none() {
         std::env::set_var("APP_ENV", "production");
     }
-    let mut args: Vec<String> = std::env::args_os().skip(1).map(|a| a.to_string_lossy().into_owned()).collect();
-    // Hidden v3-only alias: the desktop sidecar launches the Rust binary as
-    // `openagentd serve …` (v2 only has `server serve`).
-    if args.first().map(String::as_str) == Some("serve") {
-        args.insert(0, "server".into());
-    }
-    let ns = parser::build_parser().parse_args(&args);
-    let func = match ns.get("func") {
-        Some(Val::Str(f)) => f.clone(),
-        _ => "start".into(),
+    let result = match Cli::parse().command {
+        // Bare `openagentd` is reserved for a future TUI; print help for now.
+        None => Cli::command().print_help().map(|()| ExitCode::SUCCESS).map_err(Into::into),
+        Some(command) => dispatch(command),
     };
-    match func.as_str() {
-        "start" => cmd::server::cmd_start(&ns),
-        "stop" => cmd::server::cmd_stop(&ns),
-        "restart" => cmd::server::cmd_restart(&ns),
-        "status" => cmd::server::cmd_status(&ns),
-        "health" => cmd::server::cmd_health(&ns),
-        "logs" => cmd::server::cmd_logs(&ns),
-        "serve" => {
-            if let Err(e) = cmd::serve::cmd_serve(&ns) {
-                pystr::uncaught("Error", &format!("{e:#}"));
-            }
-        }
-        "auth" => cmd::auth::cmd_auth(&ns),
-        "lsp" => cmd::lsp::cmd_lsp(&ns),
-        "doctor" => cmd::doctor::cmd_doctor(),
-        "run" => cmd::run::cmd_run(&ns),
-        "cleanup" => cmd::cleanup::cmd_cleanup(&ns),
-        "upgrade" => cmd::upgrade::cmd_upgrade(&ns),
-        "migrate" => cmd::transfer::cmd_migrate(&ns),
-        "export" => cmd::transfer::cmd_export(&ns),
-        "import" => cmd::transfer::cmd_import(&ns),
-        other => unreachable!("unknown command {other}"),
-    }
     use std::io::Write;
     let _ = std::io::stdout().flush();
+    match result {
+        Ok(code) => code,
+        Err(e) => {
+            ui::print_error(&format!("{e:#}"));
+            ExitCode::FAILURE
+        }
+    }
 }

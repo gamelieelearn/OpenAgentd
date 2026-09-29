@@ -1,161 +1,100 @@
-//! `server start|stop|restart|status|health|logs` — ports of
-//! `app/cli/commands/{start,stop,restart,status,health,logs}.py`.
-//! `start` launches this binary's `server serve` in place of uvicorn.
+//! `server start|stop|restart|status|logs`. `start` runs this binary's
+//! `server serve` as a background daemon.
 
-use crate::argparse::{Ns, Val};
-use crate::net::{display_host, http_get, is_port_reachable, require_loopback_or_auth, resolve_host, resolve_port, server_addresses, server_settings};
+use crate::cli::{AddrArgs, LogsArgs, StartArgs};
+use crate::net::{display_host, http_get, is_port_reachable, require_loopback_or_auth, resolve_addr, server_addresses, server_settings};
 use crate::paths::{clear_pids, find_pids, pid_alive, server_log, write_pids};
-use crate::pystr::{strip, system_exit, uncaught};
-use crate::ui::{bold, cyan, dim, green, ljust, print_banner, red, yellow};
+use crate::ui::{bold, cyan, dim, field, green, print_banner, red, yellow, Checks};
+use anyhow::{bail, Context, Result};
 use serde_json::Value;
+use std::borrow::Cow;
+use std::process::{Child, ExitCode};
 use std::time::{Duration, Instant};
 
-/// Env marker telling the spawned `server serve` it runs as the CLI daemon
-/// (uvicorn in v2), so it skips the sidecar stdio-prime line.
+/// Env marker telling the spawned `server serve` it runs as the CLI daemon,
+/// so it skips the sidecar stdio line and keeps log records out of stderr.
 pub const DAEMON_ENV: &str = "OPENAGENTD_CLI_DAEMON_CHILD";
 
-pub fn ns_str<'a>(ns: &'a Ns, k: &str) -> Option<&'a str> {
-    match ns.get(k) {
-        Some(Val::Str(s)) => Some(s.as_str()),
-        _ => None,
-    }
-}
+const READY_TIMEOUT: Duration = Duration::from_secs(30);
 
-pub fn ns_int(ns: &Ns, k: &str) -> Option<i64> {
-    match ns.get(k) {
-        Some(Val::Int(i)) => Some(*i),
-        _ => None,
-    }
-}
-
-pub fn ns_bool(ns: &Ns, k: &str) -> bool {
-    matches!(ns.get(k), Some(Val::Bool(true)))
-}
-
-fn env_truthy(k: &str) -> bool {
+fn env_set(k: &str) -> bool {
     std::env::var(k).is_ok_and(|v| !v.is_empty())
 }
 
-/// `getpass.getpass(prompt)`.
-fn getpass(prompt: &str) -> String {
-    use std::io::{BufRead, Write};
-    #[cfg(unix)]
-    {
-        use std::os::fd::AsRawFd;
-        if let Ok(tty) = std::fs::OpenOptions::new().read(true).write(true).open("/dev/tty") {
-            let fd = tty.as_raw_fd();
-            let mut old: libc::termios = unsafe { std::mem::zeroed() };
-            if unsafe { libc::tcgetattr(fd, &mut old) } == 0 {
-                let mut new = old;
-                new.c_lflag &= !libc::ECHO;
-                let mut w = &tty;
-                unsafe { libc::tcsetattr(fd, libc::TCSAFLUSH, &new) };
-                let _ = w.write_all(prompt.as_bytes());
-                let _ = w.flush();
-                let mut line = String::new();
-                let n = std::io::BufReader::new(&tty).read_line(&mut line);
-                unsafe { libc::tcsetattr(fd, libc::TCSAFLUSH, &old) };
-                let _ = w.write_all(b"\n");
-                if matches!(n, Ok(0)) {
-                    uncaught("EOFError", "");
-                }
-                return line.strip_suffix('\n').unwrap_or(&line).to_string();
-            }
-        }
+fn code(ok: bool) -> ExitCode {
+    if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
-    #[cfg(windows)]
-    {
-        use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::System::Console::{GetConsoleMode, SetConsoleMode, ENABLE_ECHO_INPUT};
-        if let Ok(con) = std::fs::OpenOptions::new().read(true).write(true).open("CONIN$") {
-            let h = con.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE;
-            let mut old = 0u32;
-            if unsafe { GetConsoleMode(h, &mut old) } != 0 {
-                unsafe { SetConsoleMode(h, old & !ENABLE_ECHO_INPUT) };
-                eprint!("{prompt}");
-                let _ = std::io::stderr().flush();
-                let mut line = String::new();
-                let n = std::io::BufReader::new(&con).read_line(&mut line);
-                unsafe { SetConsoleMode(h, old) };
-                eprintln!();
-                if matches!(n, Ok(0)) {
-                    uncaught("EOFError", "");
-                }
-                return line.trim_end_matches(['\r', '\n']).to_string();
-            }
-        }
-    }
-    eprintln!("Warning: Password input may be echoed.");
-    eprint!("{prompt}");
-    let mut line = String::new();
-    if matches!(std::io::stdin().lock().read_line(&mut line), Ok(0) | Err(_)) {
-        uncaught("EOFError", "");
-    }
-    line.strip_suffix('\n').unwrap_or(&line).to_string()
 }
 
-fn prompt_access_key() -> String {
-    let key = strip(&getpass("OpenAgentd LAN access key: ")).to_string();
+/// Bound to every interface, so LAN clients can connect.
+fn all_interfaces(host: &str) -> bool {
+    host == "0.0.0.0" || host == "::"
+}
+
+fn pid_list(pids: &[i32]) -> String {
+    pids.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")
+}
+
+fn prompt_access_key() -> Result<String> {
+    let key = crate::ui::read_secret("OpenAgentd LAN access key: ").context("read the access key")?.trim().to_string();
     if key.is_empty() {
-        system_exit("LAN access key cannot be empty.");
+        bail!("the access key cannot be empty");
     }
-    key
+    Ok(key)
 }
 
 fn exe() -> std::path::PathBuf {
     std::env::current_exe().unwrap_or_else(|_| "openagentd".into())
 }
 
-pub fn cmd_start(ns: &Ns) {
+pub fn start(args: &StartArgs) -> Result<ExitCode> {
+    start_daemon(args).map(code)
+}
+
+/// `Ok(false)` when `--wait` saw the server die or time out.
+fn start_daemon(args: &StartArgs) -> Result<bool> {
     if !find_pids().is_empty() {
         println!("  {}  (run {} first)", yellow("already running"), bold("openagentd server stop"));
-        return;
+        return Ok(true);
     }
-    let mut cfg = server_settings();
-    let arg_host = ns_str(ns, "host").filter(|h| !h.is_empty());
-    let arg_port = ns_int(ns, "port");
-    let key = ns_bool(ns, "key");
-    if let Some(h) = arg_host {
+    let mut cfg = server_settings()?;
+    let host_arg = args.addr.host.as_deref().filter(|h| !h.is_empty());
+    if let Some(h) = host_arg {
         cfg.host = h.into();
     }
-    if let Some(p) = arg_port.filter(|&p| p != 0) {
-        cfg.port = p;
+    if let Some(p) = args.addr.port {
+        cfg.port = p.into();
     }
-    if key {
-        cfg.access_key = Some(prompt_access_key());
+    if args.key {
+        cfg.access_key = Some(prompt_access_key()?);
     }
-    let port = resolve_port(arg_port, Some(cfg.port));
-    let host = resolve_host(arg_host, Some(&cfg.host));
+    let (host, port) = resolve_addr(None, None, &cfg);
     let has_key = cfg.access_key.as_deref().is_some_and(|k| !k.is_empty());
-    require_loopback_or_auth(&host, env_truthy("OPENAGENTD_DESKTOP_TOKEN") || env_truthy("OPENAGENTD_ACCESS_KEY") || has_key);
-    if arg_host.is_some() || arg_port.is_some_and(|p| p != 0) || key {
-        if let Err(e) = appv3_core::runtime_settings::save_server_settings(&cfg) {
-            uncaught("OSError", &format!("{e:#}"));
-        }
+    require_loopback_or_auth(&host, env_set("OPENAGENTD_DESKTOP_TOKEN") || env_set("OPENAGENTD_ACCESS_KEY") || has_key)?;
+    if host_arg.is_some() || args.addr.port.is_some() || args.key {
+        appv3_core::runtime_settings::save_server_settings(&cfg).context("save server.yaml")?;
     }
 
     let srv_log = server_log();
     print_banner(&host, port);
     if let Some(p) = srv_log.parent() {
-        if let Err(e) = std::fs::create_dir_all(p) {
-            crate::pystr::os_error(&e, Some(p));
-        }
+        std::fs::create_dir_all(p).with_context(|| format!("create {}", p.display()))?;
     }
-    let log = match std::fs::OpenOptions::new().create(true).append(true).open(&srv_log) {
-        Ok(f) => f,
-        Err(e) => crate::pystr::os_error(&e, Some(&srv_log)),
-    };
+    let log = std::fs::OpenOptions::new().create(true).append(true).open(&srv_log).with_context(|| format!("open {}", srv_log.display()))?;
     let mut cmd = std::process::Command::new(exe());
-    cmd.args(["server", "serve", "--host", &host, "--port", &port.to_string()]);
-    cmd.env("APP_ENV", "production").env(DAEMON_ENV, "1");
-    if has_key && !env_truthy("OPENAGENTD_ACCESS_KEY") {
+    // APP_ENV is inherited (main defaults it to production), so the daemon
+    // uses the same state dir as this process's PID file and log.
+    cmd.args(["server", "serve", "--host", &host, "--port", &port.to_string()]).env(DAEMON_ENV, "1");
+    if has_key && !env_set("OPENAGENTD_ACCESS_KEY") {
         cmd.env("OPENAGENTD_ACCESS_KEY", cfg.access_key.as_deref().unwrap_or(""));
     }
     if let Some(dir) = exe().parent() {
         cmd.current_dir(dir);
     }
-    let err = log.try_clone().expect("dup log fd");
-    cmd.stdin(std::process::Stdio::null()).stdout(log).stderr(err);
+    cmd.stdin(std::process::Stdio::null()).stdout(log.try_clone()?).stderr(log);
     #[cfg(unix)]
     unsafe {
         use std::os::unix::process::CommandExt;
@@ -173,44 +112,41 @@ pub fn cmd_start(ns: &Ns) {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
     }
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => uncaught("OSError", &e.to_string()),
-    };
+    let mut child = cmd.spawn().context("start the server process")?;
     let _ = write_pids(&[child.id()]);
-    println!("  {}  {}", dim("Logs:"), srv_log.display());
-    let addresses = server_addresses(&host, port);
-    if let Some(lan) = addresses.lan.first() {
-        println!("  {}   {}", dim("LAN:"), bold(lan));
-        println!("  {} use the LAN address in the mobile app", dim("Mobile:"));
+    field("Logs:", &srv_log.display().to_string());
+    if all_interfaces(&host) {
+        if let Some(lan) = server_addresses(&host, port).lan.first() {
+            field("LAN:", &bold(lan));
+            field("Mobile:", "use the LAN address in the mobile app");
+        }
     }
-    println!("  {}  {}", dim("Stop:"), bold("openagentd server stop"));
+    field("Stop:", &bold("openagentd server stop"));
     println!();
+    Ok(!args.wait || wait_ready(&mut child, &host, port))
+}
 
-    if ns_bool(ns, "wait") {
-        let poll_host = display_host(&host);
-        println!("  {} waiting for server to become ready...", dim("Status:"));
-        let start = Instant::now();
-        let max_wait = 30.0;
-        let mut started = false;
-        while start.elapsed().as_secs_f64() < max_wait {
-            if matches!(child.try_wait(), Ok(Some(_))) {
-                println!("  {}: server process died unexpectedly", bold(&red("error")));
-                break;
-            }
-            if matches!(http_get(&poll_host, port, "/api/health/ready", Duration::from_secs(1)), Some((200, _))) {
-                started = true;
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(500));
+fn wait_ready(child: &mut Child, host: &str, port: u16) -> bool {
+    let poll_host = display_host(host);
+    field("Status:", "waiting for the server to become ready...");
+    let started = Instant::now();
+    let ready = loop {
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            println!("  {}: the server process exited; see {}", bold(&red("error")), bold("openagentd server logs"));
+            break false;
         }
-        if started {
-            println!("  {} {} (took {:.2}s)", dim("Status:"), green("started and ready"), start.elapsed().as_secs_f64());
-        } else {
-            println!("  {}: server did not become ready within {max_wait:.1}s (check logs)", bold(&yellow("warning")));
+        if matches!(http_get(&poll_host, port, "/api/health/ready", Duration::from_secs(1)), Some((200, _))) {
+            field("Status:", &format!("{} (took {:.2}s)", green("started and ready"), started.elapsed().as_secs_f64()));
+            break true;
         }
-        println!();
-    }
+        if started.elapsed() >= READY_TIMEOUT {
+            println!("  {}: the server was not ready within {}s; see {}", bold(&yellow("warning")), READY_TIMEOUT.as_secs(), bold("openagentd server logs"));
+            break false;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    };
+    println!();
+    ready
 }
 
 #[cfg(unix)]
@@ -226,11 +162,11 @@ fn kill_pid(pid: i32, sig: nix::sys::signal::Signal) {
     let _ = nix::sys::signal::kill(p, sig);
 }
 
-pub fn cmd_stop(_ns: &Ns) {
+pub fn stop() -> Result<()> {
     let alive = find_pids();
     if alive.is_empty() {
         println!("  {}", yellow("not running"));
-        return;
+        return Ok(());
     }
     #[cfg(unix)]
     {
@@ -251,8 +187,8 @@ pub fn cmd_stop(_ns: &Ns) {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
-    // Windows has no SIGTERM; v2's `os.kill` there is TerminateProcess too.
-    // `/T` also ends the server's children (shells, MCP and LSP servers).
+    // Windows has no SIGTERM. `/T` also ends the server's children (shells,
+    // MCP and LSP servers).
     #[cfg(windows)]
     {
         for &pid in &alive {
@@ -270,235 +206,159 @@ pub fn cmd_stop(_ns: &Ns) {
     }
     clear_pids();
     println!("  {}", green("stopped"));
+    Ok(())
 }
 
-pub fn cmd_restart(ns: &Ns) {
+pub fn restart(args: &StartArgs) -> Result<ExitCode> {
     println!();
     println!("  {}", bold(&cyan("Restarting OpenAgentd")));
     println!();
-    if !find_pids().is_empty() {
-        cmd_stop(ns);
-    } else {
+    if find_pids().is_empty() {
         println!("  {}  starting fresh", yellow("not running"));
-    }
-    cmd_start(ns);
-    println!("  {}", green("restart complete"));
-}
-
-pub fn cmd_status(ns: &Ns) {
-    let alive = find_pids();
-    let port = resolve_port(ns_int(ns, "port"), None);
-    let bind_host = resolve_host(ns_str(ns, "host"), None);
-    let addresses = server_addresses(&bind_host, port);
-    println!();
-    println!("  {}", bold(&cyan("OpenAgentd server")));
-    println!("  {} v{}", dim("Version:"), appv3_core::VERSION);
-    println!();
-    if !alive.is_empty() {
-        let pids: Vec<String> = alive.iter().map(|p| p.to_string()).collect();
-        println!("  {} {}  pids: {}", dim("Status:"), green("running"), pids.join(", "));
-        println!("  {}  {}", dim("Local:"), bold(&addresses.local));
-        if !addresses.lan.is_empty() {
-            for (i, url) in addresses.lan.iter().enumerate() {
-                let label = if i == 0 { "LAN:" } else { "" };
-                println!("  {}  {}", ljust(&dim(label), 6), green(url));
-            }
-            if bind_host == "0.0.0.0" || bind_host == "::" {
-                println!("  {} use the LAN address in the mobile app", dim("Mobile:"));
-            }
-        }
-        println!("  {}   {}", dim("Logs:"), server_log().display());
     } else {
-        println!("  {} {}", dim("Status:"), yellow("stopped"));
-        println!("  {}  {}  or  {}", dim("Start:"), bold("openagentd server start"), bold("openagentd server start --host 0.0.0.0"));
+        stop()?;
     }
-    println!();
+    let ok = start_daemon(args)?;
+    if ok {
+        println!("  {}", green("restart complete"));
+    }
+    Ok(code(ok))
 }
 
-/// `_fetch_json(url)` → `(status, payload)`; 0 on connection errors.
-fn fetch_json(host: &str, port: i64, path: &str) -> (u16, Option<Value>) {
-    let Some((status, body)) = http_get(host, port, path, Duration::from_secs(2)) else { return (0, None) };
-    let text = String::from_utf8_lossy(&body);
-    if text.is_empty() {
-        return (status, None);
-    }
-    match serde_json::from_str::<Value>(&text) {
-        Ok(v) => (status, Some(v)),
-        Err(_) if status >= 400 => (status, None),
-        Err(_) => (0, None),
+/// `(status, JSON body)`; status 0 when the server did not answer.
+fn fetch_json(host: &str, port: u16, path: &str) -> (u16, Option<Value>) {
+    match http_get(host, port, path, Duration::from_secs(2)) {
+        Some((status, body)) => (status, serde_json::from_slice(&body).ok()),
+        None => (0, None),
     }
 }
 
-fn sort_keys(v: &Value) -> Value {
-    match v {
-        Value::Object(m) => {
-            let mut keys: Vec<&String> = m.keys().collect();
-            keys.sort();
-            Value::Object(keys.into_iter().map(|k| (k.clone(), sort_keys(&m[k]))).collect())
-        }
-        Value::Array(a) => Value::Array(a.iter().map(sort_keys).collect()),
-        other => other.clone(),
-    }
-}
-
-/// Python truthiness of a JSON value.
-fn truthy(p: &Value) -> bool {
-    match p {
-        Value::Object(m) => !m.is_empty(),
-        Value::Array(a) => !a.is_empty(),
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::String(s) => !s.is_empty(),
-        Value::Number(n) => n.as_f64() != Some(0.0),
-    }
-}
-
-struct Check {
-    name: &'static str,
-    status: &'static str,
-    detail: String,
-}
-
-pub fn cmd_health(ns: &Ns) {
-    let port = resolve_port(ns_int(ns, "port"), None);
-    let bind_host = resolve_host(ns_str(ns, "host"), None);
+/// Process, addresses, and (when running) port / live / ready / LAN checks.
+/// Exits 1 when the server is stopped or a check fails.
+pub fn status(addr: &AddrArgs) -> Result<ExitCode> {
+    let cfg = server_settings()?;
+    let (bind_host, port) = resolve_addr(addr.host.as_deref(), addr.port, &cfg);
     let host = display_host(&bind_host);
-    let addresses = server_addresses(&bind_host, port);
     let alive = find_pids();
-    let mut checks: Vec<Check> = vec![];
-    let c = |name, status, detail: String| Check { name, status, detail };
+    println!();
+    println!("  {}  {}", bold(&cyan("OpenAgentd server")), dim(&format!("v{}", appv3_core::VERSION)));
+    println!();
     if alive.is_empty() {
-        checks.push(c("Process", "fail", "not running".into()));
-    } else {
-        let pids: Vec<String> = alive.iter().map(|p| p.to_string()).collect();
-        checks.push(c("Process", "ok", format!("running; pid {}", pids.join(", "))));
+        field("Status:", &yellow("stopped"));
+        field("Start:", &format!("{}  or  {}", bold("openagentd server start"), bold("openagentd server start --host 0.0.0.0 --key")));
+        println!();
+        return Ok(ExitCode::FAILURE);
     }
+    let lan_bound = all_interfaces(&bind_host);
+    let addresses = server_addresses(&bind_host, port);
+    field("Status:", &format!("{}  pid {}", green("running"), pid_list(&alive)));
+    field("Local:", &bold(&addresses.local));
+    if lan_bound {
+        for (i, url) in addresses.lan.iter().enumerate() {
+            field(if i == 0 { "LAN:" } else { "" }, &green(url));
+        }
+        if !addresses.lan.is_empty() {
+            field("Mobile:", "use the LAN address in the mobile app");
+        }
+    }
+    field("Logs:", &server_log().display().to_string());
+    println!();
+
+    let mut checks = Checks::default();
+    let name = |n: &str, detail: &str| format!("{}  {}", bold(&format!("{n:<9}")), dim(detail));
     if is_port_reachable(&host, port) {
-        checks.push(c("Port", "ok", format!("{host}:{port} accepts connections")));
+        checks.ok(&name("Port", &format!("{host}:{port} accepts connections")));
     } else {
-        checks.push(c("Port", "fail", format!("{host}:{port} is not reachable")));
+        checks.fail(&name("Port", &format!("{host}:{port} is not reachable")));
     }
-    let (live_status, live_payload) = fetch_json(&host, port, "/api/health/live");
-    if live_status == 200 {
-        let version = live_payload.as_ref().and_then(|p| p.get("version")).filter(|v| truthy(v));
-        let suffix = version.map(|v| format!(" · v{}", v.as_str().map(String::from).unwrap_or_else(|| appv3_core::pyjson::dumps(v)))).unwrap_or_default();
-        checks.push(c("API live", "ok", format!("live endpoint ok{suffix}")));
-    } else {
-        checks.push(c("API live", "fail", "no healthy /api/health/live response".into()));
+    match fetch_json(&host, port, "/api/health/live") {
+        (200, payload) => {
+            let version = payload.as_ref().and_then(|p| p.get("version")).and_then(Value::as_str).map(|v| format!(" · v{v}")).unwrap_or_default();
+            checks.ok(&name("API live", &format!("live endpoint ok{version}")));
+        }
+        _ => checks.fail(&name("API live", "no healthy /api/health/live response")),
     }
-    let (ready_status, ready_payload) = fetch_json(&host, port, "/api/health/ready");
-    if ready_status == 200 {
-        checks.push(c("API ready", "ok", "database and runtime checks passed".into()));
-    } else if ready_status != 0 {
-        let truthy = ready_payload.as_ref().is_some_and(truthy);
-        let detail = if truthy { appv3_core::pyjson::dumps(&sort_keys(ready_payload.as_ref().unwrap())) } else { "readiness degraded".into() };
-        checks.push(c("API ready", "warn", detail));
-    } else {
-        checks.push(c("API ready", "fail", "no /api/health/ready response".into()));
+    match fetch_json(&host, port, "/api/health/ready") {
+        (200, _) => checks.ok(&name("API ready", "database and runtime checks passed")),
+        (0, _) => checks.fail(&name("API ready", "no /api/health/ready response")),
+        (_, payload) => checks.warn(&name("API ready", &payload.map(|p| p.to_string()).unwrap_or_else(|| "readiness degraded".into()))),
     }
-    if bind_host == "0.0.0.0" {
+    if lan_bound {
         if addresses.lan.is_empty() {
-            checks.push(c("LAN binding", "warn", "bound to all interfaces, but no LAN IP was detected".into()));
+            checks.warn(&name("LAN", "listening on all interfaces, but no LAN IP was found"));
         } else {
-            checks.push(c("LAN binding", "ok", addresses.lan.join(", ")));
+            checks.ok(&name("LAN", &addresses.lan.join(", ")));
         }
-    } else {
-        checks.push(c("LAN binding", "warn", "local-only; use openagentd server start --host 0.0.0.0 for mobile".into()));
-    }
-
-    println!();
-    println!("  {}", bold(&cyan("OpenAgentd server health")));
-    println!();
-    println!("  {}  {}", dim("Local:"), bold(&addresses.local));
-    if let Some(lan) = addresses.lan.first() {
-        println!("  {}    {}", dim("LAN:"), green(lan));
-    }
-    println!("  {}   {}", dim("Logs:"), server_log().display());
-    println!();
-    for ch in &checks {
-        let marker = match ch.status {
-            "ok" => green("✓"),
-            "warn" => yellow("⚠"),
-            _ => red("✗"),
-        };
-        println!("  {marker}  {}  {}", bold(ch.name), dim(&ch.detail));
     }
     println!();
-    let failures = checks.iter().filter(|c| c.status == "fail").count();
-    let warnings = checks.iter().filter(|c| c.status == "warn").count();
-    if failures > 0 {
-        if warnings > 0 {
-            println!("  {}, {}", red(&format!("{failures} failed")), yellow(&format!("{warnings} warning(s)")));
-        } else {
-            println!("  {}", red(&format!("{failures} failed")));
-        }
-        system_exit_code(1);
-    }
-    if warnings > 0 {
-        println!("  {}, {}", green("healthy"), yellow(&format!("{warnings} warning(s)")));
-    } else {
-        println!("  {}", green("healthy"));
-    }
+    println!("  {}", checks.summary());
     println!();
+    Ok(code(checks.failures == 0))
 }
 
-/// `raise SystemExit(<int>)`.
-pub fn system_exit_code(code: i32) -> ! {
-    use std::io::Write;
-    let _ = std::io::stdout().flush();
-    std::process::exit(code)
-}
-
-pub fn cmd_logs(ns: &Ns) {
+pub fn logs(args: &LogsArgs) -> Result<()> {
     let log = server_log();
-    if log.exists() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            let lines = ns_int(ns, "lines").unwrap_or(50);
-            let err = std::process::Command::new("tail").arg0("tail").arg(format!("-n{lines}")).arg("-f").arg(&log).exec();
-            uncaught("FileNotFoundError", &format!("[Errno 2] No such file or directory: 'tail' ({err})"));
-        }
-        #[cfg(not(unix))]
-        {
-            let lines = ns_int(ns, "lines").unwrap_or(50).max(0) as usize;
-            follow_log(&log, lines);
-        }
+    if !log.is_file() {
+        bail!("no server log at {}; start the server with `openagentd server start`", log.display());
     }
-    eprintln!("  No log file found. Start the server with {} first.", bold("openagentd"));
-    std::process::exit(1)
+    match follow_log(&log, args.lines) {
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+        r => r.with_context(|| format!("read {}", log.display())),
+    }
 }
 
-/// `tail -n <lines> -f <path>` for platforms without `tail`. Runs until killed.
-#[cfg(not(unix))]
-fn follow_log(path: &std::path::Path, lines: usize) -> ! {
-    use std::io::{Read, Seek, SeekFrom, Write};
-    let mut out = std::io::stdout();
-    let data = std::fs::read(path).unwrap_or_default();
-    let start = tail_start(&data, lines);
-    let _ = out.write_all(&data[start..]);
-    let _ = out.flush();
+/// `tail -n <lines> -f`, rendering structured records. Runs until killed.
+fn follow_log(path: &std::path::Path, lines: usize) -> std::io::Result<()> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut out = std::io::stdout().lock();
+    let data = std::fs::read(path)?;
+    let mut pending = Vec::new();
+    emit_lines(&mut out, &data[tail_start(&data, lines)..], &mut pending)?;
     let mut pos = data.len() as u64;
     loop {
         std::thread::sleep(Duration::from_millis(250));
         let Ok(mut f) = std::fs::File::open(path) else { continue };
         let len = f.metadata().map(|m| m.len()).unwrap_or(0);
         if len < pos {
-            pos = 0; // truncated or rotated
+            // Rotated or truncated: start over at the new file's beginning.
+            pos = 0;
+            pending.clear();
         }
         if len > pos && f.seek(SeekFrom::Start(pos)).is_ok() {
             let mut buf = Vec::new();
             if f.read_to_end(&mut buf).is_ok() {
                 pos += buf.len() as u64;
-                let _ = out.write_all(&buf);
-                let _ = out.flush();
+                emit_lines(&mut out, &buf, &mut pending)?;
             }
         }
     }
 }
 
+/// Print every complete line of `pending + chunk`; keep the partial tail.
+fn emit_lines(out: &mut impl std::io::Write, chunk: &[u8], pending: &mut Vec<u8>) -> std::io::Result<()> {
+    pending.extend_from_slice(chunk);
+    while let Some(i) = pending.iter().position(|&b| b == b'\n') {
+        let line: Vec<u8> = pending.drain(..=i).collect();
+        let text = String::from_utf8_lossy(&line[..i]);
+        writeln!(out, "{}", render_log_line(text.trim_end_matches('\r')))?;
+    }
+    out.flush()
+}
+
+/// A structured record (`{"text": ..., "record": ...}`) as its `text`;
+/// anything else verbatim.
+fn render_log_line(line: &str) -> Cow<'_, str> {
+    if line.starts_with('{') {
+        if let Ok(Value::Object(m)) = serde_json::from_str::<Value>(line) {
+            if let Some(Value::String(t)) = m.get("text") {
+                return Cow::Owned(t.trim_end_matches(['\r', '\n']).to_string());
+            }
+        }
+    }
+    Cow::Borrowed(line)
+}
+
 /// Byte offset where the last `lines` lines of `data` begin (`tail -n`).
-#[cfg_attr(unix, allow(dead_code))]
 fn tail_start(data: &[u8], lines: usize) -> usize {
     if lines == 0 {
         return data.len();
@@ -517,8 +377,8 @@ fn tail_start(data: &[u8], lines: usize) -> usize {
 }
 
 #[cfg(test)]
-mod tail_tests {
-    use super::tail_start;
+mod tests {
+    use super::*;
 
     #[test]
     fn tail_start_matches_tail_n() {
@@ -528,5 +388,25 @@ mod tail_tests {
         assert_eq!(&d[tail_start(d, 0)..], b"");
         let e = b"a\nb";
         assert_eq!(&e[tail_start(e, 1)..], b"b");
+    }
+
+    #[test]
+    fn structured_records_render_as_their_text() {
+        let rec = r#"{"text": "2026-09-29 09:56:04.022 | INFO     | appv3_agent:<module>:481 - llm_response agent=code\n", "record": {"line": 481}}"#;
+        assert_eq!(render_log_line(rec), "2026-09-29 09:56:04.022 | INFO     | appv3_agent:<module>:481 - llm_response agent=code");
+        assert_eq!(render_log_line("error: address already in use"), "error: address already in use");
+        assert_eq!(render_log_line(r#"{"no_text": 1}"#), r#"{"no_text": 1}"#);
+        assert_eq!(render_log_line("{not json"), "{not json");
+    }
+
+    #[test]
+    fn partial_lines_wait_for_their_newline() {
+        let mut out = Vec::new();
+        let mut pending = Vec::new();
+        emit_lines(&mut out, b"{\"text\": \"one\\n\"}\r\ntw", &mut pending).unwrap();
+        assert_eq!(out, b"one\n");
+        emit_lines(&mut out, b"o\n", &mut pending).unwrap();
+        assert_eq!(out, b"one\ntwo\n");
+        assert!(pending.is_empty());
     }
 }
