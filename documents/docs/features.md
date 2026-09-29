@@ -482,6 +482,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     counted; while the turn runs it names the current step ("Working ·
     Shell: Run web tests"). Opening it shows the steps as in the detailed
     transcript, and transcript find opens it when it matches inside.
+  - An open row stays pinned to the top of the transcript while its steps
+    scroll under it, and a **Collapse** row ends the steps, so a long fold
+    closes without scrolling back up. Closing from either leaves the row
+    where you pressed it.
   - A question waiting on the user, interactive MCP apps, errors, and
     compaction dividers stay in place; once answered or closed, a question
     folds in with the rest of the work.

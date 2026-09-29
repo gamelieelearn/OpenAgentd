@@ -44,6 +44,7 @@ function renderTurn(blocks: ContentBlock[], props: { isWorking?: boolean; findHi
 }
 
 const rendered = (id: string) => screen.queryByTestId(`block-${id}`)
+const workRow = () => screen.getByRole('button', { name: /1 read, 1 edit/ })
 
 describe('AssistantTurn — reader mode', () => {
   it('shows the answer and folds the work behind one row that opens it', () => {
@@ -97,6 +98,102 @@ describe('AssistantTurn — reader mode', () => {
 
     renderTurn([{ id: 'think', type: 'thinking', content: 'Hmm.' }, { id: 'answer', type: 'text', content: 'Hi.' }])
     expect(screen.getByRole('button', { name: /^Thought/ })).toBeTruthy()
+  })
+})
+
+describe('AssistantTurn — reader mode, closing a long fold', () => {
+  const originalRect = HTMLElement.prototype.getBoundingClientRect
+  afterEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = originalRect
+  })
+
+  function rectAt(top: number): DOMRect {
+    return { top, bottom: top + 24, left: 0, right: 600, width: 600, height: 24, x: 0, y: top, toJSON: () => ({}) } as DOMRect
+  }
+
+  /**
+   * The fold opened in a transcript scrolled to ``scrollTop``. Closed, the
+   * row sits 1000px into the transcript; open, it is pinned to the top of
+   * the view, and the fold's end is 400px down it.
+   */
+  function renderScrolledTurn(scrollTop: number) {
+    render(
+      <div data-testid="transcript" style={{ overflowY: 'auto' }}>
+        <AssistantTurn
+          blocks={finished}
+          startIndex={0}
+          finalizedCount={finished.length}
+          isWorking={false}
+          isTrailingTurn
+          totalBlocks={finished.length}
+          reader
+          renderBlock={({ block }) => <p data-testid={`block-${block.id}`}>{block.content || block.id}</p>}
+        />
+      </div>,
+    )
+    const transcript = screen.getByTestId('transcript')
+    Object.defineProperty(transcript, 'scrollTop', { value: scrollTop, configurable: true, writable: true })
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const expanded = this.getAttribute('aria-expanded')
+      if (expanded !== null) return rectAt(expanded === 'true' ? 0 : 1000 - transcript.scrollTop)
+      if (this.textContent === 'Collapse') return rectAt(400)
+      return rectAt(0)
+    }
+    fireEvent.click(workRow())
+    return transcript
+  }
+
+  it('pins the open row to the top of the transcript while its steps scroll under it', () => {
+    renderTurn(finished)
+    const header = workRow().parentElement as HTMLElement
+    expect(header.className).not.toContain('sticky')
+
+    fireEvent.click(workRow())
+
+    expect(header.className).toContain('sticky')
+    expect(header.className).toContain('top-0')
+  })
+
+  it('closes from the end of the steps too, handing focus back to the row', () => {
+    renderTurn(finished)
+    expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull()
+    fireEvent.click(workRow())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
+
+    expect(workRow().getAttribute('aria-expanded')).toBe('false')
+    for (const id of ['think', 'read', 'narrate', 'edit']) expect(rendered(id)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Collapse' })).toBeNull()
+    expect(document.activeElement).toBe(workRow())
+  })
+
+  it('puts the row where the reader clicked when the fold closes from its end', () => {
+    const transcript = renderScrolledTurn(3000)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
+
+    // The row lands 400px down the view, where the button was.
+    expect(transcript.scrollTop).toBe(600)
+  })
+
+  it('leaves the pinned row where it is when it closes the fold', () => {
+    const transcript = renderScrolledTurn(3000)
+
+    fireEvent.click(workRow())
+
+    // The row stays at the top of the view instead of scrolling away with the steps.
+    expect(transcript.scrollTop).toBe(1000)
+  })
+
+  it('does not move a row that closes where it already sits', () => {
+    const transcript = renderScrolledTurn(700)
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      return rectAt(this.getAttribute('aria-expanded') !== null ? 1000 - transcript.scrollTop : 0)
+    }
+
+    fireEvent.click(workRow())
+
+    expect(transcript.scrollTop).toBe(700)
   })
 })
 

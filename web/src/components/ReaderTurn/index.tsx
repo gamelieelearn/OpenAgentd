@@ -4,10 +4,12 @@
  *
  * The row uses the tool-call row language (mono label, trailing chevron, no
  * card), so the fold reads as one more step. Opened, the steps render as
- * they do in the detailed transcript, on a hairline.
+ * they do in the detailed transcript, on a hairline. A long fold stays easy
+ * to close: the open row pins to the top of the transcript while its steps
+ * scroll under it, and a Collapse row ends the steps.
  */
-import { useContext, useId, useMemo, useState, type ReactNode } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { useContext, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { ChevronRight, ChevronUp } from 'lucide-react'
 
 import type { ContentBlock } from '@/api/types'
 import { cn } from '@/lib/utils'
@@ -30,6 +32,18 @@ function stepLabel(block: ContentBlock): string {
   return detail ? `${formatToolLabel(name)}: ${detail}` : formatToolLabel(name)
 }
 
+/** The nearest ancestor that scrolls vertically, i.e. the transcript. */
+function scrollContainer(el: HTMLElement): HTMLElement | null {
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node)
+    if (overflowY === 'auto' || overflowY === 'scroll') return node
+  }
+  return null
+}
+
+/** Both of the fold's controls; each adds its own text tone. */
+const ROW_CLASS = 'group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40'
+
 export function WorkSummaryRow({ blocks, live, currentStep, forceOpen = false, children }: {
   /** The folded blocks. */
   blocks: readonly ContentBlock[]
@@ -43,6 +57,10 @@ export function WorkSummaryRow({ blocks, live, currentStep, forceOpen = false, c
 }) {
   const [manualOpen, setManualOpen] = useState(false)
   const bodyId = useId()
+  const rowRef = useRef<HTMLButtonElement>(null)
+  // Where the row should sit in the view once the fold closes: where the
+  // control the reader pressed was, so closing never scrolls them elsewhere.
+  const closeAtRef = useRef<number | null>(null)
   const open = forceOpen || manualOpen
   const summary = useMemo(() => summarizeWork(blocks), [blocks])
   const detail = workSummaryDetail(summary)
@@ -50,26 +68,63 @@ export function WorkSummaryRow({ blocks, live, currentStep, forceOpen = false, c
     ? ['Working', currentStep ? stepLabel(currentStep) : detail].filter(Boolean).join(' · ')
     : detail || (summary.thought ? 'Thought' : 'Worked')
 
+  const close = (control: HTMLElement) => {
+    if (!forceOpen) closeAtRef.current = control.getBoundingClientRect().top
+    setManualOpen(false)
+  }
+
+  // Closing drops everything the steps took up, so the reader would land far
+  // below the row; scroll it back to where they pressed, before paint.
+  useLayoutEffect(() => {
+    const top = closeAtRef.current
+    closeAtRef.current = null
+    const row = rowRef.current
+    if (open || top === null || !row) return
+    const transcript = scrollContainer(row)
+    const shift = row.getBoundingClientRect().top - top
+    if (transcript && shift !== 0) transcript.scrollTop += shift
+  }, [open])
+
   return (
     <div className="my-2 min-w-0">
-      <button
-        type="button"
-        onClick={() => setManualOpen(!open)}
-        aria-expanded={open}
-        aria-controls={bodyId}
-        className="group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono text-xs text-(--color-text-2) transition-colors duration-(--motion-instant) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
-      >
-        <span className={cn('min-w-0 truncate', live && 'animate-pulse motion-reduce:animate-none')}>{label}</span>
-        {summary.failed > 0 && <span className="shrink-0 text-(--color-error)">{` · ${summary.failed} failed`}</span>}
-        <ChevronRight
-          size={13}
-          aria-hidden
-          className={cn('shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out)', open && 'rotate-90')}
-        />
-      </button>
+      {/* Open, the row stays pinned while the steps scroll under it, so it can
+          close them from anywhere. The page fill hides what passes beneath;
+          z-11 clears in-block controls (code copy buttons are z-10) and stays
+          under the composer and the overlaid dock (z-20). */}
+      <div className={cn('flex', open && 'sticky top-0 z-[11] bg-(--bg-page)')}>
+        <button
+          ref={rowRef}
+          type="button"
+          onClick={(event) => (open ? close(event.currentTarget) : setManualOpen(true))}
+          aria-expanded={open}
+          aria-controls={bodyId}
+          className={cn(ROW_CLASS, 'text-(--color-text-2)')}
+        >
+          <span className={cn('min-w-0 truncate', live && 'animate-pulse motion-reduce:animate-none')}>{label}</span>
+          {summary.failed > 0 && <span className="shrink-0 text-(--color-error)">{` · ${summary.failed} failed`}</span>}
+          <ChevronRight
+            size={13}
+            aria-hidden
+            className={cn('shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out)', open && 'rotate-90')}
+          />
+        </button>
+      </div>
       {open && (
         <div id={bodyId} className="ml-1 min-w-0 border-l border-(--color-border) pl-3">
           {children}
+          <button
+            type="button"
+            onClick={(event) => {
+              close(event.currentTarget)
+              // This button goes with the steps; keep focus on the fold.
+              rowRef.current?.focus({ preventScroll: true })
+            }}
+            aria-controls={bodyId}
+            className={cn(ROW_CLASS, 'text-(--color-text-muted)')}
+          >
+            <ChevronUp size={13} aria-hidden className="shrink-0" />
+            <span>Collapse</span>
+          </button>
         </div>
       )}
     </div>
