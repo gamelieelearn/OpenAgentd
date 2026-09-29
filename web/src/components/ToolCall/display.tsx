@@ -149,7 +149,11 @@ const HIDE_ARGS_TOOLS = new Set([
   'skill',
 ])
 
-export function getToolDisplay(name: string, args: string | undefined): ToolDisplay {
+/**
+ * ``done`` only matters to tools whose header reads differently once the call
+ * finished (``plan``: "Writing plan…" → "Wrote plan").
+ */
+export function getToolDisplay(name: string, args: string | undefined, done = false): ToolDisplay {
   if (!args) {
     // recall with no args — conversational header, no args section
     if (name === 'recall') {
@@ -167,8 +171,9 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     parsed = parsePartialJSON(args)
   }
 
-  const resultDisplay = getToolDisplayInternal(name, parsed)
-  if (!isComplete) {
+  const resultDisplay = name === 'plan' ? planDisplay(parsed, done && isComplete) : getToolDisplayInternal(name, parsed)
+  // A streaming plan reads better as its partial Markdown than as raw JSON.
+  if (!isComplete && name !== 'plan') {
     const shouldHideArgs = HIDE_ARGS_TOOLS.has(name)
     return {
       ...resultDisplay,
@@ -176,6 +181,37 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     }
   }
   return resultDisplay
+}
+
+function planEdits(parsed: Record<string, unknown>): { old: string; new: string }[] {
+  if (!Array.isArray(parsed.edits)) return []
+  return (parsed.edits as unknown[]).flatMap((item) => {
+    if (typeof item !== 'object' || item === null) return []
+    const edit = item as Record<string, unknown>
+    return [{ old: typeof edit.old === 'string' ? edit.old : '', new: typeof edit.new === 'string' ? edit.new : '' }]
+  })
+}
+
+function diffLines(prefix: '-' | '+', text: string): string[] {
+  return text ? text.split('\n').map((line) => `${prefix} ${line}`) : []
+}
+
+// ── plan: write shows the Markdown, edit a -/+ diff of each replacement ──
+function planDisplay(parsed: Record<string, unknown>, done: boolean): ToolDisplay {
+  if (str(parsed, 'action') === 'edit') {
+    const edits = planEdits(parsed)
+    const count = edits.length
+    const header = done ? `Edited plan${count ? ` · ${count} ${count === 1 ? 'change' : 'changes'}` : ''}` : 'Editing plan…'
+    return {
+      header,
+      headerTitle: header,
+      formattedArgs: count
+        ? edits.map((edit) => [...diffLines('-', edit.old), ...diffLines('+', edit.new)].join('\n')).join('\n\n')
+        : null,
+    }
+  }
+  const header = done ? 'Wrote plan' : 'Writing plan…'
+  return { header, headerTitle: header, formattedArgs: typeof parsed.content === 'string' && parsed.content ? parsed.content : null }
 }
 
 function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): ToolDisplay {

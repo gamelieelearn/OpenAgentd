@@ -28,8 +28,8 @@ import { TimelineScrubber } from './AgentView/TimelineScrubber'
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
-import { appendCurrentTurns, getVisibleTurnWindow, modelChangeTurnStarts, partitionTurns } from '@/utils/turns'
-import { countBlocksAfter, hasPlanContent, liveBlockTail } from '@/utils/blocks'
+import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels } from '@/utils/turns'
+import { countBlocksAfter, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -268,16 +268,10 @@ interface AgentViewProps {
   onMentionFileOpen?: (path: string) => void
   /** Opens ``path:line`` references in replies and tool output. */
   fileRefOpener?: FileRefOpener
-  /** Callback to switch to Code mode and start implementation of a proposed plan. */
-  onStartImplementing?: () => void
-  /** Quote selected plan text into the composer (lead sessions only). */
-  onCommentOnPlan?: (quote: string) => void
   /** Resend the latest prompt; offered under the latest finished answer. */
   onRetry?: () => void
   /** Pick another model; offered with Retry on the error a turn ended with. */
   onSwitchModel?: () => void
-  /** True when interaction mode is actively transitioning to Code mode. */
-  isSwitchingInteractionMode?: boolean
   findOpen?: boolean
   findQuery?: string
   findActiveIndex?: number
@@ -291,14 +285,15 @@ interface AgentViewProps {
   jumpToLatestInComposer?: boolean
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, onRestore, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen }: {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen }: {
   block: ContentBlock
   isStreaming: boolean
   sessionId?: string
   /** Rewind to a prompt the user wrote; ignored for agent reports. */
   onEdit?: (blockId: string) => void
-  /** Undo the turns after this prompt; the caller omits it for the latest. */
-  onRestore?: (blockId: string) => void
+  /** The model and thinking level a prompt ran with; strings so memo holds while streaming. */
+  promptModel?: string
+  promptThinkingLevel?: string
   /** Error actions; the caller passes them to the error a turn ended with only. */
   onRetry?: () => void
   onSwitchModel?: () => void
@@ -308,7 +303,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   switch (block.type) {
     case 'user': {
       const fromAgent = typeof block.extra?.from_agent === 'string' ? block.extra.from_agent : null
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} onRestore={onRestore && !fromAgent ? () => onRestore(block.id) : undefined} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
@@ -418,11 +413,8 @@ export function AgentView({
   emptyState,
   onMentionFileOpen,
   fileRefOpener,
-  onStartImplementing,
-  onCommentOnPlan,
   onRetry,
   onSwitchModel,
-  isSwitchingInteractionMode = false,
   findOpen = false,
   findQuery = '',
   findActiveIndex = 0,
@@ -433,7 +425,6 @@ export function AgentView({
 }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
-  const sessionInteractionMode = useAgentStore((s) => s.sessionInteractionMode)
   const loadingOlderRef = useRef(false)
   const hiddenTurnCountRef = useRef(0)
   const showEarlierTurnsRef = useRef<() => void>(() => {})
@@ -444,22 +435,6 @@ export function AgentView({
     void useAgentStore.getState().revertToMessage(blockId)
   }, [])
   const editHandler = isTurnOpen ? undefined : handleEdit
-  // Restoring to a prompt rewinds to the next one the user wrote, which
-  // leaves this prompt's answer, and the workspace as it ended, in place.
-  const nextPromptIds = useMemo(() => {
-    const next = new Map<string, string>()
-    let later: string | undefined
-    for (let i = blocks.length - 1; i >= 0; i--) {
-      if (!isDirectUserBlock(blocks[i])) continue
-      if (later) next.set(blocks[i].id, later)
-      later = blocks[i].id
-    }
-    return next
-  }, [blocks])
-  const handleRestore = useCallback((blockId: string) => {
-    const next = nextPromptIds.get(blockId)
-    if (next) void useAgentStore.getState().revertToMessage(next, { restoreDraft: false })
-  }, [nextPromptIds])
 
   // Live blocks not yet folded into `blocks`, deduped against confirmed ids.
   // Both scroll bookkeeping and turn partitioning below read from this same
@@ -485,7 +460,7 @@ export function AgentView({
     () => appendCurrentTurns(finalizedTurnItems, blocks.length, liveTail),
     [blocks.length, liveTail, finalizedTurnItems],
   )
-  const modelChangeStarts = useMemo(() => modelChangeTurnStarts(turnItems), [turnItems])
+  const promptModelById = useMemo(() => promptModels(turnItems), [turnItems])
   // Retry rewinds the latest prompt, so it is only honest when nothing but
   // that prompt's own answer, if any, follows a prompt the user wrote.
   const lastTurnItem = turnItems[turnItems.length - 1]
@@ -901,7 +876,8 @@ export function AgentView({
                          isStreaming={false}
                          sessionId={sessionId}
                          onEdit={editHandler}
-                         onRestore={!isTurnOpen && nextPromptIds.has(item.block.id) ? handleRestore : undefined}
+                         promptModel={promptModelById.get(item.block.id)?.model}
+                         promptThinkingLevel={promptModelById.get(item.block.id)?.thinkingLevel}
                          latestMCPAppBlockIds={mcpAppResourceUri(item.block) ? latestMCPAppBlockIds : undefined}
                          onMentionFileOpen={onMentionFileOpen}
                        />
@@ -914,11 +890,6 @@ export function AgentView({
                   // own start mark, the prompt's time survives a reload.
                   const prompt = isTrailingTurn ? turnItems[globalTurnIndex - 1] : undefined
                   const turnStartedAt = prompt?.kind === 'user' ? prompt.block.timestamp?.getTime() : undefined
-                  const canStartImplementing =
-                    isTrailingTurn &&
-                    !isWorking &&
-                    sessionInteractionMode === 'plan' &&
-                    hasPlanContent(item.blocks)
                  return (
                    <AssistantTurn
                      key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}
@@ -930,10 +901,6 @@ export function AgentView({
                      isTrailingTurn={isTrailingTurn}
                       totalBlocks={totalLen}
                       size="roomy"
-                      onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
-                      onCommentOnPlan={onCommentOnPlan}
-                     isSwitchingInteractionMode={isSwitchingInteractionMode}
-                     showModel={modelChangeStarts.has(item.startIndex)}
                      reader={readerTranscript}
                      startedAt={turnStartedAt}
                      findHitBlockIds={readerTranscript ? findHitBlockIds : undefined}

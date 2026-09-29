@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, memo } from 'react'
-import { Check, ChevronDown, ChevronUp, Copy, History, Pencil } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MarkdownBlock } from '@/utils/markdown'
 
@@ -8,7 +8,7 @@ import { FileTypeIcon } from '../FileTypeIcon'
 import { findCommittedMentions } from '../InputComposer.mentions'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
-import { formatTime, formatFullDateTime } from '@/utils/format'
+import { formatTime, formatFullDateTime, shortModelName } from '@/utils/format'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
 
@@ -189,14 +189,15 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, onRestore, onMentionFileOpen, mentions, fromAgent }: {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent }: {
   content: string
   timestamp?: Date
   attachments?: MessageAttachment[]
   /** Rewind to just before this prompt and put it back in the composer. */
   onEdit?: () => void
-  /** Keep this prompt and its answer; undo every later turn. */
-  onRestore?: () => void
+  /** The model and thinking level this prompt ran with. */
+  modelId?: string | null
+  thinkingLevel?: string | null
   onMentionFileOpen?: (path: string) => void
   mentions?: string[]
   fromAgent?: string | null
@@ -205,6 +206,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [reportExpanded, setReportExpanded] = useState(false)
+  const modelName = shortModelName(modelId)
 
   const handleCopy = async () => {
     try {
@@ -337,6 +339,15 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
          {/* Actions + timestamp row. Always rendered: Copy and Edit do not
              depend on the metadata, and a pending prompt has neither yet. */}
             <div className={`flex items-center gap-1.5 transition-opacity duration-150 focus-within:opacity-100 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
+              {modelName && (
+                <span
+                  data-prompt-model
+                  className="mr-1 font-mono text-[11px] text-(--color-text-subtle)"
+                  title={thinkingLevel ? `Thinking level: ${thinkingLevel}` : undefined}
+                >
+                  {thinkingLevel ? `${modelName} · ${thinkingLevel}` : modelName}
+                </span>
+              )}
               {onEdit && (
                 <Tooltip>
                   <TooltipTrigger
@@ -352,22 +363,6 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                   />
                   {/* Undo, so later turns come back with Redo. */}
                   <TooltipContent>Edit from here</TooltipContent>
-                </Tooltip>
-              )}
-              {onRestore && (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        onClick={onRestore}
-                        className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:scale-90"
-                        aria-label="Restore to here"
-                      >
-                        <History size={11} />
-                      </button>
-                    }
-                  />
-                  <TooltipContent>Restore to here — undoes later turns</TooltipContent>
                 </Tooltip>
               )}
               <Tooltip>

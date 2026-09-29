@@ -16,11 +16,13 @@ export interface TasksTabViewProps {
   /** The session's saved plan; its row sits above the task list. */
   plan?: SessionPlan | null
   onClearPlan?: () => void
+  /** Open the plan in the Plan tab. */
+  onOpenPlan?: () => void
 }
 
-export function TasksTabView({ todos, sessionId, plan = null, onClearPlan }: TasksTabViewProps) {
+export function TasksTabView({ todos, sessionId, plan = null, onClearPlan, onOpenPlan }: TasksTabViewProps) {
   const summary = summarizeTodos(todos)
-  const planRow = plan && onClearPlan ? <ActivePlanSection plan={plan} onClear={onClearPlan} className="px-3" /> : null
+  const planRow = plan && onClearPlan ? <ActivePlanSection plan={plan} onClear={onClearPlan} onOpen={onOpenPlan} className="px-3" /> : null
 
   if (summary.total === 0) {
     return (

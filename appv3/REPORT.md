@@ -336,6 +336,11 @@ explicitly.
   - Short pages (≤ ~100 characters of body text) reproduce Python's
     baseline output, because go-trafilatura's last step there duplicates
     text.
+- **`web_fetch` bot walls (v3 only):** anti-bot interstitials (Cloudflare,
+  Reddit, DataDome, PerimeterX, Vercel, AWS WAF) return "Browser
+  verification required." with the vendor named. v2 recognises only
+  Cloudflare's `cf-mitigated` 403 and otherwise returns the interstitial's
+  text.
 - **`web_search`:** scrapes DuckDuckGo's HTML endpoint instead of using the
   `ddgs` library, then falls back to Exa the same way v2 does.
 - **Copilot:** catalog cached for 5 min; reasoning-effort gating resolved at
@@ -490,15 +495,62 @@ explicitly.
   in `agent/src/agent.rs` and `agent/src/hooks/publisher.rs`, tested in
   `agent/tests/turn_thinking_level.rs`. v2 never writes it, and the web
   footer then names the model alone.
-- **Session plan** (`agent/src/plan.rs`): a lead Plan-mode turn that ends
-  with a closed `<proposed_plan>` saves its body as
-  `<data_dir>/sessions/<sid>/plan.md`, and compaction inserts a pinned,
-  hidden `note` row (`extra.session_plan`) restating it before the summary
-  (tested in `agent/tests/plan_capture.rs` and the summarization hook).
-  `GET`/`DELETE /api/agent/sessions/{id}/plan` read and clear the file. The
-  `mode_plan`/`mode_code` notes mention the plan. v2 has none of this; it
-  ignores the file and the extra key, and the web client treats the v2 404
-  as "no plan".
+- **Agent thinking level in `GET /api/agent/agents`:** v3 adds
+  `thinking_level` (the agent file's level, or `null`) to each agent entry
+  (`api/src/routes/agent/chat.rs`, `serialize_agent`). The web footer shows
+  it next to the agent's model until the session sets its own level or model.
+  v2 omits the key, and the footer then names the model alone.
+- **Session plan and plan review** (`agent/src/plan.rs`,
+  `agent/src/tools/plan.rs`; tested there, in `agent/tests/plan_review.rs`,
+  the summarization hook and `api/tests/http_api.rs`). v2 has none of this.
+  - **Tools.** The lead gets two session-injected tools, defined in
+    `contract/tool_definitions.json`: `plan` (`write`, or `edit` with 1–20
+    exact-match replacements; works in both modes) and `submit_plan`
+    (Plan mode only). Agent files cannot claim either name. The
+    `<proposed_plan>` tag is no longer captured, detected or acted on; old
+    transcripts still render it as a read-only card.
+  - **Where the plan lives.** In a project (`coding`) workspace the first
+    write creates `<workspace>/.openagentd/plans/<slug>-<id8>.md` (slug from
+    the first `# ` heading, `id8` the last 8 hex digits of the session id,
+    `-2`, `-3`, … when taken). Creating that folder also writes
+    `.openagentd/plans/.gitignore` containing `*`, so plans stay out of git
+    status, snapshots and commits; the file is never recreated for an
+    existing folder. The target is resolved with symlinks followed and must
+    stay inside the workspace and outside denied paths. Chat sessions keep
+    `<data_dir>/sessions/<sid>/plan.md`, v2's location.
+  - **State and edit detection.** `<data_dir>/sessions/<sid>/plan.state.json`
+    pins the path and holds `revision`, the file's `sha256`,
+    `agent_revision` and `approved_revision`. Every read compares the hash,
+    so edits from the Plan tab, another editor or git bump the revision.
+    The agent is told once: the next lead turn saves a hidden `note` row
+    (`extra.plan_edit_note`) with the new plan, and a `write` over unseen
+    edits is refused once. A session with only a v2 `plan.md` reads as
+    revision 1; its first write in a project workspace moves it.
+  - **Routes.** `GET /api/agent/sessions/{id}/plan` adds `revision`,
+    `approved_revision`, `path` and `workspace_path`. New `PUT` on the same
+    path saves the user's edit (`{content, base_revision}`; 409 when the plan
+    moved on). `DELETE` returns 409 while a review is open and otherwise
+    detaches: it removes the state file and any data-folder `plan.md` but
+    keeps a workspace plan file.
+  - **Review.** `submit_plan` opens a `pending_questions` row whose payload
+    adds `kind: "plan_review"` and `plan_revision` (extra JSON keys, no
+    schema change), and `question_asked` plus the pending-question response
+    carry both fields. The answer route takes one string of at most 8,000
+    characters for these rows (2,000 stays the `ask_user` limit): `Approve`
+    switches the session to Code mode in the runtime, records
+    `approved_revision`, emits `interaction_mode`, and resumes the turn with
+    the approval as the tool result; anything else resumes in Plan mode
+    with the feedback. Edits made during the review are included in that
+    result.
+  - **Mode notes.** The Plan-mode note is versioned (`version 2`); a session
+    whose last Plan-mode note is older gets the new instructions once, with
+    a line saying they replace the `<proposed_plan>` ones.
+  - **Compaction.** Compaction inserts a pinned, hidden `note` row
+    (`extra.session_plan`) restating the plan before the summary unless one
+    is still in context.
+  - **v2 compatibility.** v2 ignores the state file, the workspace plan
+    files, the extra payload and `extra` keys; the web client treats the v2
+    404 as "no plan".
 - **Transport retries** (`agent/src/retry.rs`, `agent/src/streaming.rs`):
   a dropped connection, DNS failure or timeout retries on a flat, jittered
   3–5 s interval. The turn's model call retries without limit until the

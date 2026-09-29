@@ -44,6 +44,13 @@ export interface AppFooterProps {
   chatWorkspace?: boolean
   sessionId?: string | null
   sessionModel?: string | null
+  /**
+   * The lead agent's configured model. ``sessionModel`` is null until the
+   * session overrides it, so the footer shows this instead.
+   */
+  defaultModel?: string | null
+  /** The lead agent's configured thinking level, paired with ``defaultModel``. */
+  defaultThinkingLevel?: string | null
   sessionThinkingLevel?: string | null
   sessionFastMode?: boolean
   onToggleSessionSettings?: () => void
@@ -72,6 +79,8 @@ export const AppFooter = memo(function AppFooter({
   workspace,
   chatWorkspace = false,
   sessionModel,
+  defaultModel,
+  defaultThinkingLevel,
   sessionThinkingLevel,
   sessionFastMode,
   onToggleSessionSettings,
@@ -80,6 +89,12 @@ export const AppFooter = memo(function AppFooter({
 }: AppFooterProps) {
   const { os } = usePlatform()
   const openSettings = useSettingsStore((s) => s.openSettings)
+  const activeModel = sessionModel || defaultModel || null
+  // Mirrors the backend: a session model override builds its own provider,
+  // which carries only the session's level, never the agent's.
+  const modelOverridden = Boolean(sessionModel) && sessionModel !== defaultModel
+  const activeThinkingLevel = sessionThinkingLevel || (modelOverridden ? null : defaultThinkingLevel) || null
+  const sessionSettingsShortcut = shortcutLabel(APP_SHORTCUTS.sessionSettings, os)
   const spend = useObservabilitySummaryQuery(1, {}, { refetchInterval: SPEND_REFRESH_MS }).data?.totals.estimated_cost_usd
   const spendLabel = spend === undefined ? null : formatSpend(spend)
 
@@ -150,7 +165,7 @@ export const AppFooter = memo(function AppFooter({
 
       {/* Right cluster — session scope, then app utilities. */}
       <div className="flex min-w-0 shrink items-center justify-end gap-0.5">
-        {sessionModel && (
+        {activeModel && (
           <Tooltip className="min-w-0">
             <TooltipTrigger
               className="min-w-0"
@@ -161,14 +176,14 @@ export const AppFooter = memo(function AppFooter({
                   className={cn(ITEM, 'max-w-[320px] font-mono lg:max-w-[440px]')}
                 >
                   <Sparkles size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-                  <span className="truncate">{sessionModel}</span>
-                  {sessionThinkingLevel && sessionThinkingLevel !== 'off' && (
-                    <span className="shrink-0 text-(--color-text-subtle)">({sessionThinkingLevel})</span>
+                  <span className="truncate">{activeModel}</span>
+                  {activeThinkingLevel && activeThinkingLevel !== 'off' && (
+                    <span className="shrink-0 text-(--color-text-subtle)">({activeThinkingLevel})</span>
                   )}
                 </button>
               }
             />
-            <TooltipContent>{`Active Model: ${sessionModel}${sessionThinkingLevel ? ` (thinking: ${sessionThinkingLevel})` : ''} (${shortcutLabel(APP_SHORTCUTS.sessionSettings, os)})`}</TooltipContent>
+            <TooltipContent>{`Active Model: ${activeModel}${activeThinkingLevel ? ` (thinking: ${activeThinkingLevel})` : ''} (${sessionSettingsShortcut})`}</TooltipContent>
           </Tooltip>
         )}
 
@@ -186,7 +201,7 @@ export const AppFooter = memo(function AppFooter({
           </Tooltip>
         )}
 
-        {(sessionModel || sessionFastMode) && <Divider />}
+        {(activeModel || sessionFastMode) && <Divider />}
 
         {spendLabel && (
           <Tooltip>

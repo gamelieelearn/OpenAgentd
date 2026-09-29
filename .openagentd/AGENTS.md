@@ -20,8 +20,4 @@ configuration.
 
 ```bash
 make verify-docs
-make prompt-budget
 ```
-
-Run `make prompt-budget` when a bundled prompt, tool protocol, or skill body
-changes; use `make prompt-budget-json` when a stable comparison is needed.

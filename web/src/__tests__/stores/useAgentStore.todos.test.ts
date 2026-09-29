@@ -307,20 +307,21 @@ describe("useAgentStore — todo_manage rendering and event emission", () => {
     })
   })
 
-  // The backend saves a Plan-mode turn's <proposed_plan> as the session plan,
-  // so only those turns refresh the Plan row.
-  describe("session plan refresh on done", () => {
-    it("queues a plan invalidation when a Plan-mode turn ends", () => {
-      useAgentStore.setState({ sessionInteractionMode: "plan" })
-      useAgentStore.getState()._handleSSEEvent("done", {})
-      expect(useAgentStore.getState().cacheInvalidations).toEqual([
-        { kind: "session_running", sessionId: "sess-123", running: false },
-        { kind: "plan", sessionId: "sess-123" },
-      ])
+  // Only the `plan` tool (and a closed plan review) changes the session plan.
+  describe("session plan refresh", () => {
+    it("queues a plan invalidation when the plan tool finishes", () => {
+      primeBlock("lead", "plan", "tc-plan-1", { action: "write", content: "# Plan" })
+      useAgentStore.getState()._handleSSEEvent("tool_end", {
+        agent: "lead",
+        name: "plan",
+        tool_call_id: "tc-plan-1",
+        result: "Plan saved as revision 1 (1 line) at plan.md.",
+      })
+      expect(useAgentStore.getState().cacheInvalidations).toEqual([{ kind: "plan", sessionId: "sess-123" }])
     })
 
-    it("does not refetch the plan after a Code-mode turn", () => {
-      useAgentStore.setState({ sessionInteractionMode: "code" })
+    it("does not refetch the plan when a turn ends", () => {
+      useAgentStore.setState({ sessionInteractionMode: "plan" })
       useAgentStore.getState()._handleSSEEvent("done", {})
       expect(useAgentStore.getState().cacheInvalidations).toEqual([
         { kind: "session_running", sessionId: "sess-123", running: false },

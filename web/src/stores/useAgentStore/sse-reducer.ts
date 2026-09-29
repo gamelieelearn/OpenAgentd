@@ -13,6 +13,7 @@ import {
 import { createDefaultAgentStream } from './defaults'
 import {
   FS_MUTATING_TOOLS,
+  PLAN_MUTATING_TOOLS,
   SCHEDULER_MUTATING_TOOLS,
   TODO_MUTATING_TOOLS,
   anyAgentLive,
@@ -79,16 +80,23 @@ export function toPendingQuestion(raw: {
   session_id?: unknown
   tool_call_id?: unknown
   questions?: unknown
+  kind?: unknown
+  plan_revision?: unknown
 }): PendingQuestion | null {
   const id = typeof raw.id === 'string' ? raw.id : ''
   const questions = normalizeQuestions(raw.questions)
   if (!id || questions.length === 0) return null
-  return {
+  const question: PendingQuestion = {
     id,
     sessionId: typeof raw.session_id === 'string' ? raw.session_id : '',
     toolCallId: typeof raw.tool_call_id === 'string' ? raw.tool_call_id : '',
     questions,
   }
+  if (raw.kind === 'plan_review') {
+    question.kind = 'plan_review'
+    if (typeof raw.plan_revision === 'number') question.planRevision = raw.plan_revision
+  }
+  return question
 }
 
 function ensureAgent(draft: AgentStore, agent?: string) {
@@ -382,6 +390,10 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (TODO_MUTATING_TOOLS.has(toolName)) {
           const sid = get().sessionId
           if (sid) events.push({ kind: 'todos', sessionId: sid })
+        }
+        if (PLAN_MUTATING_TOOLS.has(toolName)) {
+          const sid = get().sessionId
+          if (sid) events.push({ kind: 'plan', sessionId: sid })
         }
         if (toolName === 'delegate' || toolName.startsWith('team_')) {
           const sid = get().sessionId
@@ -828,11 +840,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               sessionId: draft.sessionId,
               running: false,
             })
-            // The backend saves a Plan-mode turn's `<proposed_plan>` as the
-            // session plan; other turns never write it.
-            if (draft.sessionInteractionMode === 'plan') {
-              draft.cacheInvalidations.push({ kind: 'plan', sessionId: draft.sessionId })
-            }
           }
         })
         break

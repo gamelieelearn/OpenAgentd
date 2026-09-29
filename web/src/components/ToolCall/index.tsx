@@ -22,6 +22,7 @@ import { ChevronRight, Copy, Check } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ToolResult } from '../ToolResult'
 import { AskUser } from '../AskUser'
+import { PlanReviewCard } from '../PlanReview/PlanReviewCard'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { tokenizeCode } from '@/utils/code-highlight'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -34,6 +35,8 @@ import type { ToolCallState } from './types'
 
 /** Matches ``app.agent.agent_loop.core.ASK_USER``. */
 const ASK_USER = 'ask_user'
+/** Matches ``appv3_agent::agent::SUBMIT_PLAN``. */
+const SUBMIT_PLAN = 'submit_plan'
 
 interface ToolCallProps {
   name: string
@@ -213,7 +216,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // write, an O(oldLines*newLines) diff on every tick for the entire
   // lifetime of a running tool call just to redraw the duration label.
   const { header, headerTitle, formattedArgs, language, suppressResult } =
-    useMemo(() => getToolDisplay(name, args), [name, args])
+    useMemo(() => getToolDisplay(name, args, done), [name, args, done])
   const displayedArgs = useMemo(() => {
     if (!formattedArgs) return ''
     const parsed = tryParseJSON(formattedArgs)
@@ -340,6 +343,10 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // persisted "waiting for the user" placeholder as a finished tool result.
   if (name === ASK_USER) {
     return <AskUser toolCallId={toolCallId} args={args} result={result} />
+  }
+  // ``submit_plan`` is reviewed in the Plan tab; its card records the outcome.
+  if (name === SUBMIT_PLAN) {
+    return <PlanReviewCard toolCallId={toolCallId} args={args} result={result} done={done} />
   }
 
   return (

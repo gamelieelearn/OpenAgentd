@@ -150,6 +150,30 @@ async fn pending_question_round_trip() {
 }
 
 #[tokio::test]
+async fn plan_review_question_names_its_tool_and_takes_the_answer_text() {
+    let (_d, pool) = fresh().await;
+    let s = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let payload = serde_json::json!({"kind": "plan_review", "plan_revision": 3, "questions": [{"question": "Review plan revision 3.", "header": "Plan review", "options": []}]});
+    let q = create_pending_question_with(&pool, &s.id, "call_p", "submit_plan", &payload).await.unwrap();
+    assert_eq!(q.kind().as_deref(), Some("plan_review"));
+    assert_eq!(q.plan_revision(), Some(3));
+    let placeholder = llm_window_rows(&pool, &s.id, true).await.unwrap();
+    assert_eq!(placeholder.last().unwrap().name.as_deref(), Some("submit_plan"));
+
+    let resp = api::pending_question_response(&q);
+    assert_eq!(resp["kind"], "plan_review");
+    assert_eq!(resp["plan_revision"], 3);
+    let plain = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let asked = create_pending_question(&pool, &plain.id, "call_q", &[serde_json::json!({"question": "Q?", "header": "H", "options": []})]).await.unwrap();
+    assert!(api::pending_question_response(&asked).get("kind").is_none(), "ask_user rows keep the v2 shape");
+
+    let answers = serde_json::json!([["Approve"]]);
+    resolve_pending_question_with(&pool, &q.id, "answered", Some(&answers), Some("The user approved plan revision 3.")).await.unwrap().unwrap();
+    let win = llm_window_rows(&pool, &s.id, true).await.unwrap();
+    assert_eq!(win.last().unwrap().content.as_deref(), Some("The user approved plan revision 3."));
+}
+
+#[tokio::test]
 async fn refuses_unstamped_foreign_schema() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("old.db");

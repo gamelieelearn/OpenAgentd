@@ -203,6 +203,8 @@ async fn http_api_end_to_end() {
     assert_eq!(st, StatusCode::OK);
     assert_eq!(v["plan"]["content"], "## Summary\nShip it.");
     assert!(v["plan"]["updated_at"].is_string(), "{v}");
+    // A data-dir plan from before v3.1.0 reads as revision 1, outside the workspace.
+    assert_eq!((v["plan"]["revision"].clone(), v["plan"]["workspace_path"].clone()), (json!(1), Value::Null), "{v}");
     let (st, v) = c.json("DELETE", &plan_uri, None).await;
     assert_eq!((st, v), (StatusCode::OK, json!({"deleted": true})));
     assert!(!plan_dir.join("plan.md").exists());
@@ -301,6 +303,8 @@ async fn http_api_end_to_end() {
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{other_id}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
 
+    plan_review_flow(&c, &pool, &ws).await;
+
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
     assert!(!appv3_agent::snapshot::snapshot_dir(&sid).exists());
@@ -394,4 +398,97 @@ async fn http_api_end_to_end() {
     assert_eq!(st, StatusCode::UNAUTHORIZED);
 
     appv3_api::startup::shutdown().await;
+}
+
+/// Open a plan review as `submit_plan` does: the call, then its pending row.
+async fn open_review(pool: &appv3_db::DbPool, sid: &str, call: &str, revision: u64) -> String {
+    let tool_calls = json!([{"id": call, "type": "function", "function": {"name": "submit_plan", "arguments": "{}"}}]);
+    appv3_db::save_message(pool, sid, appv3_db::NewMessage { tool_calls: Some(tool_calls), ..appv3_db::NewMessage::assistant(None) }).await.unwrap();
+    let payload = appv3_agent::tools::plan::review_payload(revision, None);
+    let q = appv3_db::create_pending_question_with(pool, sid, call, "submit_plan", &payload).await.unwrap();
+    appv3_db::codec::api_uuid(&q.id)
+}
+
+async fn tool_result(pool: &appv3_db::DbPool, sid: &str, call: &str) -> String {
+    let rows = appv3_db::llm_window_rows(pool, sid, true).await.unwrap();
+    rows.iter().find(|r| r.tool_call_id.as_deref() == Some(call)).and_then(|r| r.content.clone()).expect("tool result")
+}
+
+async fn wait_idle(sid: &str) {
+    if let Some(a) = appv3_agent::manager::find_live_session_serving_session(sid) {
+        tokio::time::timeout(std::time::Duration::from_secs(20), a.wait_turn_finished()).await.expect("resumed turn ends");
+    }
+}
+
+/// Plan routes and plan-review answers on a Plan-mode session in `ws`.
+async fn plan_review_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
+    use appv3_agent::plan::{self, PlanChange, PlanTarget};
+    let new = appv3_db::NewSession { workspace: ws.display().to_string(), interaction_mode: Some("plan".into()), ..Default::default() };
+    let psid = appv3_db::codec::api_uuid(&appv3_db::create_session(pool, new).await.unwrap().id);
+    let dir = appv3_tools::denied::session_artifacts_dir(Some(&psid));
+    let saved = plan::save_agent(&dir, PlanTarget::Workspace { root: ws, session_id: &psid, denied: None }, PlanChange::Write("# Ship it\n1. Build")).unwrap();
+    let plan_uri = format!("/api/agent/sessions/{psid}/plan");
+    let (st, v) = c.json("GET", &plan_uri, None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!((v["plan"]["revision"].clone(), v["plan"]["approved_revision"].clone()), (json!(1), Value::Null), "{v}");
+    let rel = v["plan"]["workspace_path"].as_str().unwrap_or_default();
+    assert!(rel.starts_with(".openagentd/plans/ship-it-") && rel.ends_with(".md"), "{v}");
+    assert_eq!(v["plan"]["path"], json!(saved.doc.path.display().to_string()));
+
+    // ── a review is open ─────────────────────────────────────────────────
+    let qid = open_review(pool, &psid, "call-plan-1", 1).await;
+    let (_, v) = c.json("GET", &format!("/api/agent/{psid}/question"), None).await;
+    assert_eq!((v["question"]["kind"].clone(), v["question"]["plan_revision"].clone()), (json!("plan_review"), json!(1)), "{v}");
+    let (st, v) = c.json("DELETE", &plan_uri, None).await;
+    assert_eq!((st, v), (StatusCode::CONFLICT, json!({"detail": "The plan is awaiting review."})));
+
+    // The user edits the plan in the panel.
+    let (st, v) = c.json("PUT", &plan_uri, Some(json!({"content": "# Ship it", "base_revision": 0}))).await;
+    assert_eq!((st, v), (StatusCode::CONFLICT, json!({"detail": "The plan changed since you opened it."})));
+    let (st, _) = c.json("PUT", &plan_uri, Some(json!({"content": "  ", "base_revision": 1}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+    let (st, v) = c.json("PUT", &plan_uri, Some(json!({"content": "# Ship it\n1. Build\n2. Test", "base_revision": 1}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["plan"]["revision"], 2);
+    assert_eq!(std::fs::read_to_string(&saved.doc.path).unwrap(), "# Ship it\n1. Build\n2. Test\n");
+
+    let answer_uri = format!("/api/agent/{psid}/question/{qid}/answer");
+    for bad in [json!([]), json!([["Approve", "Request changes"]]), json!([["  "]]), json!([["Approve"], ["x"]])] {
+        let (st, v) = c.json("POST", &answer_uri, Some(json!({"answers": bad}))).await;
+        assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{bad}: {v}");
+    }
+
+    // ── approval: Code mode, the edited plan in the result ───────────────
+    let (st, v) = c.json("POST", &answer_uri, Some(json!({"answers": [["Approve"]]}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(appv3_db::get_session(pool, &psid).await.unwrap().unwrap().interaction_mode, "code");
+    let result = tool_result(pool, &psid, "call-plan-1").await;
+    assert!(result.starts_with("The user edited the plan during review; this is revision 2"), "{result}");
+    assert!(result.contains("<plan>\n# Ship it\n1. Build\n2. Test\n</plan>\n\nThe user approved plan revision 2."), "{result}");
+    let (st, _) = c.json("POST", &answer_uri, Some(json!({"answers": [["Approve"]]}))).await;
+    assert_eq!(st, StatusCode::CONFLICT);
+    wait_idle(&psid).await;
+    let (_, v) = c.json("GET", &plan_uri, None).await;
+    assert_eq!(v["plan"]["approved_revision"], 2, "{v}");
+
+    // ── a change request keeps Plan mode ─────────────────────────────────
+    appv3_agent::interaction_mode::set_mode(pool, &psid, "plan").await.unwrap();
+    let qid = open_review(pool, &psid, "call-plan-2", 2).await;
+    let (st, v) = c.json("POST", &format!("/api/agent/{psid}/question/{qid}/answer"), Some(json!({"answers": [["Split step 2."]]}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(appv3_db::get_session(pool, &psid).await.unwrap().unwrap().interaction_mode, "plan");
+    let result = tool_result(pool, &psid, "call-plan-2").await;
+    assert!(result.starts_with("The user requested changes to plan revision 2:\n\nSplit step 2.\n\nYou are still in Plan mode."), "{result}");
+    wait_idle(&psid).await;
+
+    // ── clearing detaches; the workspace file stays ──────────────────────
+    let (st, v) = c.json("DELETE", &plan_uri, None).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"deleted": true})));
+    assert!(saved.doc.path.exists(), "the workspace plan is the user's file");
+    let (_, v) = c.json("GET", &plan_uri, None).await;
+    assert_eq!(v, json!({"plan": null}));
+    let (st, _) = c.json("PUT", &plan_uri, Some(json!({"content": "# New", "base_revision": 2}))).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{psid}"), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
 }

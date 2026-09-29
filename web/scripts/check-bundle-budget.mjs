@@ -44,7 +44,8 @@ if (import.meta.main) {
   // by ~231 kB gzip. Only the heavy renderers stay lazy: Mermaid, PDF.js and
   // xterm. Limits sit just above the measured 2.54 MB / 754 kB gzip, and the
   // 1.90 MB index chunk is now the largest one.
-  const limits = { eagerBytes: 2_600_000, eagerGzipBytes: 760_000, largestChunkBytes: 1_950_000 }
+  // The plan review (Plan tab, transcript card) raised it to 2.57 MB / 765 kB.
+  const limits = { eagerBytes: 2_600_000, eagerGzipBytes: 770_000, largestChunkBytes: 1_950_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

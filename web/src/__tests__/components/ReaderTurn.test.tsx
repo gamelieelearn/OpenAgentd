@@ -185,6 +185,14 @@ describe('AssistantTurn — reader mode', () => {
     expect(screen.getByRole('button', { name: /^Working · 5s · 1 read, 1 edit/ })).toBeTruthy()
   })
 
+  it('does not mention failures while working', () => {
+    const failedRun: ContentBlock = { id: 'run', type: 'tool', content: '', toolName: 'shell', toolArgs: '{"command":"false"}', toolDone: true, toolResult: '[Failed — exit code 1]' }
+    renderTurn([failedRun, running[4]], { isWorking: true, startedAt: Date.now() - 5000 })
+
+    const row = screen.getByRole('button', { name: /^Working/ })
+    expect(row.textContent).not.toMatch(/failed/)
+  })
+
   it('says a thought-only trace thought, and counts failures', () => {
     renderTurn([
       { id: 'think', type: 'thinking', content: 'Hmm.' },
@@ -362,5 +370,35 @@ describe('AssistantTurn — reader mode, ask_user', () => {
 
     expect(screen.queryByRole('button', { name: /Working/ })).toBeNull()
     expect(screen.getByRole('button', { name: /^1 read$/ })).toBeTruthy()
+  })
+})
+
+describe('AssistantTurn — reader mode, submit_plan', () => {
+  const PLACEHOLDER = 'Waiting for the user to answer. Do not continue until their reply arrives.'
+  const submit = (toolResult: string): ContentBlock => ({
+    id: 'submit', type: 'tool', content: '', toolName: 'submit_plan', toolCallId: 'call-p', toolArgs: '{}', toolDone: true, toolResult,
+  })
+  const read = finished[1]
+  const shell: ContentBlock = { id: 'run', type: 'tool', content: '', toolName: 'shell', toolArgs: '{"command":"ls"}', toolDone: true, toolResult: 'ok' }
+  const answer = finished[4]
+
+  it('keeps a plan waiting for review out of the fold', () => {
+    useAgentStore.setState({
+      sessionId: 's-1',
+      pendingQuestion: { id: 'q-1', sessionId: 's-1', toolCallId: 'call-p', kind: 'plan_review', planRevision: 1, questions: [] },
+      resolvedQuestions: {},
+    })
+
+    renderTurn([read, submit(PLACEHOLDER)])
+
+    expect(rendered('submit')).not.toBeNull()
+  })
+
+  it('folds a reviewed plan with the rest of the work', () => {
+    useAgentStore.setState({ sessionId: 's-1', pendingQuestion: null, resolvedQuestions: {} })
+
+    renderTurn([read, submit('The user approved plan revision 1. The session is now in Code mode with full tool access.'), shell, answer])
+
+    expect(rendered('submit')).toBeNull()
   })
 })

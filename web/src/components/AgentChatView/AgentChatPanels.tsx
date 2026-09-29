@@ -26,6 +26,8 @@ interface AgentChatPanelsProps {
   todos: TodoItem[]
   plan?: SessionPlan | null
   onClearPlan?: () => void
+  /** Open the plan in the dock's Plan tab; unset without a workspace. */
+  onOpenPlan?: () => void
   schedulerOpen: boolean
   onCloseScheduler: () => void
   showPalette: boolean
@@ -53,6 +55,7 @@ export function AgentChatPanels({
   todos,
   plan,
   onClearPlan,
+  onOpenPlan,
   schedulerOpen,
   onCloseScheduler,
   showPalette,
@@ -85,6 +88,7 @@ export function AgentChatPanels({
         todos={todos}
         plan={plan}
         onClearPlan={onClearPlan}
+        onOpenPlan={onOpenPlan}
       />
       {schedulerOpened && (
         <SchedulerPanel

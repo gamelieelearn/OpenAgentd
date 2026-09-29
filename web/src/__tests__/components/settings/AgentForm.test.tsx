@@ -39,6 +39,8 @@ const registryFixture: {
     { name: 'todo_manage', description: 'Manage tasks' },
     { name: 'schedule_task', description: 'Schedule reminders' },
     { name: 'note', description: 'Record notes' },
+    { name: 'plan', description: 'Write the session plan' },
+    { name: 'submit_plan', description: 'Submit the plan for review' },
     // These should be hidden from the Tools picker — they belong to MCP
     // servers and are granted via the MCP picker.
     { name: 'context7_resolve_library_id', description: 'C7 resolve' },
@@ -278,6 +280,8 @@ describe('AgentForm — Capabilities card', () => {
     expect(within(listbox).queryByText('todo_manage')).toBeNull()
     expect(within(listbox).queryByText('schedule_task')).toBeNull()
     expect(within(listbox).queryByText('note')).toBeNull()
+    expect(within(listbox).queryByText('plan')).toBeNull()
+    expect(within(listbox).queryByText('submit_plan')).toBeNull()
   })
 
   it('treats the code profile as additive over built-in defaults', () => {

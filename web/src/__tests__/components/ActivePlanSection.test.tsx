@@ -43,4 +43,24 @@ describe('ActivePlanSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear plan' }))
     expect(onClear).toHaveBeenCalledTimes(1)
   })
+
+  it('opens the Plan tab instead of a document when it can', () => {
+    const onOpen = mock(() => {})
+    render(<ActivePlanSection plan={PLAN} onClear={() => {}} onOpen={onOpen} />)
+    expect(screen.queryByRole('button', { name: 'View plan' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Open plan' }))
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('shows the revision, and Approved only while the approved revision is current', () => {
+    const view = render(<ActivePlanSection plan={{ ...PLAN, revision: 3, approved_revision: 3 }} onClear={() => {}} />)
+    expect(screen.getByText('rev 3')).toBeTruthy()
+    expect(screen.getByText('Approved')).toBeTruthy()
+    view.unmount()
+
+    render(<ActivePlanSection plan={{ ...PLAN, revision: 4, approved_revision: 3 }} onClear={() => {}} />)
+    expect(screen.getByText('rev 4')).toBeTruthy()
+    expect(screen.queryByText('Approved')).toBeNull()
+  })
 })

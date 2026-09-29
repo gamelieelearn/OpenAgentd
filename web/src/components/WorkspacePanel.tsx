@@ -60,6 +60,7 @@ import { FilePreviewSubPanel } from './WorkspacePanel/FilePreviewSubPanel'
 import { DiffTabView } from './WorkspacePanel/DiffTabView'
 import { CommitTabView } from './WorkspacePanel/CommitTabView'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
+import { PlanTabView } from './WorkspacePanel/PlanTabView'
 import { SchedulerDockView } from './SchedulerPanel/SchedulerDockView'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { DockActionMenus, type CommitActionTarget } from './WorkspacePanel/DockActionMenus'
@@ -75,6 +76,7 @@ import {
   type DiffTabRequest,
   type DockView,
   type DockViewRequest,
+  PLAN_TAB,
   REVIEW_TAB_ID,
   basename,
   resolveFileTabInfo,
@@ -139,7 +141,7 @@ export function WorkspacePanel({
   selectedFileOpenKey?: number
   terminalOpenKey?: number
   handledTerminalOpenKeyRef?: React.RefObject<number | null>
-  /** Shell request to open (or focus) the Tasks / Schedule tab. */
+  /** Shell request to open (or focus) the Tasks / Schedule / Plan tab. */
   viewRequest?: DockViewRequest | null
   /** Parent-owned so a remounted dock does not replay a handled request. */
   handledViewRequestKeyRef?: React.RefObject<number>
@@ -151,7 +153,7 @@ export function WorkspacePanel({
   /** Agent task list for the Tasks tab. */
   todos?: TodoItem[]
   sessionId?: string | null
-  /** The session's saved plan, shown above the Tasks tab's list. */
+  /** The session plan: the Plan tab, and a row above the Tasks tab's list. */
   plan?: SessionPlan | null
   onClearPlan?: () => void
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
@@ -175,6 +177,7 @@ export function WorkspacePanel({
     setActiveTabId,
     activeTab,
     terminalMetas,
+    openTab,
     openFileTab,
     openDiffTab,
     openCommitTab,
@@ -554,7 +557,9 @@ export function WorkspacePanel({
           ) : activeTab?.type === 'terminal' ? (
             <TerminalSubPanel key={activeTab.termId} termId={activeTab.termId} workspace={workspace} />
           ) : activeTab?.type === 'tasks' ? (
-            <TasksTabView todos={todos} sessionId={sessionId} plan={plan} onClearPlan={onClearPlan} />
+            <TasksTabView todos={todos} sessionId={sessionId} plan={plan} onClearPlan={onClearPlan} onOpenPlan={() => openTab(PLAN_TAB)} />
+          ) : activeTab?.type === 'plan' ? (
+            <PlanTabView plan={plan} sessionId={sessionId} onClearPlan={onClearPlan} onOpenFile={openChangedFile} />
           ) : activeTab?.type === 'schedule' ? (
             <SchedulerDockView contextWorkspace={chatWorkspace ? null : workspace} />
           ) : chatWorkspace ? (

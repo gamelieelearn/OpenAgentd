@@ -38,6 +38,10 @@
  * is full-screen either way, and the sheet adds swipe-to-close and the
  * Changes / Files / Terminal tabs. Tasks stay in the popover there, the one
  * surface that leaves the chat visible while the agent works.
+ *
+ * The session plan opens as a Plan tab on every platform with a workspace
+ * (the dock sheet on phones). Desktop brings it forward by itself once per
+ * plan review, so the plan the agent submitted is on screen to review.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
@@ -124,6 +128,11 @@ export interface UseOverlayStateResult {
   handleSetShowTodos: Dispatch<SetStateAction<boolean>>
   /** ⌘T, the header Tasks button, and the palette's Task List command. */
   handleToggleTasks: () => void
+  /**
+   * Show the session plan: the dock's Plan tab with a workspace, else the
+   * Tasks popover, whose plan row opens it as a document.
+   */
+  handleOpenPlan: () => void
   handleToggleFilesPanel: () => void
   handleOpenTerminal: () => void
   closeAllDrawers: () => void
@@ -411,6 +420,27 @@ export function useOverlayState({
     if (dockViewsEnabled) setShowTodos(false)
   }, [dockViewsEnabled])
 
+  const handleOpenPlan = useCallback(() => {
+    if (!workspace) {
+      handleSetShowTodos(true)
+      return
+    }
+    if (isMobile) setMobileSidebarOpen(false)
+    closeOtherMobileOverlays('workspace-panel')
+    setWorkspacePanel((value) => value ?? 'changed')
+    setDockViewRequest((prev) => ({ view: 'plan', key: (prev?.key ?? 0) + 1 }))
+  }, [closeOtherMobileOverlays, handleSetShowTodos, isMobile, workspace])
+
+  // A new plan review brings the plan forward on desktop, once per review.
+  // Phones leave the chat on screen; the transcript card opens the plan.
+  const planReviewId = useAgentStore((s) => (s.pendingQuestion?.kind === 'plan_review' ? s.pendingQuestion.id : null))
+  const autoOpenedReviewRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!dockViewsEnabled || !planReviewId || autoOpenedReviewRef.current === planReviewId) return
+    autoOpenedReviewRef.current = planReviewId
+    handleOpenPlan()
+  }, [dockViewsEnabled, handleOpenPlan, planReviewId])
+
   const handleToggleFilesPanel = handleWorkspaceFiles
 
   // Open (or focus) a terminal — needs an attached workspace. Ensures the
@@ -430,12 +460,13 @@ export function useOverlayState({
       [APP_EVENTS.openScheduler, handleOpenScheduler],
       [APP_EVENTS.openWorkspace, handleOpenWorkspaceDialog],
       [APP_EVENTS.openTerminal, handleOpenTerminal],
+      [APP_EVENTS.openPlan, handleOpenPlan],
     ]
     for (const [event, handler] of routes) window.addEventListener(event, handler)
     return () => {
       for (const [event, handler] of routes) window.removeEventListener(event, handler)
     }
-  }, [handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleToggleScheduler])
+  }, [handleOpenPlan, handleOpenScheduler, handleOpenTerminal, handleOpenWorkspaceDialog, handleToggleScheduler])
 
   // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
   //
@@ -543,6 +574,7 @@ export function useOverlayState({
     handleToggleQuickOpen,
     handleSetShowTodos,
     handleToggleTasks,
+    handleOpenPlan,
     handleToggleFilesPanel,
     handleOpenTerminal,
     closeAllDrawers,

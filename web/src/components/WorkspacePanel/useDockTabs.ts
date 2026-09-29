@@ -24,14 +24,13 @@ import {
   type DockViewRequest,
   REVIEW_TAB,
   REVIEW_TAB_ID,
-  SCHEDULE_TAB,
-  TASKS_TAB,
   basename,
   commitTabId,
   diffTabId,
   fileTabId,
   terminalIdFromTabId,
   terminalTabId,
+  viewTab,
 } from './dock-tabs'
 
 /** Insert a tab before the terminal group so terminals stay at the end. */
@@ -173,7 +172,7 @@ export function useDockTabs({
   useEffect(() => {
     if (!viewRequest || viewRequest.key <= handledViewRequestKeyRef.current) return
     handledViewRequestKeyRef.current = viewRequest.key
-    openTab(viewRequest.view === 'tasks' ? TASKS_TAB : SCHEDULE_TAB)
+    openTab(viewTab(viewRequest.view))
   }, [viewRequest, openTab, handledViewRequestKeyRef])
 
   const fallbackHandledDiffRequestKeyRef = useRef(0)
@@ -190,7 +189,7 @@ export function useDockTabs({
   }, [diffRequest, openDiffTab, handledDiffRequestKeyRef])
 
   const activeView: DockView | null =
-    activeTab?.type === 'tasks' || activeTab?.type === 'schedule' ? activeTab.type : null
+    activeTab?.type === 'tasks' || activeTab?.type === 'schedule' || activeTab?.type === 'plan' ? activeTab.type : null
   const onActiveViewChangeRef = useRef(onActiveViewChange)
   useEffect(() => {
     onActiveViewChangeRef.current = onActiveViewChange

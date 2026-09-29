@@ -88,11 +88,13 @@ verify-desktop: ## Check, test, and lint the desktop Rust crate
 verify-mobile: ## Check the mobile Rust crate
 	cd mobile/src-tauri && TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo check --locked
 
-health: ## Rank god files + detect circular imports (text report)
-	python3 -m scripts.codehealth
+# Scoped to web/src: the end-of-life v2 backend (app/) is frozen, so its
+# Python files would only add noise to the ranking.
+health: ## Rank web frontend god files + detect circular imports (text report)
+	python3 -m scripts.codehealth --lang ts
 
 health-json: ## Same as 'health' but emit JSON (for baselines / CI)
-	python3 -m scripts.codehealth --json
+	python3 -m scripts.codehealth --lang ts --json
 
 build-web: ## Build web UI into web/dist/ for desktop packaging
 	# --frozen-lockfile: install exactly what bun.lock pins instead of
@@ -105,8 +107,8 @@ icons: ## Centralize and generate all app & platform icons from the master brand
 	python3 scripts/generate_icons.py
 
 clean: ## Remove build and cache artifacts
-	rm -rf .pytest_cache .ruff_cache .coverage .ty_cache htmlcov
-	rm -rf web/dist dist
+	rm -rf .pytest_cache
+	rm -rf web/dist
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 
 help: ## Show this help message

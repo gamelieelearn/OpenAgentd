@@ -260,6 +260,21 @@ pub fn question_answered(question_id: &str, session_id: &str, answers: &Value) -
     }))
 }
 
+/// `question_asked` for a plan review: the same event, with `kind` and
+/// `plan_revision` so clients show the Plan panel instead of a question card.
+pub fn plan_review_asked(question_id: &str, session_id: &str, tool_call_id: &str, questions: &[Value], plan_revision: u64) -> Envelope {
+    Envelope::typed(json!({
+        "type": "question_asked", "question_id": question_id, "session_id": session_id,
+        "tool_call_id": tool_call_id, "questions": questions, "kind": "plan_review",
+        "plan_revision": plan_revision, "metadata": {}
+    }))
+}
+
+/// The session's Plan/Code mode changed.
+pub fn interaction_mode(agent: &str, mode: &str) -> Envelope {
+    Envelope::typed(json!({"type": "interaction_mode", "agent": agent, "interaction_mode": mode}))
+}
+
 pub fn question_dismissed(question_id: &str, session_id: &str, reason: &str) -> Envelope {
     Envelope::typed(json!({
         "type": "question_dismissed", "question_id": question_id, "session_id": session_id,
@@ -302,6 +317,8 @@ mod tests {
             permission_asked("r", "s", "read", &[], json!({})),
             question_asked("q", "s", "c", &[]),
             question_answered("q", "s", &json!({})),
+            plan_review_asked("q", "s", "c", &[], 1),
+            interaction_mode("a", "code"),
             question_dismissed("q", "s", "dismissed"),
             summarization_start("a"),
             summarization_content("a", "t"),

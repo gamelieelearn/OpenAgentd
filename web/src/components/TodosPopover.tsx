@@ -20,9 +20,11 @@ interface TodosPopoverProps {
   /** The session's saved plan; its row sits under the header. */
   plan?: SessionPlan | null
   onClearPlan?: () => void
+  /** Open the plan in the dock's Plan tab (sessions with a workspace). */
+  onOpenPlan?: () => void
 }
 
-export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPlan }: TodosPopoverProps) {
+export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPlan, onOpenPlan }: TodosPopoverProps) {
   const summary = summarizeTodos(todos)
   const { mounted, closing } = useDeferredUnmount(open, 100)
   useHotkey('Escape', () => onOpenChange(false), { enabled: open })
@@ -75,7 +77,13 @@ export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPl
             </span>
           )}
         </div>
-        {plan && onClearPlan && <ActivePlanSection plan={plan} onClear={onClearPlan} />}
+        {plan && onClearPlan && (
+          <ActivePlanSection
+            plan={plan}
+            onClear={onClearPlan}
+            onOpen={onOpenPlan ? () => { onOpenChange(false); onOpenPlan() } : undefined}
+          />
+        )}
         {summary.total > 0 && <TaskProgressBar summary={summary} />}
         {summary.total === 0 ? (
           <div role="status" className="flex flex-col items-center gap-1 px-3 py-5 text-center">

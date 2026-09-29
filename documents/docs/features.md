@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v3.1.0 · September 29, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.1.0)
+**Latest release:** v3.2.0 · September 29, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.2.0)
 
 ---
 
@@ -197,25 +197,44 @@ run from the terminal (the native Rust binary since v3.0.0).
   Open searches
   commands instead of files. The desktop app adds Reload Window, since `⌘R`
   no longer reloads.
-- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0]` — the expanded composer switches an
+- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
   the repository and produces decision-complete implementation plans, while the runtime
-  strictly blocks mutating file operations and patches while permitting read-only inspection and testing via shell. Proposed plans render with centered divider rules and an embedded "Approve" action that transitions the session to Code mode and initiates execution.
+  strictly blocks mutating file operations and patches while permitting read-only inspection and testing via shell.
+  The agent writes its plan with the `plan` tool and submits it with
+  `submit_plan`, which pauses the turn for review in the **Plan** tab of the
+  review dock (full screen on mobile; it opens by itself on desktop). The tab
+  shows the rendered plan and its status, and offers **Approve** and
+  **Request changes**. Select plan text and choose **Comment** to attach a
+  comment to that passage: commented passages stay highlighted, the review
+  footer lists your comments (click one to jump to its passage, or remove it),
+  and an optional box takes overall feedback. **Request changes** sends every
+  comment with its quoted passage plus the overall feedback in one answer;
+  unsent comments survive switching tabs. Approving switches the session to
+  Code mode and the same turn carries on implementing the plan; requesting
+  changes keeps it in Plan mode with your feedback. The transcript shows a
+  plan review card with the outcome, your comments and a button that opens
+  the plan; **Open Plan** in the command palette (⌘K) does the same whenever
+  the session has a plan. Replying in chat instead supersedes the review.
+  Older `<proposed_plan>` answers still render as read-only cards.
   Switching mode while a turn is running no longer stops it: the switch is
   queued and applied when that turn closes, so it binds from the next turn and
   any message queued behind it. The toggle shows the queued mode in italics
   until it lands. Use stop if you actually want to interrupt the turn.
-  - **Saved session plan** `[v3.0.0]` — the plan a Plan-mode turn ends with
-    is saved as `plan.md` in the session's data directory; each revision
-    replaces it. Context compaction restates it verbatim, with the task
-    list, just before the summary, so the agent keeps following the
-    approved plan in long sessions (once every tracked task is finished,
-    only a pointer to the file is kept). Selecting text on a plan card offers
-    **Comment**, which quotes the selection into the composer for the agent
-    to revise. The Tasks tab and popover show a Plan row with **View** (opens
-    the file) and **Clear** (stops compaction from restating it).
+  - **Saved session plan** `[v3.0.0, updated v3.2.0]` — in a project
+    workspace the plan is a Markdown file in `.openagentd/plans/`, which
+    ignores itself in git unless you delete its `.gitignore`; chat sessions
+    keep it in the session's data directory. You can edit it in the Plan tab
+    (**Edit**) or in any editor, and **Open file** opens it as a normal file
+    tab. The agent is told about your edits once and keeps them. Context
+    compaction restates the plan verbatim, with the task list, just before
+    the summary, so the agent keeps following the approved plan in long
+    sessions (once every tracked task is finished, only a pointer to the
+    file is kept). The Tasks tab and popover show a Plan row with its
+    revision, **Open** and **Clear**, which stops using the plan in the
+    session and leaves the file in place.
 - **Fullscreen view mode and traffic-light space reclamation** `[v2.0.0]` — automatically
   detects macOS fullscreen mode and reclaims the window traffic-light header padding to
   maximise message and diff reading area.
@@ -453,8 +472,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   and spacing together, up to 125%. Smaller settings keep the design size.
 - **A calmer transcript** `[v3.0.0]` — the chat reads as prompts and answers:
   - Every prompt you wrote has Edit (rewind to it and put it back in the
-    composer) and Restore to here (undo the turns after it; `/redo` brings
-    them back), both reachable from the keyboard.
+    composer; `/redo` brings the undone turns back), reachable from the
+    keyboard.
   - A failed turn ends in an error card with Retry and Switch model, which
     opens Session Settings.
   - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your
@@ -482,7 +501,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     transcript, and transcript find opens it when it matches inside.
     Since `[v3.1.0]` the running row also says how long the turn has run,
     counted from its prompt ("Working · 1m 12s · Shell: Run web tests"),
-    and a turn waiting on your answer shows its counts instead of "Working".
+    leaves failures for the finished row to count, and a turn waiting on
+    your answer shows its counts instead of "Working".
   - An open row stays pinned to the top of the transcript while its steps
     scroll under it, and a **Collapse** row ends the steps, so a long fold
     closes without scrolling back up. Closing from either leaves the row
@@ -519,12 +539,12 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Persistent timing on every reply + tool call** `[v1.21.0]` — reply durations
   measure full user-turn wall-clock time; tool durations measure execution time.
   Both stay visible while streaming and after reloading a session.
-- **Effective model on assistant replies** `[v1.42.0]` — assistant footers show
+- **Effective model on assistant replies** `[v1.42.0, updated v3.2.0]` — assistant footers show
   the model that produced the reply, including fallback transitions, next to the
-  copy and timing metadata. Since `[v3.0.0]` a footer names the model only on
-  the first reply and where the model changes, followed by the thinking level
-  the reply ran at (e.g. `gpt-5 · high`); a change of level alone names it
-  again.
+  copy and timing metadata, followed by the thinking level the reply ran at
+  (e.g. `gpt-5 · high`). Every reply footer names them, and each prompt's
+  hover row names the model and level that answered it (before an answer, the
+  ones it was sent with).
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
   folders render orange. Mentioned files inject inline hidden context on the
   turn without becoming uploads; mentioned folders inject a lightweight directory
@@ -1218,6 +1238,10 @@ MCP.
   and the socket is pinned to the validated address, so a DNS answer cannot
   change between validation and connection. Repeated fetches reuse one pooled
   HTTP client that is closed on server shutdown.
+- **Anti-bot block detection** `[v3.2.0]` — when a page is blocked by
+  anti-bot protection (Cloudflare, DataDome, PerimeterX, Reddit, Vercel, AWS
+  WAF), `web_fetch` returns a clear "Browser verification required" error
+  that names the vendor, instead of the interstitial's text.
 - **50k character read limit** `[v2.0.0]` — expanded `read` tool context limit to
   50,000 characters for reviewing larger source files in a single pass.
 - **Symbol outline mode for `read` tool** `[v2.4.0]` — `read` supports `outline=True`

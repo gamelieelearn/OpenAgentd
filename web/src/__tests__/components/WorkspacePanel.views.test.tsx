@@ -12,7 +12,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { _resetTerminalStoreForTests } from '@/stores/useTerminalStore'
-import type { ScheduledTaskResponse, TodoItem } from '@/api/types'
+import type { ScheduledTaskResponse, SessionPlan, TodoItem } from '@/api/types'
 import type { DockView, DockViewRequest } from '@/components/WorkspacePanel/dock-tabs'
 
 // lucide-react stays real: the Schedule tab pulls in the whole scheduler tree.
@@ -79,6 +79,7 @@ interface RenderOptions {
   handledRef?: React.RefObject<number>
   todos?: TodoItem[]
   sessionId?: string | null
+  plan?: SessionPlan | null
   onActiveViewChange?: (view: DockView | null) => void
 }
 
@@ -94,6 +95,7 @@ async function renderPanel(options: RenderOptions = {}) {
         handledViewRequestKeyRef={opts.handledRef}
         todos={opts.todos ?? TODOS}
         sessionId={opts.sessionId === undefined ? 'session-1' : opts.sessionId}
+        plan={opts.plan ?? null}
         onActiveViewChange={opts.onActiveViewChange}
       />
     </QueryClientProvider>
@@ -151,6 +153,32 @@ describe('Review dock Tasks tab', () => {
     expect(reported.at(-1)).toBe('tasks')
     view.unmount()
     expect(reported.at(-1)).toBeNull()
+  })
+})
+
+describe('Review dock Plan tab', () => {
+  const PLAN: SessionPlan = {
+    content: '# Ship it\n\n1. Write the migration',
+    updated_at: '2026-01-01T00:00:00Z',
+    revision: 1,
+    approved_revision: null,
+    path: `${WORKSPACE}/.openagentd/plans/ship-it-0000abcd.md`,
+    workspace_path: '.openagentd/plans/ship-it-0000abcd.md',
+  }
+
+  it('opens and focuses the Plan tab for a plan request and reports the active view', async () => {
+    const reported: (DockView | null)[] = []
+    await renderPanel({ request: { view: 'plan', key: 1 }, plan: PLAN, onActiveViewChange: (v) => reported.push(v) })
+
+    const tab = await screen.findByRole('button', { name: 'Session plan' })
+    expect(tab.getAttribute('aria-current')).toBe('true')
+    expect(await screen.findByText('Write the migration')).toBeTruthy()
+    expect(reported.at(-1)).toBe('plan')
+  })
+
+  it('shows the empty state before the agent writes a plan', async () => {
+    await renderPanel({ request: { view: 'plan', key: 1 } })
+    expect(await screen.findByText('No plan yet')).toBeTruthy()
   })
 })
 

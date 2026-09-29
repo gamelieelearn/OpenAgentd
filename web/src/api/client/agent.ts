@@ -597,3 +597,15 @@ export async function clearSessionPlan(sessionId: string): Promise<void> {
   const res = await fetch(`${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/plan`, { method: 'DELETE' })
   if (!res.ok) await parseDetailOrThrow(res, 'clearSessionPlan')
 }
+
+/** Save the user's edit to the session plan. ``baseRevision`` is the revision
+ *  the editor opened; a newer one on the server answers 409. */
+export async function updateSessionPlan(sessionId: string, content: string, baseRevision: number): Promise<SessionPlanResponse> {
+  const res = await fetch(`${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/plan`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, base_revision: baseRevision }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'updateSessionPlan')
+  return res.json()
+}

@@ -90,6 +90,16 @@ describe('useOverlayState app events', () => {
     expect(result.current.terminalOpenKey).toBe(1)
   })
 
+  // The transcript's plan review card opens the plan through this event.
+  it('opens the Plan tab on openPlan', () => {
+    const { result } = renderOverlay()
+
+    act(() => dispatchAppEvent(APP_EVENTS.openPlan))
+
+    expect(result.current.workspacePanel).toBe('changed')
+    expect(result.current.dockViewRequest).toEqual({ view: 'plan', key: 1 })
+  })
+
   it('stops listening once unmounted', () => {
     const { args, unmount } = renderOverlay({ workspace: null })
     unmount()

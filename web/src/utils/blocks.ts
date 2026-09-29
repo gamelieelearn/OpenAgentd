@@ -84,30 +84,6 @@ export function countBlocksAfter(blocks: ContentBlock[], id: string): number | n
   return null
 }
 
-const PLAN_CONTENT_REGEX =
-  /<proposed_plan\b|^\s*(?:#+\s*(?:proposed\s+|implementation\s+)?plan\b|\*\*(?:proposed\s+|implementation\s+)?plan:?\*\*)/im
-
-function stripBacktickCode(content: string): string {
-  if (!content.includes('`') && !content.includes('~')) return content
-  return content
-    .replace(/(?:^|\n)[ ]{0,3}(`{3,}|~{3,})[\s\S]*?(?:\n[ ]{0,3}\1\s*(?=\n|$)|$)/g, '\n')
-    .replace(/(`+)(?:[\s\S]*?)\1/g, '')
-}
-
-/**
- * Returns true when the provided content blocks contain an explicit plan tag
- * or plan heading (`<proposed_plan>`, `## Proposed Plan`, `## Implementation Plan`,
- * `## Plan:`, `**Plan:**`).
- */
-export function hasPlanContent(blocks: ContentBlock[]): boolean {
-  return blocks.some(
-    (b) =>
-      (b.type === 'text' || !b.type) &&
-      typeof b.content === 'string' &&
-      PLAN_CONTENT_REGEX.test(stripBacktickCode(b.content)),
-  )
-}
-
 /**
  * True when `incoming` is a reconnect replay of everything already in
  * `existing` rather than the next live delta fragment.

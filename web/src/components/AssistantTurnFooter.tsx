@@ -12,7 +12,6 @@ import { Copy, Check } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatTime, formatFullDateTime, lastTurnText, shortModelName } from '@/utils/format'
 import { formatCompact, formatInt, formatSpend } from '@/utils/telemetryFormat'
-import { PlanActionContext } from '@/utils/markdown-plan'
 import { turnModel } from '@/utils/turns'
 import type { ContentBlock } from '@/api/types'
 import { useQuestionAwaitsUser } from '@/components/AskUser'
@@ -24,8 +23,6 @@ export interface AssistantTurnFooterProps {
   turnBlocks: ContentBlock[]
   /** Visual density: 'compact' for narrow panes, 'roomy' for the wide view. */
   size?: 'compact' | 'roomy'
-  /** Name the model and thinking level; the transcript does so only when they changed. */
-  showModel?: boolean
 }
 
 function formatDuration(ms: number): string {
@@ -38,7 +35,7 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${seconds}s`
 }
 
-export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact', showModel = true }: AssistantTurnFooterProps) {
+export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact' }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
   const footerData = useMemo(() => {
     // Me lastTurnText walks back to the previous user block; pass the turn directly
@@ -107,7 +104,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
           <TooltipContent>Copy</TooltipContent>
         </Tooltip>
       )}
-      {showModel && modelName && (
+      {modelName && (
         <span
           data-turn-model
           className="font-mono text-[11px] text-(--color-text-muted)"
@@ -169,14 +166,6 @@ export interface AssistantTurnProps {
   renderBlock: (args: { block: ContentBlock; isStreaming: boolean; isLast: boolean }) => ReactNode
   /** Footer density. */
   size?: 'compact' | 'roomy'
-  /** Callback to switch to Code mode and start implementation of a proposed plan. */
-  onStartImplementing?: () => void
-  /** Quote selected plan text into the composer; offered on finished turns. */
-  onCommentOnPlan?: (quote: string) => void
-  /** True when interaction mode is actively transitioning to Code mode. */
-  isSwitchingInteractionMode?: boolean
-  /** Passed to the footer. */
-  showModel?: boolean
   /**
    * Reader mode: the work folds behind one summary row, and a finished
    * turn lists the files it edited (see ``ReaderTurn/segments.ts``).
@@ -201,10 +190,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   totalBlocks,
   renderBlock,
   size = 'compact',
-  onStartImplementing,
-  onCommentOnPlan,
-  isSwitchingInteractionMode = false,
-  showModel,
   reader = false,
   startedAt,
   findHitBlockIds,
@@ -214,14 +199,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   const turnIsOpen = isTurnOpen && isTrailingTurn
   // Narrower: an open turn waiting on ``ask_user`` is not being worked on.
   const turnIsWorking = isWorking && isTrailingTurn
-  const planActionValue = useMemo(
-    () => ({
-      onStartImplementing: !turnIsOpen ? onStartImplementing : undefined,
-      isSwitching: isSwitchingInteractionMode,
-      onComment: !turnIsOpen ? onCommentOnPlan : undefined,
-    }),
-    [turnIsOpen, onStartImplementing, isSwitchingInteractionMode, onCommentOnPlan],
-  )
   const awaitsUser = useQuestionAwaitsUser()
   const segments = useMemo(() => (reader ? readerSegments(blocks, awaitsUser) : null), [reader, blocks, awaitsUser])
   const changedFiles = useMemo(() => (reader && !turnIsOpen ? turnChangedFiles(blocks) : []), [reader, turnIsOpen, blocks])
@@ -258,8 +235,7 @@ export const AssistantTurn = memo(function AssistantTurn({
   }
 
   return (
-    <PlanActionContext.Provider value={planActionValue}>
-      <div className="space-y-2">
+    <div className="space-y-2">
       {segments
         ? segments.map((segment) => {
             if (segment.kind === 'block') return renderAt(segment.index)
@@ -282,8 +258,7 @@ export const AssistantTurn = memo(function AssistantTurn({
           })
         : blocks.map((_, j) => renderAt(j))}
       {changedFiles.length > 0 && <TurnChangedFiles files={changedFiles} />}
-      {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} showModel={showModel} />}
+      {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} />}
     </div>
-    </PlanActionContext.Provider>
   )
 })

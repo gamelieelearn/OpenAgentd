@@ -38,9 +38,16 @@ pub fn format_answers_for_model(questions: &[Value], answers: Option<&Value>) ->
 
 /// Record a suspension and its placeholder tool result (v2 `create_pending_question`).
 pub async fn create_pending_question(pool: &DbPool, session_id: &str, tool_call_id: &str, questions: &[Value]) -> Result<PendingQuestion> {
+    let payload = serde_json::json!({ "questions": questions });
+    create_pending_question_with(pool, session_id, tool_call_id, ASK_USER_TOOL, &payload).await
+}
+
+/// [`create_pending_question`] for any suspending tool: `payload` is stored
+/// as-is (it must carry `questions`), and the placeholder tool message is
+/// named `tool_name` so it pairs with the call that suspended.
+pub async fn create_pending_question_with(pool: &DbPool, session_id: &str, tool_call_id: &str, tool_name: &str, payload: &Value) -> Result<PendingQuestion> {
     let sid = db_id(session_id);
     let id = new_id();
-    let payload = serde_json::json!({ "questions": questions });
     sqlx::query(
         "INSERT INTO pending_questions (id, session_id, tool_call_id, payload, status, answers, created_at, answered_at) \
          VALUES (?, ?, ?, ?, 'pending', 'null', ?, NULL)",
@@ -48,13 +55,13 @@ pub async fn create_pending_question(pool: &DbPool, session_id: &str, tool_call_
     .bind(&id)
     .bind(&sid)
     .bind(tool_call_id)
-    .bind(json_db(Some(&payload)))
+    .bind(json_db(Some(payload)))
     .bind(now_db())
     .execute(pool)
     .await?;
     let mut extra = Map::new();
     extra.insert("pending_question".into(), Value::Bool(true));
-    save_message(pool, &sid, NewMessage { extra: Some(extra), ..NewMessage::tool(tool_call_id, ASK_USER_TOOL, PLACEHOLDER_RESULT) }).await?;
+    save_message(pool, &sid, NewMessage { extra: Some(extra), ..NewMessage::tool(tool_call_id, tool_name, PLACEHOLDER_RESULT) }).await?;
     Ok(get_question(pool, &id).await?.expect("row just inserted"))
 }
 
@@ -79,6 +86,19 @@ pub async fn sessions_awaiting_input(pool: &DbPool) -> Result<std::collections::
 /// Close an open question and rewrite its placeholder. `None` when it was
 /// already resolved (lost race) — the caller must then not resume the turn.
 pub async fn resolve_pending_question(pool: &DbPool, question_id: &str, status: &str, answers: Option<&Value>) -> Result<Option<PendingQuestion>> {
+    resolve_pending_question_with(pool, question_id, status, answers, None).await
+}
+
+/// [`resolve_pending_question`] with the tool result an answer writes:
+/// `answered_content` replaces the default answer summary (other statuses
+/// keep their standard sentence).
+pub async fn resolve_pending_question_with(
+    pool: &DbPool,
+    question_id: &str,
+    status: &str,
+    answers: Option<&Value>,
+    answered_content: Option<&str>,
+) -> Result<Option<PendingQuestion>> {
     let qid = db_id(question_id);
     let answers_v = answers.filter(|a| a.as_array().map(|x| !x.is_empty()).unwrap_or(false));
     let updated = sqlx::query("UPDATE pending_questions SET status = ?, answers = ?, answered_at = ? WHERE id = ? AND status = 'pending'")
@@ -93,7 +113,11 @@ pub async fn resolve_pending_question(pool: &DbPool, question_id: &str, status: 
         return Ok(None);
     }
     let Some(row) = get_question(pool, &qid).await? else { return Ok(None) };
-    let content = if status == "answered" { format_answers_for_model(&row.questions(), row.answers_json().as_ref()) } else { resolution_text(status).to_string() };
+    let content = match (status, answered_content) {
+        ("answered", Some(text)) => text.to_string(),
+        ("answered", None) => format_answers_for_model(&row.questions(), row.answers_json().as_ref()),
+        _ => resolution_text(status).to_string(),
+    };
     let placeholder = sqlx::query_as::<_, SessionMessage>("SELECT * FROM session_messages WHERE session_id = ? AND tool_call_id = ? LIMIT 1")
         .bind(&row.session_id)
         .bind(&row.tool_call_id)

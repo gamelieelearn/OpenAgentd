@@ -63,22 +63,19 @@ export function turnModel(blocks: ContentBlock[]): { model: string; thinkingLeve
 }
 
 /**
- * ``startIndex`` of every assistant turn whose model or thinking level
- * differs from the last seen before it, so a footer names them only when
- * they change.
+ * The model and thinking level of each prompt, keyed by block id: the ones
+ * that answered it, or, before an answer names one, the ones it was sent
+ * with.
  */
-export function modelChangeTurnStarts(items: TurnItem[]): Set<number> {
-  const starts = new Set<number>()
-  let previous: string | undefined
-  for (const item of items) {
-    if (item.kind !== 'assistant') continue
-    const turn = turnModel(item.blocks)
-    if (turn === undefined) continue
-    const key = `${turn.model}\n${turn.thinkingLevel ?? ''}`
-    if (key !== previous) starts.add(item.startIndex)
-    previous = key
-  }
-  return starts
+export function promptModels(items: TurnItem[]): Map<string, { model: string; thinkingLevel?: string }> {
+  const models = new Map<string, { model: string; thinkingLevel?: string }>()
+  items.forEach((item, i) => {
+    if (item.kind !== 'user') return
+    const next = items[i + 1]
+    const model = (next?.kind === 'assistant' ? turnModel(next.blocks) : undefined) ?? turnModel([item.block])
+    if (model) models.set(item.block.id, model)
+  })
+  return models
 }
 
 /**

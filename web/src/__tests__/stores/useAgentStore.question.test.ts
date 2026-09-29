@@ -163,6 +163,48 @@ describe("useAgentStore — ask_user", () => {
     expect(useAgentStore.getState().pendingQuestion).toBeNull()
   })
 
+  it("keeps a plan review's kind and revision", () => {
+    ask({ kind: "plan_review", plan_revision: 2 })
+
+    const pending = useAgentStore.getState().pendingQuestion
+    expect(pending?.kind).toBe("plan_review")
+    expect(pending?.planRevision).toBe(2)
+  })
+
+  it("leaves an ask_user question without a kind", () => {
+    ask({ kind: "something_else", plan_revision: 2 })
+
+    const pending = useAgentStore.getState().pendingQuestion
+    expect(pending?.kind).toBeUndefined()
+    expect(pending?.planRevision).toBeUndefined()
+  })
+
+  it("refreshes the plan once when a plan review closes", () => {
+    ask({ kind: "plan_review", plan_revision: 2 })
+
+    // The local answer path and the broadcast both record the outcome.
+    useAgentStore.getState().resolveQuestion(QUESTION_ID, [["Approve"]], null)
+    useAgentStore.getState()._handleSSEEvent("question_answered", {
+      question_id: QUESTION_ID,
+      session_id: SESSION_ID,
+      answers: [["Approve"]],
+    })
+
+    expect(useAgentStore.getState().cacheInvalidations).toEqual([{ kind: "plan", sessionId: SESSION_ID }])
+  })
+
+  it("does not refresh the plan when an ask_user question closes", () => {
+    ask()
+
+    useAgentStore.getState()._handleSSEEvent("question_answered", {
+      question_id: QUESTION_ID,
+      session_id: SESSION_ID,
+      answers: [["pnpm"]],
+    })
+
+    expect(useAgentStore.getState().cacheInvalidations).toEqual([])
+  })
+
   it("records a supersede when a new turn starts over an open question", () => {
     ask()
 

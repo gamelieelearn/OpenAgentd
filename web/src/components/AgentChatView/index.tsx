@@ -82,11 +82,8 @@ interface ActiveAgentViewProps {
   emptyState?: React.ReactNode
   onMentionFileOpen?: (path: string) => void
   fileRefOpener?: FileRefOpener
-  onStartImplementing?: () => void
-  onCommentOnPlan?: (quote: string) => void
   onRetry?: () => void
   onSwitchModel?: () => void
-  isSwitchingInteractionMode?: boolean
   findOpen?: boolean
   findQuery?: string
   findActiveIndex?: number
@@ -101,11 +98,8 @@ const ActiveAgentView = memo(function ActiveAgentView({
   emptyState,
   onMentionFileOpen,
   fileRefOpener,
-  onStartImplementing,
-  onCommentOnPlan,
   onRetry,
   onSwitchModel,
-  isSwitchingInteractionMode,
   findOpen,
   findQuery,
   findActiveIndex,
@@ -137,11 +131,8 @@ const ActiveAgentView = memo(function ActiveAgentView({
       onMentionFileOpen={onMentionFileOpen}
       fileRefOpener={fileRefOpener}
       emptyState={emptyState}
-      onStartImplementing={onStartImplementing}
-      onCommentOnPlan={onCommentOnPlan}
       onRetry={onRetry}
       onSwitchModel={onSwitchModel}
-      isSwitchingInteractionMode={isSwitchingInteractionMode}
       findOpen={findOpen}
       findQuery={findQuery}
       findActiveIndex={findActiveIndex}
@@ -201,7 +192,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         connectStream: s.connectStream,
         loadAgentStatus: s.loadAgentStatus,
         loadSession: s.loadSession,
-        sendMessage: s.sendMessage,
         beginResolvedSession: s.beginResolvedSession,
         consumeResolvedSessionReady: s.consumeResolvedSessionReady,
         setSessionModelSettings: s.setSessionModelSettings,
@@ -239,7 +229,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     connectStream,
     loadAgentStatus,
     loadSession,
-    sendMessage,
     beginResolvedSession,
     consumeResolvedSessionReady,
     setSessionModelSettings,
@@ -321,6 +310,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleToggleQuickOpen,
     handleSetShowTodos,
     handleToggleTasks,
+    handleOpenPlan,
     handleOpenTerminal,
     edgeSwipeHandlers,
     sidebarDragOffset,
@@ -357,6 +347,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   const todos = todosData?.todos ?? []
   const { data: planData } = useSessionPlanQuery(sessionIdState)
   const plan = planData?.plan ?? null
+  const planAwaitingReview = useAgentStore((s) => s.pendingQuestion?.kind === 'plan_review')
   const { mutate: clearPlan } = useClearSessionPlanMutation()
   const handleClearPlan = useCallback(() => {
     if (!sessionIdState) return
@@ -410,7 +401,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleNewSession,
     handleDraftValueChange,
     handleAddFileComment,
-    handleAddPlanComment,
   } = useSessionBootstrap({
     sessionId,
     workspace,
@@ -481,6 +471,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleToggleScheduler,
     handleOpenTerminal,
     handleFindInTranscript,
+    handleOpenPlan: plan || planAwaitingReview ? handleOpenPlan : undefined,
+    planAwaitingReview,
     setFileViewer,
     setFileOpenKey,
     setWorkspacePanel,
@@ -505,33 +497,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     isInDock: isInReviewDock,
     onReturn: returnFocusToComposer,
   })
-
-  const handleStartImplementing = useCallback(async () => {
-    if (!effectiveWorkspace || isSwitchingInteractionMode || !sessionIdState) return
-    setIsSwitchingInteractionMode(true)
-    try {
-      const success = await useAgentStore.getState().setSessionInteractionMode('code')
-      if (!success) {
-        const err = useAgentStore.getState().error
-        const errorMsg = typeof err === 'string' ? err : err?.message || 'Failed to switch to Code mode'
-        pushToast({
-          tone: 'error',
-          title: 'Could not switch to Code mode',
-          description: errorMsg,
-        })
-        return
-      }
-      const current = useAgentStore.getState()
-      await sendMessage('Approve, proceed.', undefined, {
-        workspace: effectiveWorkspace,
-        model: current.sessionModel || null,
-        thinkingLevel: current.sessionThinkingLevel || null,
-        fastMode: current.sessionFastMode,
-      })
-    } finally {
-      setIsSwitchingInteractionMode(false)
-    }
-  }, [effectiveWorkspace, isSwitchingInteractionMode, sessionIdState, sendMessage, pushToast])
 
   const handleRetry = useCallback(() => {
     if (effectiveWorkspace) void retryLatestPrompt(effectiveWorkspace)
@@ -675,11 +640,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             <ActiveAgentView
               onMentionFileOpen={handleMentionFileOpen}
               fileRefOpener={fileRefOpener}
-              onStartImplementing={handleStartImplementing}
-              onCommentOnPlan={parentSessionId ? undefined : handleAddPlanComment}
               onRetry={handleRetry}
               onSwitchModel={handleSwitchModel}
-              isSwitchingInteractionMode={isSwitchingInteractionMode}
               findOpen={findOpen}
               findQuery={findQuery}
               findActiveIndex={findActiveIndex}
@@ -824,6 +786,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         chatWorkspace={isChatWorkspace}
         sessionId={sessionIdState}
         sessionModel={sessionModel}
+        defaultModel={leadAgent?.model ?? null}
+        defaultThinkingLevel={leadAgent?.thinking_level ?? null}
         sessionThinkingLevel={sessionThinkingLevel}
         sessionFastMode={storeState.sessionFastMode}
         onToggleSessionSettings={handleToggleAgentCapabilities}
@@ -842,6 +806,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         todos={todos}
         plan={plan}
         onClearPlan={handleClearPlan}
+        onOpenPlan={workspace ? handleOpenPlan : undefined}
         schedulerOpen={schedulerOpen}
         onCloseScheduler={closeScheduler}
         showPalette={paletteOpen}

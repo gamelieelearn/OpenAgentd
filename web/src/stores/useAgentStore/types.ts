@@ -34,7 +34,7 @@ export type CacheInvalidation =
   | { kind: 'coding_workspace_paths'; workspace: string; paths: string[] }
   | { kind: 'scheduler' }
   | { kind: 'todos'; sessionId: string }
-  /** A Plan-mode turn ended, so the saved session plan may have changed. */
+  /** The session plan may have changed (``plan`` tool, closed plan review). */
   | { kind: 'plan'; sessionId: string }
   | { kind: 'subagents'; sessionId: string }
   /**

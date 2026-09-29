@@ -9,7 +9,7 @@ const WORKSPACE = '/repo/project'
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
-  CalendarClock: Icon, ListTodo: Icon,
+  CalendarClock: Icon, ListTodo: Icon, Unlink: Icon, MessageSquarePlus: Icon, FileVideo: Icon, ImageOff: Icon,
   AlertCircle: Icon, ArrowLeft: Icon, CalendarIcon: Icon, Circle: Icon, Clock: Icon, Minus: Icon,
   Pause: Icon, Play: Icon, Terminal: Icon, Trash2: Icon, Zap: Icon,
   ChevronDownIcon: Icon, ChevronLeftIcon: Icon, ChevronRightIcon: Icon,

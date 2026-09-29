@@ -117,6 +117,8 @@ export function AgentForm({
 
   const memberDisallowed = new Set([
     'ask_user',
+    'plan',
+    'submit_plan',
     'team_spawn',
     'team_send',
     'team_list',
