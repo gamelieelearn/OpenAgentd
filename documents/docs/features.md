@@ -457,7 +457,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     them back), both reachable from the keyboard.
   - A failed turn ends in an error card with Retry and Switch model, which
     opens Session Settings.
-  - Right-click a reply for Copy and Copy as Markdown.
   - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your
     prompts; `⌥⌘↑` reaches earlier prompts in one press, loading them when
     they are not loaded yet. On mobile, Previous prompt and Next prompt in the

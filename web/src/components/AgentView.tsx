@@ -41,9 +41,7 @@ import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { ErrorCard } from './AgentView/ErrorCard'
 import { isDirectUserBlock, PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
-import { ReplyMenu } from './AgentView/ReplyMenu'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
-import { replyMarkdown, shouldOpenReplyMenu } from './AgentView/message-menu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { TranscriptFind } from './AgentView/TranscriptFind'
@@ -462,16 +460,6 @@ export function AgentView({
     const next = nextPromptIds.get(blockId)
     if (next) void useAgentStore.getState().revertToMessage(next, { restoreDraft: false })
   }, [nextPromptIds])
-
-  const [replyMenu, setReplyMenu] = useState<{ at: { x: number; y: number }; markdown: string } | null>(null)
-  const handleReplyContextMenu = useCallback((event: React.MouseEvent, turnBlocks: ContentBlock[]) => {
-    if (event.defaultPrevented || !shouldOpenReplyMenu(event.target, window.getSelection()?.toString() ?? '')) return
-    event.preventDefault()
-    const blockId = event.target instanceof Element
-      ? event.target.closest('[data-find-block]')?.getAttribute('data-find-block') ?? null
-      : null
-    setReplyMenu({ at: { x: event.clientX, y: event.clientY }, markdown: replyMarkdown(turnBlocks, blockId) })
-  }, [])
 
   // Live blocks not yet folded into `blocks`, deduped against confirmed ids.
   // Both scroll bookkeeping and turn partitioning below read from this same
@@ -932,13 +920,8 @@ export function AgentView({
                     sessionInteractionMode === 'plan' &&
                     hasPlanContent(item.blocks)
                  return (
-                   <div
-                     // Keyed by the first block alone: an older page shifts every
-                     // startIndex, and a key built on it remounted every reply.
-                     key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}
-                     onContextMenu={(event) => handleReplyContextMenu(event, item.blocks)}
-                   >
                    <AssistantTurn
+                     key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}
                      blocks={item.blocks}
                      startIndex={item.startIndex}
                      finalizedCount={blocks.length}
@@ -971,7 +954,6 @@ export function AgentView({
                        </div>
                      )}
                    />
-                   </div>
                  )
                 })}
 
@@ -1025,13 +1007,6 @@ export function AgentView({
           <ChevronDown size={14} />
         </button>
 
-    )}
-    {replyMenu && (
-      <ReplyMenu
-        at={replyMenu.at}
-        markdown={replyMenu.markdown}
-        onDismiss={() => setReplyMenu(null)}
-      />
     )}
     </div>
     </FileRefContext.Provider>
