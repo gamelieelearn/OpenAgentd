@@ -495,6 +495,11 @@ explicitly.
   in `agent/src/agent.rs` and `agent/src/hooks/publisher.rs`, tested in
   `agent/tests/turn_thinking_level.rs`. v2 never writes it, and the web
   footer then names the model alone.
+- **Agent thinking level in `GET /api/agent/agents`:** v3 adds
+  `thinking_level` (the agent file's level, or `null`) to each agent entry
+  (`api/src/routes/agent/chat.rs`, `serialize_agent`). The web footer shows
+  it next to the agent's model until the session sets its own level or model.
+  v2 omits the key, and the footer then names the model alone.
 - **Session plan** (`agent/src/plan.rs`): a lead Plan-mode turn that ends
   with a closed `<proposed_plan>` saves its body as
   `<data_dir>/sessions/<sid>/plan.md`, and compaction inserts a pinned,

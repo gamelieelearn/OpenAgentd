@@ -378,6 +378,8 @@ pub fn serialize_agent(agent: &appv3_agent::Agent, workspace: Option<&str>, cust
         "name": agent.name,
         "description": agent.description.clone().unwrap_or_default(),
         "model": agent.model_id,
+        // v3 only: lets the UI name the agent's level when the session sets none.
+        "thinking_level": agent.thinking_level,
         "summary_trigger_tokens": appv3_agent::hooks::summarization::resolve_prompt_token_threshold(agent.model_id.as_deref(), custom),
         "tools": tools.into_iter().map(|(n, d)| json!({"name": n, "description": d})).collect::<Vec<_>>(),
         "mcp_servers": agent.mcp_servers,
@@ -900,4 +902,25 @@ async fn agent_history(State(st): State<AppState>, AxPath(raw): AxPath<String>, 
         "truncated": false,
         "pending_question": pending,
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use appv3_providers::mock::MockProvider;
+    use std::sync::Arc;
+
+    fn agent(thinking_level: Option<&str>) -> appv3_agent::Agent {
+        let mut agent = appv3_agent::Agent::new(Arc::new(MockProvider::new(vec![])), "code", "Hi", vec![], Some("mock:mock".into()));
+        agent.thinking_level = thinking_level.map(String::from);
+        agent
+    }
+
+    #[test]
+    fn serialized_agent_carries_its_thinking_level() {
+        let info = serialize_agent(&agent(Some("high")), None, None);
+        assert_eq!(info["model"], "mock:mock");
+        assert_eq!(info["thinking_level"], "high");
+        assert_eq!(serialize_agent(&agent(None), None, None)["thinking_level"], Value::Null);
+    }
 }
