@@ -167,6 +167,33 @@ describe('AssistantTurn — reader mode', () => {
   })
 })
 
+describe('AssistantTurn — reader mode, across a compaction', () => {
+  const compaction = (state: 'compacting' | 'compacted'): ContentBlock => ({
+    id: 'compact', type: 'compaction', content: 'Summary so far', extra: { state },
+  })
+  const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+  it('reads the work before a compaction as done, and works on after the divider', () => {
+    renderTurn([finished[1], compaction('compacted'), running[4]], { isWorking: true, startedAt: Date.now() - 5000 })
+
+    const done = screen.getByRole('button', { name: /^1 read$/ })
+    const working = screen.getAllByRole('button', { name: /Working/ })
+    expect(working).toHaveLength(1)
+    expect(working[0].textContent).toMatch(/^Working · .*Shell: Run web tests/)
+    const divider = screen.getByTestId('block-compact')
+    expect(follows(done, divider)).toBe(true)
+    expect(follows(divider, working[0])).toBe(true)
+  })
+
+  it('does not say it is working while the session compacts', () => {
+    renderTurn([finished[1], compaction('compacting')], { isWorking: true, startedAt: Date.now() - 5000 })
+
+    expect(screen.queryByRole('button', { name: /Working/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /^1 read$/ })).toBeTruthy()
+    expect(screen.getByTestId('block-compact')).toBeTruthy()
+  })
+})
+
 describe('AssistantTurn — reader mode, closing a long fold', () => {
   const originalRect = HTMLElement.prototype.getBoundingClientRect
   afterEach(() => {

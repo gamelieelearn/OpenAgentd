@@ -492,6 +492,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - A question waiting on the user, interactive MCP apps, errors, and
     compaction dividers stay in place; once answered or closed, a question
     folds in with the rest of the work.
+    Since `[v3.1.0]` a compaction divider also splits the work: the steps
+    before it fold into a finished row above it, and the steps after it into
+    a row of their own below, which is the one that reads "Working".
   - A finished turn lists the files its `patch` calls changed, with line
     counts; each opens in the review dock. Since `[v3.1.0]` the list starts
     closed behind its "N files changed" header.

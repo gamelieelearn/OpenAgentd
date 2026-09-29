@@ -225,6 +225,13 @@ export const AssistantTurn = memo(function AssistantTurn({
   const awaitsUser = useQuestionAwaitsUser()
   const segments = useMemo(() => (reader ? readerSegments(blocks, awaitsUser) : null), [reader, blocks, awaitsUser])
   const changedFiles = useMemo(() => (reader && !turnIsOpen ? turnChangedFiles(blocks) : []), [reader, turnIsOpen, blocks])
+  // A compaction divider ends the fold before it (see ``readerSegments``), so
+  // only a fold after the turn's last divider can still be working.
+  const lastCompaction = useMemo(() => {
+    if (!reader) return -1
+    for (let i = blocks.length - 1; i >= 0; i--) if (blocks[i].type === 'compaction') return i
+    return -1
+  }, [reader, blocks])
 
   const renderAt = (j: number) => {
     const block = blocks[j]
@@ -258,14 +265,15 @@ export const AssistantTurn = memo(function AssistantTurn({
             if (segment.kind === 'block') return renderAt(segment.index)
             const work = segment.indices.map((j) => blocks[j])
             const lastIndex = segment.indices[segment.indices.length - 1]
+            const live = turnIsWorking && segment.indices[0] > lastCompaction
             return (
               <WorkSummaryRow
                 // Keyed by its first block so the toggle survives new steps.
                 key={`work-${work[0].id}`}
                 blocks={work}
-                live={turnIsWorking}
+                live={live}
                 startedAt={startedAt}
-                currentStep={turnIsWorking && lastIndex === blocks.length - 1 ? blocks[lastIndex] : null}
+                currentStep={live && lastIndex === blocks.length - 1 ? blocks[lastIndex] : null}
                 forceOpen={work.some((block) => findHitBlockIds?.has(block.id) ?? false)}
               >
                 {segment.indices.map(renderAt)}

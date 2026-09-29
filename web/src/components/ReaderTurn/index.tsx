@@ -12,6 +12,8 @@
  * tests": how long the turn has run, then the step taking output (or the
  * counts so far). Only "Working" pulses, so the rest stays easy to read. A
  * turn waiting on the user is not working, so its row shows the counts.
+ * A compaction divider ends the row before it, which then shows its counts;
+ * the steps after the divider get a row of their own.
  *
  * The file list starts closed behind its "N files changed" header, so a turn
  * that touched many files still ends on its answer.

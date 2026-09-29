@@ -7,6 +7,10 @@
  * after the last work. While a turn runs, text that gets followed by
  * another call moves into the fold, as it turns out to be narration.
  *
+ * A compaction divider ends the work before it: the steps after it fold
+ * behind a row of their own below the divider, so the work before and
+ * after the compaction reads apart.
+ *
  * A few blocks never fold, because the user must see or act on them:
  * interactive MCP apps, provider errors and notices, and compaction dividers.
  * An ``ask_user`` card stays out only while it waits on the user; once
@@ -33,22 +37,28 @@ function isWork(block: ContentBlock, awaitsUser: AwaitsUser): boolean {
   return !(block.extra as { mcp_app?: unknown } | null | undefined)?.mcp_app
 }
 
-/** A turn's blocks as reader mode shows them: one work fold, the rest in order. */
+/** A turn's blocks as reader mode shows them: work folds (one per compaction span), the rest in order. */
 export function readerSegments(blocks: readonly ContentBlock[], awaitsUser: AwaitsUser): ReaderSegment[] {
   let lastWork = -1
   for (let i = blocks.length - 1; i >= 0 && lastWork < 0; i--) if (isWork(blocks[i], awaitsUser)) lastWork = i
   if (lastWork < 0) return blocks.map((_, index) => ({ kind: 'block', index }))
 
-  const work: number[] = []
   const segments: ReaderSegment[] = []
-  blocks.forEach((block, index) => {
+  let work: number[] | null = null
+  for (let index = 0; index < blocks.length; index++) {
+    const block = blocks[index]
+    // A compaction ends the work before it; later steps fold behind a row of their own.
+    if (block.type === 'compaction') work = null
     if (!isWork(block, awaitsUser) && !(block.type === 'text' && index < lastWork)) {
       segments.push({ kind: 'block', index })
-      return
+      continue
     }
-    if (work.length === 0) segments.push({ kind: 'work', indices: work })
+    if (!work) {
+      work = []
+      segments.push({ kind: 'work', indices: work })
+    }
     work.push(index)
-  })
+  }
   return segments
 }
 
