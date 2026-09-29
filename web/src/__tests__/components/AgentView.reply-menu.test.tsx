@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
@@ -9,15 +9,7 @@ import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import type { ContentBlock } from '@/api/types'
 
 const writeText = mock(async (..._args: unknown[]) => {})
-const loadOlderMessages = mock(async () => {
-  useAgentStore.setState({ hasMore: false })
-})
-const initialLoadOlder = useAgentStore.getState().loadOlderMessages
 
-const OLDER: ContentBlock[] = [
-  { id: 'u0', type: 'user', content: 'Earlier question' },
-  { id: 'a0', type: 'text', content: 'Earlier answer' },
-]
 const BLOCKS: ContentBlock[] = [
   { id: 'u1', type: 'user', content: 'Fix it' },
   { id: 'a1', type: 'text', content: 'Use **bold** and [docs](https://x.dev)' },
@@ -25,16 +17,13 @@ const BLOCKS: ContentBlock[] = [
 
 beforeEach(() => {
   writeText.mockClear()
-  loadOlderMessages.mockClear()
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
-  const lead = { ...createDefaultAgentStream(), blocks: [...OLDER, ...BLOCKS] }
+  const lead = { ...createDefaultAgentStream(), blocks: [...BLOCKS] }
   useAgentStore.setState({
     sessionId: 'session-1',
     sessionTitle: 'Bug hunt',
     leadName: 'lead',
     agentStreams: { lead },
-    hasMore: true,
-    loadOlderMessages,
   })
 })
 
@@ -45,9 +34,6 @@ afterEach(() => {
     sessionTitle: null,
     leadName: null,
     agentStreams: {},
-    hasMore: false,
-    _pendingMessages: [],
-    loadOlderMessages: initialLoadOlder,
   })
 })
 
@@ -75,18 +61,5 @@ describe('AgentView — reply context menu', () => {
 
     fireEvent.contextMenu(screen.getByText('Fix it'))
     expect(screen.queryByRole('menu', { name: 'Reply actions' })).toBeNull()
-  })
-
-  it('opens the whole session, earlier pages included, as a Markdown document', async () => {
-    const { container } = render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
-
-    openReplyMenu(container)
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Open session as Markdown' }))
-
-    const preview = await screen.findByRole('dialog', { name: 'File preview: Bug hunt.md' })
-    expect(loadOlderMessages).toHaveBeenCalledTimes(1)
-    await waitFor(() => expect(preview.textContent).toContain('# Bug hunt'))
-    expect(preview.textContent).toContain('Earlier question')
-    expect(preview.textContent).toContain('Use **bold** and [docs](https://x.dev)')
   })
 })

@@ -43,8 +43,7 @@ import { ErrorCard } from './AgentView/ErrorCard'
 import { isDirectUserBlock, PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
 import { ReplyMenu } from './AgentView/ReplyMenu'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
-import { loadSessionMarkdown, replyMarkdown, sessionFileName, shouldOpenReplyMenu } from './AgentView/message-menu'
-import { FileLightbox, type FileLightboxItem } from './FileLightbox'
+import { replyMarkdown, shouldOpenReplyMenu } from './AgentView/message-menu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { TranscriptFind } from './AgentView/TranscriptFind'
@@ -473,36 +472,6 @@ export function AgentView({
       : null
     setReplyMenu({ at: { x: event.clientX, y: event.clientY }, markdown: replyMarkdown(turnBlocks, blockId) })
   }, [])
-
-  // The document opens at once, "Loading…" until every earlier page is in.
-  const [sessionDoc, setSessionDoc] = useState<FileLightboxItem | null>(null)
-  const sessionDocRequest = useRef(0)
-  const sessionDocUrl = useRef<string | null>(null)
-  const releaseSessionDocUrl = useCallback(() => {
-    if (sessionDocUrl.current) URL.revokeObjectURL(sessionDocUrl.current)
-    sessionDocUrl.current = null
-  }, [])
-  useEffect(() => releaseSessionDocUrl, [releaseSessionDocUrl])
-  const openSessionDoc = useCallback(() => {
-    const request = ++sessionDocRequest.current
-    const name = sessionFileName(useAgentStore.getState().sessionTitle)
-    releaseSessionDocUrl()
-    setSessionDoc({ type: 'text', src: '', name })
-    void loadSessionMarkdown().then((markdown) => {
-      if (sessionDocRequest.current !== request) return
-      if (markdown === null) {
-        setSessionDoc(null)
-        return
-      }
-      sessionDocUrl.current = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown' }))
-      setSessionDoc({ type: 'text', src: sessionDocUrl.current, name, textContent: markdown })
-    })
-  }, [releaseSessionDocUrl])
-  const closeSessionDoc = useCallback(() => {
-    sessionDocRequest.current += 1
-    releaseSessionDocUrl()
-    setSessionDoc(null)
-  }, [releaseSessionDocUrl])
 
   // Live blocks not yet folded into `blocks`, deduped against confirmed ids.
   // Both scroll bookkeeping and turn partitioning below read from this same
@@ -1061,11 +1030,9 @@ export function AgentView({
       <ReplyMenu
         at={replyMenu.at}
         markdown={replyMenu.markdown}
-        onOpenSession={openSessionDoc}
         onDismiss={() => setReplyMenu(null)}
       />
     )}
-    {sessionDoc && <FileLightbox items={[sessionDoc]} isOpen onClose={closeSessionDoc} />}
     </div>
     </FileRefContext.Provider>
   )
