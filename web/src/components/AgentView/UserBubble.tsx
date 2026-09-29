@@ -8,7 +8,7 @@ import { FileTypeIcon } from '../FileTypeIcon'
 import { findCommittedMentions } from '../InputComposer.mentions'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
-import { formatTime, formatFullDateTime } from '@/utils/format'
+import { formatTime, formatFullDateTime, shortModelName } from '@/utils/format'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
 
@@ -189,12 +189,15 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, onMentionFileOpen, mentions, fromAgent }: {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent }: {
   content: string
   timestamp?: Date
   attachments?: MessageAttachment[]
   /** Rewind to just before this prompt and put it back in the composer. */
   onEdit?: () => void
+  /** The model and thinking level this prompt ran with. */
+  modelId?: string | null
+  thinkingLevel?: string | null
   onMentionFileOpen?: (path: string) => void
   mentions?: string[]
   fromAgent?: string | null
@@ -203,6 +206,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [reportExpanded, setReportExpanded] = useState(false)
+  const modelName = shortModelName(modelId)
 
   const handleCopy = async () => {
     try {
@@ -335,6 +339,15 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
          {/* Actions + timestamp row. Always rendered: Copy and Edit do not
              depend on the metadata, and a pending prompt has neither yet. */}
             <div className={`flex items-center gap-1.5 transition-opacity duration-150 focus-within:opacity-100 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
+              {modelName && (
+                <span
+                  data-prompt-model
+                  className="mr-1 font-mono text-[11px] text-(--color-text-subtle)"
+                  title={thinkingLevel ? `Thinking level: ${thinkingLevel}` : undefined}
+                >
+                  {thinkingLevel ? `${modelName} · ${thinkingLevel}` : modelName}
+                </span>
+              )}
               {onEdit && (
                 <Tooltip>
                   <TooltipTrigger

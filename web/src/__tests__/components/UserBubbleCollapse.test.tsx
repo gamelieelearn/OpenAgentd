@@ -408,7 +408,7 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(timeSpan.closest("div")?.className).toContain("opacity-100")
   })
 
-  it("leaves the model out of the prompt's hover row; the answer's footer names it", async () => {
+  it("shows the model from user message metadata in the prompt's hover row", async () => {
     const user = userEvent.setup()
     const blocks: ContentBlock[] = [
       {
@@ -421,10 +421,12 @@ describe("AgentView — UserBubble collapse feature", () => {
     ]
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    const modelLabel = screen.getByText("claude-sonnet-4.5")
+    expect(modelLabel.closest("div")?.className).toContain("opacity-0")
+
     await user.hover(container.querySelector("div[class*='group']")!)
 
-    expect(screen.queryByText("claude-sonnet-4.5")).toBeNull()
-    expect(screen.getByText("12:00")).toBeTruthy()
+    expect(modelLabel.closest("div")?.className).toContain("opacity-100")
   })
 
   it("does not show a model label for legacy user messages without metadata", async () => {

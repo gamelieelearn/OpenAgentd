@@ -719,7 +719,7 @@ describe("AgentView — footer model label", () => {
     return { id, type: "text", content: `answer ${id}`, extra: { model } }
   }
 
-  it("names the model on the first answer and again only when it changes", () => {
+  it("names the model on every answer", () => {
     const { container } = renderStream({
       blocks: [
         makeUserBlock("u1", "one"),
@@ -734,10 +734,10 @@ describe("AgentView — footer model label", () => {
     })
 
     const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
-    expect(labels).toEqual(["gpt-5", "claude-opus-4"])
+    expect(labels).toEqual(["gpt-5", "gpt-5", "claude-opus-4"])
   })
 
-  it("names the thinking level beside the model, and again when only the level changes", () => {
+  it("names the thinking level beside the model on every answer that ran with one", () => {
     const leveled = (id: string, model: string, level: string): ContentBlock => ({
       ...answer(id, model),
       extra: { model, thinking_level: level },
@@ -758,6 +758,26 @@ describe("AgentView — footer model label", () => {
     })
 
     const labels = [...container.querySelectorAll("[data-turn-model]")].map((el) => el.textContent)
-    expect(labels).toEqual(["gpt-5 · high", "gpt-5 · low", "gpt-5"])
+    expect(labels).toEqual(["gpt-5 · high", "gpt-5 · high", "gpt-5 · low", "gpt-5"])
+  })
+
+  it("names on each prompt the model and thinking level that answered it", () => {
+    const { container } = renderStream({
+      blocks: [
+        // No model on the prompt itself: the answer's is used.
+        makeUserBlock("u1", "one"),
+        { id: "a1", type: "text", content: "answer a1", extra: { model: "openai:gpt-5", thinking_level: "high" } },
+        // The answer's wins over what the prompt was sent with.
+        { ...makeUserBlock("u2", "two"), extra: { model: "openai:gpt-4o" } },
+        answer("a2", "anthropic:claude-opus-4"),
+        // Not answered yet: the prompt's own model is used.
+        { ...makeUserBlock("u3", "three"), extra: { model: "openai:gpt-5", thinking_level: "low" } },
+      ],
+      currentBlocks: [],
+      isWorking: false,
+    })
+
+    const labels = [...container.querySelectorAll("[data-prompt-model]")].map((el) => el.textContent)
+    expect(labels).toEqual(["gpt-5 · high", "claude-opus-4", "gpt-5 · low"])
   })
 })

@@ -28,7 +28,7 @@ import { TimelineScrubber } from './AgentView/TimelineScrubber'
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
-import { appendCurrentTurns, getVisibleTurnWindow, modelChangeTurnStarts, partitionTurns } from '@/utils/turns'
+import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns, promptModels } from '@/utils/turns'
 import { countBlocksAfter, hasPlanContent, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
@@ -291,12 +291,15 @@ interface AgentViewProps {
   jumpToLatestInComposer?: boolean
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen }: {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen }: {
   block: ContentBlock
   isStreaming: boolean
   sessionId?: string
   /** Rewind to a prompt the user wrote; ignored for agent reports. */
   onEdit?: (blockId: string) => void
+  /** The model and thinking level a prompt ran with; strings so memo holds while streaming. */
+  promptModel?: string
+  promptThinkingLevel?: string
   /** Error actions; the caller passes them to the error a turn ended with only. */
   onRetry?: () => void
   onSwitchModel?: () => void
@@ -306,7 +309,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   switch (block.type) {
     case 'user': {
       const fromAgent = typeof block.extra?.from_agent === 'string' ? block.extra.from_agent : null
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
@@ -467,7 +470,7 @@ export function AgentView({
     () => appendCurrentTurns(finalizedTurnItems, blocks.length, liveTail),
     [blocks.length, liveTail, finalizedTurnItems],
   )
-  const modelChangeStarts = useMemo(() => modelChangeTurnStarts(turnItems), [turnItems])
+  const promptModelById = useMemo(() => promptModels(turnItems), [turnItems])
   // Retry rewinds the latest prompt, so it is only honest when nothing but
   // that prompt's own answer, if any, follows a prompt the user wrote.
   const lastTurnItem = turnItems[turnItems.length - 1]
@@ -883,6 +886,8 @@ export function AgentView({
                          isStreaming={false}
                          sessionId={sessionId}
                          onEdit={editHandler}
+                         promptModel={promptModelById.get(item.block.id)?.model}
+                         promptThinkingLevel={promptModelById.get(item.block.id)?.thinkingLevel}
                          latestMCPAppBlockIds={mcpAppResourceUri(item.block) ? latestMCPAppBlockIds : undefined}
                          onMentionFileOpen={onMentionFileOpen}
                        />
@@ -914,7 +919,6 @@ export function AgentView({
                       onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
                       onCommentOnPlan={onCommentOnPlan}
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
-                     showModel={modelChangeStarts.has(item.startIndex)}
                      reader={readerTranscript}
                      startedAt={turnStartedAt}
                      findHitBlockIds={readerTranscript ? findHitBlockIds : undefined}
