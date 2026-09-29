@@ -73,6 +73,20 @@ describe("AgentView — reader transcript", () => {
     expect(screen.getByText("Looking around.")).toBeTruthy()
     expect(screen.queryByRole("button", { name: /^1 read/ })).toBeNull()
   })
+
+  it("times the running turn from the prompt that started it", () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: "reader" })
+    renderStream({
+      blocks: [{ ...makeUserBlock("u1", "Fix it"), timestamp: new Date(Date.now() - 65_000) }],
+      currentBlocks: [
+        makeThinkingBlock("t1", "Looking around."),
+        { id: "r1", type: "tool", content: "", toolName: "read", toolArgs: '{"path":"src/a.ts"}', toolDone: false },
+      ],
+      isWorking: true,
+    })
+
+    expect(screen.getByRole("button", { name: /^Working · 1m 5s · Read/ })).toBeTruthy()
+  })
 })
 
 describe("AgentView — mentioned files", () => {

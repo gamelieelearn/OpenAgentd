@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
@@ -26,13 +26,21 @@ const finished: ContentBlock[] = [
   { id: 'answer', type: 'text', content: 'Done.' },
 ]
 
-function renderTurn(blocks: ContentBlock[], props: { isWorking?: boolean; findHitBlockIds?: Set<string>; opener?: FileRefOpener } = {}) {
+function renderTurn(blocks: ContentBlock[], props: {
+  isWorking?: boolean
+  isTurnOpen?: boolean
+  startedAt?: number
+  findHitBlockIds?: Set<string>
+  opener?: FileRefOpener
+} = {}) {
   const turn = (
     <AssistantTurn
       blocks={blocks}
       startIndex={0}
       finalizedCount={props.isWorking ? 0 : blocks.length}
       isWorking={props.isWorking ?? false}
+      isTurnOpen={props.isTurnOpen}
+      startedAt={props.startedAt}
       isTrailingTurn
       totalBlocks={blocks.length}
       reader
@@ -45,6 +53,37 @@ function renderTurn(blocks: ContentBlock[], props: { isWorking?: boolean; findHi
 
 const rendered = (id: string) => screen.queryByTestId(`block-${id}`)
 const workRow = () => screen.getByRole('button', { name: /1 read, 1 edit/ })
+const running: ContentBlock[] = [
+  ...finished.slice(0, 4),
+  { id: 'test', type: 'tool', content: '', toolName: 'shell', toolArgs: '{"command":"bun test","description":"Run web tests"}', toolDone: false },
+]
+
+/** Bun has no fake timers: drive ``setInterval`` and ``Date.now`` by hand. */
+function fakeClock(start: number) {
+  const realSetInterval = globalThis.setInterval
+  const realClearInterval = globalThis.clearInterval
+  const realNow = Date.now
+  let now = start
+  const timers = new Map<number, () => void>()
+  let nextId = 0
+  globalThis.setInterval = ((callback: () => void) => {
+    timers.set(++nextId, callback)
+    return nextId
+  }) as unknown as typeof setInterval
+  globalThis.clearInterval = ((id: number) => { timers.delete(id) }) as typeof clearInterval
+  Date.now = () => now
+  return {
+    tick(ms: number) {
+      now += ms
+      act(() => { for (const callback of [...timers.values()]) callback() })
+    },
+    restore() {
+      globalThis.setInterval = realSetInterval
+      globalThis.clearInterval = realClearInterval
+      Date.now = realNow
+    },
+  }
+}
 
 describe('AssistantTurn — reader mode', () => {
   it('shows the answer and folds the work behind one row that opens it', () => {
@@ -86,14 +125,32 @@ describe('AssistantTurn — reader mode', () => {
   })
 
   it('names the step in progress while the turn runs, and lists no files yet', () => {
-    const running: ContentBlock[] = [
-      ...finished.slice(0, 4),
-      { id: 'test', type: 'tool', content: '', toolName: 'shell', toolArgs: '{"command":"bun test","description":"Run web tests"}', toolDone: false },
-    ]
     renderTurn(running, { isWorking: true })
 
     expect(screen.getByRole('button', { name: /Working · Shell: Run web tests/ })).toBeTruthy()
     expect(screen.queryByText(/files? changed/)).toBeNull()
+  })
+
+  it('says how long the turn has been working, and keeps counting', () => {
+    const clock = fakeClock(1_000_000)
+    try {
+      renderTurn(running, { isWorking: true, startedAt: 1_000_000 - 59_000 })
+      expect(screen.getByRole('button', { name: /^Working · 59s · Shell: Run web tests/ })).toBeTruthy()
+
+      clock.tick(1000)
+      expect(screen.getByRole('button', { name: /^Working · 1m 0s · Shell: Run web tests/ })).toBeTruthy()
+
+      clock.tick(3_600_000)
+      expect(screen.getByRole('button', { name: /^Working · 1h 1m · Shell: Run web tests/ })).toBeTruthy()
+    } finally {
+      clock.restore()
+    }
+  })
+
+  it('counts the work so far once no step is taking output', () => {
+    renderTurn([...finished.slice(0, 4), { id: 'answer', type: 'text', content: 'Writing the answer' }], { isWorking: true, startedAt: Date.now() - 5000 })
+
+    expect(screen.getByRole('button', { name: /^Working · 5s · 1 read, 1 edit/ })).toBeTruthy()
   })
 
   it('says a thought-only trace thought, and counts failures', () => {
@@ -237,5 +294,14 @@ describe('AssistantTurn — reader mode, ask_user', () => {
     renderTurn([read, ask(PLACEHOLDER)])
 
     expect(rendered('ask')).not.toBeNull()
+  })
+
+  it('does not say it is working while the turn waits on the answer', () => {
+    useAgentStore.setState({ sessionId: 's-1', pendingQuestion: { id: 'q-1', sessionId: 's-1', toolCallId: 'call-q', questions: [] }, resolvedQuestions: {} })
+
+    renderTurn([read, ask(PLACEHOLDER)], { isTurnOpen: true, startedAt: Date.now() - 5000 })
+
+    expect(screen.queryByRole('button', { name: /Working/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /^1 read$/ })).toBeTruthy()
   })
 })

@@ -8,17 +8,22 @@
  * to close: the open row pins to the top of the transcript while its steps
  * scroll under it, and a Collapse row ends the steps.
  *
+ * While the agent works, the row reads "Working · 1m 12s · Shell: Run web
+ * tests": how long the turn has run, then the step taking output (or the
+ * counts so far). Only "Working" pulses, so the rest stays easy to read. A
+ * turn waiting on the user is not working, so its row shows the counts.
+ *
  * The file list starts closed behind its "N files changed" header, so a turn
  * that touched many files still ends on its answer.
  */
-import { useContext, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight, ChevronUp } from 'lucide-react'
 
 import type { ContentBlock } from '@/api/types'
 import { cn } from '@/lib/utils'
 import { FileRefContext } from '../FileRefLink'
 import { FileTypeIcon } from '../FileTypeIcon'
-import { formatToolLabel } from '../ToolCall'
+import { formatToolLabel, subscribeLiveClock } from '../ToolCall'
 import { getToolDisplay } from '../ToolCall/display'
 import { ChangeCounts } from '../WorkspacePanel/ChangeCounts'
 import type { ChangedFileInfo } from '../WorkspacePanel/diff-helpers'
@@ -35,6 +40,27 @@ function stepLabel(block: ContentBlock): string {
   return detail ? `${formatToolLabel(name)}: ${detail}` : formatToolLabel(name)
 }
 
+/** Whole seconds, then minutes, then hours: "59s", "1m 0s", "1h 1m". */
+function formatElapsed(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000))
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
+
+/** The current time, kept fresh once a second while ``active``. */
+function useLiveNow(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return
+    // A row that sat idle (waiting on the user) holds an old reading.
+    setNow(Date.now())
+    return subscribeLiveClock(setNow)
+  }, [active])
+  return now
+}
+
 /** The nearest ancestor that scrolls vertically, i.e. the transcript. */
 function scrollContainer(el: HTMLElement): HTMLElement | null {
   for (let node = el.parentElement; node; node = node.parentElement) {
@@ -47,11 +73,13 @@ function scrollContainer(el: HTMLElement): HTMLElement | null {
 /** Both of the fold's controls; each adds its own text tone. */
 const ROW_CLASS = 'group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40'
 
-export function WorkSummaryRow({ blocks, live, currentStep, forceOpen = false, children }: {
+export function WorkSummaryRow({ blocks, live, startedAt, currentStep, forceOpen = false, children }: {
   /** The folded blocks. */
   blocks: readonly ContentBlock[]
-  /** The turn is still open. */
+  /** The agent is working on this turn right now. */
   live: boolean
+  /** When the turn began (epoch ms); a live row counts from it. */
+  startedAt?: number
   /** The step taking output right now, if the turn ends on one. */
   currentStep?: ContentBlock | null
   /** Show the steps whatever the toggle says, e.g. transcript find matched in them. */
@@ -67,9 +95,10 @@ export function WorkSummaryRow({ blocks, live, currentStep, forceOpen = false, c
   const open = forceOpen || manualOpen
   const summary = useMemo(() => summarizeWork(blocks), [blocks])
   const detail = workSummaryDetail(summary)
-  const label = live
-    ? ['Working', currentStep ? stepLabel(currentStep) : detail].filter(Boolean).join(' · ')
-    : detail || (summary.thought ? 'Thought' : 'Worked')
+  const now = useLiveNow(live)
+  const elapsed = live && startedAt !== undefined && Number.isFinite(startedAt) ? formatElapsed(now - startedAt) : null
+  // Memoized so the clock's tick does not re-parse the step's arguments.
+  const doing = useMemo(() => (currentStep ? stepLabel(currentStep) : detail), [currentStep, detail])
 
   const close = (control: HTMLElement) => {
     if (!forceOpen) closeAtRef.current = control.getBoundingClientRect().top
@@ -103,7 +132,15 @@ export function WorkSummaryRow({ blocks, live, currentStep, forceOpen = false, c
           aria-controls={bodyId}
           className={cn(ROW_CLASS, 'text-(--color-text-2)')}
         >
-          <span className={cn('min-w-0 truncate', live && 'animate-pulse motion-reduce:animate-none')}>{label}</span>
+          {live ? (
+            <>
+              <span className="shrink-0 font-semibold text-(--color-text) animate-pulse motion-reduce:animate-none">Working</span>
+              {elapsed && <span className="shrink-0 text-(--color-text-muted)">{` · ${elapsed}`}</span>}
+              {doing && <span className="min-w-0 truncate">{` · ${doing}`}</span>}
+            </>
+          ) : (
+            <span className="min-w-0 truncate">{detail || (summary.thought ? 'Thought' : 'Worked')}</span>
+          )}
           {summary.failed > 0 && <span className="shrink-0 text-(--color-error)">{` · ${summary.failed} failed`}</span>}
           <ChevronRight
             size={13}

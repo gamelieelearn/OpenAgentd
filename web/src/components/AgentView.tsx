@@ -953,6 +953,10 @@ export function AgentView({
                  }
                  // Me only the trailing turn (no user block after) can be "live"
                   const isTrailingTurn = globalTurnIndex === turnItems.length - 1
+                  // The running turn is timed from its prompt: unlike the stream's
+                  // own start mark, the prompt's time survives a reload.
+                  const prompt = isTrailingTurn ? turnItems[globalTurnIndex - 1] : undefined
+                  const turnStartedAt = prompt?.kind === 'user' ? prompt.block.timestamp?.getTime() : undefined
                   const canStartImplementing =
                     isTrailingTurn &&
                     !isWorking &&
@@ -979,6 +983,7 @@ export function AgentView({
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
                      showModel={modelChangeStarts.has(item.startIndex)}
                      reader={readerTranscript}
+                     startedAt={turnStartedAt}
                      findHitBlockIds={readerTranscript ? findHitBlockIds : undefined}
                       renderBlock={({ block, isStreaming }) => (
                        <div
