@@ -719,6 +719,23 @@ Release build on this repo, old v3 grep vs new:
 | common literal, max 100 | 45 ms | 27 ms |
 | regex, max 1000 | 101 ms | 46 ms |
 
+### Git index locks
+
+The git panels run `git status` and `git diff` after every agent tool call.
+v2 runs them plainly, so they take `.git/index.lock` to save a refreshed
+index. The agent's own `git add`/`commit` then collides with them, and a
+killed call (timeout, or a client abort dropping the request) strands the
+lock until someone deletes it. v3 changes three things:
+
+- The panels' read-only git calls pass `--no-optional-locks -c
+  diff.autoRefreshIndex=false` (`routes/agent/files.rs`), so they never take
+  the lock. `git diff` ignores `--no-optional-locks`.
+- `run_git_timeout` runs git in its own task, so a dropped request never
+  kills it. A timed-out git gets SIGTERM, then SIGKILL after 2 s
+  (`proctree`). git removes its locks on SIGTERM.
+- A cancelled `shell` call (the user stopped the turn) gets the same
+  SIGTERM-then-SIGKILL, where v2 SIGKILLs the group at once.
+
 ### Live workspace refresh (`notify`)
 
 v2 refreshes the file tree, git status and diff only after the agent's own

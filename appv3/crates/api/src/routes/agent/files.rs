@@ -24,6 +24,12 @@ use std::time::Duration;
 const MAX_FILES_LISTED: usize = 5_000;
 const MAX_GIT_DIFF_CHARS: usize = 512 * 1024;
 const MAX_UNTRACKED_DIFF_BYTES: u64 = 256 * 1024;
+/// Global flags for the panels' read-only git calls, which run after every
+/// agent tool call. Without them `git status` and `git diff` take
+/// `.git/index.lock` to save a refreshed index, so the agent's own `git
+/// add`/`commit` collides with them, and a killed call strands the lock.
+/// `git diff` ignores `--no-optional-locks`, hence `diff.autoRefreshIndex`.
+const READ_ONLY_GIT: [&str; 3] = ["--no-optional-locks", "-c", "diff.autoRefreshIndex=false"];
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -111,7 +117,14 @@ async fn get_media(State(st): State<AppState>, AxPath((sid, file_path)): AxPath<
 // ── listings ────────────────────────────────────────────────────────────────
 
 fn git_stdout(cwd: &Path, args: &[&str]) -> Option<String> {
-    let out = appv3_core::proctree::hide_window_std(&mut std::process::Command::new("git")).arg("-C").arg(cwd).args(args).stdin(std::process::Stdio::null()).output().ok()?;
+    let out = appv3_core::proctree::hide_window_std(&mut std::process::Command::new("git"))
+        .arg("-C")
+        .arg(cwd)
+        .args(READ_ONLY_GIT)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).to_string())
 }
 
@@ -276,9 +289,10 @@ async fn list_workspace_files(q: Qs) -> ApiResult<Response> {
 
 // ── git ─────────────────────────────────────────────────────────────────────
 
-/// `_run_git`: stdout on success, `None` on any failure.
+/// `_run_git`: stdout on success, `None` on any failure. Read-only calls only.
 async fn git(cwd: &str, args: &[&str]) -> Option<String> {
-    let o = run_git_timeout(Path::new(cwd), args, Duration::from_secs(5)).await.ok()?;
+    let args: Vec<&str> = READ_ONLY_GIT.iter().chain(args).copied().collect();
+    let o = run_git_timeout(Path::new(cwd), &args, Duration::from_secs(5)).await.ok()?;
     (o.code == 0).then_some(o.stdout)
 }
 
@@ -325,6 +339,7 @@ async fn bounded_git_diff(cwd: &str, args: &[&str], max_bytes: usize) -> ApiResu
     let mut child = appv3_core::proctree::hide_window(&mut tokio::process::Command::new("git"))
         .arg("-C")
         .arg(cwd)
+        .args(READ_ONLY_GIT)
         .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -804,5 +819,48 @@ mod tests {
     fn porcelain() {
         let p = parse_porcelain_v2("# branch.head main\n# branch.upstream origin/main\n# branch.ab +2 -1\n1 M. N... a\n1 .M N... b\n? c\n");
         assert_eq!((p.branch.as_deref(), p.staged, p.unstaged, p.untracked, p.ahead, p.behind), (Some("main"), 1, 1, 1, Some(2), Some(1)));
+    }
+
+    fn git_ok(dir: &Path, args: &[&str]) {
+        let o = std::process::Command::new("git").arg("-C").arg(dir).args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]).args(args).output().unwrap();
+        assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
+    }
+
+    /// A repo whose index is stale for `a.txt`: same content, newer mtime.
+    /// Any git call that refreshes the index here rewrites `.git/index`,
+    /// which it can only do while holding `.git/index.lock`.
+    fn stat_dirty_repo() -> tempfile::TempDir {
+        let d = tempfile::tempdir().unwrap();
+        git_ok(d.path(), &["init", "-q"]);
+        std::fs::write(d.path().join("a.txt"), "a\n").unwrap();
+        git_ok(d.path(), &["add", "a.txt"]);
+        git_ok(d.path(), &["commit", "-qm", "init"]);
+        let f = std::fs::File::options().write(true).open(d.path().join("a.txt")).unwrap();
+        f.set_modified(std::time::SystemTime::now() + Duration::from_secs(60)).unwrap();
+        d
+    }
+
+    /// The status endpoint runs on every agent tool call. If it takes
+    /// `.git/index.lock`, the agent's own `git add`/`commit` collides with
+    /// it, and a killed status strands the lock.
+    #[tokio::test]
+    async fn status_does_not_lock_the_index() {
+        let d = stat_dirty_repo();
+        let index = d.path().join(".git/index");
+        let before = std::fs::read(&index).unwrap();
+        assert!(git(d.path().to_str().unwrap(), &["status", "--porcelain=v2", "--branch"]).await.is_some());
+        assert!(std::fs::read(&index).unwrap() == before, "`git status` refreshed .git/index, so it held index.lock");
+    }
+
+    /// `git diff` ignores `--no-optional-locks` and refreshes the index on
+    /// its own unless `diff.autoRefreshIndex` is off.
+    #[tokio::test]
+    async fn diff_does_not_lock_the_index() {
+        let d = stat_dirty_repo();
+        let index = d.path().join(".git/index");
+        let before = std::fs::read(&index).unwrap();
+        let (_, stderr, code, _) = bounded_git_diff(d.path().to_str().unwrap(), &["diff", "HEAD", "--", "."], 1024).await.unwrap();
+        assert_eq!(code, 0, "{stderr}");
+        assert!(std::fs::read(&index).unwrap() == before, "`git diff` refreshed .git/index, so it held index.lock");
     }
 }

@@ -25,20 +25,59 @@ pub struct GitOut {
     pub stderr: String,
 }
 
+/// How long a timed-out git gets after SIGTERM to remove its lock files.
+const GIT_TERM_GRACE: Duration = Duration::from_secs(2);
+
 /// `subprocess.run(["git", "-C", ws, *args], timeout=20)`.
 pub async fn run_git(ws: &Path, args: &[&str]) -> ApiResult<GitOut> {
     run_git_timeout(ws, args, Duration::from_secs(20)).await
 }
 
+/// Run git to completion even if the caller goes away. git holds
+/// `.git/index.lock` (and ref locks) while it writes, and SIGKILL strands
+/// them: every later git command then fails until someone deletes the lock.
+/// So the process lives in its own task (a dropped request, e.g. a client
+/// abort, does not kill it) and a timeout sends SIGTERM first, which git
+/// answers by removing its locks.
 pub async fn run_git_timeout(ws: &Path, args: &[&str], timeout: Duration) -> ApiResult<GitOut> {
+    use tokio::io::AsyncReadExt;
     let mut cmd = tokio::process::Command::new("git");
-    appv3_core::proctree::hide_window(&mut cmd).arg("-C").arg(ws).args(args).stdin(std::process::Stdio::null()).kill_on_drop(true);
-    match tokio::time::timeout(timeout, cmd.output()).await {
-        Ok(Ok(o)) => {
-            Ok(GitOut { code: o.status.code().unwrap_or(-1), stdout: String::from_utf8_lossy(&o.stdout).to_string(), stderr: String::from_utf8_lossy(&o.stderr).to_string() })
+    appv3_core::proctree::configure(&mut cmd);
+    cmd.arg("-C").arg(ws).args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| ApiError::new(500, format!("git failed: {e}")))?;
+    let tree = appv3_core::proctree::ProcessTree::attach(&child);
+    let (mut so, mut se) = (child.stdout.take(), child.stderr.take());
+    let run = tokio::spawn(async move {
+        let io = async {
+            let (mut out, mut err) = (vec![], vec![]);
+            let (_, _, status) = tokio::join!(
+                async {
+                    if let Some(s) = so.as_mut() {
+                        let _ = s.read_to_end(&mut out).await;
+                    }
+                },
+                async {
+                    if let Some(s) = se.as_mut() {
+                        let _ = s.read_to_end(&mut err).await;
+                    }
+                },
+                child.wait()
+            );
+            (out, err, status)
+        };
+        let finished = tokio::time::timeout(timeout, io).await;
+        if finished.is_err() {
+            tree.terminate(&mut child, GIT_TERM_GRACE).await;
         }
-        Ok(Err(e)) => Err(ApiError::new(500, format!("git failed: {e}"))),
-        Err(_) => {
+        finished.ok()
+    });
+    match run.await {
+        Ok(Some((out, err, Ok(status)))) => {
+            Ok(GitOut { code: status.code().unwrap_or(-1), stdout: String::from_utf8_lossy(&out).to_string(), stderr: String::from_utf8_lossy(&err).to_string() })
+        }
+        Ok(Some((_, _, Err(e)))) => Err(ApiError::new(500, format!("git failed: {e}"))),
+        Err(e) => Err(ApiError::new(500, format!("git failed: {e}"))),
+        Ok(None) => {
             let cmdline = std::iter::once("git".to_string())
                 .chain(["-C".to_string(), ws.display().to_string()])
                 .chain(args.iter().map(|a| a.to_string()))
@@ -437,5 +476,76 @@ mod tests {
     fn sha1_known() {
         assert_eq!(super::hex(&super::sha1(b"abc")), "a9993e364706816aba3e25717850c26c9cd0d89d");
         assert_eq!(super::hex(&super::sha1(b"")), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+    }
+}
+
+/// `git commit -a` holds `.git/index.lock` while its hooks run (the hook's
+/// `GIT_INDEX_FILE` is the lock), so a slow pre-commit hook is a reliable
+/// window for killing git mid-write. A plain `git commit` releases the lock
+/// before running hooks.
+#[cfg(all(test, unix))]
+mod lock_tests {
+    use super::run_git_timeout;
+    use std::path::Path;
+    use std::time::{Duration, Instant};
+
+    fn git_ok(dir: &Path, args: &[&str]) -> String {
+        let o = std::process::Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+        assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    }
+
+    /// A repo with one commit, a modified tracked file, and a pre-commit hook running `hook`.
+    fn repo_committing_through(hook: &str) -> tempfile::TempDir {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        let hooks = d.path().join(".git/hooks");
+        git_ok(d.path(), &["init", "-q"]);
+        for (k, v) in [("user.name", "t"), ("user.email", "t@t"), ("commit.gpgsign", "false"), ("core.hooksPath", hooks.to_str().unwrap())] {
+            git_ok(d.path(), &["config", k, v]);
+        }
+        std::fs::write(d.path().join("a.txt"), "a\n").unwrap();
+        git_ok(d.path(), &["add", "a.txt"]);
+        git_ok(d.path(), &["commit", "-qm", "init"]);
+        std::fs::create_dir_all(&hooks).unwrap();
+        let pre_commit = hooks.join("pre-commit");
+        std::fs::write(&pre_commit, format!("#!/bin/sh\n{hook}\n")).unwrap();
+        std::fs::set_permissions(&pre_commit, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(d.path().join("a.txt"), "a\nb\n").unwrap();
+        d
+    }
+
+    async fn wait_until(limit: Duration, done: impl Fn() -> bool) {
+        let deadline = Instant::now() + limit;
+        while !done() && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    /// The client gave up (React Query cancels superseded requests), so axum
+    /// dropped the handler. git must still finish: SIGKILL mid-write leaves
+    /// a stale `.git/index.lock` that blocks every later git command.
+    #[tokio::test]
+    async fn dropped_request_lets_a_writing_git_finish() {
+        let d = repo_committing_through("sleep 1");
+        let lock = d.path().join(".git/index.lock");
+        let dropped = tokio::time::timeout(Duration::from_millis(300), run_git_timeout(d.path(), &["commit", "-aqm", "second"], Duration::from_secs(20))).await;
+        assert!(dropped.is_err(), "the commit should still be running");
+        assert!(lock.exists(), "precondition: git holds .git/index.lock inside its hook");
+        wait_until(Duration::from_secs(10), || !lock.exists()).await;
+        assert!(!lock.exists(), "git was killed mid-commit and stranded .git/index.lock");
+        assert_eq!(git_ok(d.path(), &["rev-list", "--count", "HEAD"]).trim(), "2", "the commit did not land");
+    }
+
+    /// A timed-out git gets SIGTERM, which it answers by removing its locks.
+    #[tokio::test]
+    async fn timed_out_git_removes_its_index_lock() {
+        let d = repo_committing_through("sleep 30");
+        let lock = d.path().join(".git/index.lock");
+        let r = run_git_timeout(d.path(), &["commit", "-aqm", "second"], Duration::from_millis(500)).await;
+        let Err(e) = r else { panic!("the commit should time out") };
+        assert!(e.detail.to_string().contains("timed out"), "{:?}", e.detail);
+        wait_until(Duration::from_secs(5), || !lock.exists()).await;
+        assert!(!lock.exists(), "the timeout killed git without letting it remove .git/index.lock");
     }
 }
