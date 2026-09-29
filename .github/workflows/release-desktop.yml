@@ -6,14 +6,14 @@ name: Release Desktop
 #   - Windows x64 (.msi)
 #   - Linux x64  (.AppImage, .deb)
 #
-# Each app bundles the native appv3 backend (sidecar-bundle/bin/openagentd).
+# Each app bundles, as its backend sidecar (sidecar-bundle/bin/openagentd),
+# the CLI archive that ``release.yml`` published for the same version, so
+# users get one binary whether they install the CLI or the desktop app.
 # Outputs are attached to the GitHub Release matching the appv3/Cargo.toml
 # workspace version (tag ``v<X.Y.Z>`` — the same tag ``release.yml`` creates for the
-# CLI archives). Run ``release.yml`` first so the tag + release exist,
-# then ``release-desktop.yml`` appends the desktop installers via
-# ``gh release upload --clobber``. If the order is reversed, this
-# workflow creates the release itself (see the publish step's
-# create-or-update branch).
+# CLI archives). Run ``release.yml`` first: builds fail fast when the
+# release has no CLI archive for their target. This workflow then appends
+# the desktop installers via ``gh release upload --clobber``.
 # The ``latest.json`` updater manifest is generated last and uploaded
 # to the same release; the Tauri updater endpoint (configured in
 # tauri.conf.json) points at the rolling ``latest-desktop`` release
@@ -102,6 +102,40 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Reuse the stripped fat-LTO binary release.yml already built and
+      # smoke-tested instead of compiling it again. Runs before any toolchain
+      # install so a missing CLI release fails in seconds. Local bundles
+      # still build the sidecar via ``make -C desktop sidecar``.
+      - name: Stage backend sidecar from the CLI release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          TARGET: ${{ matrix.rust_target }}
+        run: |
+          set -euo pipefail
+          exe="" ext="tar.gz"
+          [ "${{ matrix.platform }}" = "windows" ] && exe=".exe" ext="zip"
+          archive="openagentd-${VERSION}-${TARGET}.${ext}"
+          dl="$RUNNER_TEMP/cli"
+          gh release download "$TAG" --pattern "$archive" --pattern "$archive.sha256" --dir "$dl" \
+            || { echo "::error::$TAG has no $archive. Run release.yml for this version first."; exit 1; }
+          (
+            cd "$dl"
+            if command -v sha256sum >/dev/null; then sha256sum -c "$archive.sha256"
+            else shasum -a 256 -c "$archive.sha256"; fi
+          )
+          mkdir -p "$dl/x"
+          if [ "$ext" = "zip" ]; then 7z x -o"$dl/x" "$dl/$archive" >/dev/null
+          else tar -xzf "$dl/$archive" -C "$dl/x"; fi
+          rm -rf desktop/sidecar-bundle
+          mkdir -p desktop/sidecar-bundle/bin
+          cp "$dl/x/openagentd$exe" "desktop/sidecar-bundle/bin/openagentd$exe"
+          reported=$("desktop/sidecar-bundle/bin/openagentd$exe" --version | tr -d '\r')
+          [ "$reported" = "openagentd v$VERSION" ] || { echo "sidecar version mismatch: $reported"; exit 1; }
+          du -sh desktop/sidecar-bundle
+
       - name: Install Linux WebKitGTK + AppImage deps
         if: matrix.platform == 'linux'
         run: |
@@ -152,9 +186,9 @@ jobs:
       - name: Cache cargo registry + target
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            desktop/src-tauri
-            appv3
+          # The sidecar comes prebuilt from the CLI release, so appv3 is
+          # never compiled here.
+          workspaces: desktop/src-tauri
           key: ${{ matrix.platform }}-${{ matrix.arch }}
           # Keep every downloaded ``.crate`` archive, not just the crates that
           # are dependencies of the current lockfile. The default (``false``)
@@ -221,27 +255,6 @@ jobs:
 
       # Platform icon assets are generated and committed under
       # desktop/src-tauri/icons; release runners consume them directly.
-      #
-      # Same steps as `make -C desktop sidecar TARGET=…` (Windows runners
-      # have no GNU make): the fat-LTO appv3 binary staged as
-      # sidecar-bundle/bin/openagentd, which sidecar.rs spawns.
-      - name: Build backend sidecar (appv3)
-        shell: bash
-        run: |
-          set -euo pipefail
-          target="${{ matrix.rust_target }}"
-          exe=""
-          [ "${{ matrix.platform }}" = "windows" ] && exe=".exe"
-          cargo build --locked --profile dist --manifest-path appv3/Cargo.toml -p appv3-cli --target "$target"
-          rm -rf desktop/sidecar-bundle
-          mkdir -p desktop/sidecar-bundle/bin
-          cp "appv3/target/$target/dist/openagentd$exe" "desktop/sidecar-bundle/bin/openagentd$exe"
-          if [ -z "$exe" ]; then strip "desktop/sidecar-bundle/bin/openagentd"; fi
-          VERSION=$(scripts/release_version.sh)
-          reported=$("desktop/sidecar-bundle/bin/openagentd$exe" --version | tr -d '\r')
-          [ "$reported" = "openagentd v$VERSION" ] || { echo "sidecar version mismatch: $reported"; exit 1; }
-          du -sh desktop/sidecar-bundle
-
       - name: Import Apple signing certificate
         if: matrix.platform == 'macos' && env.APPLE_CERTIFICATE != ''
         env:
