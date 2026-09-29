@@ -46,25 +46,6 @@ describe('AgentView — edit any prompt', () => {
   })
 })
 
-describe('AgentView — restore to here', () => {
-  it('keeps a prompt and its answer by rewinding to the next prompt, composer untouched', () => {
-    render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
-
-    const restores = screen.getAllByRole('button', { name: 'Restore to here' })
-    // The latest prompt has nothing after it to undo.
-    expect(restores).toHaveLength(1)
-
-    fireEvent.click(restores[0])
-    expect(revertToMessage).toHaveBeenCalledWith('m2', { restoreDraft: false })
-  })
-
-  it('offers no Restore while a turn is open', () => {
-    render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} isTurnOpen />)
-
-    expect(screen.queryByRole('button', { name: 'Restore to here' })).toBeNull()
-  })
-})
-
 describe('AgentView — retry', () => {
   it('keeps Retry to the error card; a finished answer has none', () => {
     render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} onRetry={() => {}} />)

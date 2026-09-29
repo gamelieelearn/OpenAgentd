@@ -453,8 +453,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   and spacing together, up to 125%. Smaller settings keep the design size.
 - **A calmer transcript** `[v3.0.0]` — the chat reads as prompts and answers:
   - Every prompt you wrote has Edit (rewind to it and put it back in the
-    composer) and Restore to here (undo the turns after it; `/redo` brings
-    them back), both reachable from the keyboard.
+    composer; `/redo` brings the undone turns back), reachable from the
+    keyboard.
   - A failed turn ends in an error card with Retry and Switch model, which
     opens Session Settings.
   - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, memo } from 'react'
-import { Check, ChevronDown, ChevronUp, Copy, History, Pencil } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MarkdownBlock } from '@/utils/markdown'
 
@@ -189,14 +189,12 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, onRestore, onMentionFileOpen, mentions, fromAgent }: {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, onMentionFileOpen, mentions, fromAgent }: {
   content: string
   timestamp?: Date
   attachments?: MessageAttachment[]
   /** Rewind to just before this prompt and put it back in the composer. */
   onEdit?: () => void
-  /** Keep this prompt and its answer; undo every later turn. */
-  onRestore?: () => void
   onMentionFileOpen?: (path: string) => void
   mentions?: string[]
   fromAgent?: string | null
@@ -352,22 +350,6 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                   />
                   {/* Undo, so later turns come back with Redo. */}
                   <TooltipContent>Edit from here</TooltipContent>
-                </Tooltip>
-              )}
-              {onRestore && (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        onClick={onRestore}
-                        className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:scale-90"
-                        aria-label="Restore to here"
-                      >
-                        <History size={11} />
-                      </button>
-                    }
-                  />
-                  <TooltipContent>Restore to here — undoes later turns</TooltipContent>
                 </Tooltip>
               )}
               <Tooltip>
