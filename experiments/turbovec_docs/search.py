@@ -1,7 +1,8 @@
 """Search the documents/ turbovec index.
 
 Usage:
-    uv run --group experiment python experiments/turbovec_docs/search.py "how does session summarization work"
+    uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' \
+        python experiments/turbovec_docs/search.py "how does session summarization work"
 """
 
 from __future__ import annotations

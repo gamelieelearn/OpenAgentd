@@ -103,12 +103,8 @@ After diagnosing and applying fixes:
 
 1. **Verify Backend Suite:**
    ```bash
-   make verify-backend
+   make verify-v3
    ```
-2. **Verify Service Scenarios:**
-   ```bash
-   make scenarios
-   ```
-3. **Verify Plugin Overrides (if applicable):**
+2. **Verify Plugin Overrides (if applicable):**
    - Ensure plugin overrides in dev (`.openagentd/dev/config/plugins/`) are synchronized to active production config roots (`~/.config/openagentd/plugins/`).
    - Perform syntax verification (`python3 -m py_compile <plugin_path>`).

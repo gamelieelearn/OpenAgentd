@@ -30,12 +30,3 @@ the service explicitly implements an API transport boundary.
 - Session/history changes must account for SQLModel tables, stream state,
   scheduler/agent consumers, and frontend assumptions. Add a new Alembic
   revision when persisted schema changes.
-
-## Checks
-
-```bash
-uv run pytest tests/services tests/api/routes -q
-uv run ruff check app/services tests/services
-uv run ty check app/
-make verify-backend
-```

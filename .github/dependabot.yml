@@ -1,24 +1,5 @@
 version: 2
 updates:
-  - package-ecosystem: "uv"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "Etc/UTC"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "security"
-    commit-message:
-      prefix: "deps"
-    groups:
-      python-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
-
   - package-ecosystem: "bun"
     directory: "/web"
     schedule:

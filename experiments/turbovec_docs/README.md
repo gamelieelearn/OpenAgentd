@@ -17,26 +17,22 @@ same `build_index.py` / `search.py` interface.
 
 ## Setup
 
-Dependencies live in the `experiment` uv group (not `dev`, not shipped in the
-package or release build):
-
-```bash
-uv sync --group experiment
-```
+Dependencies are supplied per command with `uv run --with`; nothing is
+installed into a project environment or shipped in a release build.
 
 ## Usage
 
 ```bash
 # Chunk + embed + index documents/ (re-run after doc changes)
-uv run --group experiment python experiments/turbovec_docs/build_index.py
+uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/build_index.py
 
 # Query
-uv run --group experiment python experiments/turbovec_docs/search.py "how does session summarization work"
-uv run --group experiment python experiments/turbovec_docs/search.py "styling colors" -k 3
+uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/search.py "how does session summarization work"
+uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/search.py "styling colors" -k 3
 
 # Benchmark search quality against the retained feature catalogue and top-level instructions
-uv run --group experiment python experiments/turbovec_docs/benchmark.py
-uv run --group experiment python experiments/turbovec_docs/benchmark.py -k 3 -v   # print every case
+uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/benchmark.py
+uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/benchmark.py -k 3 -v   # print every case
 ```
 
 ### Benchmark baseline

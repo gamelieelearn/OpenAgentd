@@ -52,8 +52,8 @@ make run
 cd web && bun dev
 ```
 
-`make dev` runs steps 3 and 4 together. The end-of-life Python backend is still
-available with `uv sync` and `make run-v2` / `make dev-v2`.
+`make dev` runs steps 3 and 4 together. The end-of-life v2 Python backend in
+`app/` is kept as source-only reference; it has no build, run, or test tooling.
 
 Use Settings to configure providers and `openagentd --help` for the current CLI surface.
 
@@ -66,7 +66,7 @@ openagentd/
 ├── appv3/                  # Rust backend (shipped): API, agent runtime, CLI
 │   ├── crates/             # core, db, api, agent, tools, providers, cli, …
 │   └── contract/           # Data shared with other surfaces (SSE events, …)
-├── app/                    # End-of-life v2 FastAPI backend
+├── app/                    # End-of-life v2 FastAPI backend (source only)
 │   ├── agent/              # Agent loop, hooks, providers, tools, teams
 │   ├── api/                # Routes (thin — logic lives in services/)
 │   ├── core/               # Config, DB, middleware, logging
@@ -74,7 +74,7 @@ openagentd/
 │   └── services/           # Business logic, stream_store
 ├── web/                    # React 19 frontend (Vite + Bun)
 ├── desktop/, mobile/       # Tauri shells (desktop bundles the appv3 binary)
-├── tests/                  # pytest test suite
+├── scripts/                # Release, docs, and code-health tools (+ tests/)
 ├── documents/              # Feature catalogue and assets
 │   └── docs/               # Version-cited shipped features
 └── .github/                # Issue templates, PR template, CI workflows
@@ -86,9 +86,9 @@ first-party agents from code without overwriting user-owned files.
 
 Key design rules:
 
-- **Route handlers are thin** — business logic belongs in `services/`.
-- **All agent code lives under `app/agent/`** — never scatter into top-level packages.
-- **`stream_store.init_turn()` is called synchronously** before the background task starts — no producer/consumer race.
+- **Route handlers are thin** — durable behavior belongs in the owning runtime
+  crate (`appv3/crates/agent/`, `tools/`, `providers/`, `db/`), not in
+  `appv3/crates/api/`.
 
 ---
 
@@ -97,7 +97,7 @@ Key design rules:
 ### Change validation policy
 
 Use [`make verify`](Makefile) for the portable pre-merge contract, or its
-focused `verify-v3`, `verify-backend`, `verify-web`, `verify-docs`, and
+focused `verify-v3`, `verify-scripts`, `verify-web`, `verify-docs`, and
 `verify-version` targets when only one surface changed. Native targets require
 local platform dependencies. Check the nearest `AGENTS.md` before changing a
 subsystem.
@@ -109,22 +109,6 @@ make run                                 # start server on :8000
 make dev                                 # server + web UI (Vite :5173)
 make verify-v3                           # fmt check, clippy -D warnings, tests
 cargo test --manifest-path appv3/Cargo.toml -p appv3-api   # one crate
-```
-
-### Backend (v2, Python)
-
-```bash
-uv sync                                  # install / sync Python deps
-make run-v2                              # start server on :8000
-make dev-v2                              # with auto-reload
-
-uv run ruff check app/ tests/            # lint
-uv run ruff check app/ tests/ --fix      # auto-fix
-uv run ruff format app/ tests/           # format
-uv run ty check app/                     # type check
-
-uv run pytest -n 4 -q                    # fast tests (default: no coverage)
-make coverage                            # full run with coverage (htmlcov/)
 ```
 
 ### Frontend (web)
@@ -140,15 +124,7 @@ bun run build                            # production build
 
 ### Database migrations
 
-Migrations run automatically when the server starts — no manual step needed. In a source checkout, development now defaults to the project-local `.openagentd/dev/` paths, so the provided `make` command is enough:
-
-```bash
-# Recommended:
-make migrate
-
-# Or manually:
-uv run alembic -c app/alembic.ini upgrade head
-```
+Migrations run automatically when the server starts — no manual step needed. In a source checkout, `make run` and `make dev` default to the project-local `.openagentd/dev/` paths.
 
 Use `APP_ENV=production` only when you intentionally want to target the installed production database.
 
@@ -156,14 +132,10 @@ Use `APP_ENV=production` only when you intentionally want to target the installe
 
 ## Code style
 
-### Python
+### Rust
 
-- **Python 3.14+** — use `|` for unions, `from __future__ import annotations` in every file.
-- Strict type hints on all function signatures.
-- Pydantic v2 for all data models (`ConfigDict(extra="ignore")` for external responses).
-- `snake_case` for modules/functions/variables, `PascalCase` for classes, `UPPER_SNAKE_CASE` for constants.
-- Logging with **loguru**: `logger.info("event_name key={} key2={}", val, val2)`.
-- Absolute imports from `app` (e.g. `from app.agent.schemas.chat import ChatMessage`).
+- Format with `cargo fmt --all` (see `appv3/rustfmt.toml`); `make verify-v3`
+  rejects unformatted code and any clippy warning.
 
 ### TypeScript
 
@@ -177,7 +149,7 @@ Use `APP_ENV=production` only when you intentionally want to target the installe
 - Pre-commit hooks enforce formatting automatically — install them once:
 
   ```bash
-  uv run pre-commit install
+  uvx pre-commit install
   ```
 
 ---
@@ -186,20 +158,14 @@ Use `APP_ENV=production` only when you intentionally want to target the installe
 
 ### Backend
 
-Tests mirror the `app/` structure under `tests/`. Key patterns:
-
-- `conftest.py` redirects to in-memory SQLite — no external DB needed.
-- In-memory SQLite and `AsyncMock` for all external dependencies — no external services needed in unit tests.
-- `app.dependency_overrides` for FastAPI dependency injection.
-
-Coverage aspiration: aim for **≥ 80%** for `app/agent/` and `app/api/`; this is a
-quality goal, **not a CI-enforced merge gate**. Add focused regression coverage
-for changed behavior where practical.
+Unit tests sit in `#[cfg(test)]` modules beside the code; integration tests
+live in `appv3/crates/<crate>/tests/`. Tests that spawn `server serve` use
+throw-away `HOME`/XDG roots, so no external services or user data are needed.
+Add focused regression coverage for changed behavior where practical.
 
 ```bash
-uv run pytest -n 4 -q                    # quick pass/fail
-make coverage                            # full with HTML coverage report
-open htmlcov/index.html
+make verify-v3                                              # full check
+cargo test --manifest-path appv3/Cargo.toml -p appv3-api   # one crate
 ```
 
 ### Frontend

@@ -33,12 +33,3 @@ The builtin in `tools/builtin/todo.py` manages the single-agent task list.
 - Preserve provider-neutral persisted replay data. Provider-specific reasoning
   or tool metadata must round-trip through existing generic message fields
   rather than leaking a raw transport shape into other providers.
-
-## Checks
-
-```bash
-uv run pytest tests/agent -q
-uv run ruff check app/agent tests/agent
-uv run ty check app/
-make verify-backend
-```

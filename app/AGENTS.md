@@ -1,10 +1,11 @@
-# Backend Guide
+# Backend Guide (v2, source only)
 
-Python `>=3.14` backend managed with `uv`. This subtree contains the FastAPI
-app, CLI, agent runtime, SQLModel persistence, scheduler, and migrations.
-It is the end-of-life v2 backend: releases and the desktop sidecar ship the
-Rust backend in `appv3/` (see `appv3/AGENTS.md`), which keeps v2's wire and
-on-disk formats.
+Python `>=3.14` backend. This subtree contains the FastAPI app, CLI, agent
+runtime, SQLModel persistence, scheduler, and migrations. It is the
+end-of-life v2 backend, kept as source-only reference: releases and the
+desktop sidecar ship the Rust backend in `appv3/` (see `appv3/AGENTS.md`),
+which keeps v2's wire and on-disk formats. The repository no longer carries
+v2 packaging, tests, or CI, so nothing here is built or run from this checkout.
 
 ## Ownership
 
@@ -26,41 +27,7 @@ External provider payload models use the existing permissive
 `ConfigDict(extra="ignore")` pattern where forward-compatible fields are
 expected.
 
-## Development
-
-```bash
-uv sync --frozen
-make run-v2                               # v2 API on :8000 (`make run` is v3)
-make dev-v2                               # v2 API with reload + Vite :5173
-uv run pytest tests/path/test_file.py::test_name -q
-uv run ruff format app/ tests/            # apply Python formatting
-make migrate                              # development DB only
-make revision MSG="describe change"       # create a new revision
-make build                                # API-only Python package
-```
-
-Production startup runs migrations automatically; the Make migration targets
-operate on source-checkout development paths unless the environment is
-explicitly changed.
-
-## Checks
-
-```bash
-make verify-backend
-```
-
-This is the canonical backend contract: Ruff lint and format check, `ty` on
-`app/`, and pytest with four xdist workers. Use focused test/lint commands while
-iterating, then run the target before finishing backend changes.
-
 ## Constraints
 
-- Add or update tests under the mirrored `tests/` path for behavior changes.
-- Treat auth, externally supplied paths, subprocesses, tool execution, MCP
-  launch, and provider credentials as security-sensitive; follow the root
-  invariants and the nearest child guide.
-- Do not edit packaged copies under `app/_web_dist/` or sidecar bundles. They
-  are generated build output.
-- When a backend wire or SSE shape changes, update the consumers under
-  `web/src/`, keep `appv3/` and `appv3/contract/sse_events.json` in step,
-  and run the backend, v3, and web checks.
+- Treat this tree as the reference v3 ports from. Make behavior changes in
+  `appv3/` and record deliberate deviations from v2 in `appv3/REPORT.md`.

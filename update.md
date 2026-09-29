@@ -120,8 +120,8 @@ These are completed runs, not a claim that the entire 37-item programme is done.
 | Check | Most recent completed result |
 | --- | --- |
 | `make verify` | Passed after the complete implementation batch: backend lint/format/types/tests, web lint/types/tests, docs, and release-version consistency. |
-| `make verify-backend` | Passed in the final portable verification, including all-branch pagination. Latest focused Git route suite: 38 passed. |
-| `make verify-backend` (2026-09-06) | Passed after bounded tracked Git-diff capture/truncation and Git-status subprocess regressions. |
+| v2 `verify-backend` target (since removed) | Passed in the final portable verification, including all-branch pagination. Latest focused Git route suite: 38 passed. |
+| v2 `verify-backend` target (since removed; 2026-09-06) | Passed after bounded tracked Git-diff capture/truncation and Git-status subprocess regressions. |
 | Full Bun component/unit suite | 2,979 passed, 0 failed across 214 files after sidebar-search and browser-test removal. |
 | Web TypeScript and oxlint | Passed in the final portable verification. |
 | Production build and chunk cycles | Passed; 138 production chunks, no static cycles. |

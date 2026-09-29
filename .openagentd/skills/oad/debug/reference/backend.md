@@ -1,43 +1,34 @@
 # Debug reference: Backend / API / agent / provider
 
-Use when the symptom is in API routes, persistence, queueing, SSE streaming, agent loops, tool execution, or provider calls.
+Use when the symptom is in API routes, persistence, queueing, SSE streaming, agent loops, tool execution, or provider calls. The shipped backend is the Rust workspace in `appv3/`; `app/` is the source-only v2 code it ports.
 
 ---
 
 ## Evidence commands
 
-Start with no-server diagnostics, then live ones:
-
 ```bash
-uv run python -m manual.backend_log              # scan app.log for WARNING/ERROR (no server needed)
-uv run python -m manual.health                   # server liveness + agent roster
-uv run python -m manual.team_history <SESSION_ID>
-uv run python -m manual.team_timeline <SESSION_ID> --full
-uv run python -m manual.team_sse "message" --session <SESSION_ID>
+openagentd server status                          # port, live, ready, and LAN checks
+openagentd server logs                            # readable server log lines
+curl -fsS http://127.0.0.1:8000/api/health/ready  # readiness from a source checkout (`make run`)
 ```
 
-See `manual/AGENTS.md` for the full catalogue — every script supports `-h`.
-
-Provider smoke tests:
-
-```bash
-uv run python -m manual.try_providers.<provider>  # e.g. manual.try_providers.anthropic
-```
+For log files and OTEL telemetry analysis, load `oad/debug-prod`.
 
 ---
 
 ## File map
 
 ```
-app/
-  server.py            FastAPI app entry, route registration
-  api/                 Route handlers (sessions, agents, messages, tools, …)
-  core/                Business logic, agent runner, session manager
-  core/desktop_auth.py Desktop token validation
-  providers/           LLM provider adapters
-  db/                  SQLModel models, migrations, session factories
-manual/                Diagnostic scripts (no prod impact)
-tests/                 pytest coverage — match test to the layer you changed
+appv3/crates/
+  api/        axum routes (src/routes/), middleware (auth, Origin/Host guard, CORS), startup
+  agent/      turn loop, hooks, sessions, SSE broadcaster + stream store, scheduler
+  db/         SQLite pool, v2-compatible queries, migrations (resources/migrations/)
+  providers/  LLM provider adapters
+  tools/      built-in agent tools
+  core/       settings, XDG paths, auth policy (src/auth.rs), path safety
+  cli/        `openagentd` binary; `server serve` is the sidecar entry point
+appv3/contract/sse_events.json   SSE event contract shared with web
+appv3/REPORT.md                  deliberate differences from v2
 ```
 
 ---
@@ -46,21 +37,19 @@ tests/                 pytest coverage — match test to the layer you changed
 
 | Boundary | What to inspect |
 |---|---|
-| Route validation | Pydantic schema, FastAPI dependency, HTTP status returned |
-| Persistence | SQLModel model, Alembic migration, `db/` session factory |
-| Queueing / ordering | Message queue in `core/`, SSE event emission order |
-| Agent loop | `core/` agent runner, tool dispatch, compaction logic |
-| SSE stream | `api/` stream route, `Emitter`, client reconnect behavior |
+| Route validation | handler in `api/src/routes/`, HTTP status returned |
+| Persistence | `db/` queries and migrations |
+| Queueing / ordering | `agent/` stream store, SSE event emission order |
+| Agent loop | `agent/` turn loop, tool dispatch, compaction |
+| SSE stream | `agent/src/events.rs`, `appv3/contract/sse_events.json`, client reconnect behavior |
 | Provider call | `providers/` adapter, env vars, retry/timeout config |
-| Desktop auth | `core/desktop_auth.py`, token header, sidecar handshake |
+| Desktop auth | `core/src/auth.rs`, `api/src/middleware.rs`, sidecar handshake |
 
 ---
 
 ## Verification
 
 ```bash
-uv run pytest tests/ -x -q                      # full suite, stop on first fail
-uv run pytest tests/path/to/test.py -x -v       # focused
-uv run ruff check app/ && uv run ruff format --check app/
-uv run ty check app/
+make verify-v3                                                         # fmt, clippy -D warnings, all tests
+cargo test --manifest-path appv3/Cargo.toml -p appv3-api --test http_api  # focused
 ```

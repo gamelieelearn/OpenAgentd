@@ -34,9 +34,8 @@ If this is a security vulnerability, stop here and report it privately through
 ## Environment
 
 - OS:
-- Install method: <!-- desktop app, uv tool, pipx, pip, source -->
+- Install method: <!-- desktop app, CLI install script, Homebrew, source -->
 - openagentd version / commit:
-- Python version:
 - Browser / desktop shell version, if relevant:
 - Provider + model, if relevant:
 

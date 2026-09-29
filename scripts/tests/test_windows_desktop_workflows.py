@@ -49,18 +49,10 @@ def test_release_verifies_windows_installer_and_updater_signature():
     assert "--require-platform windows-x86_64" in manifest_script
 
 
-def test_windows_ci_runs_native_shell_sandbox_and_rust_checks():
-    core = _load("core.yml")
-    smoke = core["jobs"]["windows-smoke"]
-    smoke_script = _step(smoke, "Verify sidecar imports and Windows runtime helpers")[
-        "run"
-    ]
+def test_windows_ci_runs_native_rust_checks():
     tauri = _load("tauri.yml")
     native = tauri["jobs"]["desktop-windows"]
 
-    assert smoke["runs-on"] == "windows-2025"
-    assert "test_windows_shell_executes_native_command" in smoke_script
-    assert "test_blocks_quoted_windows_path_under_denied_root" in smoke_script
     assert native["runs-on"] == "windows-2025"
     assert _step(native, "Cargo check")["run"]
     assert _step(native, "Cargo test")["run"]

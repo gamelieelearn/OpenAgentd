@@ -1489,10 +1489,11 @@ Everything stays local. No third-party telemetry SaaS.
   (50% of peak outside Mon–Fri 01:00–04:00 and 06:00–10:00 UTC) `[v2.4.2]`.
   The telemetry dashboard also reports cache-write tokens separately from cache
   reads in the totals, provider:model, and cache-by-step views `[v2.4.2]`.
-- **Prompt budget report** `[v1.102.0]` — `make prompt-budget` reports exact
-  `o200k_base` counts for the assembled static system prompt, compact tool-schema
-  JSON, every first-party base prompt, each tool, and bundled skill bodies;
-  `make prompt-budget-json` emits a stable machine-readable baseline for CI.
+- **Prompt budget report** `[v1.102.0]` *(deprecated — removed with the v2
+  Python tooling)* — the `prompt-budget` Make target reported exact
+  `o200k_base` counts for the v2 assembled static system prompt, compact
+  tool-schema JSON, every first-party base prompt, each tool, and bundled skill
+  bodies; `prompt-budget-json` emitted a stable machine-readable baseline for CI.
 - **Fast JSONL-backed query API** `[v2.0.0]` — `/api/observability/*` queries
   local OpenTelemetry span logs directly using `orjson` parsing, delivering faster
   query execution and lower latency without DuckDB binary dependency weight.

@@ -1,10 +1,10 @@
 # Makefile for openagentd
 
-.PHONY: all run dev dev-lan kill-dev-ports test coverage verify verify-backend verify-scripts verify-web verify-docs verify-version verify-native verify-shell-core verify-desktop verify-mobile scenarios scenarios-chat scenarios-mentions scenarios-questions scenarios-lsp scenarios-performance health health-json prompt-budget prompt-budget-json migrate revision build-web icons build dist clean help
-.PHONY: run-v2 dev-v2 run-v3 dev-v3 run3 dev3 build-v3 verify-v3
+.PHONY: all run dev kill-dev-ports verify verify-scripts verify-web verify-docs verify-version verify-native verify-shell-core verify-desktop verify-mobile health health-json build-web icons clean help
+.PHONY: run-v3 dev-v3 run3 dev3 build-v3 verify-v3
 
 # Default target
-all: test
+all: help
 
 # `server serve` defaults to production paths; keep source checkouts on the
 # project-local development data unless APP_ENV is set explicitly.
@@ -14,9 +14,6 @@ run: ## Start the API server only (v3 Rust backend, no frontend; :8000)
 run-v3: run ## Alias for run
 
 run3: run
-
-run-v2: ## Start the end-of-life v2 Python API server (no reload, no frontend; :8000)
-	uv run uvicorn app.server:app
 
 dev: kill-dev-ports ## Start the v3 backend (:8000) and frontend (Vite :5173) together
 	@trap 'kill 0' INT TERM EXIT; \
@@ -56,32 +53,9 @@ kill-dev-ports: ## Stop processes listening on dev ports (:8000, :5173)
 		fi; \
 	done
 
-dev-v2: kill-dev-ports ## Start the v2 Python backend (:8000 + reload) and frontend (Vite :5173) together
-	@trap 'kill 0' INT TERM EXIT; \
-	(uv run uvicorn app.server:app --reload --reload-dir app 2>&1 | sed 's/^/[api] /') & \
-	(cd web && bun dev 2>&1 | sed 's/^/[web] /') & \
-	wait
+verify: verify-v3 verify-scripts verify-web verify-docs verify-version ## Run the portable pre-merge contract
 
-dev-lan: kill-dev-ports ## Start the v2 Python backend (:8000 + reload) and frontend (Vite :5173) on the LAN without a key
-	@trap 'kill 0' INT TERM EXIT; \
-	(API_ALLOW_INSECURE_LAN=true API_HOST=0.0.0.0 API_PORT=8000 API_RELOAD=true uv run python -m app.server 2>&1 | sed 's/^/[api] /') & \
-	(cd web && bun dev --host 0.0.0.0 2>&1 | sed 's/^/[web] /') & \
-	wait
-
-test: ## Run tests
-	uv run pytest -n 4 -q
-
-coverage: ## Run tests with coverage report (terminal + htmlcov/)
-	uv run pytest --cov=app --cov-report=term-missing:skip-covered --cov-report=html tests/
-
-verify: verify-v3 verify-backend verify-scripts verify-web verify-docs verify-version ## Run the portable pre-merge contract
-
-verify-backend: ## Lint, format-check, type-check, and test the Python backend
-	uv run ruff check app/ tests/
-	uv run ruff format --check app/ tests/
-	uv run ty check app/
-	uv run pytest -n 4 -q
-
+# The repository has no Python project; each tool declares its own deps.
 verify-scripts: ## Test maintainer scripts, installers, and release/workflow contracts
 	uv run --with pytest --with pyyaml --with pillow python -m pytest scripts/tests -q
 
@@ -91,7 +65,7 @@ verify-web: ## Lint, type-check, and test the web frontend
 	cd web && bun test --parallel
 
 verify-docs: ## Validate documentation links, metadata, and repository references
-	uv run python scripts/validate_docs.py
+	python3 scripts/validate_docs.py
 
 verify-version: ## Verify release-facing versions and release docs stay synchronized
 	scripts/check_version_consistency.sh
@@ -114,41 +88,11 @@ verify-desktop: ## Check, test, and lint the desktop Rust crate
 verify-mobile: ## Check the mobile Rust crate
 	cd mobile/src-tauri && TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo check --locked
 
-scenarios: scenarios-chat scenarios-mentions scenarios-questions scenarios-lsp scenarios-performance ## Run all service-layer manual scenarios
-
-scenarios-chat: ## Run chat service compaction, undo/redo, queue, and edge-case scenarios
-	uv run python tests/manual/manual_scenarios.py
-	uv run python tests/manual/extended_scenarios.py
-
-scenarios-mentions: ## Run workspace mention and path-safety scenarios
-	uv run python tests/manual/mention_scenarios.py
-
-scenarios-questions: ## Run ask_user durable suspension scenarios
-	uv run python tests/manual/question_scenarios.py
-
-scenarios-lsp: ## Run mocked and real-server LSP scenarios
-	uv run python tests/manual/lsp_scenarios.py
-
-scenarios-performance: ## Run deterministic persistence query-count scenarios
-	uv run python tests/manual/performance_scenarios.py
-
 health: ## Rank god files + detect circular imports (text report)
-	uv run python -m scripts.codehealth
+	python3 -m scripts.codehealth
 
 health-json: ## Same as 'health' but emit JSON (for baselines / CI)
-	uv run python -m scripts.codehealth --json
-
-prompt-budget: ## Count system prompt, tool schema, and bundled skill tokens
-	@tmp=$$(mktemp -d); TMP_AGENTS=$$tmp uv run python -c 'import os; from pathlib import Path; from app.agent.loader import ensure_builtin_code_agent; p=Path(os.environ["TMP_AGENTS"]); ensure_builtin_code_agent(p)'; uv run python -m manual.inspect_prompt --dir $$tmp --date 2026-01-01 --skills-scope builtin --stats-only; status=$$?; rm -rf $$tmp; exit $$status
-
-prompt-budget-json: ## Same as prompt-budget but emit stable JSON for tracking/CI
-	@tmp=$$(mktemp -d); TMP_AGENTS=$$tmp uv run python -c 'import os; from pathlib import Path; from app.agent.loader import ensure_builtin_code_agent; p=Path(os.environ["TMP_AGENTS"]); ensure_builtin_code_agent(p)'; uv run python -m manual.inspect_prompt --dir $$tmp --date 2026-01-01 --skills-scope builtin --stats-only --json; status=$$?; rm -rf $$tmp; exit $$status
-
-migrate: ## Run Alembic migrations (dev only — production auto-migrates on startup)
-	uv run alembic -c app/alembic.ini upgrade head
-
-revision: ## Create a new Alembic revision (usage: make revision MSG="message")
-	uv run alembic -c app/alembic.ini revision --autogenerate -m "$(MSG)"
+	python3 -m scripts.codehealth --json
 
 build-web: ## Build web UI into web/dist/ for desktop packaging
 	# --frozen-lockfile: install exactly what bun.lock pins instead of
@@ -159,11 +103,6 @@ build-web: ## Build web UI into web/dist/ for desktop packaging
 
 icons: ## Centralize and generate all app & platform icons from the master brand icon
 	python3 scripts/generate_icons.py
-
-build: ## Build Python wheel (API server only)
-	uv build
-
-dist: build ## Alias for build
 
 clean: ## Remove build and cache artifacts
 	rm -rf .pytest_cache .ruff_cache .coverage .ty_cache htmlcov

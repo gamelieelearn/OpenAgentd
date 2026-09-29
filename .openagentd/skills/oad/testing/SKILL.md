@@ -2,7 +2,7 @@
 name: oad/testing
 description: >
   OpenAgentd testing reference — environment setup, run commands, and fix
-  patterns for backend (pytest) and frontend (Bun/RTL). Load this for
+  patterns for backend (cargo) and frontend (Bun/RTL). Load this for
   running, fixing, or adding coverage to existing tests. For writing a
   failing test before new code, use oad/test-driven-development instead.
 ---
@@ -18,38 +18,26 @@ description: >
 
 ---
 
-# Backend (pytest / FastAPI)
+# Backend (v3, Rust / cargo test)
 
 ## Run commands
 
 ```bash
-uv run pytest -n 4 -q                             # full suite, fast and low CPU
-uv run pytest tests/path/to/test_file.py -q       # single file
-uv run pytest tests/path/to/test_file.py::test_x  # single test
+make verify-v3                                                           # fmt check, clippy -D warnings, all tests
+cargo test --manifest-path appv3/Cargo.toml -p appv3-api                 # one crate
+cargo test --manifest-path appv3/Cargo.toml -p appv3-agent --test session_turn  # one integration file
+cargo test --manifest-path appv3/Cargo.toml -p appv3-agent <name_filter> # tests matching a name
 ```
 
 ## Environment rules
 
-- `asyncio_mode = auto` — write `async def test_x(): ...` directly, never `@pytest.mark.asyncio`.
-- Global autouse fixtures (`tests/conftest.py`) give you a file-backed test DB (`setup_db`), a clean slate per test (`clean_db`), and an `os.environ` snapshot/restore — don't re-declare them.
-- Use `async_session_factory` from `app.core.db` for DB access in production code under test; it points at the test DB automatically. Never open a second `:memory:` engine alongside it — it sees an empty schema.
-- Mock at the import site used by the code under test (`patch("app.services.lsp.manager.lsp_manager", ...)`), not the definition site.
-- Tests run in random order and parallel workers — no shared mutable module-level state between tests.
+- Integration tests that spawn `server serve` (`appv3/crates/cli/tests/`) build the binary and use throw-away `HOME`/XDG roots — never point tests at real user data.
+- Timing-dependent async tests use `#[tokio::test(start_paused = true)]` instead of real sleeps.
+- API or SSE event changes also need `make verify-web`; event types must match `appv3/contract/sse_events.json`.
 
 ## Placement
 
-Mirror the source tree: `app/services/chat_service.py` → `tests/services/test_chat_service.py`
-
-## Manual scenario scripts
-
-Run these after fixing the listed subsystems — they exercise service-layer logic end-to-end against a real in-memory DB/filesystem and catch regressions unit tests miss:
-
-```bash
-uv run python tests/manual/mention_scenarios.py   # after _safe_join*, mention context changes
-uv run python tests/manual/lsp_scenarios.py       # after LspHook / LspManager / LspClient changes
-uv run python tests/manual/manual_scenarios.py    # after chat_service compaction/undo-redo changes
-uv run python tests/manual/extended_scenarios.py  # after chat_service edge-case changes
-```
+Unit tests go in a `#[cfg(test)] mod tests` beside the code. Behavior that crosses modules goes in `appv3/crates/<crate>/tests/<topic>.rs` (e.g. `crates/api/tests/http_api.rs`).
 
 ---
 
@@ -93,7 +81,7 @@ read("<skill_dir>/reference/rust-tauri.md")
 - **DAMP over DRY.** Each test reads standalone — some duplication across test bodies is fine.
 - **Real implementation > fake > stub > mock.** Mock only at slow, non-deterministic, or external boundaries.
 - **One behavior per test**, named as a spec: `sets completedAt when task is completed`, not `works`.
-- **Never `await asyncio.sleep(n)`** for real delays — patch `asyncio.sleep` or drive an `asyncio.Event`.
+- **Never sleep for real delays** — use paused tokio time or fake timers, or drive the event you are waiting on.
 
 # Anti-patterns
 
@@ -104,16 +92,13 @@ read("<skill_dir>/reference/rust-tauri.md")
 | Mocking everything | Prefer real fixtures; mock only slow/non-deterministic boundaries |
 | Bug fix with no reproduction test | Use `oad/test-driven-development` Prove-It pattern |
 | Skipping a failing test to get green | Fix it or track it explicitly, never silently skip |
-| Second `:memory:` DB engine alongside the global test DB | Use `async_session_factory` |
 
 # Test pyramid
 
 ```
-     Manual scenario scripts (tests/manual/*.py) — few, high-value, real DB/FS
-    Integration tests — API route + DB, component + store, mirrored path
-   Unit tests — pure functions, isolated hooks/services — most of the suite
+    Integration tests — API route + DB (crate tests/), component + store (mirrored path)
+   Unit tests — pure functions, isolated hooks/modules — most of the suite
 ```
 
 - Most new tests should be unit: no DB, no network, milliseconds each.
-- Cross a boundary → integration test at the mirrored path, prefer real fixtures over mocks.
-- Extend an existing manual scenario script rather than starting a parallel one.
+- Cross a boundary → integration test, prefer real fixtures over mocks.

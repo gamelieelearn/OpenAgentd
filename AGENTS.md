@@ -2,9 +2,10 @@
 
 OpenAgentd is a local-first coding-agent cockpit: a native Rust backend
 (`appv3/`, v3), one React UI, and separate Tauri desktop and mobile shells.
-The end-of-life Python/FastAPI backend (`app/`, v2) stays in the tree and
-shares the same database and config files. The canonical catalogue of
-shipped behavior is `documents/docs/features.md`.
+The end-of-life Python/FastAPI backend (`app/`, v2) stays in the tree as
+source-only reference for the database and config formats v3 shares; it has
+no build, test, or CI tooling. The canonical catalogue of shipped behavior is
+`documents/docs/features.md`.
 
 ## Instruction scopes
 
@@ -18,8 +19,6 @@ the path you edit. The main local guides are:
 - Native shells: `desktop/AGENTS.md`, `desktop/src-tauri/AGENTS.md`,
   `mobile/AGENTS.md`, `mobile/src-tauri/AGENTS.md`, and
   `native/shell-core/AGENTS.md`.
-- Tests and diagnostics: `tests/AGENTS.md`, `tests/manual/AGENTS.md`, and
-  `manual/AGENTS.md`.
 - Maintainer assets: `scripts/AGENTS.md`, `.openagentd/AGENTS.md`,
   `documents/AGENTS.md`, `documents/docs/AGENTS.md`, and
   `experiments/turbovec_docs/AGENTS.md`.
@@ -34,16 +33,13 @@ worktrees are not part of the tracked instruction hierarchy.
   `appv3/contract/` holds data shared with other surfaces, including the SSE
   event contract.
 - `app/`: v2 Python API, agent runtime, CLI, scheduler, SQLModel tables,
-  migrations, and application services (end-of-life).
+  migrations, and application services (end-of-life, source only).
 - `web/`: shared React UI used by browser, desktop, and mobile clients.
 - `desktop/`: Tauri shell that supervises the bundled native `openagentd`
   sidecar built from `appv3/`.
 - `mobile/`: remote-backend-only Tauri shell; it does not bundle a backend.
 - `native/shell-core/`: Tauri-free Rust crate shared by both shells (server
   config, URL normalization, keyring, download limits).
-- `tests/`: pytest suite mirroring `app/`; `tests/manual/` holds standalone
-  service scenarios.
-- `manual/`: live-server and provider smoke/debug scripts.
 - `scripts/`: packaging, release, docs validation, and code-health utilities;
   `scripts/tests/` holds their pytest checks plus installer and workflow
   contracts.
@@ -61,20 +57,17 @@ From the repository root:
 bun install --cwd web --frozen-lockfile
 make run       # v3 API only on :8000 (needs cargo)
 make dev       # v3 API + Vite on :5173
-uv sync --frozen && make run-v2   # v2 Python API instead
 ```
 
 Build outputs have distinct targets:
 
 ```bash
 make build-v3    # optimized v3 release binary
-make build       # v2 Python wheel only
 make build-web   # web/dist for native packaging
 ```
 
 Use the native subtree Makefiles for desktop/mobile packages
-(`make -C desktop sidecar` stages the v3 binary); do not treat the Python
-wheel as a native application build.
+(`make -C desktop sidecar` stages the v3 binary).
 
 ## Architecture boundaries
 
@@ -107,7 +100,7 @@ wheel as a native application build.
   capabilities, keyring storage, and updater/signing code as
   security-sensitive. Use argument-list subprocess APIs; do not introduce
   `shell=True` command construction.
-- Do not edit generated/build state such as `web/dist/`, `app/_web_dist/`,
+- Do not edit generated/build state such as `web/dist/`,
   `desktop/sidecar-bundle/`, native `target/` (including `appv3/target/`) or
   `gen/` trees, or ignored `.openagentd/` runtime state. Change sources and
   rerun the owning build.
@@ -123,7 +116,6 @@ Choose every target covering the paths changed:
 
 ```bash
 make verify-v3       # v3 Rust: cargo fmt check, clippy -D warnings, tests
-make verify-backend  # v2 Python: ruff lint/format check, ty, pytest
 make verify-scripts  # pytest for scripts, installers, and workflow contracts (uv)
 make verify-web      # ESLint, app/test TypeScript, Bun tests
 make verify-docs     # Markdown links/frontmatter/Make references
@@ -131,7 +123,7 @@ make verify-version  # synchronized release versions and catalogue metadata
 make verify-desktop  # locked desktop cargo check/test/clippy
 make verify-mobile   # locked mobile cargo check
 make verify-shell-core # shared native crate fmt/clippy/test
-make verify          # portable v3 + v2 backend + scripts + web + docs + version checks
+make verify          # portable v3 + scripts + web + docs + version checks
 make verify-native   # shell-core + desktop + mobile; native system dependencies required
 ```
 

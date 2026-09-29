@@ -73,7 +73,7 @@ git diff --stat main..HEAD -- documents/docs/features.md README.md
 
 6. Version PR:
 
-- **Before bumping, verify CI is green on `main`.** Check both the `Core` (pytest) and `Web` (lint + typecheck + tests) workflows on the latest commit:
+- **Before bumping, verify CI is green on `main`.** Check both the `appv3` (Rust) and `Web` (lint + typecheck + tests) workflows on the latest commit:
 
 ```bash
 # Get the SHA of the commit you are about to release from
@@ -81,7 +81,6 @@ git rev-parse HEAD
 
 # List the most recent runs of each CI workflow and confirm conclusion=success
 gh run list --workflow=appv3.yml --branch=main --limit=3
-gh run list --workflow=core.yml --branch=main --limit=3
 gh run list --workflow=web.yml  --branch=main --limit=3
 
 # If either shows failure, inspect and fix before continuing:
@@ -121,8 +120,6 @@ scripts/check_version_consistency.sh
 - PR body must be a bullet list summarizing the included user-facing changes, not a single generic sentence.
 
 ```bash
-uv run ruff format app/ tests/
-uv run ruff format --check app/ tests/
 git add web/package.json \
         desktop/src-tauri/tauri.conf.json desktop/src-tauri/Cargo.toml \
         desktop/src-tauri/Cargo.lock \
