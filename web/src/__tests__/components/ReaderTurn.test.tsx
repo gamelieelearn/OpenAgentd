@@ -106,9 +106,10 @@ describe('AssistantTurn — reader mode', () => {
     expect(rendered('narrate')).not.toBeNull()
   })
 
-  it('lists the files the turn edited behind a closed row, and opens one from the list', () => {
+  it('lists the files the turn edited behind a closed row, and opens its diff from the list', () => {
     const open = mock((..._args: unknown[]) => {})
-    renderTurn(finished, { opener: { canOpen: () => true, open } })
+    const openDiff = mock((..._args: unknown[]) => {})
+    renderTurn(finished, { opener: { canOpen: () => true, open, openDiff } })
 
     const files = screen.getByRole('button', { name: /1 file changed/ })
     expect(files.getAttribute('aria-expanded')).toBe('false')
@@ -118,10 +119,41 @@ describe('AssistantTurn — reader mode', () => {
 
     expect(files.getAttribute('aria-expanded')).toBe('true')
     fireEvent.click(screen.getByRole('button', { name: /src\/a\.ts/ }))
-    expect(open).toHaveBeenCalledWith({ path: 'src/a.ts' })
+    expect(openDiff).toHaveBeenCalledWith({ path: 'src/a.ts', status: 'M' })
+    expect(open).not.toHaveBeenCalled()
 
     fireEvent.click(files)
     expect(screen.queryByRole('button', { name: /src\/a\.ts/ })).toBeNull()
+  })
+
+  it('opens a deleted file diff from the list when openDiff is provided', () => {
+    const deletedBlock: ContentBlock = {
+      id: 'delete-file',
+      type: 'tool',
+      content: '',
+      toolName: 'patch',
+      toolArgs: patchArgs('*** Delete File: src/old.ts'),
+      toolDone: true,
+      toolResult: 'ok',
+    }
+    const openDiff = mock((..._args: unknown[]) => {})
+    renderTurn([deletedBlock, { id: 'answer', type: 'text', content: 'Deleted it.' }], {
+      opener: { canOpen: () => true, open: () => {}, openDiff },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /1 file changed/ }))
+    const item = screen.getByRole('button', { name: /src\/old\.ts/ })
+    fireEvent.click(item)
+    expect(openDiff).toHaveBeenCalledWith({ path: 'src/old.ts', status: 'D' })
+  })
+
+  it('falls back to open when openDiff is not provided on opener', () => {
+    const open = mock((..._args: unknown[]) => {})
+    renderTurn(finished, { opener: { canOpen: () => true, open } })
+
+    fireEvent.click(screen.getByRole('button', { name: /1 file changed/ }))
+    fireEvent.click(screen.getByRole('button', { name: /src\/a\.ts/ }))
+    expect(open).toHaveBeenCalledWith({ path: 'src/a.ts' })
   })
 
   it('names the step in progress while the turn runs, and lists no files yet', () => {

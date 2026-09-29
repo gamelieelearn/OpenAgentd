@@ -295,6 +295,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handledTerminalOpenKeyRef,
     dockViewRequest,
     handledDockViewKeyRef,
+    dockDiffRequest,
+    handledDockDiffRequestKeyRef,
     dockActiveView,
     setDockActiveView,
     dockViewsEnabled,
@@ -309,6 +311,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleFileSelect,
     handleMentionFileOpen,
     handleFileRefOpen,
+    handleDiffOpen,
     closeMobileActionsMenu,
     handleSetShowMobileActions,
     handleToggleAgentCapabilities,
@@ -538,8 +541,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     ? {
         canOpen: (ref) => workspaceRelativePath(ref.path, workspace) !== null,
         open: (ref) => void handleFileRefOpen(ref),
+        openDiff: (ref) => void handleDiffOpen(ref),
       }
-    : undefined), [handleFileRefOpen, workspace])
+    : undefined), [handleDiffOpen, handleFileRefOpen, workspace])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -800,6 +804,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               handledTerminalOpenKeyRef={handledTerminalOpenKeyRef}
               viewRequest={dockViewRequest}
               handledViewRequestKeyRef={handledDockViewKeyRef}
+              diffRequest={dockDiffRequest}
+              handledDiffRequestKeyRef={handledDockDiffRequestKeyRef}
               onActiveViewChange={setDockActiveView}
               todos={todos}
               sessionId={sessionIdState}

@@ -173,7 +173,7 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, forceOpen
   )
 }
 
-/** The files a finished turn edited; each opens in the review dock. */
+/** The files a finished turn edited; each opens its git diff in the review dock. */
 export function TurnChangedFiles({ files }: { files: readonly ChangedFileInfo[] }) {
   const opener = useContext(FileRefContext)
   const [open, setOpen] = useState(false)
@@ -215,13 +215,14 @@ export function TurnChangedFiles({ files }: { files: readonly ChangedFileInfo[] 
               </>
             )
             const ref = { path: file.path }
+            const canOpen = Boolean(opener && opener.canOpen(ref) && (opener.openDiff ? true : file.status !== 'D'))
             return (
               <li key={file.path}>
-                {opener && file.status !== 'D' && opener.canOpen(ref) ? (
+                {canOpen ? (
                   <button
                     type="button"
-                    title={`Open ${file.path}`}
-                    onClick={() => opener.open(ref)}
+                    title={opener?.openDiff ? `Open diff for ${file.path}` : `Open ${file.path}`}
+                    onClick={() => (opener?.openDiff ? opener.openDiff({ path: file.path, status: file.status }) : opener?.open(ref))}
                     className={cn(rowClass, hoverClass)}
                   >
                     {content}

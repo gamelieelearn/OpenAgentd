@@ -72,6 +72,7 @@ import {
   gitViewTabId,
 } from './WorkspacePanel/GitViewToolbar'
 import {
+  type DiffTabRequest,
   type DockView,
   type DockViewRequest,
   REVIEW_TAB_ID,
@@ -112,6 +113,8 @@ export function WorkspacePanel({
   handledTerminalOpenKeyRef: parentHandledTerminalOpenKeyRef,
   viewRequest = null,
   handledViewRequestKeyRef: parentHandledViewRequestKeyRef,
+  diffRequest = null,
+  handledDiffRequestKeyRef,
   onActiveViewChange,
   todos = EMPTY_TODOS,
   sessionId = null,
@@ -140,6 +143,9 @@ export function WorkspacePanel({
   viewRequest?: DockViewRequest | null
   /** Parent-owned so a remounted dock does not replay a handled request. */
   handledViewRequestKeyRef?: React.RefObject<number>
+  /** Shell request to open (or focus) a diff tab. */
+  diffRequest?: DiffTabRequest | null
+  handledDiffRequestKeyRef?: React.RefObject<number>
   /** Reports the focused view tab (``null`` for other tabs or on unmount). */
   onActiveViewChange?: (view: DockView | null) => void
   /** Agent task list for the Tasks tab. */
@@ -184,6 +190,8 @@ export function WorkspacePanel({
     viewRequest,
     handledViewRequestKeyRef: parentHandledViewRequestKeyRef,
     onActiveViewChange,
+    diffRequest,
+    handledDiffRequestKeyRef,
   })
   const [mobileFileActions, setMobileFileActions] = useState<ChangedFileInfo | null>(null)
   const [mobileCommitActions, setMobileCommitActions] = useState<CommitActionTarget | null>(null)
