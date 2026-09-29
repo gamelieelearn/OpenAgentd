@@ -19,7 +19,8 @@ const CLIENT_ID: &str = "Ov23li8tweQw6odWQebz";
 const SCOPE: &str = "read:user";
 const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 const ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
-const TOKEN_ENV: [&str; 4] = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GITHUB_COPILOT_TOKEN"];
+/// Environment variables that supply a GitHub token instead of the OAuth file.
+pub const TOKEN_ENV: [&str; 4] = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GITHUB_COPILOT_TOKEN"];
 /// v2 re-fetches `/models` on every call; v3 keeps it for a short while.
 const CATALOG_TTL: Duration = Duration::from_secs(300);
 

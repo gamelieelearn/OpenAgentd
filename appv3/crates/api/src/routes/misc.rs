@@ -37,14 +37,7 @@ async fn oauth_disconnect(AxPath(id): AxPath<String>) -> ApiResult<Response> {
     if crate::providers::find(&id).is_none() && plugin.is_none() {
         return Err(ApiError::not_found(format!("Unknown OAuth provider '{id}'.")));
     }
-    let file = match id.as_str() {
-        "codex" => Some("codex_oauth.json"),
-        "copilot" => Some("copilot_oauth.json"),
-        "grok" => Some("grok_oauth.json"),
-        _ => None,
-    };
-    if let Some(f) = file {
-        let p = settings().cache_dir.join(f);
+    if let Some(p) = appv3_providers::oauth::oauth_path(&id) {
         if p.is_file() {
             if let Err(e) = std::fs::remove_file(&p) {
                 tracing::warn!("failed_to_delete_oauth_file provider={} path={} error={}", id, p.display(), e);

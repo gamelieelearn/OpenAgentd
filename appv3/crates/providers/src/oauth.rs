@@ -1,6 +1,7 @@
 //! Builtin OAuth login flows (`app/cli/commands/auth.py::_PROVIDERS`).
 
 use crate::plugin::OAuthSink;
+use std::path::PathBuf;
 
 /// `(provider, description)` — `openagentd auth` listing order is sorted.
 pub const PROVIDERS: [(&str, &str); 3] = [
@@ -8,6 +9,16 @@ pub const PROVIDERS: [(&str, &str); 3] = [
     ("codex", "OpenAI Codex — PKCE OAuth (ChatGPT subscription)"),
     ("grok", "Grok Build — device-flow OAuth (Grok subscription)"),
 ];
+
+/// Token file of a builtin OAuth provider; `None` for any other provider.
+pub fn oauth_path(provider_id: &str) -> Option<PathBuf> {
+    match provider_id {
+        "codex" => Some(crate::codex::oauth_path()),
+        "copilot" => Some(crate::copilot::oauth_path()),
+        "grok" => Some(crate::grok::oauth_path()),
+        _ => None,
+    }
+}
 
 /// Run the builtin `login(event_sink=sink)` for `codex` / `copilot` / `grok`
 /// (UI flow: codex defaults to the device flow unless `browser`).
