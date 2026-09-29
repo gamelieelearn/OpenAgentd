@@ -67,13 +67,22 @@ describe('AssistantTurn — reader mode', () => {
     expect(rendered('narrate')).not.toBeNull()
   })
 
-  it('lists the files the turn edited, and opens one from the list', () => {
+  it('lists the files the turn edited behind a closed row, and opens one from the list', () => {
     const open = mock((..._args: unknown[]) => {})
     renderTurn(finished, { opener: { canOpen: () => true, open } })
 
-    expect(screen.getByText('1 file changed')).toBeTruthy()
+    const files = screen.getByRole('button', { name: /1 file changed/ })
+    expect(files.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('button', { name: /src\/a\.ts/ })).toBeNull()
+
+    fireEvent.click(files)
+
+    expect(files.getAttribute('aria-expanded')).toBe('true')
     fireEvent.click(screen.getByRole('button', { name: /src\/a\.ts/ }))
     expect(open).toHaveBeenCalledWith({ path: 'src/a.ts' })
+
+    fireEvent.click(files)
+    expect(screen.queryByRole('button', { name: /src\/a\.ts/ })).toBeNull()
   })
 
   it('names the step in progress while the turn runs, and lists no files yet', () => {

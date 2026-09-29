@@ -490,7 +490,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     compaction dividers stay in place; once answered or closed, a question
     folds in with the rest of the work.
   - A finished turn lists the files its `patch` calls changed, with line
-    counts; each opens in the review dock.
+    counts; each opens in the review dock. Since `[v3.1.0]` the list starts
+    closed behind its "N files changed" header.
 - **The composer while the agent works** `[v3.0.0]`:
   - Scrolled away from the live end, a "↓ N new" chip rides on the
     composer, wherever it is dragged, and counts what arrived since.

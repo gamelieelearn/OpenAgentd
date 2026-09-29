@@ -7,6 +7,9 @@
  * they do in the detailed transcript, on a hairline. A long fold stays easy
  * to close: the open row pins to the top of the transcript while its steps
  * scroll under it, and a Collapse row ends the steps.
+ *
+ * The file list starts closed behind its "N files changed" header, so a turn
+ * that touched many files still ends on its answer.
  */
 import { useContext, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight, ChevronUp } from 'lucide-react'
@@ -134,48 +137,64 @@ export function WorkSummaryRow({ blocks, live, currentStep, forceOpen = false, c
 /** The files a finished turn edited; each opens in the review dock. */
 export function TurnChangedFiles({ files }: { files: readonly ChangedFileInfo[] }) {
   const opener = useContext(FileRefContext)
+  const [open, setOpen] = useState(false)
+  const listId = useId()
   if (files.length === 0) return null
   const additions = files.reduce((sum, file) => sum + file.additions, 0)
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0)
   const rowClass = 'flex h-(--spacing-list-row) w-full min-w-0 items-center gap-2 px-3 text-left text-xs text-(--color-text-2)'
+  const hoverClass = 'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/60 hover:text-(--color-text) focus-visible:bg-(--bg-key)/60 focus-visible:outline-none'
 
   return (
     <section aria-label="Files changed this turn" className="my-2 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
-      <p className="flex items-center gap-2 border-b border-(--color-border-subtle) px-3 py-1.5 text-xs text-(--color-text-2)">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-controls={listId}
+        className={cn('flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-(--color-text-2) pointer-coarse:min-h-9', hoverClass)}
+      >
+        <ChevronRight
+          size={12}
+          aria-hidden
+          className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ease-(--ease-out)', open && 'rotate-90')}
+        />
         <span>{`${files.length} ${files.length === 1 ? 'file' : 'files'} changed`}</span>
         <span className="flex items-center gap-1.5 font-mono text-xs md:text-[11px]">
           {additions > 0 && <span className="text-(--color-diff-add-text)">+{additions}</span>}
           {deletions > 0 && <span className="text-(--color-diff-del-text)">-{deletions}</span>}
         </span>
-      </p>
-      <ul className="divide-y divide-(--color-border-subtle)">
-        {files.map((file) => {
-          const content = (
-            <>
-              <FileTypeIcon name={file.path} size={13} />
-              <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
-              <ChangeCounts file={file} />
-            </>
-          )
-          const ref = { path: file.path }
-          return (
-            <li key={file.path}>
-              {opener && file.status !== 'D' && opener.canOpen(ref) ? (
-                <button
-                  type="button"
-                  title={`Open ${file.path}`}
-                  onClick={() => opener.open(ref)}
-                  className={cn(rowClass, 'transition-colors duration-(--motion-instant) hover:bg-(--bg-key)/60 hover:text-(--color-text) focus-visible:bg-(--bg-key)/60 focus-visible:outline-none')}
-                >
-                  {content}
-                </button>
-              ) : (
-                <div className={rowClass}>{content}</div>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+      </button>
+      {open && (
+        <ul id={listId} className="divide-y divide-(--color-border-subtle) border-t border-(--color-border-subtle)">
+          {files.map((file) => {
+            const content = (
+              <>
+                <FileTypeIcon name={file.path} size={13} />
+                <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
+                <ChangeCounts file={file} />
+              </>
+            )
+            const ref = { path: file.path }
+            return (
+              <li key={file.path}>
+                {opener && file.status !== 'D' && opener.canOpen(ref) ? (
+                  <button
+                    type="button"
+                    title={`Open ${file.path}`}
+                    onClick={() => opener.open(ref)}
+                    className={cn(rowClass, hoverClass)}
+                  >
+                    {content}
+                  </button>
+                ) : (
+                  <div className={rowClass}>{content}</div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </section>
   )
 }
