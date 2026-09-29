@@ -26,6 +26,8 @@ export interface AgentInfo {
   name: string
   description: string
   model: string | null
+  /** The agent file's thinking level; v2 backends omit it. */
+  thinking_level?: string | null
   summary_trigger_tokens?: number
   tools: AgentToolInfo[]
   /** MCP server names this agent was configured with. Includes servers that

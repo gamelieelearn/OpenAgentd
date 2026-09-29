@@ -824,6 +824,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         chatWorkspace={isChatWorkspace}
         sessionId={sessionIdState}
         sessionModel={sessionModel}
+        defaultModel={leadAgent?.model ?? null}
+        defaultThinkingLevel={leadAgent?.thinking_level ?? null}
         sessionThinkingLevel={sessionThinkingLevel}
         sessionFastMode={storeState.sessionFastMode}
         onToggleSessionSettings={handleToggleAgentCapabilities}
