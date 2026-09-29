@@ -127,6 +127,14 @@ impl PendingQuestion {
     pub fn answers_json(&self) -> Option<Value> {
         json_col(self.answers.as_deref())
     }
+    /// The suspension's kind (`payload.kind`); `None` for an `ask_user` question.
+    pub fn kind(&self) -> Option<String> {
+        json_col(Some(&self.payload)).and_then(|p| p.get("kind").and_then(|k| k.as_str()).map(String::from))
+    }
+    /// The plan revision a plan review was opened for (`payload.plan_revision`).
+    pub fn plan_revision(&self) -> Option<u64> {
+        json_col(Some(&self.payload)).and_then(|p| p.get("plan_revision").and_then(|r| r.as_u64()))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

@@ -126,13 +126,19 @@ fn truthy(v: &Value) -> bool {
 /// `isoformat()`, i.e. `+00:00`, not `Z`).
 pub fn pending_question_response(q: &PendingQuestion) -> Value {
     let created = parse_dt(&q.created_at).map(|d| py_isoformat(&d)).unwrap_or_else(|| q.created_at.clone());
-    serde_json::json!({
+    let mut v = serde_json::json!({
         "id": api_uuid(&q.id),
         "session_id": api_uuid(&q.session_id),
         "tool_call_id": q.tool_call_id,
         "questions": q.questions(),
         "created_at": created,
-    })
+    });
+    // v3 plan reviews only, so `ask_user` rows keep v2's exact shape.
+    if let Some(kind) = q.kind() {
+        v["kind"] = Value::String(kind);
+        v["plan_revision"] = q.plan_revision().map(Value::from).unwrap_or(Value::Null);
+    }
+    v
 }
 
 fn opt_dt(v: &Option<String>) -> Value {
