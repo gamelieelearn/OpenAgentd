@@ -64,3 +64,33 @@ export function visibleNestedWorktrees(
     (item) => !removedWorktreePaths.has(item.path),
   )
 }
+
+/**
+ * The checkouts a repository row lists: all of them (its own path, then each
+ * visible worktree), or the one ``selectedPath`` names. A selection that no
+ * longer exists falls back to all.
+ */
+export function repositoryCheckouts(
+  path: string,
+  repository: CodingWorkspaceTreeRepository | undefined,
+  removedWorktreePaths: Set<string>,
+  selectedPath: string | undefined,
+): {
+  worktrees: CodingWorkspaceTreeWorktree[]
+  /** The one checkout shown, or ``null`` for all of them. */
+  selected: string | null
+  selectedWorktree: CodingWorkspaceTreeWorktree | null
+  listPaths: string[]
+  worktreeNames: Map<string, string>
+} {
+  const worktrees = visibleNestedWorktrees(repository, removedWorktreePaths)
+  const selectedWorktree = worktrees.find((item) => item.path === selectedPath) ?? null
+  const selected = selectedPath === path || selectedWorktree ? (selectedPath ?? null) : null
+  return {
+    worktrees,
+    selected,
+    selectedWorktree,
+    listPaths: selected ? [selected] : [path, ...worktrees.map((item) => item.path)],
+    worktreeNames: new Map(worktrees.map((item) => [item.path, item.name])),
+  }
+}
