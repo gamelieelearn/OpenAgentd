@@ -20,15 +20,30 @@ export function useSessionsQuery() {
   })
 }
 
-export function useWorkspaceSessionsQuery(workspace: string, enabled = true) {
+/**
+ * Sessions in one workspace, or in several checkouts at once (a repository
+ * and its worktrees). A single path keeps the per-workspace key and filter;
+ * several use the v3 ``workspaces`` filter, which an older server ignores, so
+ * callers filter the rows they show.
+ */
+export function useWorkspaceSessionsQuery(workspace: string | readonly string[], enabled = true) {
+  const paths = typeof workspace === 'string' ? [workspace] : workspace
+  const single = paths.length === 1 ? paths[0] : null
   return useInfiniteQuery({
-    queryKey: queryKeys.session.sessions.workspace(workspace),
+    queryKey: single !== null
+      ? queryKeys.session.sessions.workspace(single)
+      : queryKeys.session.sessions.checkouts(paths),
     queryFn: ({ pageParam, signal }) =>
-      listSessions(pageParam, CODING_WORKSPACE_PAGE_SIZE, { workspace }, signal),
+      listSessions(
+        pageParam,
+        CODING_WORKSPACE_PAGE_SIZE,
+        single !== null ? { workspace: single } : { workspaces: paths },
+        signal,
+      ),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: SessionPageResponse) =>
       lastPage.has_more ? lastPage.next_cursor : undefined,
-    enabled,
+    enabled: enabled && paths.length > 0,
     staleTime: CODING_WORKSPACE_SMOOTHING_MS,
   })
 }

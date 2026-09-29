@@ -57,4 +57,10 @@ describe("query key selection", () => {
       "__all_coding__",
     ])
   })
+
+  it("keys a multi-checkout list under the shared sessions prefix", () => {
+    const key = queryKeys.session.sessions.checkouts(["/repo", "/wt/a"])
+    expect(key).toEqual(["session", "sessions", "checkouts", ["/repo", "/wt/a"]])
+    expect(key.slice(0, 2)).toEqual([...queryKeys.session.sessions.all()])
+  })
 })

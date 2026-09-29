@@ -16,6 +16,9 @@ export const queryKeys = {
       active: () => ['session', 'sessions', 'active'] as const,
       search: (query: string) => ['session', 'sessions', 'search', query] as const,
       workspace: (workspace: string) => ['session', 'sessions', 'workspace', workspace] as const,
+      /** One list across several checkouts: a repository and its worktrees. */
+      checkouts: (paths: readonly string[]) => ['session', 'sessions', 'checkouts', paths] as const,
+      checkoutsAll: () => ['session', 'sessions', 'checkouts'] as const,
       list: (offset: number, limit: number) =>
         ['session', 'sessions', 'list', offset, limit] as const,
       detail: (id: string) => ['session', 'sessions', id] as const,

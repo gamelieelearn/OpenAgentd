@@ -6,6 +6,7 @@ import {
   getCodingWorkspaceGitHistory,
   getCodingWorkspaceStatus,
   listCodingWorkspaceFiles,
+  listSessions,
 } from '@/api/client'
 
 const originalFetch = globalThis.fetch
@@ -32,5 +33,21 @@ describe('workspace API reads', () => {
     ])
 
     expect(signals).toEqual([signal, signal, signal, signal, signal])
+  })
+})
+
+describe('listSessions', () => {
+  it('repeats the workspaces param once per checkout path', async () => {
+    const urls: string[] = []
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      urls.push(String(input))
+      return Promise.resolve(new Response('{"data":[],"next_cursor":null,"has_more":false}', { status: 200 }))
+    }) as typeof fetch
+
+    await listSessions(null, 5, { workspaces: ['/repo/project', '/data/worktrees/a,b'] })
+
+    const params = new URL(urls[0], 'http://x').searchParams
+    expect(params.getAll('workspaces')).toEqual(['/repo/project', '/data/worktrees/a,b'])
+    expect(params.has('workspace')).toBe(false)
   })
 })

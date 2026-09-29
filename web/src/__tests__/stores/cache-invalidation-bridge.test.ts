@@ -479,6 +479,21 @@ describe('prependSession', () => {
       's5',
     ])
   })
+
+  it('adds a session to every multi-checkout list that includes its workspace', () => {
+    const client = new QueryClient()
+    const withWorktree = queryKeys.session.sessions.checkouts(['/repo/project', '/wt/task-a'])
+    const otherRepo = queryKeys.session.sessions.checkouts(['/repo/other', '/wt/task-b'])
+    seedInfinite(client, [[makeSession('s1', 'A')]], withWorktree)
+    seedInfinite(client, [[makeSession('s2', 'B')]], otherRepo)
+
+    prependWorkspaceSession(client, '/wt/task-a', makeSession('new', null))
+
+    const ids = (key: readonly unknown[]) =>
+      client.getQueryData<InfiniteData<SessionPageResponse>>(key)?.pages[0].data.map((s) => s.id)
+    expect(ids(withWorktree)).toEqual(['new', 's1'])
+    expect(ids(otherRepo)).toEqual(['s2'])
+  })
 })
 
 // ─── patchSessionRunning ──────────────────────────────────────────────────
