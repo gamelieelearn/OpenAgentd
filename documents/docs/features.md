@@ -501,7 +501,8 @@ run from the terminal (the native Rust binary since v3.0.0).
     transcript, and transcript find opens it when it matches inside.
     Since `[v3.1.0]` the running row also says how long the turn has run,
     counted from its prompt ("Working · 1m 12s · Shell: Run web tests"),
-    and a turn waiting on your answer shows its counts instead of "Working".
+    leaves failures for the finished row to count, and a turn waiting on
+    your answer shows its counts instead of "Working".
   - An open row stays pinned to the top of the transcript while its steps
     scroll under it, and a **Collapse** row ends the steps, so a long fold
     closes without scrolling back up. Closing from either leaves the row

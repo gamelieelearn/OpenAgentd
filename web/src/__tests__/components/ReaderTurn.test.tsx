@@ -185,6 +185,14 @@ describe('AssistantTurn — reader mode', () => {
     expect(screen.getByRole('button', { name: /^Working · 5s · 1 read, 1 edit/ })).toBeTruthy()
   })
 
+  it('does not mention failures while working', () => {
+    const failedRun: ContentBlock = { id: 'run', type: 'tool', content: '', toolName: 'shell', toolArgs: '{"command":"false"}', toolDone: true, toolResult: '[Failed — exit code 1]' }
+    renderTurn([failedRun, running[4]], { isWorking: true, startedAt: Date.now() - 5000 })
+
+    const row = screen.getByRole('button', { name: /^Working/ })
+    expect(row.textContent).not.toMatch(/failed/)
+  })
+
   it('says a thought-only trace thought, and counts failures', () => {
     renderTurn([
       { id: 'think', type: 'thinking', content: 'Hmm.' },
