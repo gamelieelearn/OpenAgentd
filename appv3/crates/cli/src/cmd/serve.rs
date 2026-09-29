@@ -1,19 +1,22 @@
-//! `openagentd server serve` — port of `app/cli/commands/serve.py`
-//! (foreground server for the desktop sidecar / embedding, and the process
-//! `server start` daemonises in place of uvicorn).
+//! `openagentd server serve`: the foreground server. The desktop sidecar,
+//! `make run`, and the `server start` daemon all run this.
 
-use crate::argparse::Ns;
-use crate::cmd::server::{ns_bool, ns_int, ns_str, DAEMON_ENV};
+use crate::cli::ServeArgs;
+use crate::cmd::server::DAEMON_ENV;
 use appv3_api::{create_app, AppState, ConnInfo, Policy};
 use serde_json::json;
 use std::io::Write;
 use std::sync::OnceLock;
 use tokio::sync::Notify;
 
-/// `app/server.py`: `setup_logging(settings.LOG_LEVEL, file_log_level=settings.FILE_LOG_LEVEL)`.
-fn init_logging() {
+/// stderr at `LOG_LEVEL`, `app.log` at `FILE_LOG_LEVEL`. The daemon's stderr
+/// is appended to `app.log` too, so it keeps log records off stderr (the
+/// file sink already has them) and only stray output such as a fatal
+/// error lands there.
+fn init_logging(daemon: bool) {
     let file_level = std::env::var("FILE_LOG_LEVEL").ok().filter(|v| !v.is_empty()).unwrap_or_else(|| "DEBUG".into());
-    crate::logging::setup(&appv3_core::settings().log_level, &file_level, true);
+    let stderr_level = if daemon { "CRITICAL" } else { appv3_core::settings().log_level.as_str() };
+    crate::logging::setup(stderr_level, &file_level, true);
     crate::logging::install_panic_hook();
 }
 
@@ -24,9 +27,8 @@ fn parent_gone() -> &'static Notify {
     N.get_or_init(Notify::new)
 }
 
-/// `_start_parent_watch` — shut down gracefully when the parent dies (on
-/// every OS; v2 signalled itself with SIGTERM, which Windows lacks), hard
-/// exit if shutdown has not finished within the grace period.
+/// Shut down gracefully when the parent dies, and exit hard if shutdown has
+/// not finished within the grace period.
 fn start_parent_watch(parent: i32) {
     std::thread::Builder::new()
         .name("parent-watch".into())
@@ -79,40 +81,34 @@ async fn shutdown_signal() {
     }
 }
 
-pub fn cmd_serve(ns: &Ns) -> anyhow::Result<()> {
-    // `app/cli/__main__.py` stdio prime: the desktop shell captures stderr
-    // into backend.log, and this line marks the sidecar start there. The
-    // `server start` daemon (uvicorn in v2) does not print it.
-    if std::env::var_os(DAEMON_ENV).is_none() {
+pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
+    // The desktop shell captures stderr into backend.log, and this line
+    // marks the sidecar start there. The `server start` daemon skips it.
+    let daemon = std::env::var_os(DAEMON_ENV).is_some();
+    if !daemon {
         eprintln!("openagentd: sidecar bootstrap");
     }
     std::env::remove_var(DAEMON_ENV);
-    let host = ns_str(ns, "host").unwrap_or("127.0.0.1").to_string();
-    let port = ns_int(ns, "port").unwrap_or(0);
-    let Ok(port) = u16::try_from(port) else { crate::pystr::uncaught("OverflowError", "bind(): port must be 0-65535.") };
+    let host = args.host.clone();
+    let port = args.port;
     // Token must be in env before the middleware policy is built.
-    let token = if ns_bool(ns, "generate_token") {
+    let token = if args.generate_token {
         let t = appv3_api::util::token_urlsafe();
         std::env::set_var("OPENAGENTD_DESKTOP_TOKEN", &t);
         Some(t)
     } else {
         std::env::var("OPENAGENTD_DESKTOP_TOKEN").ok().filter(|t| !t.is_empty())
     };
-    // v2 builds `settings` (reading `.env`) when importing server_settings.
     appv3_core::env::init_env();
     let has_auth =
-        token.is_some() || std::env::var("OPENAGENTD_ACCESS_KEY").is_ok_and(|v| !v.is_empty()) || crate::net::server_settings().access_key.is_some_and(|k| !k.is_empty());
-    crate::net::require_loopback_or_auth(&host, has_auth);
-    // Hard-enforce production mode in this entry point (before settings load).
-    if std::env::var_os("APP_ENV").is_none() {
-        std::env::set_var("APP_ENV", "production");
-    }
+        token.is_some() || std::env::var("OPENAGENTD_ACCESS_KEY").is_ok_and(|v| !v.is_empty()) || crate::net::server_settings()?.access_key.is_some_and(|k| !k.is_empty());
+    crate::net::require_loopback_or_auth(&host, has_auth)?;
     appv3_core::env::load_config_env(&appv3_core::settings().config_dir);
-    init_logging();
-    if let Some(p) = ns_int(ns, "parent_pid") {
-        start_parent_watch(p as i32);
+    init_logging(daemon);
+    if let Some(p) = args.parent_pid {
+        start_parent_watch(p);
     }
-    let handshake = ns_bool(ns, "handshake");
+    let handshake = args.handshake;
     // Read the token and handshake path, then drop them from the process
     // environment before any thread or child process can inherit them.
     let policy = Policy::from_env();

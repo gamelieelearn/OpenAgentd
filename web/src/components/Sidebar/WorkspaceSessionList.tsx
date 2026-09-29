@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { ChevronRight, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { ChevronRight, GitBranch, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { useWorkspaceSessionsQuery, useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -24,6 +24,7 @@ function WorkspaceSessionRowView({
   isEditing,
   currentSessionId,
   path,
+  checkoutName,
   mobileLongPressActions,
   onSessionSelect,
   onSessionDelete,
@@ -38,6 +39,8 @@ function WorkspaceSessionRowView({
   isEditing: boolean
   currentSessionId?: string
   path: string
+  /** Worktree the session runs in, when the list spans several checkouts. */
+  checkoutName: string | null
   mobileLongPressActions: boolean
   onSessionSelect: (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => void
   onSessionDelete: (e: React.MouseEvent, session: SessionResponse) => void
@@ -94,37 +97,19 @@ function WorkspaceSessionRowView({
     (expandedOverride !== null
       ? expandedOverride
       : (isCurrent || hasActiveWork))
+  const subagentToggleLabel = `${isExpanded ? 'Collapse' : 'Expand'} ${subagents.length} subagents`
 
   return (
     <div className="space-y-px">
       <div
+        data-session-row
         className={`group/row flex h-(--spacing-list-row) items-center rounded-sm pr-1 transition-colors duration-(--motion-instant) ${
           isCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'
         }`}
       >
-        {hasSubagents ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              setExpandedOverride(!isExpanded)
-            }}
-            className="flex h-6 w-4 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:text-(--color-text) pointer-coarse:h-11 pointer-coarse:w-8"
-            aria-expanded={isExpanded}
-            aria-label={isExpanded ? `Collapse ${subagents.length} subagents` : `Expand ${subagents.length} subagents`}
-            title={isExpanded ? `Collapse ${subagents.length} subagents` : `Expand ${subagents.length} subagents`}
-          >
-            <ChevronRight
-              size={11}
-              className={`shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
-              aria-hidden="true"
-            />
-          </button>
-        ) : (
-          <span className="w-4 shrink-0 pointer-coarse:w-8" aria-hidden="true" />
-        )}
-        <div className="min-w-0 flex-1">
+        {/* The title keeps its natural width (basis auto) so, when space
+            runs out, the worktree tag beside it gives way first. */}
+        <div className="min-w-0 flex-[1_1_auto]">
         {isEditing ? (
           <div className="flex h-(--spacing-list-row) min-w-0 items-center gap-1.5 px-1.5 text-xs">
             <SessionStatusMark status={status} />
@@ -170,29 +155,54 @@ function WorkspaceSessionRowView({
               >
                 <SessionStatusMark status={status} />
                 <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${status !== 'idle' ? 'text-(--color-text)' : ''}`}>{sessionTitle}</span>
-                {hasSubagents && (
-                  <span
-                    className="ml-1 inline-flex shrink-0 items-center gap-1 rounded-full bg-(--bg-key) px-1.5 font-mono text-[11px] leading-4 text-(--color-text-subtle)"
-                    aria-label={`${subagents.length} subagent${subagents.length > 1 ? 's' : ''}`}
-                  >
-                    {!isExpanded && hasActiveWork && (
-                      <SessionStatusMark
-                        status={hasWaitingSubagent ? 'needs_input' : 'running'}
-                        label={hasWaitingSubagent ? 'Subagent waiting for lead' : 'Subagent working'}
-                      />
-                    )}
-                    <span>{subagents.length}</span>
-                  </span>
-                )}
+                {checkoutName && <span className="sr-only">{`, in worktree ${checkoutName}`}</span>}
               </LongPressButton>
             }
           />
-          <TooltipContent>{`${sessionTitle} · ${sessionDate}`}</TooltipContent>
+          <TooltipContent>{[sessionTitle, checkoutName, sessionDate].filter(Boolean).join(' · ')}</TooltipContent>
         </Tooltip>
         )}
         </div>
-        {/* Meta slot: the age reads at rest; hover/focus swaps it for the
-            row actions in the same place, so neither covers the title. */}
+        {/* Subagents fold behind a count pill beside the title, so rows
+            without any keep no chevron gutter before it. */}
+        {hasSubagents && !isEditing && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              setExpandedOverride(!isExpanded)
+            }}
+            className="ml-1 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-full bg-(--bg-key) pl-1.5 pr-1 font-mono text-[11px] leading-4 text-(--color-text-subtle) transition-colors hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-2.5"
+            aria-expanded={isExpanded}
+            aria-label={subagentToggleLabel}
+            title={subagentToggleLabel}
+          >
+            {!isExpanded && hasActiveWork && (
+              <SessionStatusMark
+                status={hasWaitingSubagent ? 'needs_input' : 'running'}
+                label={hasWaitingSubagent ? 'Subagent waiting for lead' : 'Subagent working'}
+              />
+            )}
+            <span>{subagents.length}</span>
+            <ChevronRight
+              size={10}
+              className={`shrink-0 transition-transform duration-(--motion-fast) ${isExpanded ? 'rotate-90' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
+        )}
+        {/* Meta slot: the worktree tag and age read at rest; hover/focus
+            swaps them for the row actions in the same place, so neither
+            covers the title. The tag is its own flex item with an explicit
+            minimum, so it shrinks (faster than the title) instead of
+            holding its full width. */}
+        {checkoutName && !isEditing && (
+          <span className={`ml-1 inline-flex min-w-12 max-w-24 shrink-2 items-center gap-0.5 font-mono text-[11px] text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
+            <GitBranch size={10} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
+            <span data-checkout-tag className="truncate">{checkoutName}</span>
+          </span>
+        )}
         {sessionAge && !isEditing && (
           <span className={`shrink-0 pl-1 pr-1 text-[11px] tabular-nums text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
             {sessionAge}
@@ -222,8 +232,8 @@ function WorkspaceSessionRowView({
       </div>
 
       {hasSubagents && isExpanded && (
-        // The guide tracks the status mark, so it moves with the wider touch chevron.
-        <div className="ml-[21px] space-y-px border-l border-(--color-border-subtle) py-0.5 pl-1 pointer-coarse:ml-[37px]">
+        // Flat, no guide: subagent marks line up under the lead's title.
+        <div className="space-y-px py-0.5 pl-[18px]">
           {subagents.map((sub) => {
             const isSubCurrent = sub.session_id === currentSessionId
             const subTitle = sub.title ? sub.title.replace(/^[^:]+:\s*/, '') : sub.member_id
@@ -307,6 +317,8 @@ const noop = () => {}
 
 export function WorkspaceSessionList({
   path,
+  paths,
+  checkoutNames,
   currentSessionId,
   runningSessions,
   editingSessionId = null,
@@ -322,6 +334,13 @@ export function WorkspaceSessionList({
   onSessionContextActions,
 }: {
   path: string
+  /**
+   * Every checkout the list spans (a repository and its worktrees). Omit for
+   * a single workspace, which lists ``path`` alone.
+   */
+  paths?: readonly string[]
+  /** Worktree names by path; sessions there carry the name as a tag. */
+  checkoutNames?: ReadonlyMap<string, string>
   currentSessionId?: string
   runningSessions?: SessionResponse[]
   /** The session whose title is being edited in place, if any. */
@@ -337,11 +356,15 @@ export function WorkspaceSessionList({
   onSessionLongPress: (session: SessionResponse) => void
   onSessionContextActions: (session: SessionResponse, event: React.MouseEvent) => void
 }) {
-  const sessions = useWorkspaceSessionsQuery(path, !collapsed)
+  const multiCheckout = paths !== undefined && paths.length > 1
+  const sessions = useWorkspaceSessionsQuery(multiCheckout ? paths : path, !collapsed)
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = sessions
+  // An older server ignores the multi-checkout filter and sends every
+  // workspace's sessions, so keep only the listed checkouts.
+  const listed = (session: SessionResponse) => !multiCheckout || paths.includes(session.workspace ?? '')
   const workspaceSessions = collapsed
     ? (runningSessions ?? [])
-    : (sessions.data?.pages.flatMap((page) => page.data) ?? [])
+    : (sessions.data?.pages.flatMap((page) => page.data).filter(listed) ?? [])
 
   // The sidebar passes inline callbacks; rows get stable wrappers that call
   // the latest ones, so ``memo`` can skip rows whose session did not change.
@@ -365,10 +388,11 @@ export function WorkspaceSessionList({
   return (
     <div className={className}>
       {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && (
-        <p className="flex h-6 items-center pl-[22px] text-[11px] text-(--color-text-subtle)">No sessions yet.</p>
+        <p className="flex h-6 items-center pl-6 text-[11px] text-(--color-text-subtle)">No sessions yet.</p>
       )}
       {workspaceSessions.map((session) => {
         const isCurrent = session.id === currentSessionId
+        const workspace = session.workspace || path
         return (
           <WorkspaceSessionRow
             key={session.id}
@@ -376,7 +400,8 @@ export function WorkspaceSessionList({
             isCurrent={isCurrent}
             isEditing={session.id === editingSessionId}
             currentSessionId={currentSessionId}
-            path={path}
+            path={workspace}
+            checkoutName={checkoutNames?.get(workspace) ?? null}
             mobileLongPressActions={mobileLongPressActions}
             {...handlers}
           />
@@ -387,10 +412,13 @@ export function WorkspaceSessionList({
           type="button"
           onClick={() => { if (!isFetchingNextPage) void fetchNextPage() }}
           disabled={isFetchingNextPage}
-          className="flex h-6 w-full items-center gap-1.5 rounded-sm pl-[22px] text-left text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text) disabled:cursor-default"
+          className="flex h-6 w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text) disabled:cursor-default"
           aria-label={isFetchingNextPage ? 'Loading more sessions' : 'Show more sessions'}
         >
-          {isFetchingNextPage && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
+          {/* The status-mark slot, so the label lines up with the titles. */}
+          <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
+            {isFetchingNextPage && <Loader2 size={11} className="animate-spin" />}
+          </span>
           {isFetchingNextPage ? 'Loading…' : 'Show more'}
         </button>
       )}

@@ -18,6 +18,7 @@ import { useTerminalStore } from '@/stores/useTerminalStore'
 
 import type { ChangedFileInfo } from './diff-helpers'
 import {
+  type DiffTabRequest,
   type DockTab,
   type DockView,
   type DockViewRequest,
@@ -52,6 +53,8 @@ interface DockTabsOptions {
   viewRequest: DockViewRequest | null
   handledViewRequestKeyRef?: React.RefObject<number>
   onActiveViewChange?: (view: DockView | null) => void
+  diffRequest?: DiffTabRequest | null
+  handledDiffRequestKeyRef?: React.RefObject<number>
 }
 
 export function useDockTabs({
@@ -64,6 +67,8 @@ export function useDockTabs({
   viewRequest,
   handledViewRequestKeyRef: parentHandledViewRequestKeyRef,
   onActiveViewChange,
+  diffRequest,
+  handledDiffRequestKeyRef: parentHandledDiffRequestKeyRef,
 }: DockTabsOptions) {
   // Chat workspaces have no Git review tab — the root is not a repository.
   const defaultTabId = chatWorkspace ? '' : REVIEW_TAB_ID
@@ -170,6 +175,19 @@ export function useDockTabs({
     handledViewRequestKeyRef.current = viewRequest.key
     openTab(viewRequest.view === 'tasks' ? TASKS_TAB : SCHEDULE_TAB)
   }, [viewRequest, openTab, handledViewRequestKeyRef])
+
+  const fallbackHandledDiffRequestKeyRef = useRef(0)
+  const handledDiffRequestKeyRef = parentHandledDiffRequestKeyRef ?? fallbackHandledDiffRequestKeyRef
+  useEffect(() => {
+    if (!diffRequest || diffRequest.key <= handledDiffRequestKeyRef.current) return
+    handledDiffRequestKeyRef.current = diffRequest.key
+    openDiffTab({
+      path: diffRequest.path,
+      status: diffRequest.status ?? 'M',
+      additions: 0,
+      deletions: 0,
+    })
+  }, [diffRequest, openDiffTab, handledDiffRequestKeyRef])
 
   const activeView: DockView | null =
     activeTab?.type === 'tasks' || activeTab?.type === 'schedule' ? activeTab.type : null

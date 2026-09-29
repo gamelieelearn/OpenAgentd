@@ -1,7 +1,8 @@
 """Build a turbovec IdMapIndex over documents/, embedded locally.
 
 Usage:
-    uv run --group experiment python experiments/turbovec_docs/build_index.py
+    uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' \
+        python experiments/turbovec_docs/build_index.py
 """
 
 from __future__ import annotations

@@ -59,6 +59,21 @@ describe('readerSegments — what folds behind the work summary', () => {
   it('folds text a live turn has since followed with more work', () => {
     expect(readerSegments([text('n1'), tool('s1', 'shell', {}, { toolDone: false })], settled)).toEqual([{ kind: 'work', indices: [0, 1] }])
   })
+
+  it('starts a new fold after a compaction divider, so the work before and after it reads apart', () => {
+    const blocks = [
+      thinking('t1'), tool('r1', 'read'), text('n1', 'Running the tests next.'),
+      { id: 'c1', type: 'compaction', content: 'summary' } as ContentBlock,
+      tool('s1', 'shell'), text('a1'),
+    ]
+
+    expect(readerSegments(blocks, settled)).toEqual([
+      { kind: 'work', indices: [0, 1, 2] },
+      { kind: 'block', index: 3 },
+      { kind: 'work', indices: [4] },
+      { kind: 'block', index: 5 },
+    ])
+  })
 })
 
 describe('summarizeWork', () => {

@@ -1,18 +1,20 @@
-//! `app/cli/net.py`.
+//! Server address resolution, LAN discovery, and a tiny HTTP GET for health
+//! checks. The GET is hand-rolled on purpose: a proxy-aware client would
+//! send `localhost` checks through `HTTP_PROXY`.
 
-use crate::pystr::system_exit;
-use appv3_core::runtime_settings::load_server_settings;
+use anyhow::{bail, Context, Result};
+use appv3_core::runtime_settings::{load_server_settings, ServerYaml};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs, UdpSocket};
 use std::time::Duration;
 
-pub const DEFAULT_PORT: i64 = 4082;
+pub const DEFAULT_PORT: u16 = 4082;
 
 pub struct ServerAddresses {
     pub local: String,
     pub lan: Vec<String>,
 }
 
-/// `is_loopback_host` (exact v2 semantics: no bracket/whitespace stripping).
+/// `localhost`, or a loopback IP (an IPv6 zone suffix is allowed).
 pub fn is_loopback_host(host: &str) -> bool {
     if host.to_lowercase() == "localhost" {
         return true;
@@ -25,10 +27,11 @@ pub fn is_loopback_host(host: &str) -> bool {
     }
 }
 
-pub fn require_loopback_or_auth(host: &str, has_auth: bool) {
+pub fn require_loopback_or_auth(host: &str, has_auth: bool) -> Result<()> {
     if !has_auth && !is_loopback_host(host) {
-        system_exit("Refusing to bind a non-loopback host without authentication; configure --key or an access key.");
+        bail!("refusing to listen on {host} without authentication; pass --key or configure an access key");
     }
+    Ok(())
 }
 
 pub fn display_host(host: &str) -> String {
@@ -39,41 +42,15 @@ pub fn display_host(host: &str) -> String {
     }
 }
 
-/// v2 lets `load_server_settings` exceptions escape with a traceback.
-pub fn server_settings() -> appv3_core::runtime_settings::ServerYaml {
-    match load_server_settings() {
-        Ok(s) => s,
-        Err(e) => crate::pystr::uncaught("ValueError", &e.to_string()),
-    }
+pub fn server_settings() -> Result<ServerYaml> {
+    load_server_settings().context("read server.yaml")
 }
 
-pub fn resolve_port(port: Option<i64>, configured: Option<i64>) -> i64 {
-    if let Some(p) = port {
-        return p;
-    }
-    if let Some(c) = configured.filter(|&c| c != 0) {
-        return c;
-    }
-    let p = server_settings().port;
-    if p != 0 {
-        p
-    } else {
-        DEFAULT_PORT
-    }
-}
-
-pub fn resolve_host(arg_host: Option<&str>, configured: Option<&str>) -> String {
-    if let Some(h) = arg_host.filter(|h| !h.is_empty()) {
-        return h.into();
-    }
-    if let Some(c) = configured {
-        return c.into();
-    }
-    server_settings().host
-}
-
-fn format_url(host: &str, port: i64) -> String {
-    format!("http://{}:{port}", display_host(host))
+/// `(host, port)` from the flags, else `server.yaml`, else the defaults.
+pub fn resolve_addr(host: Option<&str>, port: Option<u16>, cfg: &ServerYaml) -> (String, u16) {
+    let host = host.filter(|h| !h.is_empty()).map(String::from).unwrap_or_else(|| cfg.host.clone());
+    let port = port.or_else(|| u16::try_from(cfg.port).ok().filter(|&p| p != 0)).unwrap_or(DEFAULT_PORT);
+    (host, port)
 }
 
 #[cfg(unix)]
@@ -125,19 +102,15 @@ pub fn lan_ips() -> Vec<String> {
     ips
 }
 
-pub fn server_addresses(host: &str, port: i64) -> ServerAddresses {
+pub fn server_addresses(host: &str, port: u16) -> ServerAddresses {
     let lan = lan_ips().into_iter().map(|ip| format!("http://{ip}:{port}")).collect();
-    ServerAddresses { local: format_url(host, port), lan }
+    ServerAddresses { local: format!("http://{}:{port}", display_host(host)), lan }
 }
 
-fn socket_addrs(host: &str, port: i64) -> Vec<SocketAddr> {
-    let Ok(port) = u16::try_from(port) else { return vec![] };
-    (host, port).to_socket_addrs().map(|a| a.collect()).unwrap_or_default()
-}
-
-/// `socket.create_connection((host, port), timeout)`.
-pub fn connect(host: &str, port: i64, timeout: Duration) -> Option<TcpStream> {
-    for a in socket_addrs(host, port) {
+/// The first address of `host:port` that accepts a connection.
+pub fn connect(host: &str, port: u16, timeout: Duration) -> Option<TcpStream> {
+    let addrs: Vec<SocketAddr> = (host, port).to_socket_addrs().map(|a| a.collect()).unwrap_or_default();
+    for a in addrs {
         if let Ok(s) = TcpStream::connect_timeout(&a, timeout) {
             return Some(s);
         }
@@ -145,18 +118,18 @@ pub fn connect(host: &str, port: i64, timeout: Duration) -> Option<TcpStream> {
     None
 }
 
-pub fn is_port_reachable(host: &str, port: i64) -> bool {
+pub fn is_port_reachable(host: &str, port: u16) -> bool {
     connect(host, port, Duration::from_secs(1)).is_some()
 }
 
-/// Minimal `urllib.request.urlopen` GET → `(status, body)`; `None` on
-/// connection/protocol errors.
-pub fn http_get(host: &str, port: i64, path: &str, timeout: Duration) -> Option<(u16, Vec<u8>)> {
+/// `GET path` → `(status, body)`; `None` on connection or protocol errors.
+pub fn http_get(host: &str, port: u16, path: &str, timeout: Duration) -> Option<(u16, Vec<u8>)> {
     use std::io::{Read, Write};
     let mut s = connect(host, port, timeout)?;
     s.set_read_timeout(Some(timeout)).ok()?;
     s.set_write_timeout(Some(timeout)).ok()?;
-    let req = format!("GET {path} HTTP/1.1\r\nAccept-Encoding: identity\r\nHost: {host}:{port}\r\nUser-Agent: Python-urllib/3.14\r\nConnection: close\r\n\r\n");
+    let ua = format!("openagentd/{}", appv3_core::VERSION);
+    let req = format!("GET {path} HTTP/1.1\r\nAccept-Encoding: identity\r\nHost: {host}:{port}\r\nUser-Agent: {ua}\r\nConnection: close\r\n\r\n");
     s.write_all(req.as_bytes()).ok()?;
     let mut buf = vec![];
     s.read_to_end(&mut buf).ok()?;

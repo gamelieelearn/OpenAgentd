@@ -1,19 +1,17 @@
-//! `openagentd cleanup` — ports of `app/cli/commands/cleanup.py` and
-//! `app/services/artifact_cleanup.py::cleanup_generated_artifacts`.
+//! `openagentd cleanup`: expired sessions and generated artifacts (session
+//! files, snapshots, telemetry, managed worktrees). Dry run unless `--apply`.
 
-use crate::argparse::Ns;
-use crate::cmd::server::{ns_bool, ns_int};
-use crate::ui::{bold, cyan, dim, green, yellow};
+use crate::cli::CleanupArgs;
+use crate::ui::{bold, cyan, dim, green, tilde, yellow};
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 struct Candidate {
     path: PathBuf,
-    #[allow(dead_code)]
     reason: &'static str,
     bytes: u64,
 }
@@ -27,6 +25,8 @@ struct CleanupResult {
     expired_messages: i64,
     vacuum_reclaimed_bytes: Option<u64>,
     vacuum_error: Option<String>,
+    /// Set when the database has no sessions table yet (nothing was scanned).
+    not_initialized: bool,
 }
 
 fn mtime(p: &Path) -> Option<DateTime<Utc>> {
@@ -69,7 +69,7 @@ fn child_dirs(root: &Path) -> Vec<PathBuf> {
     rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect()
 }
 
-/// `uuid.UUID(value)` accepts it.
+/// Accepts the forms Python's `uuid.UUID(value)` does.
 fn is_uuid(v: &str) -> bool {
     let h = v.replace("urn:", "").replace("uuid:", "");
     let h = h.trim_matches(|c| c == '{' || c == '}').replace('-', "");
@@ -116,11 +116,13 @@ fn resolve(p: &Path) -> PathBuf {
 async fn cleanup_generated_artifacts(db: &SqlitePool, db_path: &Path, older_than_days: Option<i64>, dry_run: bool, vacuum: bool) -> Result<CleanupResult, sqlx::Error> {
     let s = appv3_core::settings();
     let cutoff = older_than_days.map(|d| Utc::now() - chrono::Duration::days(d));
-    let rows = session_rows(db).await?;
-    let live: HashSet<String> = rows.iter().flatten().map(|r| r.id.clone()).collect();
+    let Some(rows) = session_rows(db).await? else {
+        return Ok(CleanupResult { dry_run, not_initialized: true, ..Default::default() });
+    };
+    let live: HashSet<String> = rows.iter().map(|r| r.id.clone()).collect();
     let mut expired: Vec<String> = vec![];
     let mut coding_workspaces: HashSet<String> = HashSet::new();
-    for r in rows.iter().flatten() {
+    for r in &rows {
         coding_workspaces.insert(resolve(Path::new(&r.workspace)).display().to_string());
         if let (Some(c), Some(at)) = (cutoff, r.created_at) {
             if at < c && !expired.contains(&r.id) {
@@ -209,11 +211,19 @@ async fn cleanup_generated_artifacts(db: &SqlitePool, db_path: &Path, older_than
             }
         }
     }
-    Ok(CleanupResult { dry_run, candidates, deleted, expired_sessions: expired.len(), expired_messages, vacuum_reclaimed_bytes: reclaimed, vacuum_error: verr })
+    Ok(CleanupResult {
+        dry_run,
+        candidates,
+        deleted,
+        expired_sessions: expired.len(),
+        expired_messages,
+        vacuum_reclaimed_bytes: reclaimed,
+        vacuum_error: verr,
+        not_initialized: false,
+    })
 }
 
-/// `app/core/db.py::vacuum_sqlite` → `(size_before, size_after)`; the error
-/// string is `str(sqlite3.Error)`.
+/// `VACUUM` + WAL checkpoint → `(size_before, size_after)`.
 async fn vacuum_sqlite(path: &Path) -> Result<(u64, u64), String> {
     use sqlx::Connection;
     let before = std::fs::metadata(path).map(|m| m.len()).map_err(|e| e.to_string())?;
@@ -228,7 +238,6 @@ async fn vacuum_sqlite(path: &Path) -> Result<(u64, u64), String> {
     Ok((before, after))
 }
 
-/// `_format_bytes`.
 fn format_bytes(size: u64) -> String {
     let mut v = size as f64;
     for unit in ["B", "KB", "MB", "GB"] {
@@ -240,33 +249,49 @@ fn format_bytes(size: u64) -> String {
     unreachable!()
 }
 
-pub fn cmd_cleanup(ns: &Ns) {
-    let older = ns_int(ns, "older_than_days");
-    let dry_run = ns_bool(ns, "dry_run");
-    let vacuum = ns_bool(ns, "vacuum");
-    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("tokio runtime");
-    let result = rt.block_on(async move {
-        let db_path = appv3_core::settings().database_path.clone();
-        if let Some(p) = Path::new(&db_path).parent() {
-            let _ = std::fs::create_dir_all(p);
-        }
-        let opts = SqliteConnectOptions::from_str(&format!("sqlite://{}", Path::new(&db_path).display()))?.create_if_missing(true).busy_timeout(std::time::Duration::from_secs(5));
-        let pool = SqlitePoolOptions::new().max_connections(1).connect_with(opts).await?;
-        let r = cleanup_generated_artifacts(&pool, Path::new(&db_path), older, dry_run, vacuum).await;
-        pool.close().await;
-        r
-    });
-    let r = match result {
-        Ok(r) => r,
-        Err(e) => crate::pystr::uncaught("sqlalchemy.exc.OperationalError", &e.to_string()),
+pub fn cleanup(args: &CleanupArgs) -> Result<()> {
+    let dry_run = !args.apply;
+    let db_path = appv3_core::settings().database_path.clone();
+    // Without a database every session file would look orphaned, so skip
+    // the whole pass (and do not create an empty database).
+    let r = if !db_path.is_file() {
+        CleanupResult { dry_run, not_initialized: true, ..Default::default() }
+    } else {
+        let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+        rt.block_on(async {
+            let opts = SqliteConnectOptions::new().filename(&db_path).busy_timeout(std::time::Duration::from_secs(5));
+            let pool = SqlitePoolOptions::new().max_connections(1).connect_with(opts).await?;
+            let r = cleanup_generated_artifacts(&pool, &db_path, Some(args.older_than_days.into()), dry_run, args.vacuum).await;
+            pool.close().await;
+            r
+        })
+        .with_context(|| format!("clean up {}", db_path.display()))?
     };
+    print_result(&r, args.limit);
+    Ok(())
+}
+
+fn print_result(r: &CleanupResult, limit: usize) {
     let mode = if r.dry_run { "dry run" } else { "deleted" };
     let total: u64 = r.candidates.iter().map(|c| c.bytes).sum();
     println!("  {} ({mode})", bold(&cyan("Generated artifact cleanup")));
+    if r.not_initialized {
+        println!("  {}", yellow("Database not initialized yet; session-backed cleanup was skipped."));
+        return;
+    }
     println!("  {} {}", dim("Expired sessions:"), r.expired_sessions);
     println!("  {} {}", dim("Expired messages:"), r.expired_messages);
     println!("  {} {}", dim("Candidates:"), r.candidates.len());
     println!("  {}      {}", dim("Total:"), format_bytes(total));
+    let mut sorted: Vec<&Candidate> = r.candidates.iter().collect();
+    sorted.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.path.cmp(&b.path)));
+    let shown = if limit == 0 { sorted.len() } else { limit.min(sorted.len()) };
+    for c in &sorted[..shown] {
+        println!("    {:>9}  {}  {}", format_bytes(c.bytes), dim(&format!("{:<32}", c.reason)), tilde(&c.path));
+    }
+    if shown < sorted.len() {
+        println!("    {} {} more (--limit 0 lists all)", dim("…"), sorted.len() - shown);
+    }
     if let Some(b) = r.vacuum_reclaimed_bytes {
         println!("  {} {}", dim("Vacuum reclaimed:"), format_bytes(b));
     }

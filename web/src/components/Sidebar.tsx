@@ -5,9 +5,13 @@
  *
  *   • A "Workspaces" section header (VS Code view header) whose actions —
  *     Open folder…, Collapse all — stay reachable however long the list is.
- *   • Repositories, worktrees, and their sessions as 28 px rows. Sessions
- *     nest under an indent guide and page in with an explicit "Show more"
- *     row, so the sidebar has exactly one scroller.
+ *   • Repositories and their sessions as 28 px rows, one level deep.
+ *     Worktrees are not rows: a repository lists the sessions of every
+ *     checkout (its own and each worktree's) as one list, worktree sessions
+ *     tagged with the worktree's name, and a checkout chip on the row
+ *     narrows it to one checkout and holds the worktree actions. Sessions
+ *     page in with an explicit "Show more" row, so the sidebar has exactly
+ *     one scroller.
  *   • Mobile drawer footer: ⚙ Settings · ❔ Help (command palette) · 🌙
  *     ThemeToggle. On desktop those live in the status bar.
  *
@@ -18,9 +22,9 @@
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
@@ -37,6 +41,7 @@ import {
 } from '@/lib/workbench-layout'
 import {
   Activity,
+  Check,
   ChevronRight,
   ChevronsDownUp,
   Copy,
@@ -64,7 +69,12 @@ import { WORKSPACES_KEY, workspaceLabel } from '@/utils/workspace'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
-import { CONTEXT_MENU_ITEM_CLASS, CONTEXT_MENU_ITEM_DANGER_CLASS, ContextMenu } from '@/components/ui/context-menu'
+import {
+  CONTEXT_MENU_ITEM_CLASS,
+  CONTEXT_MENU_ITEM_DANGER_CLASS,
+  ContextMenu,
+  ContextMenuSeparator,
+} from '@/components/ui/context-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -87,9 +97,9 @@ import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
   groupSessionsByWorkspace,
+  repositoryCheckouts,
   sourceWorkspacePaths,
   toggleExpandedPath,
-  visibleNestedWorktrees,
 } from './Sidebar.helpers'
 import {
   loadWorkspaceBrowser,
@@ -127,6 +137,9 @@ import {
 import { SessionSearch } from './Sidebar/SessionSearch'
 import { EASINGS } from '@/lib/motion'
 
+const WORKSPACE_TREE_STALE_MS = 30_000
+const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
+
 interface SidebarProps {
   currentSessionId?: string
   workspace?: string | null
@@ -154,6 +167,24 @@ async function pickWorkspaceDirectory(): Promise<string | null> {
     title: 'Open workspace',
   })
   return typeof selected === 'string' ? selected : null
+}
+
+/** One pick-one row of a repository's checkout menu. */
+function CheckoutMenuItem({ checked, onSelect, children }: { checked: boolean; onSelect: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={checked}
+      className={`${CONTEXT_MENU_ITEM_CLASS} ${checked ? 'text-(--color-text)' : ''}`}
+      onClick={onSelect}
+    >
+      <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
+        {checked && <Check size={12} />}
+      </span>
+      {children}
+    </button>
+  )
 }
 
 export function Sidebar({
@@ -193,9 +224,14 @@ export function Sidebar({
   // session list for every workspace/worktree row on every render.
   const sessionsByWorkspace = useMemo(() => groupSessionsByWorkspace(workspaceSessions), [workspaceSessions])
 
-  const [workspaceTree, setWorkspaceTree] = useState<CodingWorkspaceTreeRepository[]>(
-    () => queryClient.getQueryData<{ repositories: CodingWorkspaceTreeRepository[] }>(queryKeys.coding.tree())?.repositories ?? [],
-  )
+  // Read straight from the shared query, so a refresh made anywhere (the
+  // command palette's workspace switch, another window) shows here too.
+  const { data: workspaceTreeData } = useQuery({
+    queryKey: queryKeys.coding.tree(),
+    queryFn: getCodingWorkspaceTree,
+    staleTime: WORKSPACE_TREE_STALE_MS,
+  })
+  const workspaceTree = workspaceTreeData?.repositories ?? NO_REPOSITORIES
   const workspaceByPath = useMemo(
     () => new Map(workspaceTree.map((repo) => [repo.path, repo])),
     [workspaceTree],
@@ -248,8 +284,14 @@ export function Sidebar({
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
   const [mobileSessionActions, setMobileSessionActions] = useState<{ session: SessionResponse; workspacePath: string } | null>(null)
   const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; workspacePath: string; x: number; y: number } | null>(null)
-  const [desktopWorkspaceActions, setDesktopWorkspaceActions] = useState<{ path: string; kind: 'main' | 'worktree'; source?: string; worktree?: WorktreeInfo; x: number; y: number } | null>(null)
-  const [mobileWorkspaceActions, setMobileWorkspaceActions] = useState<{ path: string; kind: 'main' | 'worktree' | 'chat'; source?: string; worktree?: WorktreeInfo } | null>(null)
+  // Workspace action menus act on the repository (``path``); "New session"
+  // starts in the checkout its list shows (``sessionPath``).
+  const [desktopWorkspaceActions, setDesktopWorkspaceActions] = useState<{ path: string; sessionPath: string; x: number; y: number } | null>(null)
+  const [mobileWorkspaceActions, setMobileWorkspaceActions] = useState<{ path: string; sessionPath: string; kind: 'main' | 'chat' } | null>(null)
+  // Repository path → the one checkout its list shows (its own path or a
+  // worktree's). Absent means every checkout.
+  const [checkoutFilter, setCheckoutFilter] = useState<Record<string, string>>({})
+  const [checkoutMenu, setCheckoutMenu] = useState<{ repo: string; x: number; y: number } | null>(null)
   // Workspace pending removal — null when no confirmation is open. The
   // confirmation dialog reads this; ``confirmRemoveWorkspace`` commits.
   const [removeWorkspaceTarget, setRemoveWorkspaceTarget] = useState<string | null>(null)
@@ -330,21 +372,16 @@ export function Sidebar({
     setLoading,
   ])
 
-  const refreshWorkspaceTree = useCallback(async (force = false) => {
-    if (force) {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree(), refetchType: 'none' })
-    }
-    const tree = await queryClient.fetchQuery({
-      queryKey: queryKeys.coding.tree(),
-      queryFn: getCodingWorkspaceTree,
-      staleTime: 30_000,
-    })
-    setWorkspaceTree(tree.repositories)
-  }, [queryClient])
+  // Every caller has just changed the tree on the server, so a cached copy
+  // is never good enough. Invalidating also restarts a fetch already in
+  // flight, which may have left before the change landed.
+  const refreshWorkspaceTree = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree() }),
+    [queryClient],
+  )
 
   useEffect(() => {
-    void refreshWorkspaceTree()
-    const handler = () => { void refreshWorkspaceTree(true) }
+    const handler = () => { void refreshWorkspaceTree() }
     // Other windows also write storage for unrelated state (unread marks on
     // every finished turn, theme…); only the saved workspace list moves the tree.
     const onStorage = (event: StorageEvent) => {
@@ -405,31 +442,36 @@ export function Sidebar({
     }
   }
 
-  // Remove a workspace from the sidebar. Sessions stay in the backend —
-  // reopening the same folder later resurfaces them. If the removed
-  // workspace was the active one, navigate back to the empty /
-  // route so the URL doesn't reference a workspace that no longer
-  // appears in the sidebar. Called from the confirmation dialog below.
+  // Remove a workspace (and its worktrees) from the sidebar. Sessions stay in
+  // the backend — reopening the same folder later resurfaces them. Leaving a
+  // removed active workspace for the empty / route happens inside
+  // ``confirmWorkspaceRemoval``. Called from the confirmation dialog below.
   const confirmRemoveWorkspace = () => {
     const path = removeWorkspaceTarget
     if (!path) return
+    setRemoveWorkspaceTarget(null)
+    const worktreePaths = (workspaceByPath.get(path)?.worktrees ?? []).map((item) => item.path)
     setExpandedWorkspaces((current) => {
       const next = new Set(current)
-      next.delete(path)
+      for (const hidden of [path, ...worktreePaths]) next.delete(hidden)
       return next
     })
-    if (path === activeWorkspace) {
-      navigate({ to: '/', replace: true })
-    }
     void confirmWorkspaceRemoval({
       path,
+      worktreePaths,
       activeWorkspace,
       expandedWorkspaces,
       queryClient,
       refreshWorkspaceTree,
       navigate: ({ to, replace }) => navigate({ to, replace }),
-    }).catch(() => undefined)
-    setRemoveWorkspaceTarget(null)
+    }).catch((err: unknown) => {
+      pushToast({
+        tone: 'error',
+        title: `Could not remove ${workspaceLabel(path)} from the sidebar`,
+        description: err instanceof Error ? err.message : undefined,
+      })
+      void refreshWorkspaceTree()
+    })
   }
 
   const loadWorktreesForTarget = useCallback(async (path: string) => {
@@ -565,16 +607,46 @@ export function Sidebar({
   })
 
   const collapseAllWorkspaces = () => {
-    // Keep the active workspace open so the current session stays visible.
-    setExpandedWorkspaces(new Set(activeWorkspace ? [activeWorkspace] : []))
+    // Keep the active repository open so the current session stays visible.
+    const activeRepository = activeWorktreeSource ?? activeWorkspace
+    setExpandedWorkspaces(new Set(activeRepository ? [activeRepository] : []))
   }
 
   useEffect(() => {
-    if (!activeWorkspace || !activeWorktreeSource) return
-    setExpandedWorkspaces((current) =>
-      addExpandedPaths(current, [activeWorktreeSource, activeWorkspace]),
-    )
-  }, [activeWorkspace, activeWorktreeSource])
+    if (!activeWorktreeSource) return
+    setExpandedWorkspaces((current) => addExpandedPaths(current, [activeWorktreeSource]))
+  }, [activeWorktreeSource])
+
+  // Opening a session its repository's checkout filter hides (from Needs
+  // you, search, another window) shows every checkout again. Picking a
+  // filter never moves the current session, so that choice sticks.
+  useEffect(() => {
+    if (!activeWorkspace) return
+    const repository = activeWorktreeSource ?? activeWorkspace
+    setCheckoutFilter((current) => {
+      const selected = current[repository]
+      if (selected === undefined || selected === activeWorkspace) return current
+      const next = { ...current }
+      delete next[repository]
+      return next
+    })
+  }, [currentSessionId, activeWorkspace, activeWorktreeSource])
+
+  const selectCheckout = (repository: string, checkout: string | null) => {
+    setCheckoutFilter((current) => {
+      const next = { ...current }
+      if (checkout === null) delete next[repository]
+      else next[repository] = checkout
+      return next
+    })
+  }
+  const checkoutMenuRepository = checkoutMenu
+    ? repositoryCheckouts(checkoutMenu.repo, workspaceByPath.get(checkoutMenu.repo), deletedWorktreeSet, checkoutFilter[checkoutMenu.repo])
+    : null
+  const checkoutMenuSelection = checkoutMenuRepository?.selectedWorktree
+  const checkoutMenuWorktree: WorktreeInfo | null = checkoutMenuSelection
+    ? { name: checkoutMenuSelection.name, directory: checkoutMenuSelection.path, managed: checkoutMenuSelection.managed }
+    : null
 
   const openSelectedFolder = async () => {
     try {
@@ -791,18 +863,25 @@ export function Sidebar({
         )}
 
         {sourceWorkspaces.map((path) => {
-          const sourceIsActive = path === activeWorkspace
-          const sourceIsExpanded = expandedWorkspaces.has(path)
-          const sourceIsPending = pendingWorkspace === path
-          const sourceSessions = sessionsByWorkspace.get(path) ?? []
-          const sourceRunningSessions = sourceSessions.filter((s) => s.running === true)
-          const sourceHasRunningSession = sourceRunningSessions.length > 0
           // Chat is pinned and not a repository: no worktrees, no rename, no
           // removal — only the expand toggle and "New session" apply.
           const sourceIsChat = isChatPath(path)
           const sourceLabel = sourceIsChat ? (chatWorkspace?.name ?? path) : workspaceLabel(path)
-          const repository = workspaceByPath.get(path)
-          const nestedWorktrees = visibleNestedWorktrees(repository, deletedWorktreeSet)
+          const checkouts = repositoryCheckouts(path, workspaceByPath.get(path), deletedWorktreeSet, checkoutFilter[path])
+          const { worktrees, selectedWorktree } = checkouts
+          const allCheckoutPaths = [path, ...worktrees.map((item) => item.path)]
+          // "New session" starts where the list points: the selected checkout.
+          const sessionTarget = checkouts.selected ?? path
+          const sourceIsActive = path === activeWorkspace || path === activeWorktreeSource
+          const sourceIsExpanded = expandedWorkspaces.has(path)
+          const sourceIsPending = pendingWorkspace !== null && allCheckoutPaths.includes(pendingWorkspace)
+          const worktreeIsRemoving = worktreeRemoving !== null && allCheckoutPaths.includes(worktreeRemoving)
+          const sourceRunningSessions = checkouts.listPaths
+            .flatMap((checkout) => sessionsByWorkspace.get(checkout) ?? [])
+            .filter((s) => s.running === true)
+            .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+          const sourceHasRunningSession = sourceRunningSessions.length > 0
+          const checkoutLabel = selectedWorktree?.name ?? (checkouts.selected ? 'main worktree' : 'all')
 
           return (
             <div key={path} className="relative">
@@ -816,13 +895,13 @@ export function Sidebar({
                         // Chat gets the sheet too, just a narrower one: on
                         // touch the inline "+" is hidden, so this is the only
                         // way left to start a new chat session.
-                        onLongPress={() => setMobileWorkspaceActions({ path, kind: sourceIsChat ? 'chat' : 'main' })}
+                        onLongPress={() => setMobileWorkspaceActions({ path, sessionPath: sessionTarget, kind: sourceIsChat ? 'chat' : 'main' })}
                         type="button"
                         onClick={() => toggleWorkspaceExpanded(path)}
                         onContextMenu={(event) => {
                           if (mobileLongPressActions || sourceIsChat) return
                           event.preventDefault()
-                          setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
+                          setDesktopWorkspaceActions({ path, sessionPath: sessionTarget, x: event.clientX, y: event.clientY })
                         }}
                         className="flex h-full min-w-0 flex-1 items-center gap-1.5 truncate rounded-sm px-1.5 text-left text-xs"
                         aria-expanded={sourceIsExpanded}
@@ -847,20 +926,56 @@ export function Sidebar({
                   />
                   <TooltipContent>{sourceIsChat ? 'Chat workspace' : path}</TooltipContent>
                 </Tooltip>
+                {worktrees.length > 0 && (
+                  // Always visible and always compact (icon + worktree count),
+                  // so the repository name keeps the row; a filter shows as
+                  // the chip's fill and as a row atop the list.
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            const rect = event.currentTarget.getBoundingClientRect()
+                            setCheckoutMenu({ repo: path, x: rect.left, y: rect.bottom + 4 })
+                          }}
+                          className={`ml-1 inline-flex h-5 shrink-0 items-center gap-1 rounded-full px-1.5 font-mono text-[11px] leading-4 transition-colors pointer-coarse:h-9 pointer-coarse:px-2.5 ${
+                            checkouts.selected
+                              ? 'bg-(--bg-key) text-(--color-text)'
+                              : 'text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-2)'
+                          }`}
+                          aria-haspopup="menu"
+                          aria-expanded={checkoutMenu?.repo === path}
+                          aria-label={`Checkouts in ${sourceLabel}: ${checkoutLabel}`}
+                        >
+                          {worktreeIsRemoving
+                            ? <Loader2 size={10} className="shrink-0 animate-spin" aria-hidden="true" />
+                            : <GitBranch size={10} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />}
+                          <span className="tabular-nums">{worktrees.length}</span>
+                        </button>
+                      }
+                    />
+                    <TooltipContent>
+                      {checkouts.selected
+                        ? `Showing ${selectedWorktree?.name ?? 'the main worktree'} only · change checkout`
+                        : `All checkouts · ${worktrees.length} worktree${worktrees.length === 1 ? '' : 's'}`}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 <Tooltip>
                   <TooltipTrigger
                     render={
                       <button
                         type="button"
-                        onClick={() => { void selectWorkspace(path, { create: true }) }}
+                        onClick={() => { void selectWorkspace(sessionTarget, { create: true }) }}
                         className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) pointer-coarse:size-9 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
-                        aria-label={`New session in ${sourceLabel}`}
+                        aria-label={selectedWorktree ? `New session in worktree ${selectedWorktree.name}` : `New session in ${sourceLabel}`}
                       >
                         <Plus size={11} aria-hidden="true" />
                       </button>
                     }
                   />
-                  <TooltipContent>New session</TooltipContent>
+                  <TooltipContent>{selectedWorktree ? `New session in ${selectedWorktree.name}` : 'New session'}</TooltipContent>
                 </Tooltip>
                 {!sourceIsChat && (
                   <Tooltip>
@@ -868,7 +983,7 @@ export function Sidebar({
                       render={
                         <button
                           type="button"
-                          onClick={(event) => setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })}
+                          onClick={(event) => setDesktopWorkspaceActions({ path, sessionPath: sessionTarget, x: event.clientX, y: event.clientY })}
                           className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) pointer-coarse:size-9 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
                           aria-label={`Actions for ${sourceLabel}`}
                         >
@@ -882,11 +997,36 @@ export function Sidebar({
               </div>
 
               {(sourceIsExpanded || sourceHasRunningSession) && (
-                // Children (sessions, then worktrees) hang off an indent
-                // guide aligned with the repository chevron.
+                // One level: every checkout's sessions hang off a single
+                // guide under the chevron, status marks under the folder.
                 <div className="ml-[17px] mr-1.5 border-l border-(--color-border-subtle) pb-1 pl-1">
+                  {checkouts.selected && sourceIsExpanded && (
+                    // The active filter, named where its sessions are, with
+                    // a one-step way back to every checkout.
+                    <div className="flex h-6 items-center gap-1.5 px-1.5 text-[11px] text-(--color-text-subtle) pointer-coarse:h-9">
+                      <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
+                        {selectedWorktree
+                          ? <GitBranch size={10} className="text-(--accent-orange-text)" />
+                          : <Folder size={10} className="text-(--color-accent)" />}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-mono text-(--color-text-2)">
+                        {selectedWorktree?.name ?? 'main worktree'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => selectCheckout(path, null)}
+                        className="shrink-0 rounded-xs px-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) pointer-coarse:h-9 pointer-coarse:px-2.5"
+                        aria-label={`Show all checkouts in ${sourceLabel}`}
+                      >
+                        Show all
+                      </button>
+                    </div>
+                  )}
                   <WorkspaceSessionList
-                    path={path}
+                    path={checkouts.listPaths[0]}
+                    paths={checkouts.listPaths}
+                    // Tags only help while several checkouts share the list.
+                    checkoutNames={checkouts.selected ? undefined : checkouts.worktreeNames}
                     currentSessionId={currentSessionId}
                     runningSessions={sourceRunningSessions}
                     collapsed={!sourceIsExpanded}
@@ -897,115 +1037,11 @@ export function Sidebar({
                     editingSessionId={editingSessionId}
                     onSessionRename={handleSessionRename}
                     onSessionRenameCancel={() => setEditingSessionId(null)}
-                    onSessionLongPress={(session) => setMobileSessionActions({ session, workspacePath: path })}
+                    onSessionLongPress={(session) => setMobileSessionActions({ session, workspacePath: session.workspace || path })}
                     onSessionContextActions={(session, event) => {
-                      setDesktopSessionActions({ session, workspacePath: path, x: event.clientX, y: event.clientY })
+                      setDesktopSessionActions({ session, workspacePath: session.workspace || path, x: event.clientX, y: event.clientY })
                     }}
                   />
-                  {nestedWorktrees.map((item) => {
-                    const directory = item.path
-                    const worktreeInfo: WorktreeInfo = { name: item.name, directory, managed: item.managed }
-                    const isActive = directory === activeWorkspace
-                    const isExpanded = expandedWorkspaces.has(directory)
-                    const isPending = pendingWorkspace === directory
-                    const itemSessions = sessionsByWorkspace.get(directory) ?? []
-                    const runningSessions = itemSessions.filter((s) => s.running === true)
-                    const hasRunningSession = runningSessions.length > 0
-                    return (
-                      <div key={directory} className="mt-0.5">
-                        <div className="group flex h-(--spacing-list-row) items-center rounded-sm hover:bg-(--bg-key)/40">
-                          <Tooltip className="min-w-0 flex-1">
-                            <TooltipTrigger
-                              className="min-w-0 flex-1"
-                              render={
-                                <LongPressButton
-                                  enabled={mobileLongPressActions}
-                                  onLongPress={() => setMobileWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo })}
-                                  type="button"
-                                  onClick={() => toggleWorkspaceExpanded(directory)}
-                                  onContextMenu={(event) => {
-                                    if (mobileLongPressActions) return
-                                    event.preventDefault()
-                                    setDesktopWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo, x: event.clientX, y: event.clientY })
-                                  }}
-                                  className={`flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors ${isActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2)'}`}
-                                  aria-expanded={isExpanded}
-                                  aria-label={`${isExpanded ? 'Collapse' : 'Expand'} worktree ${item.name}`}
-                                >
-                                  <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
-                                  <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
-                                  <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
-                                  {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 text-[11px] leading-4 text-(--color-text-subtle)">external</span>}
-                                  {isPending && (
-                                    <span>
-                                      <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
-                                    </span>
-                                  )}
-                                </LongPressButton>
-                              }
-                            />
-                            <TooltipContent>{directory}</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <button
-                                  type="button"
-                                  onClick={() => { void selectWorkspace(directory, { create: true }) }}
-                                  className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) pointer-coarse:size-9 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
-                                  aria-label={`New session in worktree ${item.name}`}
-                                >
-                                  <Plus size={11} aria-hidden="true" />
-                                </button>
-                              }
-                            />
-                            <TooltipContent>{`New session in worktree ${item.name}`}</TooltipContent>
-                          </Tooltip>
-                          {/* Rename / remove live in the worktree menu (same
-                              one right-click opens) so the row carries two
-                              hover actions, matching repository rows. */}
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <button
-                                  type="button"
-                                  onClick={(event) => setDesktopWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo, x: event.clientX, y: event.clientY })}
-                                  disabled={worktreeRemoving === directory}
-                                  className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:opacity-50 pointer-coarse:size-9 ${mobileLongPressActions ? 'hidden' : worktreeRemoving === directory ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
-                                  aria-label={`Actions for worktree ${item.name}`}
-                                >
-                                  {worktreeRemoving === directory
-                                    ? <Loader2 size={11} className="animate-spin" aria-hidden="true" />
-                                    : <MoreHorizontal size={12} aria-hidden="true" />}
-                                </button>
-                              }
-                            />
-                            <TooltipContent>Worktree actions</TooltipContent>
-                          </Tooltip>
-                        </div>
-                        {(isExpanded || hasRunningSession) && (
-                          <WorkspaceSessionList
-                            path={directory}
-                            currentSessionId={currentSessionId}
-                            runningSessions={runningSessions}
-                            collapsed={!isExpanded}
-                            className="ml-[15px] space-y-px border-l border-(--color-border-subtle) py-0.5 pl-1"
-                            mobileLongPressActions={mobileLongPressActions}
-                            onSessionSelect={handleSessionSelect}
-                            onSessionDelete={handleSessionDelete}
-                            onSessionEdit={handleSessionEdit}
-                            editingSessionId={editingSessionId}
-                            onSessionRename={handleSessionRename}
-                            onSessionRenameCancel={() => setEditingSessionId(null)}
-                            onSessionLongPress={(session) => setMobileSessionActions({ session, workspacePath: directory })}
-                            onSessionContextActions={(session, event) => {
-                              setDesktopSessionActions({ session, workspacePath: directory, x: event.clientX, y: event.clientY })
-                            }}
-                          />
-                        )}
-                      </div>
-                    )
-                  })}
                 </div>
               )}
             </div>
@@ -1190,11 +1226,9 @@ export function Sidebar({
                   : 'Workspace actions'}
             </DialogTitle>
             <DialogDescription>
-              {mobileWorkspaceActions?.kind === 'worktree'
-                ? 'Choose a worktree action.'
-                : mobileWorkspaceActions?.kind === 'chat'
-                  ? 'Choose a chat action.'
-                  : 'Choose a main workspace action.'}
+              {mobileWorkspaceActions?.kind === 'chat'
+                ? 'Choose a chat action.'
+                : 'Choose a main workspace action.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
@@ -1205,7 +1239,7 @@ export function Sidebar({
               onClick={() => {
                 const action = mobileWorkspaceActions
                 setMobileWorkspaceActions(null)
-                if (action) void selectWorkspace(action.path, { create: true })
+                if (action) void selectWorkspace(action.sessionPath, { create: true })
               }}
             >
               <Plus size={14} aria-hidden="true" />
@@ -1228,7 +1262,7 @@ export function Sidebar({
                 Copy repo absolute path
               </Button>
             )}
-            {mobileWorkspaceActions?.kind === 'main' ? (
+            {mobileWorkspaceActions?.kind === 'main' && (
               <>
                 <Button
                   type="button"
@@ -1257,38 +1291,7 @@ export function Sidebar({
                   Remove from sidebar
                 </Button>
               </>
-            ) : mobileWorkspaceActions?.worktree ? (
-              <>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="justify-start"
-                  onClick={() => {
-                    const item = mobileWorkspaceActions.worktree
-                    setMobileWorkspaceActions(null)
-                    if (item) handleWorktreeEdit(item)
-                  }}
-                >
-                  <Pencil size={14} aria-hidden="true" />
-                  Edit title
-                </Button>
-                {mobileWorkspaceActions.worktree.managed ? (
-                  <Button
-                    type="button"
-                    variant="danger-subtle"
-                    className="justify-start"
-                    onClick={() => {
-                      const item = mobileWorkspaceActions.worktree
-                      setMobileWorkspaceActions(null)
-                      if (item) setRemoveWorktreeTarget(item)
-                    }}
-                  >
-                    <Trash2 size={14} aria-hidden="true" />
-                    Remove worktree
-                  </Button>
-                ) : null}
-              </>
-            ) : null}
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1435,7 +1438,7 @@ export function Sidebar({
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
-                void selectWorkspace(action.path, { create: true })
+                void selectWorkspace(action.sessionPath, { create: true })
               }}
             >
               <Plus size={12} aria-hidden="true" />
@@ -1454,67 +1457,111 @@ export function Sidebar({
               <Copy size={12} aria-hidden="true" />
               Copy repo absolute path
             </button>
-            {desktopWorkspaceActions.kind === 'main' ? (
-              <>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={CONTEXT_MENU_ITEM_CLASS}
-                  onClick={() => {
-                    const action = desktopWorkspaceActions
-                    setDesktopWorkspaceActions(null)
-                    void openWorktreeDialog(action.path)
-                  }}
-                >
-                  <GitBranch size={12} aria-hidden="true" />
-                  Create worktree
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={CONTEXT_MENU_ITEM_DANGER_CLASS}
-                  onClick={() => {
-                    const action = desktopWorkspaceActions
-                    setDesktopWorkspaceActions(null)
-                    setRemoveWorkspaceTarget(action.path)
-                  }}
-                >
-                  <Trash2 size={12} aria-hidden="true" />
-                  Remove from sidebar
-                </button>
-              </>
-            ) : desktopWorkspaceActions.worktree ? (
-              <>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={CONTEXT_MENU_ITEM_CLASS}
-                  onClick={() => {
-                    const item = desktopWorkspaceActions.worktree
-                    setDesktopWorkspaceActions(null)
-                    if (item) handleWorktreeEdit(item)
-                  }}
-                >
-                  <Pencil size={12} aria-hidden="true" />
-                  Edit title
-                </button>
-                {desktopWorkspaceActions.worktree.managed ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={CONTEXT_MENU_ITEM_DANGER_CLASS}
-                    onClick={() => {
-                      const item = desktopWorkspaceActions.worktree
-                      setDesktopWorkspaceActions(null)
-                      if (item) setRemoveWorktreeTarget(item)
-                    }}
-                  >
-                    <Trash2 size={12} aria-hidden="true" />
-                    Remove worktree
-                  </button>
-                ) : null}
-              </>
-            ) : null}
+            <button
+              type="button"
+              role="menuitem"
+              className={CONTEXT_MENU_ITEM_CLASS}
+              onClick={() => {
+                const action = desktopWorkspaceActions
+                setDesktopWorkspaceActions(null)
+                void openWorktreeDialog(action.path)
+              }}
+            >
+              <GitBranch size={12} aria-hidden="true" />
+              Create worktree
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={CONTEXT_MENU_ITEM_DANGER_CLASS}
+              onClick={() => {
+                const action = desktopWorkspaceActions
+                setDesktopWorkspaceActions(null)
+                setRemoveWorkspaceTarget(action.path)
+              }}
+            >
+              <Trash2 size={12} aria-hidden="true" />
+              Remove from sidebar
+            </button>
+        </ContextMenu>
+      )}
+
+      {checkoutMenu && checkoutMenuRepository && (
+        <ContextMenu
+          at={checkoutMenu}
+          label={`Checkouts in ${workspaceLabel(checkoutMenu.repo)}`}
+          onDismiss={() => setCheckoutMenu(null)}
+          className="min-w-48 max-w-64"
+        >
+          <CheckoutMenuItem
+            checked={checkoutMenuRepository.selected === null}
+            onSelect={() => { selectCheckout(checkoutMenu.repo, null); setCheckoutMenu(null) }}
+          >
+            All checkouts
+          </CheckoutMenuItem>
+          <CheckoutMenuItem
+            checked={checkoutMenuRepository.selected === checkoutMenu.repo}
+            onSelect={() => { selectCheckout(checkoutMenu.repo, checkoutMenu.repo); setCheckoutMenu(null) }}
+          >
+            <Folder size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+            Main worktree
+          </CheckoutMenuItem>
+          {checkoutMenuRepository.worktrees.map((item) => (
+            <CheckoutMenuItem
+              key={item.path}
+              checked={checkoutMenuRepository.selected === item.path}
+              onSelect={() => { selectCheckout(checkoutMenu.repo, item.path); setCheckoutMenu(null) }}
+            >
+              <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
+              {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 text-[11px] leading-4 text-(--color-text-subtle)">external</span>}
+            </CheckoutMenuItem>
+          ))}
+          <ContextMenuSeparator />
+          <button
+            type="button"
+            role="menuitem"
+            className={CONTEXT_MENU_ITEM_CLASS}
+            onClick={() => {
+              const repo = checkoutMenu.repo
+              setCheckoutMenu(null)
+              void openWorktreeDialog(repo)
+            }}
+          >
+            <Plus size={12} aria-hidden="true" />
+            New worktree…
+          </button>
+          {/* Worktree actions act on the selected worktree, which the chip
+              names, so the menu never needs a second level. */}
+          {checkoutMenuWorktree && (
+            <button
+              type="button"
+              role="menuitem"
+              className={CONTEXT_MENU_ITEM_CLASS}
+              onClick={() => {
+                setCheckoutMenu(null)
+                handleWorktreeEdit(checkoutMenuWorktree)
+              }}
+            >
+              <Pencil size={12} aria-hidden="true" />
+              {`Rename ${checkoutMenuWorktree.name}…`}
+            </button>
+          )}
+          {checkoutMenuWorktree?.managed && (
+            <button
+              type="button"
+              role="menuitem"
+              className={CONTEXT_MENU_ITEM_DANGER_CLASS}
+              disabled={worktreeRemoving === checkoutMenuWorktree.directory}
+              onClick={() => {
+                setCheckoutMenu(null)
+                setRemoveWorktreeTarget(checkoutMenuWorktree)
+              }}
+            >
+              <Trash2 size={12} aria-hidden="true" />
+              {`Remove ${checkoutMenuWorktree.name}…`}
+            </button>
+          )}
         </ContextMenu>
       )}
 

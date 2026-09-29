@@ -62,4 +62,4 @@ tokens to arbitrary remote URLs.
   than adding competing component-local touch handlers.
 
 Backend API/SSE changes require matching frontend client/store tests and both
-`make verify-backend` and `make verify-web`.
+`make verify-v3` and `make verify-web`.

@@ -1,40 +1,13 @@
-//! `app/cli/paths.py` + `app/cli/pids.py`.
+//! The background server's PID file and log, under the active state dir.
 
 use std::path::PathBuf;
 
-pub fn home() -> PathBuf {
-    appv3_core::home::home_dir_opt().unwrap_or_else(|| PathBuf::from("/"))
-}
-
-fn xdg(env: &str, rel: &[&str]) -> PathBuf {
-    if let Some(v) = std::env::var_os(env) {
-        return PathBuf::from(v);
-    }
-    let mut p = home();
-    for r in rel {
-        p.push(r);
-    }
-    p
-}
-
-pub fn state_dir() -> PathBuf {
-    xdg("OPENAGENTD_STATE_DIR", &[".local", "state", "openagentd"])
-}
-
-pub fn data_dir() -> PathBuf {
-    xdg("OPENAGENTD_DATA_DIR", &[".local", "share", "openagentd"])
-}
-
-pub fn config_dir() -> PathBuf {
-    xdg("OPENAGENTD_CONFIG_DIR", &[".config", "openagentd"])
-}
-
 pub fn pid_file() -> PathBuf {
-    state_dir().join("openagentd.pid")
+    appv3_core::settings().state_dir.join("openagentd.pid")
 }
 
 pub fn server_log() -> PathBuf {
-    state_dir().join("logs").join("app").join("app.log")
+    appv3_core::settings().state_dir.join("logs").join("app").join("app.log")
 }
 
 pub fn write_pids(pids: &[u32]) -> std::io::Result<()> {
@@ -45,20 +18,11 @@ pub fn write_pids(pids: &[u32]) -> std::io::Result<()> {
     std::fs::write(f, pids.iter().map(|p| p.to_string()).collect::<Vec<_>>().join("\n"))
 }
 
-/// `_read_pids`: any unparsable line discards the whole file.
+/// PIDs in the file; any unparsable line discards the whole file.
 pub fn read_pids() -> Vec<i32> {
     let Ok(text) = std::fs::read_to_string(pid_file()) else { return vec![] };
-    let mut out = vec![];
-    for line in crate::pystr::splitlines(&text) {
-        if line.trim().is_empty() {
-            continue;
-        }
-        match crate::pystr::py_int(line) {
-            Some(v) if (i32::MIN as i64..=i32::MAX as i64).contains(&v) => out.push(v as i32),
-            _ => return vec![],
-        }
-    }
-    out
+    let pids: Option<Vec<i32>> = text.lines().map(str::trim).filter(|l| !l.is_empty()).map(|l| l.parse().ok()).collect();
+    pids.unwrap_or_default()
 }
 
 #[cfg(unix)]

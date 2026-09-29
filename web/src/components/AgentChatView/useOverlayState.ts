@@ -55,11 +55,13 @@ import { useViewportAtLeast } from '@/hooks/use-viewport-width'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import { APP_EVENTS } from '@/lib/app-events'
 import type { WorkspaceFileInfo } from '@/api/types'
-import type { DockView, DockViewRequest } from '../WorkspacePanel/dock-tabs'
+import type { DiffTabRequest, DockView, DockViewRequest } from '../WorkspacePanel/dock-tabs'
+import type { ChangedFileStatus } from '../WorkspacePanel/diff-helpers'
+import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { sessionTouchedPaths } from './helpers'
 import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
 
-export type { DockView, DockViewRequest }
+export type { DiffTabRequest, DockView, DockViewRequest }
 
 export interface UseOverlayStateArgs {
   isMobile: boolean
@@ -83,6 +85,8 @@ export interface UseOverlayStateResult {
   handledTerminalOpenKeyRef: React.RefObject<number>
   dockViewRequest: DockViewRequest | null
   handledDockViewKeyRef: React.RefObject<number>
+  dockDiffRequest: DiffTabRequest | null
+  handledDockDiffRequestKeyRef: React.RefObject<number>
   /** Dock view tab currently focused in the mounted dock, else ``null``. */
   dockActiveView: DockView | null
   setDockActiveView: Dispatch<SetStateAction<DockView | null>>
@@ -107,6 +111,8 @@ export interface UseOverlayStateResult {
    * partial path finds its file; several matches open Quick Open to choose.
    */
   handleFileRefOpen: (ref: FileRef) => Promise<void>
+  /** Open a clicked file change from reader mode as a full-height diff tab in the dock. */
+  handleDiffOpen: (ref: FileRef & { status?: ChangedFileStatus }) => void
   closeMobileActionsMenu: () => void
   handleSetShowMobileActions: Dispatch<SetStateAction<boolean>>
   handleToggleAgentCapabilities: () => void
@@ -148,6 +154,8 @@ export function useOverlayState({
   const handledTerminalOpenKeyRef = useRef(0)
   const [dockViewRequest, setDockViewRequest] = useState<DockViewRequest | null>(null)
   const handledDockViewKeyRef = useRef(0)
+  const [dockDiffRequest, setDockDiffRequest] = useState<DiffTabRequest | null>(null)
+  const handledDockDiffRequestKeyRef = useRef(0)
   const [dockActiveView, setDockActiveView] = useState<DockView | null>(null)
   const dockViewsEnabled = !isMobile && Boolean(workspace)
   const schedulerInDock = Boolean(workspace)
@@ -266,6 +274,28 @@ export function useOverlayState({
     if (file) showFile(file)
     return Boolean(file)
   }, [fileViewer, listWorkspaceFiles, showFile, workspace])
+
+  const showDiff = useCallback((path: string, status?: ChangedFileStatus) => {
+    if (!workspace) return
+    if (isMobile) {
+      setMobileSidebarOpen(false)
+    }
+    closeOtherMobileOverlays('workspace-panel')
+    setWorkspacePanel((value) => value ?? 'changed')
+    const state = useGitPanelStore.getState()
+    state.setSubTab(workspace, 'changes')
+    const expanded = state.workspaces[workspace]?.expandedDiffs ?? []
+    if (!expanded.includes(path)) {
+      state.setExpandedDiffs(workspace, [...expanded, path])
+    }
+    setDockDiffRequest((prev) => ({ path, status, key: (prev?.key ?? 0) + 1 }))
+  }, [closeOtherMobileOverlays, isMobile, workspace])
+
+  const handleDiffOpen = useCallback((ref: FileRef & { status?: ChangedFileStatus }) => {
+    const cited = workspace ? workspaceRelativePath(ref.path, workspace) : null
+    if (!workspace || !cited) return
+    showDiff(cited, ref.status)
+  }, [showDiff, workspace])
 
   const handleMentionFileOpen = useCallback(async (path: string) => {
     const cleanPath = path.split('#', 1)[0]
@@ -484,6 +514,8 @@ export function useOverlayState({
     handledTerminalOpenKeyRef,
     dockViewRequest,
     handledDockViewKeyRef,
+    dockDiffRequest,
+    handledDockDiffRequestKeyRef,
     dockActiveView,
     setDockActiveView,
     dockViewsEnabled,
@@ -501,6 +533,7 @@ export function useOverlayState({
     handleFileSelect,
     handleMentionFileOpen,
     handleFileRefOpen,
+    handleDiffOpen,
     closeMobileActionsMenu,
     handleSetShowMobileActions,
     handleToggleAgentCapabilities,

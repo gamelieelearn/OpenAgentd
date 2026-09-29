@@ -78,4 +78,20 @@ describe('ContextMenu', () => {
     expect(onRename).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('menu')).toBeNull()
   })
+
+  it('moves through radio items along with plain items', () => {
+    render(
+      <ContextMenu at={{ x: 0, y: 0 }} label="Show" onDismiss={() => {}}>
+        <button type="button" role="menuitemradio" aria-checked="true">All</button>
+        <button type="button" role="menuitemradio" aria-checked="false">Main</button>
+        <button type="button" role="menuitem">New worktree</button>
+      </ContextMenu>,
+    )
+    const menu = screen.getByRole('menu', { name: 'Show' })
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'All' }))
+    fireEvent.keyDown(menu, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'Main' }))
+    fireEvent.keyDown(menu, { key: 'End' })
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'New worktree' }))
+  })
 })

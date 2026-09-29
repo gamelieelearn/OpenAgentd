@@ -64,7 +64,7 @@ Install the backend when you want to run it from a terminal, use a browser clien
 ```bash
 # macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh -s -- --cli
-openagentd
+openagentd server start
 ```
 
 ```powershell
@@ -80,7 +80,6 @@ Settings. For a phone or another computer on your network:
 ```bash
 openagentd server start --host 0.0.0.0 --key
 openagentd server status
-openagentd server health
 ```
 
 `--key` sets the access key every client must send; the server refuses to
@@ -94,13 +93,15 @@ a pipe-friendly terminal response:
 
 ```bash
 openagentd run --model openai:gpt-5.5 --thinking high --prompt "Summarize this project"
+openagentd run --continue --prompt "Now add tests for it"
 ```
 
 The command validates the current directory as a coding workspace, persists a
 new session for the turn, and streams the agent's response text to standard
 output. Tool-permission events follow the runtime's existing auto-allow policy;
-interactive agent questions stop the non-interactive command. It does not
-support workspace selection or session resume.
+interactive agent questions stop the non-interactive command. Use `-C DIR` for
+another workspace, `--continue` or `--session ID` to continue a session, and
+`--json` for one JSON line per stream event.
 
 ### From source
 

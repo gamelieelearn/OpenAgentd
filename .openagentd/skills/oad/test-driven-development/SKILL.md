@@ -4,7 +4,7 @@ description: >
   OpenAgentd TDD workflow — write a failing test before the code that makes
   it pass, reproduce a bug with a test before fixing it. Use when
   implementing any logic, fixing any bug, or changing any existing
-  behavior in backend (pytest) or frontend (Bun/RTL) code.
+  behavior in backend (cargo) or frontend (Bun/RTL) code.
 ---
 
 Write the test first. It must fail for the right reason before you write the
@@ -24,7 +24,7 @@ Run it:
 
 ```bash
 # backend — single test
-uv run pytest tests/path/to/test_file.py::test_new_behavior -q
+cargo test --manifest-path appv3/Cargo.toml -p <crate> <test_name>
 
 # frontend — single file
 cd web && bun test src/__tests__/components/Foo.test.tsx
@@ -39,7 +39,7 @@ Write the smallest change that makes the test pass. Don't add branches, config, 
 With the test green, improve naming/structure without changing behavior. Re-run after every refactor step.
 
 ```bash
-uv run pytest -n 4 -q
+make verify-v3
 cd web && bun test --parallel
 ```
 
@@ -60,10 +60,9 @@ Once the reproduction test is green after the fix, hand off to `oad/debug` step 
 
 ## Verification checklist
 
-- [ ] New behavior has a test at the mirrored path (see `oad/testing` for placement rules)
+- [ ] New behavior has a test in the right place (see `oad/testing` for placement rules)
 - [ ] Bug fixes have a reproduction test that failed before the fix
-- [ ] `uv run pytest -n 4 -q` passes (backend changes)
+- [ ] `make verify-v3` passes (backend changes)
 - [ ] `cd web && bun test --parallel` passes (frontend changes)
-- [ ] Relevant `tests/manual/*.py` scenario script re-run if the touched subsystem has one (see `oad/testing`)
 - [ ] No tests skipped/disabled to make the suite pass
 - [ ] Ready to commit → load `oad/commit`

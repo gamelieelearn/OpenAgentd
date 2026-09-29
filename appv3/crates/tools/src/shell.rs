@@ -384,8 +384,11 @@ pub fn prewarm_snapshot() {
     }
 }
 
-/// Kills the foreground process group if the tool future is cancelled
-/// (v2: `CancelledError` → SIGKILL the group before propagating).
+/// Stops the foreground process group if the tool future is cancelled (the
+/// user stopped the turn). v2 SIGKILLs the group on `CancelledError`; v3
+/// sends SIGTERM first and SIGKILL after [`TERM_GRACE`], like the timeout
+/// path, so commands can clean up: git removes `.git/index.lock` on
+/// SIGTERM, while SIGKILL strands it and blocks every later git command.
 struct GroupGuard {
     pid: u32,
     armed: bool,
@@ -399,7 +402,16 @@ impl Drop for GroupGuard {
         #[cfg(unix)]
         {
             use nix::sys::signal::{killpg, Signal};
-            let _ = killpg(nix::unistd::Pid::from_raw(self.pid as i32), Signal::SIGKILL);
+            let pgid = nix::unistd::Pid::from_raw(self.pid as i32);
+            let _ = killpg(pgid, Signal::SIGTERM);
+            // Drop cannot await, so a thread waits out the grace period.
+            let escalate = std::thread::Builder::new().name("oad-shell-stop".into()).spawn(move || {
+                std::thread::sleep(TERM_GRACE);
+                let _ = killpg(pgid, Signal::SIGKILL);
+            });
+            if escalate.is_err() {
+                let _ = killpg(pgid, Signal::SIGKILL);
+            }
         }
         #[cfg(not(unix))]
         {
@@ -728,5 +740,60 @@ mod tests {
         drop(c);
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(Arc::strong_count(&sink), 1, "a live-output timer outlived the call");
+    }
+
+    /// Run `command` through the tool and drop the call (the user stopped
+    /// the turn) once it has created `started`.
+    #[cfg(unix)]
+    async fn run_then_stop(c: &ToolContext, command: String, started: &Path) {
+        let run = ShellTool.run(c, serde_json::json!({"command": command}));
+        tokio::pin!(run);
+        let ready = async {
+            while std::fs::read_to_string(started).map(|s| s.trim().is_empty()).unwrap_or(true) {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        };
+        tokio::select! {
+            _ = &mut run => panic!("the command should still be running"),
+            _ = tokio::time::timeout(Duration::from_secs(20), ready) => {}
+        }
+    }
+
+    #[cfg(unix)]
+    async fn wait_until(limit: Duration, done: impl Fn() -> bool) {
+        let deadline = std::time::Instant::now() + limit;
+        while !done() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    /// Stopping a turn sends SIGTERM first, so the command can clean up:
+    /// git removes `.git/index.lock` on SIGTERM, while SIGKILL strands it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn stopped_call_lets_the_command_clean_up() {
+        let d = tempfile::tempdir().unwrap();
+        let (started, cleaned) = (d.path().join("started"), d.path().join("cleaned"));
+        let c = ctx(d.path());
+        let command = format!("trap 'touch \"{}\"; exit 0' TERM; echo 1 > \"{}\"; while :; do sleep 0.1; done", cleaned.display(), started.display());
+        run_then_stop(&c, command, &started).await;
+        wait_until(Duration::from_secs(5), || cleaned.exists()).await;
+        assert!(cleaned.exists(), "the command was killed without a SIGTERM to clean up on");
+    }
+
+    /// A command that ignores SIGTERM still dies once the grace period ends.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn stopped_call_kills_what_ignores_sigterm() {
+        use nix::sys::signal::kill;
+        use nix::unistd::Pid;
+        let d = tempfile::tempdir().unwrap();
+        let pidfile = d.path().join("pid");
+        let c = ctx(d.path());
+        let command = format!("trap '' TERM; sleep 60 & echo $! > \"{}\"; wait", pidfile.display());
+        run_then_stop(&c, command, &pidfile).await;
+        let pid = Pid::from_raw(std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap());
+        wait_until(TERM_GRACE + Duration::from_secs(5), || kill(pid, None).is_err()).await;
+        assert!(kill(pid, None).is_err(), "a SIGTERM-ignoring child outlived the stopped call");
     }
 }

@@ -21,7 +21,7 @@ Tests reveal intent and coverage before you look at implementation.
 - Do tests exist for the behavior change?
 - Do they test behavior, not implementation details?
 - Would they fail without the fix/feature and pass with it?
-- Backend: check under `tests/` (mirrors `app/`) and whether `tests/manual/*` scenario scripts need re-running per `AGENTS.md`.
+- Backend: check the `#[cfg(test)]` modules beside the change and `appv3/crates/<crate>/tests/`.
 - Frontend: check colocated `*.test.tsx` under `web/src/`.
 
 If tests are missing for non-trivial behavior, flag it as a **Required** finding and point at `oad/test-driven-development` as the fix path.

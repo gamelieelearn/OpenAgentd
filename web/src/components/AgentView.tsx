@@ -41,10 +41,7 @@ import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { ErrorCard } from './AgentView/ErrorCard'
 import { isDirectUserBlock, PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
-import { ReplyMenu } from './AgentView/ReplyMenu'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
-import { loadSessionMarkdown, replyMarkdown, sessionFileName, shouldOpenReplyMenu } from './AgentView/message-menu'
-import { FileLightbox, type FileLightboxItem } from './FileLightbox'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { TranscriptFind } from './AgentView/TranscriptFind'
@@ -463,46 +460,6 @@ export function AgentView({
     const next = nextPromptIds.get(blockId)
     if (next) void useAgentStore.getState().revertToMessage(next, { restoreDraft: false })
   }, [nextPromptIds])
-
-  const [replyMenu, setReplyMenu] = useState<{ at: { x: number; y: number }; markdown: string } | null>(null)
-  const handleReplyContextMenu = useCallback((event: React.MouseEvent, turnBlocks: ContentBlock[]) => {
-    if (event.defaultPrevented || !shouldOpenReplyMenu(event.target, window.getSelection()?.toString() ?? '')) return
-    event.preventDefault()
-    const blockId = event.target instanceof Element
-      ? event.target.closest('[data-find-block]')?.getAttribute('data-find-block') ?? null
-      : null
-    setReplyMenu({ at: { x: event.clientX, y: event.clientY }, markdown: replyMarkdown(turnBlocks, blockId) })
-  }, [])
-
-  // The document opens at once, "Loading…" until every earlier page is in.
-  const [sessionDoc, setSessionDoc] = useState<FileLightboxItem | null>(null)
-  const sessionDocRequest = useRef(0)
-  const sessionDocUrl = useRef<string | null>(null)
-  const releaseSessionDocUrl = useCallback(() => {
-    if (sessionDocUrl.current) URL.revokeObjectURL(sessionDocUrl.current)
-    sessionDocUrl.current = null
-  }, [])
-  useEffect(() => releaseSessionDocUrl, [releaseSessionDocUrl])
-  const openSessionDoc = useCallback(() => {
-    const request = ++sessionDocRequest.current
-    const name = sessionFileName(useAgentStore.getState().sessionTitle)
-    releaseSessionDocUrl()
-    setSessionDoc({ type: 'text', src: '', name })
-    void loadSessionMarkdown().then((markdown) => {
-      if (sessionDocRequest.current !== request) return
-      if (markdown === null) {
-        setSessionDoc(null)
-        return
-      }
-      sessionDocUrl.current = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown' }))
-      setSessionDoc({ type: 'text', src: sessionDocUrl.current, name, textContent: markdown })
-    })
-  }, [releaseSessionDocUrl])
-  const closeSessionDoc = useCallback(() => {
-    sessionDocRequest.current += 1
-    releaseSessionDocUrl()
-    setSessionDoc(null)
-  }, [releaseSessionDocUrl])
 
   // Live blocks not yet folded into `blocks`, deduped against confirmed ids.
   // Both scroll bookkeeping and turn partitioning below read from this same
@@ -953,19 +910,18 @@ export function AgentView({
                  }
                  // Me only the trailing turn (no user block after) can be "live"
                   const isTrailingTurn = globalTurnIndex === turnItems.length - 1
+                  // The running turn is timed from its prompt: unlike the stream's
+                  // own start mark, the prompt's time survives a reload.
+                  const prompt = isTrailingTurn ? turnItems[globalTurnIndex - 1] : undefined
+                  const turnStartedAt = prompt?.kind === 'user' ? prompt.block.timestamp?.getTime() : undefined
                   const canStartImplementing =
                     isTrailingTurn &&
                     !isWorking &&
                     sessionInteractionMode === 'plan' &&
                     hasPlanContent(item.blocks)
                  return (
-                   <div
-                     // Keyed by the first block alone: an older page shifts every
-                     // startIndex, and a key built on it remounted every reply.
-                     key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}
-                     onContextMenu={(event) => handleReplyContextMenu(event, item.blocks)}
-                   >
                    <AssistantTurn
+                     key={`turn-${item.blocks[0]?.id ?? item.startIndex}`}
                      blocks={item.blocks}
                      startIndex={item.startIndex}
                      finalizedCount={blocks.length}
@@ -979,6 +935,7 @@ export function AgentView({
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
                      showModel={modelChangeStarts.has(item.startIndex)}
                      reader={readerTranscript}
+                     startedAt={turnStartedAt}
                      findHitBlockIds={readerTranscript ? findHitBlockIds : undefined}
                       renderBlock={({ block, isStreaming }) => (
                        <div
@@ -997,7 +954,6 @@ export function AgentView({
                        </div>
                      )}
                    />
-                   </div>
                  )
                 })}
 
@@ -1052,15 +1008,6 @@ export function AgentView({
         </button>
 
     )}
-    {replyMenu && (
-      <ReplyMenu
-        at={replyMenu.at}
-        markdown={replyMenu.markdown}
-        onOpenSession={openSessionDoc}
-        onDismiss={() => setReplyMenu(null)}
-      />
-    )}
-    {sessionDoc && <FileLightbox items={[sessionDoc]} isOpen onClose={closeSessionDoc} />}
     </div>
     </FileRefContext.Provider>
   )

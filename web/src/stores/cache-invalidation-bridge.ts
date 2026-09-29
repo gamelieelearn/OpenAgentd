@@ -275,12 +275,23 @@ export function prependSession(
 }
 
 export function prependWorkspaceSession(
-  queryClient: Pick<QueryClient, 'setQueryData'>,
+  queryClient: Pick<QueryClient, 'setQueryData' | 'setQueriesData'>,
   workspace: string,
   session: SessionResponse,
 ): void {
   queryClient.setQueryData<InfiniteData<SessionPageResponse>>(
     queryKeys.session.sessions.workspace(workspace),
+    (old) => prependSessionToInfiniteData(old, session),
+  )
+  // A repository's sidebar list also spans its worktrees.
+  queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
+    {
+      queryKey: queryKeys.session.sessions.checkoutsAll(),
+      predicate: (query) => {
+        const paths = query.queryKey[3]
+        return Array.isArray(paths) && paths.includes(workspace)
+      },
+    },
     (old) => prependSessionToInfiniteData(old, session),
   )
 }

@@ -1,8 +1,7 @@
 # Maintainer Scripts Guide
 
-This subtree owns repository validation, release/version maintenance, sidecar
-packaging, icon generation, updater helpers, benchmarks, and code-health
-analysis.
+This subtree owns repository validation, release/version maintenance, icon
+generation, updater helpers, and code-health analysis.
 
 ## Ownership
 
@@ -11,18 +10,23 @@ analysis.
 - `codehealth/`: stdlib analyzer for Python/TypeScript size, complexity,
   coupling, and import cycles; invoke through `make health` or
   `make health-json`.
-- `build_sidecar.py`: generated desktop Python sidecar bundle.
 - `generate_icons.py`: shared source-icon conversion for native targets.
 - `make_updater_manifest.py` and `generate_updater_keys.sh`: desktop updater
   metadata and local key setup.
-- `bump_version.sh`, `check_version_consistency.sh`, and
+- `release_version.sh`, `bump_version.sh`, `check_version_consistency.sh`, and
   `release_commits_since_last_tag.sh`: synchronized release metadata and
-  release-note inputs.
-- `bench_chat_db.py`: local persistence benchmark, not a correctness test.
+  release-note inputs. The `[workspace.package]` version in
+  `appv3/Cargo.toml` is the release version.
+- `e2e_cli_install.sh` and `fake_release_server.py`: CLI install and
+  self-update end-to-end check used by the appv3 workflow.
+- `tests/`: pytest checks for these scripts and for installer, native-shell
+  config, and release-workflow contracts; run them with `make verify-scripts`.
 
-Python scripts use the repository `uv` environment unless the script's help or
-owning Make target explicitly uses system Python. Keep scripts non-interactive
-by default, repository-root-relative, and portable across supported platforms.
+The repository has no Python project. Scripts run with `python3` and the
+standard library (plus Pillow for `generate_icons.py`); `make verify-scripts`
+supplies the test dependencies through `uv run --with`. Keep scripts
+non-interactive by default, repository-root-relative, and portable across
+supported platforms.
 
 ## Safety and generated outputs
 
@@ -34,19 +38,19 @@ by default, repository-root-relative, and portable across supported platforms.
 - Sidecar bundles, Cargo targets, web distributions, and generated native
   platform trees are build output. Change source inputs and rerun their owning
   script/Make target.
-- Version changes must use the release workflow so Python, web, desktop,
-  mobile, Tauri configs, lockfiles, and feature-catalogue metadata stay in
-  sync. `make verify-version` is the gate.
+- Version changes must use the release workflow so the appv3 workspace, web,
+  desktop, mobile, Tauri configs, lockfiles, and feature-catalogue metadata
+  stay in sync. `make verify-version` is the gate.
 
 ## Checks
 
 Choose the focused safe command, then the owning repository target:
 
 ```bash
-uv run python scripts/validate_docs.py
-uv run python scripts/build_sidecar.py --help
-uv run python scripts/make_updater_manifest.py --help
-uv run python -m scripts.codehealth --help
+python3 scripts/validate_docs.py
+python3 scripts/make_updater_manifest.py --help
+python3 -m scripts.codehealth --help
+make verify-scripts
 make verify-docs
 make verify-version
 ```

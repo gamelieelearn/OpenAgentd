@@ -7,7 +7,7 @@ description: OpenAgentd workflow for version bumps, release PRs, GitHub releases
 
 1. Version target:
 
-- Read `app/version.txt`.
+- Read the current version with `scripts/release_version.sh` (the `[workspace.package]` version in `appv3/Cargo.toml`).
 - Determine the bump from the actual diff content, not the branch name:
   - **Feature or new capability**: bump minor, e.g. `1.0.0` -> `1.1.0`.
   - **Bug fix, maintenance, docs, tests, or internal-only change**: bump patch, e.g. `1.0.0` -> `1.0.1`.
@@ -73,7 +73,7 @@ git diff --stat main..HEAD -- documents/docs/features.md README.md
 
 6. Version PR:
 
-- **Before bumping, verify CI is green on `main`.** Check both the `Core` (pytest) and `Web` (lint + typecheck + tests) workflows on the latest commit:
+- **Before bumping, verify CI is green on `main`.** Check both the `appv3` (Rust) and `Web` (lint + typecheck + tests) workflows on the latest commit:
 
 ```bash
 # Get the SHA of the commit you are about to release from
@@ -81,7 +81,6 @@ git rev-parse HEAD
 
 # List the most recent runs of each CI workflow and confirm conclusion=success
 gh run list --workflow=appv3.yml --branch=main --limit=3
-gh run list --workflow=core.yml --branch=main --limit=3
 gh run list --workflow=web.yml  --branch=main --limit=3
 
 # If either shows failure, inspect and fix before continuing:
@@ -90,7 +89,7 @@ gh run view <run-id> --log-failed
 
 - Do **not** proceed with the version bump if any required CI workflow is failing on `main`. Fix the failures first, push the fix to `main`, confirm CI goes green, then resume the release.
 - Reuse the existing feature branch when present; do not spin a fresh `release/` branch on top of it.
-- `app/version.txt` is the **single human-edited source of truth** for release versioning.
+- The `[workspace.package]` version in `appv3/Cargo.toml` is the **single source of truth** for release versioning.
 - Use the release helper to propagate that version to every release-facing file, refresh lockfiles, and update release docs metadata:
 
 ```bash
@@ -98,9 +97,8 @@ scripts/bump_version.sh <version>
 ```
 
 - The helper updates and/or refreshes:
-  - `app/version.txt`
-  - `pyproject.toml`
-  - `uv.lock`
+  - `appv3/Cargo.toml`
+  - `appv3/Cargo.lock`
   - `web/package.json`
   - `desktop/src-tauri/tauri.conf.json`
   - `desktop/src-tauri/Cargo.toml`
@@ -109,7 +107,7 @@ scripts/bump_version.sh <version>
   - `mobile/src-tauri/Cargo.toml`
   - `mobile/src-tauri/Cargo.lock`
   - `documents/docs/features.md` (`updated:` and `Latest release:`)
-- **Why this matters:** `app/version.txt` drives the tag name both release workflows use (`v<X.Y.Z>`), while bundled artefacts and app metadata read from the Tauri/Cargo files, and CI also enforces `cargo check --locked` for desktop/mobile. The helper keeps those surfaces in sync instead of relying on manual multi-file edits.
+- **Why this matters:** the appv3 workspace version drives the tag name both release workflows use (`v<X.Y.Z>`) and the version the binary reports, while bundled artefacts and app metadata read from the Tauri/Cargo files, and CI also enforces `cargo check --locked` for desktop/mobile. The helper keeps those surfaces in sync instead of relying on manual multi-file edits.
 - Run the consistency check explicitly before committing if you want a standalone verification step:
 
 ```bash
@@ -122,9 +120,7 @@ scripts/check_version_consistency.sh
 - PR body must be a bullet list summarizing the included user-facing changes, not a single generic sentence.
 
 ```bash
-uv run ruff format app/ tests/
-uv run ruff format --check app/ tests/
-git add app/version.txt pyproject.toml uv.lock web/package.json \
+git add web/package.json \
         desktop/src-tauri/tauri.conf.json desktop/src-tauri/Cargo.toml \
         desktop/src-tauri/Cargo.lock \
         mobile/src-tauri/tauri.conf.json mobile/src-tauri/Cargo.toml \

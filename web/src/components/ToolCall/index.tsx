@@ -123,7 +123,12 @@ const MAX_LIVE_LINES = 100
 let liveClockInterval: number | null = null
 const liveClockListeners = new Set<(now: number) => void>()
 
-function subscribeLiveClock(listener: (now: number) => void) {
+/**
+ * One shared once-a-second clock for live elapsed labels (running tool rows,
+ * reader mode's work row), paused while the page is hidden. Returns the
+ * unsubscribe; the interval stops with its last listener.
+ */
+export function subscribeLiveClock(listener: (now: number) => void) {
   liveClockListeners.add(listener)
   if (liveClockInterval === null && typeof window !== 'undefined') {
     const tick = () => {

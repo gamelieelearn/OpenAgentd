@@ -1,5 +1,5 @@
 ---
-description: Run pytest suite across parallel workers.
+description: Run the v3 Rust backend checks (fmt, clippy, tests).
 ---
 
-uv run pytest -n 4 -q
+make verify-v3

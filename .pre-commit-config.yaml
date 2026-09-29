@@ -17,31 +17,6 @@ repos:
         exclude: ^documents/assets/
 
   # ---------------------------------------------------------------------------
-  # Python – lint, format & type check
-  # ---------------------------------------------------------------------------
-  - repo: local
-    hooks:
-      - id: ruff
-        name: ruff check (python)
-        language: system
-        entry: uv run ruff check --fix --force-exclude
-        types: [python]
-        files: ^(app|cli|tests)/
-      - id: ruff-format
-        name: ruff format (python)
-        language: system
-        entry: uv run ruff format --force-exclude
-        types: [python]
-        files: ^(app|cli|tests)/
-      - id: ty
-        name: ty (app)
-        language: system
-        entry: uv run ty check app/
-        types: [python]
-        files: ^(app|cli)/
-        pass_filenames: false
-
-  # ---------------------------------------------------------------------------
   # Frontend – lint (Oxlint) & type check (unified tsc -b)
   # ---------------------------------------------------------------------------
   - repo: local

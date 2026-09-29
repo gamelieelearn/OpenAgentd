@@ -6,13 +6,12 @@ runtime package or release builds.
 
 ## Setup and commands
 
-Use the optional dependency group from the repository root:
+Run from the repository root; `uv run --with` supplies the dependencies:
 
 ```bash
-uv sync --group experiment
-uv run --group experiment python experiments/turbovec_docs/build_index.py
-uv run --group experiment python experiments/turbovec_docs/search.py "query"
-uv run --group experiment python experiments/turbovec_docs/benchmark.py -v
+uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/build_index.py
+uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/search.py "query"
+uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/benchmark.py -v
 ```
 
 - `chunker.py` owns heading-based Markdown chunking and source metadata.

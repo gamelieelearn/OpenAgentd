@@ -6,16 +6,38 @@ on:
     paths:
       - "**/*.md"
       - "Makefile"
-      - "scripts/validate_docs.py"
-      - "tests/scripts/test_validate_docs.py"
+      - "scripts/**"
+      - "install.ps1"
+      - "desktop/scripts/**"
+      - "desktop/src-tauri/tauri.conf.json"
+      - "desktop/src-tauri/entitlements.plist"
+      - "desktop/src-tauri/Cargo.lock"
+      - "mobile/Makefile"
+      - "mobile/src-tauri/tauri.conf.json"
+      - "web/package.json"
+      - "web/bun.lock"
+      - ".github/workflows/release-desktop.yml"
+      - ".github/workflows/tauri.yml"
+      - ".github/workflows/publish-homebrew-cask.yml"
       - ".github/workflows/docs.yml"
   pull_request:
     branches: [main]
     paths:
       - "**/*.md"
       - "Makefile"
-      - "scripts/validate_docs.py"
-      - "tests/scripts/test_validate_docs.py"
+      - "scripts/**"
+      - "install.ps1"
+      - "desktop/scripts/**"
+      - "desktop/src-tauri/tauri.conf.json"
+      - "desktop/src-tauri/entitlements.plist"
+      - "desktop/src-tauri/Cargo.lock"
+      - "mobile/Makefile"
+      - "mobile/src-tauri/tauri.conf.json"
+      - "web/package.json"
+      - "web/bun.lock"
+      - ".github/workflows/release-desktop.yml"
+      - ".github/workflows/tauri.yml"
+      - ".github/workflows/publish-homebrew-cask.yml"
       - ".github/workflows/docs.yml"
 
 permissions:
@@ -36,13 +58,12 @@ jobs:
         uses: astral-sh/setup-uv@v10.1.0
         with:
           python-version: "3.14"
-          enable-cache: true
+          # No lockfile to key a cache on; the tooling tests' few deps
+          # (declared in the Makefile's verify-scripts) install in seconds.
+          enable-cache: false
 
-      - name: Install dependencies
-        run: uv sync --frozen
-
-      - name: Run validator tests
-        run: uv run pytest --no-cov tests/scripts/test_validate_docs.py -q
+      - name: Run tooling tests
+        run: make verify-scripts
 
       - name: Validate repository documentation
-        run: uv run python scripts/validate_docs.py
+        run: make verify-docs

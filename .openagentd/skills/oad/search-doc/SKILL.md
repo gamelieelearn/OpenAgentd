@@ -16,7 +16,7 @@ ls experiments/turbovec_docs/index/docs.tvim 2>/dev/null
 - If missing, or if `documents/` has changed since the last build, rebuild it:
 
 ```bash
-uv run --group experiment python experiments/turbovec_docs/build_index.py
+uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/build_index.py
 ```
 
 The corpus is intentionally small: the feature catalogue and repository instructions. Rebuild whenever it might be stale rather than treating old search results as authoritative.
@@ -24,7 +24,7 @@ The corpus is intentionally small: the feature catalogue and repository instruct
 ## 2. Search
 
 ```bash
-uv run --group experiment python experiments/turbovec_docs/search.py "<query>" -k 5
+uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/search.py "<query>" -k 5
 ```
 
 - Use natural-language questions about shipped features or repository documentation policy.

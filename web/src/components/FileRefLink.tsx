@@ -9,11 +9,13 @@
 import { createContext, useContext, useMemo, type AnchorHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react'
 
 import { findFileRefs, parseFileHref, parseFileRef, type FileRef } from '@/utils/file-refs'
+import type { ChangedFileStatus } from './WorkspacePanel/diff-helpers'
 
 export interface FileRefOpener {
   /** False for references outside the open workspace; those stay text. */
   canOpen: (ref: FileRef) => boolean
   open: (ref: FileRef) => void
+  openDiff?: (ref: FileRef & { status?: ChangedFileStatus }) => void
 }
 
 export const FileRefContext = createContext<FileRefOpener | null>(null)

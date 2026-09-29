@@ -52,6 +52,13 @@ export interface DockViewRequest {
   key: number
 }
 
+export interface DiffTabRequest {
+  path: string
+  status?: ChangedFileStatus
+  /** Monotonic; the dock handles each key once. */
+  key: number
+}
+
 export const REVIEW_TAB: DockTabOf<'review'> = { id: REVIEW_TAB_ID, type: 'review', title: 'Git' }
 export const TASKS_TAB: DockTabOf<'tasks'> = { id: TASKS_TAB_ID, type: 'tasks', title: 'Tasks' }
 export const SCHEDULE_TAB: DockTabOf<'schedule'> = { id: SCHEDULE_TAB_ID, type: 'schedule', title: 'Schedule' }

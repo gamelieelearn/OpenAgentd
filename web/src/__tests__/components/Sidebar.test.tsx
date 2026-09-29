@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
-import { loadLastWorkspace } from '@/utils/workspace'
+import { queryKeys } from '@/queries'
+import { loadLastWorkspace, loadWorkspaces, saveLastWorkspace } from '@/utils/workspace'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -14,6 +15,7 @@ import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
   groupSessionsByWorkspace,
+  repositoryCheckouts,
   sourceWorkspacePaths,
   toggleExpandedPath,
   visibleNestedWorktrees,
@@ -94,14 +96,25 @@ let searchResultsData: TestSession[] = []
 let searchQueries: string[] = []
 let workspaceHasNextPage = false
 let workspaceIsFetchingNextPage = false
+/** What each repository list asked for: one path, or several checkouts. */
+let workspaceQueryArgs: Array<string | readonly string[]> = []
 const fetchWorkspaceNextPage = mock(() => {})
 let chatWorkspaceEntry: { path: string; name: string } | null = null
+/** Paths the backend has hidden: ``PATCH …/visibility`` adds, a resolve removes. */
+let hiddenWorkspacePaths = new Set<string>()
+/** Worktrees the backend lists under each repository. */
+let worktreesByRepo: Record<string, Array<{ path: string; name: string; managed: boolean }>> = {}
+/** Holds the resolve response, as a server still busy with the request would. */
+let resolveDelayMs = 0
 const workspaceTreeResponse = () => ({
-  repositories: Array.from(new Set(sessionsData.filter((session) => session.mode === 'coding' && session.workspace).map((session) => session.workspace as string))).map((path) => ({
-    path,
-    name: path.split('/').pop() || path,
-    worktrees: [],
-  })),
+  repositories: Array.from(new Set(sessionsData.filter((session) => session.mode === 'coding' && session.workspace).map((session) => session.workspace as string)))
+    .map((path) => ({
+      path,
+      name: path.split('/').pop() || path,
+      worktrees: (worktreesByRepo[path] ?? []).filter((item) => !hiddenWorkspacePaths.has(item.path)),
+    }))
+    // Like the backend, a hidden repository still contains its visible worktrees.
+    .filter((repo) => !hiddenWorkspacePaths.has(repo.path) || repo.worktrees.length > 0),
   chat: chatWorkspaceEntry,
 })
 
@@ -237,13 +250,16 @@ mock.module('@/queries/useSessionsQuery', () => ({
     isFetching: false,
     refetch: mock(() => {}),
   }),
-  useWorkspaceSessionsQuery: () => ({
-    data: { pages: [{ data: workspaceSessionsData }] },
-    isLoading: false,
-    hasNextPage: workspaceHasNextPage,
-    isFetchingNextPage: workspaceIsFetchingNextPage,
-    fetchNextPage: fetchWorkspaceNextPage,
-  }),
+  useWorkspaceSessionsQuery: (workspace: string | readonly string[]) => {
+    workspaceQueryArgs.push(workspace)
+    return {
+      data: { pages: [{ data: workspaceSessionsData }] },
+      isLoading: false,
+      hasNextPage: workspaceHasNextPage,
+      isFetchingNextPage: workspaceIsFetchingNextPage,
+      fetchNextPage: fetchWorkspaceNextPage,
+    }
+  },
   useActiveSessionsQuery: () => ({
     data: { pages: [{ data: activeSessionsData }] },
   }),
@@ -316,6 +332,40 @@ describe('Sidebar helpers', () => {
     expect(sources.get('/repo-wt')).toBe('/repo')
     expect(sourceWorkspacePaths(workspaceTree, removed)).toEqual(['/repo'])
     expect(visibleNestedWorktrees(workspaceTree[0], removed)).toEqual([])
+  })
+
+  it('lists every checkout of a repository unless one is selected', () => {
+    const repository = {
+      path: '/repo',
+      name: 'repo',
+      worktrees: [
+        { path: '/wt/a', name: 'a', managed: true },
+        { path: '/wt/b', name: 'b', managed: false },
+      ],
+    }
+    const none = new Set<string>()
+
+    const all = repositoryCheckouts('/repo', repository, none, undefined)
+    expect(all.selected).toBeNull()
+    expect(all.selectedWorktree).toBeNull()
+    expect(all.listPaths).toEqual(['/repo', '/wt/a', '/wt/b'])
+    expect([...all.worktreeNames]).toEqual([['/wt/a', 'a'], ['/wt/b', 'b']])
+
+    const oneWorktree = repositoryCheckouts('/repo', repository, none, '/wt/b')
+    expect(oneWorktree.selected).toBe('/wt/b')
+    expect(oneWorktree.selectedWorktree?.name).toBe('b')
+    expect(oneWorktree.listPaths).toEqual(['/wt/b'])
+
+    const mainOnly = repositoryCheckouts('/repo', repository, none, '/repo')
+    expect(mainOnly.selected).toBe('/repo')
+    expect(mainOnly.selectedWorktree).toBeNull()
+    expect(mainOnly.listPaths).toEqual(['/repo'])
+
+    // A selection that no longer exists (removed or unknown) falls back to all.
+    const removed = repositoryCheckouts('/repo', repository, new Set(['/wt/a']), '/wt/a')
+    expect(removed.selected).toBeNull()
+    expect(removed.listPaths).toEqual(['/repo', '/wt/b'])
+    expect(repositoryCheckouts('/chat', undefined, none, '/elsewhere').listPaths).toEqual(['/chat'])
   })
 
   it('groups sessions by workspace and drops sessions without one', () => {
@@ -640,8 +690,12 @@ describe('Sidebar workspace trust flow', () => {
     searchResultsData = []
     searchQueries = []
     chatWorkspaceEntry = null
+    hiddenWorkspacePaths = new Set()
+    worktreesByRepo = {}
+    resolveDelayMs = 0
     workspaceHasNextPage = false
     workspaceIsFetchingNextPage = false
+    workspaceQueryArgs = []
     isTauri = true
     platformOs = 'macos'
     isMobile = false
@@ -662,10 +716,16 @@ describe('Sidebar workspace trust flow', () => {
     updateSessionTitleMutate.mockClear()
     fetchWorkspaceNextPage.mockClear()
     validateError = null
-    globalThis.fetch = mock(async (input: unknown) => {
+    globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
       if (url.includes('/api/agent/workspace/browse')) {
         return new Response(JSON.stringify(browseResponse))
+      }
+      if (url.endsWith('/api/agent/workspace/visibility')) {
+        const body = JSON.parse(String((init as RequestInit | undefined)?.body)) as { workspace: string; hidden: boolean }
+        if (body.hidden) hiddenWorkspacePaths.add(body.workspace)
+        else hiddenWorkspacePaths.delete(body.workspace)
+        return new Response(JSON.stringify(body))
       }
       if (url.includes('/api/agent/workspace/validate')) {
         if (validateError) {
@@ -680,6 +740,9 @@ describe('Sidebar workspace trust flow', () => {
         return new Response(JSON.stringify(workspaceTreeResponse()))
       }
       if (url.endsWith('/api/agent/sessions/resolve')) {
+        if (resolveDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, resolveDelayMs))
+        // Resolving a session in a workspace un-hides it.
+        hiddenWorkspacePaths.delete('/repo/project')
         return new Response(JSON.stringify({
           id: 'resolved-session',
           title: null,
@@ -700,6 +763,18 @@ describe('Sidebar workspace trust flow', () => {
     globalThis.fetch = originalFetch
   })
 
+  /**
+   * Let the first workspace-tree fetch land. Query observers hear about it on
+   * a timer, so a single microtask is not enough.
+   */
+  async function settleWorkspaceTree(queryClient: QueryClient) {
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
+    for (let i = 0; i < 20 && queryClient.getQueryState(queryKeys.coding.tree())?.status !== 'success'; i += 1) {
+      await act(tick)
+    }
+    await act(tick)
+  }
+
   async function renderSidebar() {
     const { Sidebar } = await import('@/components/Sidebar')
     const queryClient = new QueryClient()
@@ -712,6 +787,7 @@ describe('Sidebar workspace trust flow', () => {
       )
       await Promise.resolve()
     })
+    await settleWorkspaceTree(queryClient)
     return view
   }
 
@@ -727,6 +803,7 @@ describe('Sidebar workspace trust flow', () => {
       )
       await Promise.resolve()
     })
+    await settleWorkspaceTree(queryClient)
     return view
   }
 
@@ -742,6 +819,7 @@ describe('Sidebar workspace trust flow', () => {
       )
       await Promise.resolve()
     })
+    await settleWorkspaceTree(queryClient)
     return view!
   }
 
@@ -1100,6 +1178,112 @@ describe('Sidebar workspace trust flow', () => {
     }))
     expect(globalThis.fetch).not.toHaveBeenCalledWith('/api/agent/workspace/worktrees', expect.objectContaining({ method: 'DELETE' }))
     expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
+  })
+
+  describe('Remove from sidebar', () => {
+    const session = (id: string, workspace: string): TestSession => ({
+      id,
+      title: `Session in ${workspace}`,
+      agent_name: 'lead',
+      created_at: '2026-05-13T00:00:00Z',
+      updated_at: '2026-05-13T00:00:00Z',
+      mode: 'coding',
+      workspace,
+    })
+
+    async function removeFromSidebar(name: string) {
+      const user = userEvent.setup()
+      await user.click(screen.getByLabelText(`Actions for ${name}`))
+      await user.click(screen.getByRole('menuitem', { name: /remove from sidebar/i }))
+      await user.click(screen.getByRole('button', { name: /^remove from sidebar$/i }))
+    }
+
+    it('drops the repository row once the backend has hidden it', async () => {
+      sessionsData = [session('session-1', '/repo/project'), session('session-2', '/repo/other')]
+      workspaceSessionsData = sessionsData
+      // The tree was fetched moments ago, so a cached copy is still fresh.
+      await renderSidebarWithProps({ currentSessionId: 'session-2', workspace: '/repo/other' })
+      await waitFor(() => expect(screen.getByLabelText('Actions for project')).toBeTruthy())
+
+      await removeFromSidebar('project')
+
+      await waitFor(() => expect(screen.queryByLabelText('Actions for project')).toBeNull())
+      expect(hiddenWorkspacePaths.has('/repo/project')).toBe(true)
+      expect(screen.getByLabelText('Actions for other')).toBeTruthy()
+    })
+
+    it('forgets the removed workspace before leaving it, so the empty route cannot reopen it', async () => {
+      sessionsData = [session('session-1', '/repo/project')]
+      workspaceSessionsData = sessionsData
+      saveLastWorkspace('/repo/project')
+      // The empty route restores the last workspace the moment it renders.
+      let lastWorkspaceAtNavigation: string | null | undefined
+      navigate.mockImplementation(() => { lastWorkspaceAtNavigation = loadLastWorkspace()?.path ?? null })
+
+      await renderSidebarForSessions('session-1')
+      await removeFromSidebar('project')
+
+      expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true })
+      expect(lastWorkspaceAtNavigation).toBeNull()
+      expect(loadWorkspaces()).not.toContain('/repo/project')
+      await waitFor(() => expect(screen.queryByLabelText('Actions for project')).toBeNull())
+    })
+
+    it('hides the repository worktrees too, which would otherwise keep it listed', async () => {
+      sessionsData = [session('session-1', '/repo/project'), session('session-2', '/repo/other')]
+      workspaceSessionsData = sessionsData
+      worktreesByRepo = { '/repo/project': [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }
+      await renderSidebarWithProps({ currentSessionId: 'session-2', workspace: '/repo/other' })
+      await waitFor(() => expect(screen.getByLabelText('Actions for project')).toBeTruthy())
+
+      await removeFromSidebar('project')
+
+      await waitFor(() => expect(screen.queryByLabelText('Actions for project')).toBeNull())
+      expect(screen.queryByText('task-a')).toBeNull()
+      expect([...hiddenWorkspacePaths].sort()).toEqual(['/data/worktrees/project/task-a', '/repo/project'])
+    })
+
+    it('lists a hidden workspace again once reopening it has un-hidden it', async () => {
+      const user = userEvent.setup()
+      sessionsData = [session('session-1', '/repo/project')]
+      workspaceSessionsData = sessionsData
+      hiddenWorkspacePaths = new Set(['/repo/project'])
+      // The tree refresh fired on open races the resolve that un-hides it.
+      resolveDelayMs = 20
+
+      await renderSidebar()
+      expect(screen.queryByLabelText('Actions for project')).toBeNull()
+      await user.click(screen.getByRole('button', { name: /trust and open/i }))
+
+      await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'resolved-session' } }))
+      await waitFor(() => expect(screen.getByLabelText('Actions for project')).toBeTruthy())
+    })
+
+    it('follows workspace-tree refreshes made outside the sidebar', async () => {
+      sessionsData = [session('session-1', '/repo/project')]
+      workspaceSessionsData = sessionsData
+      hiddenWorkspacePaths = new Set(['/repo/project'])
+      const { Sidebar } = await import('@/components/Sidebar')
+      const queryClient = new QueryClient()
+      await act(async () => {
+        render(
+          <QueryClientProvider client={queryClient}>
+            <Sidebar />
+          </QueryClientProvider>,
+        )
+        await Promise.resolve()
+      })
+      await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/agent/workspace/tree'))
+      expect(screen.queryByLabelText('Actions for project')).toBeNull()
+
+      // The command palette's workspace switch refreshes the shared query.
+      hiddenWorkspacePaths.delete('/repo/project')
+      await act(async () => {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree() })
+      })
+
+      await waitFor(() => expect(screen.getByLabelText('Actions for project')).toBeTruthy())
+    })
   })
 
   it('does not create a new session when the current coding session is empty and idle', async () => {
@@ -1465,7 +1649,7 @@ describe('Sidebar workspace trust flow', () => {
     expect(fetchWorkspaceNextPage).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps known worktree children under their source when probing the worktree itself returns none', async () => {
+  it('lists worktree sessions in the source repository, tagged with the worktree', async () => {
     sessionsData = [
       {
         id: 'session-1',
@@ -1502,10 +1686,14 @@ describe('Sidebar workspace trust flow', () => {
 
     expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
     expect(screen.queryByLabelText('Collapse repository task-a')).toBeNull()
-    expect(screen.getByLabelText('Collapse worktree task-a')).toBeTruthy()
+    // No nested worktree row: its sessions sit in the repository list, tagged.
+    expect(screen.queryByLabelText(/(Expand|Collapse) worktree/)).toBeNull()
+    const row = screen.getByText('Worktree session').closest('[data-session-row]')
+    expect(row?.querySelector('[data-checkout-tag]')?.textContent).toBe('task-a')
+    expect(workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
   })
 
-  it('renders managed worktrees under their source repository with distinct actions', async () => {
+  it('filters a repository to one worktree and starts sessions there', async () => {
     const user = userEvent.setup()
     sessionsData = [
       {
@@ -1552,17 +1740,27 @@ describe('Sidebar workspace trust flow', () => {
       agentStreams: { lead: createDefaultAgentStream() },
     })
 
-    await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
-
+    const chip = await screen.findByRole('button', { name: 'Checkouts in project: all' })
     expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
-    expect(screen.getByLabelText('Expand worktree task-a')).toBeTruthy()
-    expect(screen.getByText('task-a')).toBeTruthy()
-    expect(screen.queryByLabelText('Create worktree from task-a')).toBeNull()
-    // Inline row actions grow on touch (DESIGN.md touch parity).
-    expect(screen.getByLabelText('New session in worktree task-a').className).toContain('pointer-coarse:size-9')
-    expect(screen.getByLabelText('Actions for worktree task-a').className).toContain('pointer-coarse:size-9')
+    expect(screen.queryByLabelText(/(Expand|Collapse) worktree/)).toBeNull()
+    // The filter chip grows on touch like the row actions (DESIGN.md touch parity).
+    expect(chip.className).toContain('pointer-coarse:h-9')
 
-    await user.click(screen.getByLabelText('New session in worktree task-a'))
+    await user.click(chip)
+    const menu = screen.getByRole('menu', { name: 'Checkouts in project' })
+    expect(within(menu).getByRole('menuitemradio', { name: 'All checkouts' }).getAttribute('aria-checked')).toBe('true')
+    expect(within(menu).getByRole('menuitemradio', { name: 'Main worktree' }).getAttribute('aria-checked')).toBe('false')
+    await user.click(within(menu).getByRole('menuitemradio', { name: 'task-a' }))
+
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Checkouts in project: task-a' })).toBeTruthy()
+    expect(workspaceQueryArgs.at(-1)).toBe('/data/worktrees/project/task-a')
+    // One checkout listed: the tag would only repeat the chip.
+    expect(document.querySelector('[data-checkout-tag]')).toBeNull()
+    const newSession = screen.getByLabelText('New session in worktree task-a')
+    expect(newSession.className).toContain('pointer-coarse:size-9')
+
+    await user.click(newSession)
 
     await waitFor(() => {
       expect(resolveBody).toEqual({
@@ -1577,6 +1775,11 @@ describe('Sidebar workspace trust flow', () => {
       to: '/$sessionId',
       params: { sessionId: 'resolved-worktree-session' },
     })
+
+    // The list names its filter and clears it in one step.
+    await user.click(screen.getByRole('button', { name: 'Show all checkouts in project' }))
+    expect(screen.getByRole('button', { name: 'Checkouts in project: all' })).toBeTruthy()
+    expect(workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
   })
 
   it('renames a worktree sidebar title', async () => {
@@ -1610,9 +1813,11 @@ describe('Sidebar workspace trust flow', () => {
     }) as typeof fetch
 
     await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project' })
-    await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
-    await user.click(screen.getByLabelText('Actions for worktree task-a'))
-    await user.click(screen.getByRole('menuitem', { name: 'Edit title' }))
+    await user.click(await screen.findByRole('button', { name: 'Checkouts in project: all' }))
+    await user.click(screen.getByRole('menuitemradio', { name: 'task-a' }))
+    // Worktree actions act on the selected worktree.
+    await user.click(screen.getByRole('button', { name: 'Checkouts in project: task-a' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Rename task-a…' }))
     const input = screen.getByLabelText('Worktree title')
     await user.clear(input)
     await user.type(input, 'Review UI')
@@ -1657,19 +1862,24 @@ describe('Sidebar workspace trust flow', () => {
       workspace: '/repo/project',
     })
 
-    await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
-    await user.click(screen.getByLabelText('Actions for worktree task-a'))
-    await user.click(screen.getByRole('menuitem', { name: 'Remove worktree' }))
+    await user.click(await screen.findByRole('button', { name: 'Checkouts in project: all' }))
+    // No worktree is selected yet, so there is nothing to remove.
+    expect(screen.queryByRole('menuitem', { name: /^Remove / })).toBeNull()
+    await user.click(screen.getByRole('menuitemradio', { name: 'task-a' }))
+    await user.click(screen.getByRole('button', { name: 'Checkouts in project: task-a' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Remove task-a…' }))
 
     // Managed-worktree removal is destructive, so it now requires
     // confirmation before it commits (error prevention).
     await user.click(screen.getByRole('button', { name: 'Remove worktree' }))
 
     await waitFor(() => expect(screen.queryByText('task-a')).toBeNull())
+    // Without worktrees the filter chip goes, and the list is the repository alone.
+    expect(screen.queryByRole('button', { name: /^Checkouts in project/ })).toBeNull()
+    expect(workspaceQueryArgs.at(-1)).toBe('/repo/project')
     expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
     expect(screen.queryByLabelText('Collapse repository task-a')).toBeNull()
     expect(screen.queryByLabelText('Expand repository task-a')).toBeNull()
-    expect(screen.queryByLabelText('Expand worktree project')).toBeNull()
   })
 
   it('keeps the source repository visible when the active session is a worktree', async () => {
@@ -1706,8 +1916,54 @@ describe('Sidebar workspace trust flow', () => {
 
     await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
     expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
-    expect(screen.getByLabelText('Collapse worktree task-a')).toBeTruthy()
+    expect(workspaceQueryArgs.at(-1)).toEqual(['/repo/project', '/data/worktrees/project/task-a'])
     expect(screen.getAllByText('Worktree session').length).toBeGreaterThan(0)
+  })
+
+  it('shows every checkout again when the current session is filtered out', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'main-1',
+        title: 'Main session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/api/agent/workspace/tree')) {
+        return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
+      }
+      if (url.startsWith('/api/agent/workspace/worktrees')) return new Response(JSON.stringify([]))
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+
+    const { Sidebar } = await import('@/components/Sidebar')
+    const queryClient = new QueryClient()
+    const sidebar = (currentSessionId: string) => (
+      <QueryClientProvider client={queryClient}>
+        <Sidebar currentSessionId={currentSessionId} workspace="/repo/project" />
+      </QueryClientProvider>
+    )
+    let view: ReturnType<typeof render> | undefined
+    await act(async () => {
+      view = render(sidebar('main-1'))
+      await Promise.resolve()
+    })
+    await settleWorkspaceTree(queryClient)
+
+    // Picking a worktree is deliberate, even though it hides the open session.
+    await user.click(screen.getByRole('button', { name: 'Checkouts in project: all' }))
+    await user.click(screen.getByRole('menuitemradio', { name: 'task-a' }))
+    expect(screen.getByRole('button', { name: 'Checkouts in project: task-a' })).toBeTruthy()
+
+    // Opening another main-checkout session (Needs you, search) brings it back.
+    await act(async () => { view!.rerender(sidebar('main-2')) })
+    expect(screen.getByRole('button', { name: 'Checkouts in project: all' })).toBeTruthy()
   })
 
   it('renames a session in place from its row', async () => {

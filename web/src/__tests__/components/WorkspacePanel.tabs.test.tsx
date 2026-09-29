@@ -134,6 +134,25 @@ describe('Review dock diff tabs', () => {
     expect(screen.getByRole('button', { name: 'app.ts diff' }).getAttribute('aria-current')).toBe('true')
   })
 
+  it('opens and focuses a diff tab for a diffRequest prop', async () => {
+    const { WorkspacePanel } = await import('@/components/WorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <WorkspacePanel
+            workspace={WORKSPACE}
+            open
+            diffRequest={{ path: 'src/app.ts', status: 'M', key: 1 }}
+          />
+        </QueryClientProvider>,
+      )
+    })
+
+    const diffTab = await screen.findByRole('button', { name: 'app.ts diff' })
+    expect(diffTab.getAttribute('aria-current')).toBe('true')
+  })
+
   it('opens the working file from the diff tab toolbar', async () => {
     const user = userEvent.setup()
     const onFileSelect = mock(() => {})

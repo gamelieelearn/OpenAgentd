@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-28
+updated: 2026-09-29
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v3.0.0 · September 28, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.0.0)
+**Latest release:** v3.1.0 · September 29, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.1.0)
 
 ---
 
@@ -457,8 +457,6 @@ run from the terminal (the native Rust binary since v3.0.0).
     them back), both reachable from the keyboard.
   - A failed turn ends in an error card with Retry and Switch model, which
     opens Session Settings.
-  - Right-click a reply for Copy, Copy as Markdown, and Open Session as
-    Markdown.
   - `⌥⌘↑`/`⌥⌘↓` (`Ctrl+Alt+↑`/`Ctrl+Alt+↓` elsewhere) jump between your
     prompts; `⌥⌘↑` reaches earlier prompts in one press, loading them when
     they are not loaded yet. On mobile, Previous prompt and Next prompt in the
@@ -482,11 +480,22 @@ run from the terminal (the native Rust binary since v3.0.0).
     counted; while the turn runs it names the current step ("Working ·
     Shell: Run web tests"). Opening it shows the steps as in the detailed
     transcript, and transcript find opens it when it matches inside.
+    Since `[v3.1.0]` the running row also says how long the turn has run,
+    counted from its prompt ("Working · 1m 12s · Shell: Run web tests"),
+    and a turn waiting on your answer shows its counts instead of "Working".
+  - An open row stays pinned to the top of the transcript while its steps
+    scroll under it, and a **Collapse** row ends the steps, so a long fold
+    closes without scrolling back up. Closing from either leaves the row
+    where you pressed it.
   - A question waiting on the user, interactive MCP apps, errors, and
     compaction dividers stay in place; once answered or closed, a question
     folds in with the rest of the work.
+    Since `[v3.1.0]` a compaction divider also splits the work: the steps
+    before it fold into a finished row above it, and the steps after it into
+    a row of their own below, which is the one that reads "Working".
   - A finished turn lists the files its `patch` calls changed, with line
-    counts; each opens in the review dock.
+    counts; each opens its git diff in the review dock. Since `[v3.1.0]` the list starts
+    closed behind its "N files changed" header.
 - **The composer while the agent works** `[v3.0.0]`:
   - Scrolled away from the live end, a "↓ N new" chip rides on the
     composer, wherever it is dragged, and counts what arrived since.
@@ -739,6 +748,9 @@ agent against it.
   list existing worktrees, edit sidebar titles without renaming git directories,
   and remove OpenAgentd-managed worktrees. Removing a worktree asks for confirmation
   first, warning that uncommitted changes will be lost `[v1.101.0]`.
+  Since `[v3.1.0]` these actions live in the repository's checkout menu (see
+  **Compact coding sidebar**), where **New worktree…**, **Rename** and
+  **Remove** act on the worktree the list is narrowed to.
 - **Warm-paper workspace refresh** `[v1.74.0]` — coding panels, chat-adjacent
   surfaces, scheduled tasks, telemetry, home, provider/settings detail views,
   command/file search, and input attachments now share the custom warm-paper
@@ -810,7 +822,14 @@ agent against it.
   collapse-all and **Open folder** actions, workspace rows with chevrons and indent guides,
   a **…** actions menu on worktrees, 28px session rows showing a compact age that swaps to
   edit/delete on hover, and a **Show more** button instead of scroll-triggered loading.
-- **Nested subagent sessions in the coding sidebar** `[v2.16.0]` — lead sessions with
+  Since `[v3.1.0]` the sidebar is one level deep: worktrees are no longer rows.
+  A repository lists the sessions of its own checkout and every worktree as one
+  list, newest first, and a worktree's sessions carry its name as a tag. A
+  chip on the repository row (the branch icon and the worktree count) opens
+  its checkout menu: **All checkouts**, **Main worktree**, or one worktree
+  narrows the list, **+** then starts sessions in that checkout, and a row
+  above the sessions names the filter with a **Show all** button. Opening a
+  session the filter hides shows every checkout again.
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0, updated v2.17.0]` — lead sessions with
   delegated subagents render an expandable accordion of child sessions that defaults to
   expanded while a child is running, waiting on the lead, or selected, and collapses to a
@@ -818,6 +837,9 @@ agent against it.
   can be deleted from the sidebar with instant cache pruning `[v2.17.0]`, falling back cleanly to the
   parent lead session, and opening one shows a read-only banner with a
   **Return to Lead** action.
+  Since `[v3.1.0]` the count pill beside the title is the toggle, so sessions
+  without subagents keep no chevron gutter, and child rows sit flat under the
+  lead's title without another indent guide.
 - **Rename sessions in place** `[v3.0.0]` — the pencil, a double-click on a
   sidebar row, **Edit title** in its menu, or a click on the session title in
   the desktop header turns the title into a text field. Enter or clicking away
@@ -874,7 +896,14 @@ agent against it.
   first message.
 - **Workspace sidebar pagination** `[v1.18.0]` — each main/worktree list shows
   roughly 5 sessions and loads more on request (**Show more** since `[v3.0.0]`,
-  previously on scroll), so one busy workspace doesn't crowd the others.
+  previously on scroll), so one busy workspace doesn't crowd the others. Since
+  `[v3.1.0]` a repository and its worktrees page as one list.
+- **Remove a workspace from the sidebar** `[v1.42.0, updated v3.0.0]` — a
+  repository's **Remove from sidebar** action hides it and its worktrees
+  without deleting anything; its sessions stay, and reopening the folder lists
+  it again. Since `[v3.0.0]` the row leaves the sidebar at once, a reopened
+  folder reappears at once, and removing the open workspace returns to the
+  launcher instead of reopening it.
 - **`@file` / `@folder` auto-attach** `[v1.17.0]` — see [§1](#1-the-desktop-coding-workspace).
 - **Slash commands scoped to coding workspaces** `[v1.17.0]` — project-local
   commands in `.openagentd/commands/**/*.md`, universal `.agents/commands/**/*.md` `[v2.12.0]`, and `.opencode/commands/**/*.md`
@@ -1461,10 +1490,11 @@ Everything stays local. No third-party telemetry SaaS.
   (50% of peak outside Mon–Fri 01:00–04:00 and 06:00–10:00 UTC) `[v2.4.2]`.
   The telemetry dashboard also reports cache-write tokens separately from cache
   reads in the totals, provider:model, and cache-by-step views `[v2.4.2]`.
-- **Prompt budget report** `[v1.102.0]` — `make prompt-budget` reports exact
-  `o200k_base` counts for the assembled static system prompt, compact tool-schema
-  JSON, every first-party base prompt, each tool, and bundled skill bodies;
-  `make prompt-budget-json` emits a stable machine-readable baseline for CI.
+- **Prompt budget report** `[v1.102.0]` *(deprecated — removed with the v2
+  Python tooling)* — the `prompt-budget` Make target reported exact
+  `o200k_base` counts for the v2 assembled static system prompt, compact
+  tool-schema JSON, every first-party base prompt, each tool, and bundled skill
+  bodies; `prompt-budget-json` emitted a stable machine-readable baseline for CI.
 - **Fast JSONL-backed query API** `[v2.0.0]` — `/api/observability/*` queries
   local OpenTelemetry span logs directly using `orjson` parsing, delivering faster
   query execution and lower latency without DuckDB binary dependency weight.
@@ -1527,30 +1557,52 @@ Desktop is primary. CLI / server is the developer path.
   CLI commands and `openagentd upgrade` say that v2 gets no further updates and
   print the v3 install command plus the step that removes the uv/pipx/pip copy.
   `OPENAGENTD_HIDE_V2_NOTICE=1` hides it; the desktop sidecar never shows it.
-- **CLI server control** `[v1.41.0, v2.4.0]` — `openagentd server restart`,
-  `openagentd server status`, `openagentd server health`, and `openagentd server
+- **Concise native CLI** `[v3.1.0]` — `openagentd --help` lists eight command
+  groups with short examples, errors print as one `error: …` line, and usage
+  errors exit 2. Bare `openagentd` prints help instead of starting the server
+  (use `openagentd server start`); the name is kept for a future terminal UI.
+- **CLI server control** `[v1.41.0, v2.4.0, v3.1.0]` — `openagentd server start|stop|restart`,
+  `openagentd server status`, `openagentd server logs`, and `openagentd server
   start --host 0.0.0.0 --key` make the CLI the control plane for desktop/mobile backends.
+  Since v3.1.0 `server status` also runs the port, live, ready, and LAN checks
+  (the former `server health`, still accepted) and exits 1 when the server is
+  stopped or unhealthy, and `server logs` shows readable log lines instead of
+  raw JSON records.
 - **Foreground CLI agent execution** `[v2.4.0]` — `openagentd run --prompt "..."`
   validates the current directory as a coding workspace, starts one persisted
   agent session, and streams only the agent's response text to standard
   output. `--model provider:model` and `--thinking` apply per-turn overrides;
   auto-approved tool permissions continue normally, while interactive agent
   questions stop the non-interactive command instead of leaving a suspended run.
+  Since `[v3.1.0]`, `-C/--cd DIR` picks another workspace, `-c/--continue`
+  continues the workspace's latest session, `--session ID` continues a given
+  session, and `--json` prints every stream event as one JSON line.
 - **CLI start --wait** `[v1.73.0, v2.4.0]` — `openagentd server start --wait`
   starts the background server and polls `/api/health/ready` until the database
-  connection and the agent session are fully ready.
+  connection and the agent session are fully ready; since v3.1.0 it exits 1 when
+  the server dies or is not ready within 30 seconds.
 - **CLI upgrade** `[v1.41.0, self-update v3.0.0]` — `openagentd upgrade` in v3 stops the
   background server, downloads the latest prebuilt release archive from GitHub, verifies
   its SHA-256 checksum, swaps the binaries in place, and restarts the server if it was
   running. Homebrew installations delegate to `brew upgrade`. In v2.27.0, `openagentd upgrade`
-  migrates existing uv/pipx/pip installations to the v3 native binary.
+  migrates existing uv/pipx/pip installations to the v3 native binary. `openagentd update`
+  is an alias `[v3.1.0]`.
+- **CLI OAuth login status** `[v3.1.0]` — `openagentd auth list` shows which
+  OAuth providers (Codex, GitHub Copilot, Grok) are logged in, and
+  `openagentd auth logout <provider>` deletes the saved login.
+  `openagentd auth <provider>` still logs in.
+- **CLI doctor** `[since v0.1.0, v3.1.0]` — `openagentd doctor` checks provider credentials
+  (including keys saved in Settings → Providers and the lead agent's OAuth
+  login), the database, the configured server port, and the agents directory,
+  and exits 1 when a check fails.
 - **CLI artifact cleanup** `[v2.18.0]` — `openagentd cleanup` previews a dry run
   and, with `--apply`, deletes sessions older than `--older-than-days`
   (default 14) together with their messages, session artifacts, undo/redo
   snapshot repos, and app-managed telemetry, logging, and worktree state that
   no live session owns. `--vacuum` then rebuilds the SQLite file so pages freed
   by the deleted rows return to disk; a lock held by a running server is
-  reported rather than failing the pass.
+  reported rather than failing the pass. Since v3.1.0 the preview lists the
+  largest candidates with their size and reason (`--limit N`, `0` for all).
 - **Docker** *(deprecated, removed in v1.23.0)* — the `Dockerfile`,
   `docker-compose.yaml`, and the `ghcr.io/lthoangg/openagentd` image are
   no longer maintained. Use the CLI install paths above; revisit if there

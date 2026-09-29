@@ -11,8 +11,6 @@ HTTP, WebSocket, and SSE routes.
 - Keep handlers focused on transport validation/status/response shaping.
   Delegate durable behavior to `app/services/` or the owning `app/agent/`
   subsystem.
-- Put route coverage in `tests/api/`; use FastAPI dependency overrides instead
-  of patching route internals when the dependency seam exists.
 - Preserve shapes consumed by `web/src/api/`, queries, and stream stores. API,
   SSE, or WebSocket contract changes require frontend updates and web checks.
 
@@ -29,12 +27,3 @@ HTTP, WebSocket, and SSE routes.
 The test fixtures clear inherited `OPENAGENTD_DESKTOP_TOKEN` and
 `OPENAGENTD_ACCESS_KEY`. Do not bypass that isolation with import-time auth
 state.
-
-## Checks
-
-```bash
-uv run pytest tests/api -q
-uv run ruff check app/api tests/api
-uv run ty check app/
-make verify-backend
-```

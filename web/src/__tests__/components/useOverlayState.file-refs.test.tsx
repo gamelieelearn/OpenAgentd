@@ -10,6 +10,7 @@ import type { AgentStream } from '@/stores/useAgentStore/types'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { useUIStore } from '@/stores/useUIStore'
+import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const WORKSPACE = '/repo/project'
@@ -35,6 +36,7 @@ function renderOverlay(overrides: Partial<UseOverlayStateArgs> = {}) {
 beforeEach(() => {
   useFileRevealStore.setState({ request: null })
   useToastStore.setState({ toasts: [] })
+  useGitPanelStore.setState({ workspaces: {} })
 })
 afterEach(() => {
   cleanup()
@@ -109,6 +111,38 @@ describe('useOverlayState — opening file references', () => {
       title: 'File not found',
       description: 'No file in this workspace matches src/missing.ts.',
     })
+  })
+})
+
+describe('useOverlayState — opening diff references', () => {
+  it('opens a diff tab in the dock for an in-workspace file', () => {
+    const { result } = renderOverlay()
+
+    act(() => result.current.handleDiffOpen({ path: 'src/a.ts', status: 'M' }))
+
+    expect(result.current.workspacePanel).toBe('changed')
+    expect(result.current.dockDiffRequest).toEqual({ path: 'src/a.ts', status: 'M', key: 1 })
+    const gitState = useGitPanelStore.getState().workspaces[WORKSPACE]
+    expect(gitState?.subTab).toBe('changes')
+    expect(gitState?.expandedDiffs).toContain('src/a.ts')
+  })
+
+  it('opens a diff for a deleted file in the dock', () => {
+    const { result } = renderOverlay()
+
+    act(() => result.current.handleDiffOpen({ path: 'src/deleted.ts', status: 'D' }))
+
+    expect(result.current.workspacePanel).toBe('changed')
+    expect(result.current.dockDiffRequest).toEqual({ path: 'src/deleted.ts', status: 'D', key: 1 })
+  })
+
+  it('ignores diff requests outside the workspace', () => {
+    const { result } = renderOverlay()
+
+    act(() => result.current.handleDiffOpen({ path: '../outside.ts' }))
+
+    expect(result.current.workspacePanel).toBeNull()
+    expect(result.current.dockDiffRequest).toBeNull()
   })
 })
 

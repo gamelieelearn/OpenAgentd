@@ -1,13 +1,15 @@
-//! `openagentd doctor` — port of `app/cli/commands/doctor.py`.
+//! `openagentd doctor`: credentials, database, port, and agents checks.
 
-use crate::paths::{config_dir, data_dir, home};
-use crate::pystr::{splitlines, strip};
-use crate::ui::{bold, cyan, dim, green, red, yellow};
-use std::path::Path;
+use crate::paths::find_pids;
+use crate::ui::{bold, cyan, dim, tilde, Checks};
+use anyhow::Result;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
-const OAUTH_PROVIDERS: &[&str] = &["copilot", "codex", "grok", "vertexai", "cliproxy", "router9", "ollama"];
+/// Lead-agent providers that need neither an API key nor an OAuth login.
+const KEYLESS_PROVIDERS: &[&str] = &["vertexai", "cliproxy", "router9", "ollama"];
 
-/// `PROVIDER_KEY_VAR` in catalog order.
+/// `(provider id, API key variable)` in catalog order.
 fn provider_key_vars() -> Vec<(String, String)> {
     appv3_providers::catalog::builtin_providers()
         .iter()
@@ -18,149 +20,134 @@ fn provider_key_vars() -> Vec<(String, String)> {
         .collect()
 }
 
-fn display(p: &Path) -> String {
-    p.display().to_string().replace(&home().display().to_string(), "~")
+fn env_set(k: &str) -> bool {
+    std::env::var(k).is_ok_and(|v| !v.is_empty())
 }
 
-/// `sorted(dir.glob("*.md"))`.
-fn md_files(dir: &Path) -> Vec<std::path::PathBuf> {
+fn md_files(dir: &Path) -> Vec<PathBuf> {
     let Ok(rd) = std::fs::read_dir(dir) else { return vec![] };
-    let mut v: Vec<_> = rd.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".md"))).collect();
+    let mut v: Vec<_> = rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "md")).collect();
     v.sort();
     v
 }
 
-/// `_read_lead_provider`.
+/// Provider prefix of the lead agent's `model:` (`code.md`, else the first agent).
 fn read_lead_provider(agents_dir: &Path) -> Option<String> {
-    if !agents_dir.is_dir() {
-        return None;
-    }
     let candidates = md_files(agents_dir);
-    if candidates.is_empty() {
-        return None;
-    }
     let lead = agents_dir.join("code.md");
-    let target = if lead.is_file() { lead } else { candidates[0].clone() };
-    let text = std::fs::read_to_string(&target).ok()?;
-    let lines = splitlines(&text);
-    if lines.is_empty() || strip(lines[0]) != "---" {
+    let target = if lead.is_file() { lead } else { candidates.first()?.clone() };
+    let text = std::fs::read_to_string(target).ok()?;
+    let mut lines = text.lines().map(str::trim);
+    if lines.next()? != "---" {
         return None;
     }
-    for line in &lines[1..] {
-        let s = strip(line);
-        if s == "---" {
-            break;
-        }
-        if let Some(rest) = s.strip_prefix("model:") {
-            let value = strip(rest).trim_matches('"').trim_matches('\'');
-            if let Some((provider, _)) = value.split_once(':') {
-                let p = strip(provider);
-                return (!p.is_empty()).then(|| p.to_string());
-            }
-            return None;
-        }
-    }
-    None
+    let model = lines.take_while(|l| *l != "---").find_map(|l| l.strip_prefix("model:"))?;
+    let (provider, _) = model.trim().trim_matches(['"', '\'']).split_once(':')?;
+    Some(provider.trim().to_string()).filter(|p| !p.is_empty())
 }
 
-pub fn cmd_doctor() {
-    let (mut passes, mut warnings, mut errors) = (0, 0, 0);
-    let mut ok = |m: &str| {
-        passes += 1;
-        println!("  {}  {m}", green("✓"));
-    };
-    let mut warn = |m: &str| {
-        warnings += 1;
-        println!("  {}  {m}", yellow("⚠"));
-    };
-    let mut fail = |m: &str| {
-        errors += 1;
-        println!("  {}  {m}", red("✗"));
-    };
-    println!();
-    println!("  {}", bold(&cyan("openagentd doctor")));
-    println!();
+/// Whether the builtin OAuth provider `p` has a login (or copilot a token env var).
+fn oauth_logged_in(p: &str, token_file: &Path) -> bool {
+    token_file.is_file() || (p == "copilot" && appv3_providers::copilot::TOKEN_ENV.iter().any(|k| env_set(k)))
+}
 
-    // 1. Runtime (v2 checks the Python interpreter; v3 has none).
-    ok(&format!("Rust runtime (openagentd v{})", appv3_core::VERSION));
+pub fn doctor() -> Result<ExitCode> {
+    // Provider keys saved in Settings → Providers live in the config `.env`.
+    appv3_core::env::init_env();
+    let s = appv3_core::settings();
+    appv3_core::env::load_config_env(&s.config_dir);
 
-    // 2. LLM provider API keys
-    let cfg = config_dir();
+    println!();
+    println!("  {}  {}", bold(&cyan("openagentd doctor")), dim(&format!("v{}", appv3_core::VERSION)));
+    println!();
+    let mut checks = Checks::default();
+
+    // Provider credentials.
     let key_vars = provider_key_vars();
-    let configured = read_lead_provider(&cfg.join("agents"));
-    let mut all_vars: Vec<&str> = key_vars.iter().map(|(_, v)| v.as_str()).collect();
-    all_vars.push("VERTEXAI_API_KEY");
-    let found: Vec<&str> = all_vars.iter().copied().filter(|k| std::env::var(k).is_ok_and(|v| !v.is_empty())).collect();
-    let uses_oauth = configured.as_deref().is_some_and(|p| OAUTH_PROVIDERS.contains(&p));
-    if !found.is_empty() {
-        for k in &found {
-            ok(&format!("API key: {k}"));
-        }
-    } else if uses_oauth {
-        ok(&format!("Provider '{}' uses OAuth — no API key required", configured.as_deref().unwrap()));
-    } else if configured.is_none() {
-        warn("No agents configured — cannot verify provider credentials");
-    } else {
-        fail("No LLM provider API key configured");
-        let names: Vec<&str> = key_vars.iter().map(|(_, v)| v.as_str()).collect();
-        println!("     {}", dim(&format!("  Set one of: {}", names.join(", "))));
+    let lead = read_lead_provider(&s.agents_dir);
+    let found: Vec<&str> = key_vars.iter().map(|(_, v)| v.as_str()).chain(["VERTEXAI_API_KEY"]).filter(|k| env_set(k)).collect();
+    let lead_oauth = lead.as_deref().and_then(|p| appv3_providers::oauth::oauth_path(p).map(|f| (p, f)));
+    let lead_keyless = lead.as_deref().is_some_and(|p| KEYLESS_PROVIDERS.contains(&p));
+    for k in &found {
+        checks.ok(&format!("API key: {k}"));
     }
-
-    // 3. Configured provider has matching key
-    if let Some(p) = &configured {
-        if uses_oauth {
-            ok(&format!("Provider '{p}' authenticated via OAuth"));
+    if found.is_empty() && lead_oauth.is_none() && !lead_keyless {
+        if lead.is_none() {
+            checks.warn("No agents configured — cannot verify provider credentials");
+        } else {
+            checks.fail("No LLM provider API key configured");
+            let names: Vec<&str> = key_vars.iter().map(|(_, v)| v.as_str()).collect();
+            println!("     {}", dim(&format!("Set one of: {}", names.join(", "))));
+        }
+    }
+    if let Some((p, token_file)) = lead_oauth {
+        if oauth_logged_in(p, &token_file) {
+            checks.ok(&format!("Lead agent provider '{p}' is logged in"));
+        } else {
+            checks.fail(&format!("Lead agent provider '{p}' is not logged in — run `openagentd auth {p}`"));
+        }
+    } else if let Some(p) = lead.as_deref() {
+        if lead_keyless {
+            checks.ok(&format!("Lead agent provider '{p}' needs no API key"));
         } else {
             match key_vars.iter().find(|(id, _)| id == p).map(|(_, v)| v.as_str()) {
-                None => warn(&format!("Lead agent uses unknown provider: {p}")),
-                Some(k) if found.contains(&k) => ok(&format!("Provider key matches agent: {k}")),
-                Some(k) => fail(&format!("Lead agent uses '{p}' but {k} is not set")),
+                None => checks.warn(&format!("Lead agent uses an unknown provider: {p}")),
+                Some(k) if found.contains(&k) => checks.ok(&format!("Lead agent key is set: {k}")),
+                Some(k) => checks.fail(&format!("Lead agent uses '{p}' but {k} is not set")),
             }
         }
     }
 
-    // 4. Database file
-    let db = data_dir().join("openagentd.db");
-    if db.exists() {
-        ok(&format!("Database: {}", display(&db)));
+    // Database.
+    if s.database_path.exists() {
+        checks.ok(&format!("Database: {}", tilde(&s.database_path)));
     } else {
-        warn(&format!("Database not found: {}  (will be created on first run)", display(&db)));
+        checks.warn(&format!("Database not found: {}  (created on first start)", tilde(&s.database_path)));
     }
 
-    // 5. Migrations are compiled into the binary (v2: alembic.ini bundled).
-    // v2's `from app.core import db` creates the DB's parent directory here.
-    if let Some(parent) = std::path::Path::new(&appv3_core::settings().database_path).parent() {
-        let _ = std::fs::create_dir_all(parent);
+    // Server port.
+    match crate::net::server_settings() {
+        Err(e) => checks.fail(&format!("{e:#}")),
+        Ok(cfg) => {
+            let (_, port) = crate::net::resolve_addr(None, None, &cfg);
+            let running = find_pids();
+            if !running.is_empty() {
+                let pids: Vec<String> = running.iter().map(|p| p.to_string()).collect();
+                checks.ok(&format!("Port {port}: used by the running server (pid {})", pids.join(", ")));
+            } else if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+                checks.ok(&format!("Port {port} is available"));
+            } else {
+                checks.warn(&format!("Port {port} is in use by another process"));
+            }
+        }
     }
-    ok("Alembic config bundled");
 
-    // 6. Default port availability
-    let default_port = 4082;
-    if std::net::TcpListener::bind(("127.0.0.1", default_port)).is_ok() {
-        ok(&format!("Port {default_port} available"));
+    // Agents.
+    if !md_files(&s.agents_dir).is_empty() {
+        checks.ok(&format!("Agents: {}", tilde(&s.agents_dir)));
     } else {
-        warn(&format!("Port {default_port} in use  (server may already be running)"));
-    }
-
-    // 7. Agents directory
-    let agents = cfg.join("agents");
-    if agents.is_dir() && !md_files(&agents).is_empty() {
-        ok(&format!("Agents: {}", display(&agents)));
-    } else {
-        fail(&format!("Agents not found: {}  (restart OpenAgentd to restore defaults)", display(&agents)));
+        checks.fail(&format!("Agents not found: {}  (start the server to restore the defaults)", tilde(&s.agents_dir)));
     }
 
     println!();
-    let mut parts = vec![green(&format!("{passes} passed"))];
-    if warnings > 0 {
-        parts.push(yellow(&format!("{warnings} warning{}", if warnings != 1 { "s" } else { "" })));
-    }
-    if errors > 0 {
-        parts.push(red(&format!("{errors} error{}", if errors != 1 { "s" } else { "" })));
-    }
-    println!("  {}", parts.join(", "));
+    println!("  {}", checks.summary());
     println!();
-    if errors > 0 {
-        crate::cmd::server::system_exit_code(1);
+    Ok(if checks.failures > 0 { ExitCode::FAILURE } else { ExitCode::SUCCESS })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_lead_provider;
+
+    #[test]
+    fn lead_provider_comes_from_code_md_frontmatter() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(read_lead_provider(dir.path()), None);
+        std::fs::write(dir.path().join("a.md"), "---\nname: a\nmodel: \"anthropic:claude\"\n---\nbody\n").unwrap();
+        assert_eq!(read_lead_provider(dir.path()).as_deref(), Some("anthropic"));
+        std::fs::write(dir.path().join("code.md"), "---\r\nname: code\r\nmodel: openai:gpt-5.5\r\n---\r\nbody model: x:y\r\n").unwrap();
+        assert_eq!(read_lead_provider(dir.path()).as_deref(), Some("openai"));
+        std::fs::write(dir.path().join("code.md"), "no frontmatter\nmodel: openai:gpt\n").unwrap();
+        assert_eq!(read_lead_provider(dir.path()), None);
     }
 }

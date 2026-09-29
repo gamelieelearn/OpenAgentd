@@ -1,20 +1,17 @@
-//! `openagentd upgrade` — stop the server, update, restart it (as
-//! `app/cli/commands/upgrade.py`). Homebrew installs run `brew upgrade`;
-//! every other install updates itself from the GitHub release archives
-//! (`self_update`). v2's uv/pipx/pip paths are gone: v3 is not on PyPI, so
-//! they would install the old Python package.
+//! `openagentd upgrade`: stop the server, update, restart it. Homebrew
+//! installs run `brew upgrade`; every other install updates itself from the
+//! GitHub release archives (`self_update`).
 
-use crate::argparse::Ns;
 use crate::cmd::self_update::{self, Outcome};
-use crate::cmd::server::{cmd_stop, ns_int, ns_str, system_exit_code};
 use crate::paths::find_pids;
 use crate::ui::{bold, cyan, dim, green};
-use std::process::{Command, Stdio};
+use anyhow::{Context, Result};
+use std::process::{Command, ExitCode, Stdio};
 use std::time::Duration;
 
 use appv3_core::which::which;
 
-/// `subprocess.run(cmd, capture_output=True, timeout=5)` → `(code, stdout)`.
+/// Run with a 5 s timeout → `(exit code, stdout)`.
 fn capture(cmd: &[&str]) -> Option<(i32, String)> {
     let mut child = Command::new(cmd[0]).args(&cmd[1..]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().ok()?;
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
@@ -42,12 +39,12 @@ fn is_brew_managed() -> bool {
 }
 
 /// `brew upgrade` (after `brew update`); returns the exit code.
-fn brew_upgrade() -> i32 {
+fn brew_upgrade() -> Result<i32> {
     let pre = vec!["brew".to_string(), "update".to_string()];
     println!("  {}", dim(&pre.join(" ")));
-    let code = run(&pre);
+    let code = run(&pre)?;
     if code != 0 {
-        return code;
+        return Ok(code);
     }
     let cmd: Vec<String> = ["brew", "upgrade", "--formula", "lthoangg/tap/openagentd"].iter().map(|s| s.to_string()).collect();
     println!("  {}", dim(&cmd.join(" ")));
@@ -77,68 +74,48 @@ fn release_upgrade(exe: &std::path::Path) -> i32 {
     }
 }
 
-fn restart_command(ns: &Ns) -> Vec<String> {
+fn restart_command() -> Vec<String> {
     let exe = which("openagentd")
         .map(|p| p.to_string_lossy().into_owned())
         .or_else(|| std::env::args().next().filter(|a| std::path::Path::new(a).is_file()))
         .unwrap_or_else(|| "openagentd".into());
-    let mut cmd = vec![exe, "server".into(), "start".into()];
-    if let Some(h) = ns_str(ns, "host").filter(|h| !h.is_empty()) {
-        cmd.extend(["--host".into(), h.into()]);
-    }
-    if let Some(p) = ns_int(ns, "port") {
-        cmd.extend(["--port".into(), p.to_string()]);
-    }
-    cmd
+    vec![exe, "server".into(), "start".into()]
 }
 
-/// `subprocess.run(cmd).returncode` (negative for signals; missing binary raises).
-fn run(cmd: &[String]) -> i32 {
-    match Command::new(&cmd[0]).args(&cmd[1..]).status() {
-        Ok(s) => {
-            #[cfg(unix)]
-            {
-                use std::os::unix::process::ExitStatusExt;
-                s.code().unwrap_or_else(|| -s.signal().unwrap_or(1))
-            }
-            #[cfg(not(unix))]
-            {
-                s.code().unwrap_or(1)
-            }
-        }
-        Err(e) => crate::pystr::uncaught("FileNotFoundError", &format!("[Errno 2] No such file or directory: {} ({e})", crate::argparse::py_repr(&cmd[0]))),
-    }
+/// The command's exit code (1 when killed by a signal).
+fn run(cmd: &[String]) -> Result<i32> {
+    let status = Command::new(&cmd[0]).args(&cmd[1..]).status().with_context(|| format!("run {}", cmd[0]))?;
+    Ok(status.code().unwrap_or(1))
 }
 
-pub fn cmd_upgrade(ns: &Ns) {
+fn exit_code(code: i32) -> ExitCode {
+    ExitCode::from(u8::try_from(code & 0xff).unwrap_or(1))
+}
+
+pub fn upgrade() -> Result<ExitCode> {
     let exe = std::env::current_exe().ok().and_then(|p| dunce::canonicalize(p).ok()).unwrap_or_default();
     if self_update::is_desktop_bundled(&exe) {
         println!("  This openagentd is bundled with the desktop app, which updates it (Settings → About).");
-        return;
+        return Ok(ExitCode::SUCCESS);
     }
     let was_running = !find_pids().is_empty();
     if was_running {
         println!("  {} before upgrade ...", bold("Stopping openagentd"));
-        cmd_stop(ns);
+        crate::cmd::server::stop()?;
     }
     let manager = if is_brew_managed() { "brew" } else { "GitHub releases" };
     println!("  {} via {} ...", bold("Upgrading openagentd"), cyan(manager));
-    let code = if manager == "brew" { brew_upgrade() } else { release_upgrade(&exe) };
+    let code = if manager == "brew" { brew_upgrade()? } else { release_upgrade(&exe) };
     let mut restart_code = 0;
     if was_running {
-        let restart = restart_command(ns);
+        let restart = restart_command();
         if code == 0 {
             println!("  {} ...", bold("Restarting openagentd"));
         } else {
             println!("  {} after failed upgrade ...", bold("Restarting openagentd"));
         }
         println!("  {}", dim(&restart.join(" ")));
-        restart_code = run(&restart);
+        restart_code = run(&restart)?;
     }
-    if code != 0 {
-        system_exit_code(code & 0xff);
-    }
-    if restart_code != 0 {
-        system_exit_code(restart_code & 0xff);
-    }
+    Ok(exit_code(if code != 0 { code } else { restart_code }))
 }
