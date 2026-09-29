@@ -875,6 +875,12 @@ agent against it.
 - **Workspace sidebar pagination** `[v1.18.0]` — each main/worktree list shows
   roughly 5 sessions and loads more on request (**Show more** since `[v3.0.0]`,
   previously on scroll), so one busy workspace doesn't crowd the others.
+- **Remove a workspace from the sidebar** `[v1.42.0, updated v3.0.0]` — a
+  repository's **Remove from sidebar** action hides it and its worktrees
+  without deleting anything; its sessions stay, and reopening the folder lists
+  it again. Since `[v3.0.0]` the row leaves the sidebar at once, a reopened
+  folder reappears at once, and removing the open workspace returns to the
+  launcher instead of reopening it.
 - **`@file` / `@folder` auto-attach** `[v1.17.0]` — see [§1](#1-the-desktop-coding-workspace).
 - **Slash commands scoped to coding workspaces** `[v1.17.0]` — project-local
   commands in `.openagentd/commands/**/*.md`, universal `.agents/commands/**/*.md` `[v2.12.0]`, and `.opencode/commands/**/*.md`

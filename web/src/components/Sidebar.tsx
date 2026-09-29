@@ -20,7 +20,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
@@ -127,6 +127,9 @@ import {
 import { SessionSearch } from './Sidebar/SessionSearch'
 import { EASINGS } from '@/lib/motion'
 
+const WORKSPACE_TREE_STALE_MS = 30_000
+const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
+
 interface SidebarProps {
   currentSessionId?: string
   workspace?: string | null
@@ -193,9 +196,14 @@ export function Sidebar({
   // session list for every workspace/worktree row on every render.
   const sessionsByWorkspace = useMemo(() => groupSessionsByWorkspace(workspaceSessions), [workspaceSessions])
 
-  const [workspaceTree, setWorkspaceTree] = useState<CodingWorkspaceTreeRepository[]>(
-    () => queryClient.getQueryData<{ repositories: CodingWorkspaceTreeRepository[] }>(queryKeys.coding.tree())?.repositories ?? [],
-  )
+  // Read straight from the shared query, so a refresh made anywhere (the
+  // command palette's workspace switch, another window) shows here too.
+  const { data: workspaceTreeData } = useQuery({
+    queryKey: queryKeys.coding.tree(),
+    queryFn: getCodingWorkspaceTree,
+    staleTime: WORKSPACE_TREE_STALE_MS,
+  })
+  const workspaceTree = workspaceTreeData?.repositories ?? NO_REPOSITORIES
   const workspaceByPath = useMemo(
     () => new Map(workspaceTree.map((repo) => [repo.path, repo])),
     [workspaceTree],
@@ -330,21 +338,16 @@ export function Sidebar({
     setLoading,
   ])
 
-  const refreshWorkspaceTree = useCallback(async (force = false) => {
-    if (force) {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree(), refetchType: 'none' })
-    }
-    const tree = await queryClient.fetchQuery({
-      queryKey: queryKeys.coding.tree(),
-      queryFn: getCodingWorkspaceTree,
-      staleTime: 30_000,
-    })
-    setWorkspaceTree(tree.repositories)
-  }, [queryClient])
+  // Every caller has just changed the tree on the server, so a cached copy
+  // is never good enough. Invalidating also restarts a fetch already in
+  // flight, which may have left before the change landed.
+  const refreshWorkspaceTree = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree() }),
+    [queryClient],
+  )
 
   useEffect(() => {
-    void refreshWorkspaceTree()
-    const handler = () => { void refreshWorkspaceTree(true) }
+    const handler = () => { void refreshWorkspaceTree() }
     // Other windows also write storage for unrelated state (unread marks on
     // every finished turn, theme…); only the saved workspace list moves the tree.
     const onStorage = (event: StorageEvent) => {
@@ -405,31 +408,36 @@ export function Sidebar({
     }
   }
 
-  // Remove a workspace from the sidebar. Sessions stay in the backend —
-  // reopening the same folder later resurfaces them. If the removed
-  // workspace was the active one, navigate back to the empty /
-  // route so the URL doesn't reference a workspace that no longer
-  // appears in the sidebar. Called from the confirmation dialog below.
+  // Remove a workspace (and its worktrees) from the sidebar. Sessions stay in
+  // the backend — reopening the same folder later resurfaces them. Leaving a
+  // removed active workspace for the empty / route happens inside
+  // ``confirmWorkspaceRemoval``. Called from the confirmation dialog below.
   const confirmRemoveWorkspace = () => {
     const path = removeWorkspaceTarget
     if (!path) return
+    setRemoveWorkspaceTarget(null)
+    const worktreePaths = (workspaceByPath.get(path)?.worktrees ?? []).map((item) => item.path)
     setExpandedWorkspaces((current) => {
       const next = new Set(current)
-      next.delete(path)
+      for (const hidden of [path, ...worktreePaths]) next.delete(hidden)
       return next
     })
-    if (path === activeWorkspace) {
-      navigate({ to: '/', replace: true })
-    }
     void confirmWorkspaceRemoval({
       path,
+      worktreePaths,
       activeWorkspace,
       expandedWorkspaces,
       queryClient,
       refreshWorkspaceTree,
       navigate: ({ to, replace }) => navigate({ to, replace }),
-    }).catch(() => undefined)
-    setRemoveWorkspaceTarget(null)
+    }).catch((err: unknown) => {
+      pushToast({
+        tone: 'error',
+        title: `Could not remove ${workspaceLabel(path)} from the sidebar`,
+        description: err instanceof Error ? err.message : undefined,
+      })
+      void refreshWorkspaceTree()
+    })
   }
 
   const loadWorktreesForTarget = useCallback(async (path: string) => {
