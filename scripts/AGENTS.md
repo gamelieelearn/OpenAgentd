@@ -8,8 +8,8 @@ generation, updater helpers, and code-health analysis.
 - `validate_docs.py`: Markdown links/frontmatter and documented Make target
   contracts.
 - `codehealth/`: stdlib analyzer for Python/TypeScript size, complexity,
-  coupling, and import cycles; invoke through `make health` or
-  `make health-json`.
+  coupling, and import cycles. `make health` and `make health-json` analyze
+  the web frontend only; `--lang python` still reaches the frozen v2 `app/`.
 - `generate_icons.py`: shared source-icon conversion for native targets.
 - `make_updater_manifest.py` and `generate_updater_keys.sh`: desktop updater
   metadata and local key setup.
