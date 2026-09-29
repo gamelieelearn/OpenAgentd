@@ -80,7 +80,7 @@ describe('WorkspaceSessionList — subagent sessions', () => {
     expect(selectedArg.title).toBe('explorer#1: Audit authentication routes')
   })
 
-  it('allows collapsing and expanding subagents via the chevron button', async () => {
+  it('allows collapsing and expanding subagents via the count pill', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
@@ -139,6 +139,11 @@ describe('WorkspaceSessionList — subagent sessions', () => {
     expect(screen.getByText('Trace AST nodes')).toBeTruthy()
     const toggleBtn = screen.getByLabelText('Collapse 1 subagents')
     expect(toggleBtn).toBeTruthy()
+    // The pill is its own control beside the title, not nested in the row
+    // button, and there is no chevron gutter before the title.
+    expect(toggleBtn.closest('button')).toBe(toggleBtn)
+    expect(screen.getByText('Refactor parser').closest('button')?.contains(toggleBtn)).toBe(false)
+    expect(toggleBtn.textContent).toContain('1')
 
     // Collapse
     fireEvent.click(toggleBtn)
@@ -209,14 +214,83 @@ describe('WorkspaceSessionList — subagent sessions', () => {
 
     const subDeleteBtn = screen.getByLabelText('Delete subagent session explorer#1')
     expect(subDeleteBtn).toBeTruthy()
-    // Row actions and the subagent chevron grow on touch (DESIGN.md touch parity).
+    // Row actions and the subagent pill grow on touch (DESIGN.md touch parity).
     expect(subDeleteBtn.className).toContain('pointer-coarse:size-9')
     expect(screen.getByLabelText(/^Edit session /).className).toContain('pointer-coarse:size-9')
-    expect(screen.getByLabelText(/^(Collapse|Expand) 1 subagents$/).className).toContain('pointer-coarse:h-11')
+    expect(screen.getByLabelText(/^(Collapse|Expand) 1 subagents$/).className).toContain('pointer-coarse:h-9')
     fireEvent.click(subDeleteBtn)
     expect(handleDelete).toHaveBeenCalledTimes(1)
     const deletedArg = handleDelete.mock.calls[0][1] as SessionResponse
     expect(deletedArg.id).toBe('sub-del-1')
     expect(deletedArg.parent_session_id).toBe('parent-del-test')
+  })
+})
+
+describe('WorkspaceSessionList — several checkouts', () => {
+  const session = (id: string, title: string, workspace: string): SessionResponse => ({
+    id,
+    title,
+    workspace,
+    interaction_mode: 'code',
+    created_at: '2026-09-01T10:00:00Z',
+    updated_at: null,
+    agent_name: 'code',
+  })
+
+  function renderCheckouts(rows: SessionResponse[], onSelect = mock(() => {})) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const paths = ['/repo/project', '/wt/task-a']
+    queryClient.setQueryData(queryKeys.session.sessions.checkouts(paths), {
+      pages: [{ data: rows, has_more: false, next_cursor: null }],
+      pageParams: [null],
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceSessionList
+          path="/repo/project"
+          paths={paths}
+          checkoutNames={new Map([['/wt/task-a', 'task-a']])}
+          onSessionSelect={onSelect}
+          onSessionDelete={() => {}}
+          onSessionEdit={() => {}}
+          onSessionLongPress={() => {}}
+          onSessionContextActions={() => {}}
+        />
+      </QueryClientProvider>,
+    )
+    return onSelect
+  }
+
+  it('tags sessions from a worktree with its name and leaves main-checkout rows untagged', () => {
+    renderCheckouts([
+      session('w1', 'Worktree work', '/wt/task-a'),
+      session('m1', 'Main work', '/repo/project'),
+    ])
+
+    const worktreeRow = screen.getByText('Worktree work').closest('[data-session-row]') as HTMLElement
+    const mainRow = screen.getByText('Main work').closest('[data-session-row]') as HTMLElement
+    expect(worktreeRow.querySelector('[data-checkout-tag]')?.textContent).toBe('task-a')
+    expect(mainRow.querySelector('[data-checkout-tag]')).toBeNull()
+    // Screen readers hear the checkout as part of the row name.
+    expect(screen.getByText('Worktree work').closest('button')?.textContent).toContain('in worktree task-a')
+  })
+
+  it('drops rows from other workspaces when an older server ignores the filter', () => {
+    renderCheckouts([
+      session('w1', 'Worktree work', '/wt/task-a'),
+      session('x1', 'Someone else', '/repo/other'),
+    ])
+
+    expect(screen.getByText('Worktree work')).toBeTruthy()
+    expect(screen.queryByText('Someone else')).toBeNull()
+  })
+
+  it('selects a worktree session with its own workspace path', () => {
+    const onSelect = renderCheckouts([session('w1', 'Worktree work', '/wt/task-a')])
+
+    fireEvent.click(screen.getByText('Worktree work'))
+
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    expect(onSelect.mock.calls[0][1]).toBe('/wt/task-a')
   })
 })
