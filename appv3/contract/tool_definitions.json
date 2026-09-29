@@ -552,6 +552,78 @@
       }
     }
   },
+  "plan": {
+    "type": "function",
+    "function": {
+      "name": "plan",
+      "description": "Write or edit this session's plan: a Markdown file the user reviews in the Plan panel (in project workspaces, under `.openagentd/plans/`). Draft and revise it in Plan mode, then call submit_plan. In Code mode, change it only when the user changes the plan's scope. The user may edit it too; you are shown their changes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "description": "'write' replaces the whole plan with `content`; 'edit' applies `edits` to the current plan.",
+            "enum": [
+              "write",
+              "edit"
+            ],
+            "type": "string"
+          },
+          "content": {
+            "description": "The full plan in Markdown, starting with a `# ` title (required for 'write').",
+            "type": "string",
+            "default": null
+          },
+          "edits": {
+            "description": "Exact-text replacements applied in order (required for 'edit'). Each `old` must match the plan exactly once; include surrounding lines to make it unique.",
+            "items": {
+              "properties": {
+                "old": {
+                  "description": "Text to replace, copied exactly from the current plan.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "new": {
+                  "description": "Replacement text (empty to delete).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "old",
+                "new"
+              ],
+              "type": "object"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "type": "array",
+            "default": null
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    }
+  },
+  "submit_plan": {
+    "type": "function",
+    "function": {
+      "name": "submit_plan",
+      "description": "Submit the session plan for the user's review (Plan mode only). Save it with the plan tool first. Your turn pauses until the user answers: on approval the session switches to Code mode and you implement the plan; otherwise you get their feedback to address before submitting again. Do not ask the user a question in the same response.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "description": "Optional one-line note for the reviewer, e.g. what changed since the last revision.",
+            "maxLength": 300,
+            "type": "string",
+            "default": null
+          }
+        },
+        "required": []
+      }
+    }
+  },
   "delegate": {
     "type": "function",
     "function": {

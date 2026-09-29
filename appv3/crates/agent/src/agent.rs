@@ -22,7 +22,13 @@ pub const MAX_CONCURRENT_TOOLS: usize = 10;
 const CANCELLED_OUTPUT_MAX_BYTES: usize = 16_384;
 pub const ASK_USER: &str = "ask_user";
 pub const ASK_LEAD: &str = "ask_lead";
+pub const SUBMIT_PLAN: &str = crate::tools::plan::SUBMIT_PLAN_TOOL;
 pub const ASK_MERGED_INTO_PRIMARY: &str = "Merged into your other ask_user call — the user sees a single card with every question.";
+pub const SUBMIT_DEFERRED: &str = "Not submitted: this response also asks the user a question. Call submit_plan again after they answer.";
+pub const SUBMIT_MERGED: &str = "Merged into your other submit_plan call.";
+
+/// Tool names only the session injects; an agent config cannot claim them.
+const RESERVED_TOOLS: [&str; 4] = [ASK_USER, ASK_LEAD, crate::tools::plan::PLAN_TOOL, SUBMIT_PLAN];
 
 #[derive(Clone)]
 pub struct Agent {
@@ -45,7 +51,7 @@ impl Agent {
     pub fn new(provider: Arc<dyn LlmProvider>, name: &str, system_prompt: &str, tools: Vec<ToolRef>, model_id: Option<String>) -> Self {
         let mut set = ToolSet::new();
         for t in tools {
-            if t.name() == ASK_USER || t.name() == ASK_LEAD {
+            if RESERVED_TOOLS.contains(&t.name()) {
                 tracing::warn!("reserved_tool_name_rejected agent={} tool={}", name, t.name());
                 continue;
             }
@@ -576,7 +582,9 @@ impl Agent {
 
             // ── _dispatch_tools ──
             tracing::info!("tool_dispatch agent={} count={}", self.name, tc_list.len());
-            let (ask_calls, other_calls): (Vec<ToolCall>, Vec<ToolCall>) = tc_list.iter().cloned().partition(|tc| tc.function.name == ASK_USER || tc.function.name == ASK_LEAD);
+            // Calls that pause the turn run last, one at a time.
+            let (pausing_calls, other_calls): (Vec<ToolCall>, Vec<ToolCall>) =
+                tc_list.iter().cloned().partition(|tc| matches!(tc.function.name.as_str(), ASK_USER | ASK_LEAD | SUBMIT_PLAN));
             let meta = state.metadata.clone();
             let mut base_ctx = base_ctx.clone();
             if tc_list.iter().any(|tc| tc.function.name == "skill") {
@@ -650,18 +658,32 @@ impl Agent {
             }
             let dispatch = if interrupted() {
                 Dispatch::Cancelled
-            } else if ask_calls.is_empty() {
+            } else if pausing_calls.is_empty() {
                 Dispatch::Ok
             } else {
                 // ── _dispatch_question ──
-                let mut primary = ask_calls[0].clone();
-                let dups = &ask_calls[1..];
-                if !dups.is_empty() {
-                    merge_question_calls(&mut primary, dups);
-                    for tc in dups {
-                        state.messages.push(tool_msg(tc, ASK_MERGED_INTO_PRIMARY));
+                // A question wins over a plan submission: the answer may
+                // change the plan, so the submission waits for it.
+                let (submit_calls, ask_calls): (Vec<ToolCall>, Vec<ToolCall>) = pausing_calls.into_iter().partition(|tc| tc.function.name == SUBMIT_PLAN);
+                let primary = if let Some(first) = ask_calls.first() {
+                    let mut primary = first.clone();
+                    let dups = &ask_calls[1..];
+                    if !dups.is_empty() {
+                        merge_question_calls(&mut primary, dups);
+                        for tc in dups {
+                            state.messages.push(tool_msg(tc, ASK_MERGED_INTO_PRIMARY));
+                        }
                     }
-                }
+                    for tc in &submit_calls {
+                        state.messages.push(tool_msg(tc, SUBMIT_DEFERRED));
+                    }
+                    primary
+                } else {
+                    for tc in &submit_calls[1..] {
+                        state.messages.push(tool_msg(tc, SUBMIT_MERGED));
+                    }
+                    submit_calls[0].clone()
+                };
                 Self::sync(opts.checkpointer, &ctx, &mut state).await;
                 match self.run_tool(&ctx, &meta, &hooks, &run_tools, base_ctx, &primary, &sem, None).await {
                     Err(Suspension::Question { question_id, session_id }) => {

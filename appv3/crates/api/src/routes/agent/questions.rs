@@ -4,6 +4,7 @@ use super::helpers::get_or_start;
 use crate::error::{loc, verr, ApiError, ApiResult};
 use crate::util::*;
 use crate::AppState;
+use appv3_agent::plan::{self, PlanDoc, PlanError, ReviewDecision};
 use appv3_agent::{broadcaster, events, manager, store, Envelope};
 use appv3_db::{self as db, DbPool};
 use axum::extract::{Path as AxPath, State};
@@ -21,7 +22,7 @@ pub fn router() -> Router<AppState> {
         .route("/{session_id}/question/{question_id}/answer", post(answer))
         .route("/{session_id}/question/{question_id}/dismiss", post(dismiss))
         .route("/sessions/{session_id}/todos", get(todos))
-        .route("/sessions/{session_id}/plan", get(get_plan).delete(delete_plan))
+        .route("/sessions/{session_id}/plan", get(get_plan).put(put_plan).delete(delete_plan))
         .route("/{session_id}/permissions", get(list_permissions))
         .route("/{session_id}/permissions/{request_id}/reply", post(reply_permission))
 }
@@ -67,7 +68,7 @@ fn parse_answers(b: &Value) -> ApiResult<Vec<Vec<String>>> {
     Ok(out)
 }
 
-fn validate_answers(questions: &[Value], answers: &[Vec<String>]) -> ApiResult<()> {
+fn validate_answers(questions: &[Value], answers: &[Vec<String>], max_chars: usize) -> ApiResult<()> {
     if answers.len() > questions.len() {
         return Err(ApiError::unprocessable(format!("Expected at most {} answer groups, got {}.", questions.len(), answers.len())));
     }
@@ -96,8 +97,8 @@ fn validate_answers(questions: &[Value], answers: &[Vec<String>]) -> ApiResult<(
             return Err(ApiError::unprocessable(format!("Question {i} accepts at most {max} answers.")));
         }
         for v in selected {
-            if v.chars().count() > MAX_ANSWER_CHARS {
-                return Err(ApiError::unprocessable(format!("Answer to question {i} exceeds {MAX_ANSWER_CHARS} characters.")));
+            if v.chars().count() > max_chars {
+                return Err(ApiError::unprocessable(format!("Answer to question {i} exceeds {max_chars} characters.")));
             }
             if !labels.contains(v) && !allows_custom {
                 return Err(ApiError::unprocessable(format!("Question {i} does not accept a custom answer; choose one of its options.")));
@@ -156,7 +157,10 @@ async fn answer(State(st): State<AppState>, AxPath((sid_raw, qid_raw)): AxPath<(
     let b = body_value(&body)?;
     let answers = parse_answers(&b)?;
     let row = open_question(&st.pool, &sid, &qid).await?;
-    validate_answers(&row.questions(), &answers)?;
+    if row.kind().as_deref() == Some(plan::PLAN_REVIEW_KIND) {
+        return answer_plan_review(&st.pool, &sid, &qid, &row, &answers).await;
+    }
+    validate_answers(&row.questions(), &answers, MAX_ANSWER_CHARS)?;
     let av = json!(answers);
     if db::resolve_pending_question(&st.pool, &qid, "answered", Some(&av)).await?.is_none() {
         return Err(ApiError::conflict("Question already resolved."));
@@ -167,6 +171,35 @@ async fn answer(State(st): State<AppState>, AxPath((sid_raw, qid_raw)): AxPath<(
         end_turn(&sid);
     }
     tracing::info!("question_answered session_id={} question_id={} resumed={}", sid, qid, resumed);
+    Ok(json(json!({"status": "ok", "resumed": resumed})))
+}
+
+/// Close a plan review. Approval switches the session to Code mode before
+/// the turn resumes, so the resumed turn implements with full tool access.
+async fn answer_plan_review(pool: &DbPool, sid: &str, qid: &str, row: &db::PendingQuestion, answers: &[Vec<String>]) -> ApiResult<Response> {
+    validate_answers(&row.questions(), answers, plan::PLAN_REVIEW_MAX_ANSWER_CHARS)?;
+    let decision = plan::review_decision(answers).map_err(ApiError::unprocessable)?;
+    let live = manager::find_live_session_serving_session(sid);
+    if decision == ReviewDecision::Approve {
+        // A toggle queued during the review would undo the approval's switch
+        // when the resumed turn ends.
+        if let Some(a) = &live {
+            a.clear_pending_interaction_mode();
+        }
+    }
+    let av = json!(answers);
+    let Some(outcome) = plan::resolve_review(pool, sid, row, &decision, &av).await? else {
+        return Err(ApiError::conflict("Question already resolved."));
+    };
+    store().push_event(sid, &events::question_answered(qid, sid, &av), true);
+    if outcome.mode_changed {
+        store().push_event(sid, &events::interaction_mode(&live.as_ref().map(|a| a.name()).unwrap_or_default(), "code"), true);
+    }
+    let resumed = resume_agent(pool, sid).await;
+    if !resumed {
+        end_turn(sid);
+    }
+    tracing::info!("plan_review_answered session_id={} question_id={} approved={} resumed={}", sid, qid, outcome.approved, resumed);
     Ok(json(json!({"status": "ok", "resumed": resumed})))
 }
 
@@ -210,21 +243,69 @@ async fn todos(AxPath(sid): AxPath<String>) -> ApiResult<Response> {
     Ok(json(json!({"todos": parsed().unwrap_or_default()})))
 }
 
-/// The saved Plan-mode plan (`appv3_agent::plan`); v2 has no such route.
+fn plan_json(doc: &PlanDoc) -> Value {
+    json!({
+        "content": doc.content,
+        "updated_at": doc.updated_at.to_rfc3339(),
+        "revision": doc.revision,
+        "approved_revision": doc.approved_revision,
+        "path": doc.path.display().to_string(),
+        "workspace_path": doc.workspace_path(),
+    })
+}
+
+/// The session plan (`appv3_agent::plan`), with outside edits folded into
+/// its revision; v2 has no such route.
 async fn get_plan(AxPath(sid): AxPath<String>) -> ApiResult<Response> {
     if py_uuid(&sid).is_none() {
         return Err(ApiError::bad_request("Invalid session id."));
     }
     let dir = appv3_tools::denied::session_artifacts_dir(Some(&sid));
-    let plan = appv3_agent::plan::load(&dir).map(|(content, updated)| json!({"content": content, "updated_at": updated.to_rfc3339()}));
-    Ok(json(json!({"plan": plan})))
+    Ok(json(json!({"plan": plan::sync(&dir).as_ref().map(plan_json)})))
 }
 
-async fn delete_plan(AxPath(sid): AxPath<String>) -> ApiResult<Response> {
+/// Save the user's edit from the Plan panel; `base_revision` is the
+/// revision they opened. The agent is told on its next turn or in the
+/// review result.
+async fn put_plan(AxPath(sid): AxPath<String>, body: Bytes) -> ApiResult<Response> {
     if py_uuid(&sid).is_none() {
         return Err(ApiError::bad_request("Invalid session id."));
     }
-    let deleted = appv3_agent::plan::clear(&appv3_tools::denied::session_artifacts_dir(Some(&sid)))?;
+    let b = body_value(&body)?;
+    let content = match b.get("content") {
+        Some(Value::String(s)) => s.clone(),
+        None => return Err(ApiError::validation(vec![verr("missing", &loc(&["body", "content"]), "Field required", b.clone())])),
+        Some(o) => return Err(ApiError::validation(vec![verr("string_type", &loc(&["body", "content"]), "Input should be a valid string", o.clone())])),
+    };
+    let base_revision = match b.get("base_revision") {
+        Some(v) if v.as_u64().is_some() => v.as_u64().unwrap_or_default(),
+        None => return Err(ApiError::validation(vec![verr("missing", &loc(&["body", "base_revision"]), "Field required", b.clone())])),
+        Some(o) => return Err(ApiError::validation(vec![verr("int_type", &loc(&["body", "base_revision"]), "Input should be a valid integer", o.clone())])),
+    };
+    let dir = appv3_tools::denied::session_artifacts_dir(Some(&sid));
+    match plan::save_user(&dir, &content, base_revision) {
+        Ok(doc) => {
+            tracing::info!("plan_saved_by_user session_id={} revision={}", sid, doc.revision);
+            Ok(json(json!({"plan": plan_json(&doc)})))
+        }
+        Err(PlanError::NoPlan) => Err(ApiError::not_found("No plan to edit.")),
+        Err(e @ PlanError::Conflict) => Err(ApiError::conflict(e.to_string())),
+        Err(e @ (PlanError::Empty | PlanError::TooLong)) => Err(ApiError::unprocessable(e.to_string())),
+        Err(e @ (PlanError::Escapes | PlanError::Denied(_))) => Err(ApiError::new(403, e.to_string())),
+        Err(e) => Err(ApiError::new(500, e.to_string())),
+    }
+}
+
+/// Stop using the plan in this session. A workspace plan file stays; it is
+/// the user's.
+async fn delete_plan(State(st): State<AppState>, AxPath(sid): AxPath<String>) -> ApiResult<Response> {
+    if py_uuid(&sid).is_none() {
+        return Err(ApiError::bad_request("Invalid session id."));
+    }
+    if db::get_pending_question(&st.pool, &sid).await?.is_some_and(|q| q.kind().as_deref() == Some(plan::PLAN_REVIEW_KIND)) {
+        return Err(ApiError::conflict("The plan is awaiting review."));
+    }
+    let deleted = plan::detach(&appv3_tools::denied::session_artifacts_dir(Some(&sid)))?;
     Ok(json(json!({"deleted": deleted})))
 }
 
@@ -255,9 +336,18 @@ mod tests {
     #[test]
     fn answer_rules() {
         let qs = vec![json!({"question": "q", "options": [{"label": "A"}, {"label": "B"}], "custom": false})];
-        assert!(validate_answers(&qs, &[vec!["A".into()]]).is_ok());
-        assert_eq!(validate_answers(&qs, &[vec!["A".into(), "B".into()]]).unwrap_err().detail, json!("Question 0 accepts a single answer."));
-        assert_eq!(validate_answers(&qs, &[vec!["Z".into()]]).unwrap_err().detail, json!("Question 0 does not accept a custom answer; choose one of its options."));
-        assert_eq!(validate_answers(&qs, &[vec![], vec![]]).unwrap_err().detail, json!("Expected at most 1 answer groups, got 2."));
+        let check = |a: &[Vec<String>]| validate_answers(&qs, a, MAX_ANSWER_CHARS);
+        assert!(check(&[vec!["A".into()]]).is_ok());
+        assert_eq!(check(&[vec!["A".into(), "B".into()]]).unwrap_err().detail, json!("Question 0 accepts a single answer."));
+        assert_eq!(check(&[vec!["Z".into()]]).unwrap_err().detail, json!("Question 0 does not accept a custom answer; choose one of its options."));
+        assert_eq!(check(&[vec![], vec![]]).unwrap_err().detail, json!("Expected at most 1 answer groups, got 2."));
+
+        // Plan-review feedback may be longer than an `ask_user` answer.
+        let review = appv3_agent::tools::plan::review_payload(1, None)["questions"].as_array().unwrap().clone();
+        let long = vec![vec!["x".repeat(MAX_ANSWER_CHARS + 1)]];
+        assert!(validate_answers(&review, &long, MAX_ANSWER_CHARS).is_err());
+        assert!(validate_answers(&review, &long, plan::PLAN_REVIEW_MAX_ANSWER_CHARS).is_ok());
+        let too_long = vec![vec!["x".repeat(plan::PLAN_REVIEW_MAX_ANSWER_CHARS + 1)]];
+        assert_eq!(validate_answers(&review, &too_long, plan::PLAN_REVIEW_MAX_ANSWER_CHARS).unwrap_err().detail, json!("Answer to question 0 exceeds 8000 characters."));
     }
 }

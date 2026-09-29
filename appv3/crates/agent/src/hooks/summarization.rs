@@ -207,7 +207,7 @@ fn skill_tool_pairs(messages: &[ChatMessage], pool: &[usize]) -> HashSet<usize> 
 /// The note is appended once per mode switch and is not re-added while it
 /// exists in history, so compacting it away would leave the model without
 /// the active mode's rules (Plan mode's read-only workflow and
-/// `<proposed_plan>` format) until the next switch. Older notes are
+/// plan tools) until the next switch. Older notes are
 /// superseded and compact like anything else.
 fn active_mode_note(messages: &[ChatMessage], pool: &[usize]) -> Option<usize> {
     pool.iter().rev().copied().find(|&i| extra_truthy(&messages[i], "interaction_mode_prompt"))
@@ -217,17 +217,14 @@ fn active_mode_note(messages: &[ChatMessage], pool: &[usize]) -> Option<usize> {
 /// `summary_at`, so the summary (latest progress and request) is still read
 /// last and the plan survives the reload window like the mode note does.
 ///
-/// Skipped while the plan is still in context: an earlier plan note or the
-/// plan message itself left in the kept window. Earlier notes that were
-/// summarised are already excluded and unpinned like any other message.
-fn carry_plan(state: &mut AgentState, summary_at: usize, note: Option<String>, saved: Option<&str>) -> bool {
+/// Skipped while an earlier plan note is still in the kept window. Earlier
+/// notes that were summarised are already excluded and unpinned like any
+/// other message.
+fn carry_plan(state: &mut AgentState, summary_at: usize, note: Option<String>) -> bool {
     let Some(note) = note else {
         return false;
     };
-    let in_context = state.messages.iter().filter(|m| !m.meta().exclude_from_context).any(|m| {
-        extra_truthy(m, plan::SESSION_PLAN_KEY)
-            || (matches!(m, ChatMessage::Assistant(_)) && saved.is_some() && m.content().and_then(plan::extract_proposed_plan).as_deref() == saved)
-    });
+    let in_context = state.messages.iter().filter(|m| !m.meta().exclude_from_context).any(|m| extra_truthy(m, plan::SESSION_PLAN_KEY));
     if in_context {
         return false;
     }
@@ -434,7 +431,6 @@ impl SummarizationHook {
         }
         let has_prior = to_summarise.iter().any(|&i| state.messages[i].meta().is_summary());
         let request_line = prompts::s(if has_prior { "summary_merge" } else { "summary_request" });
-        let saved_plan = self.plan_dir.as_deref().and_then(plan::load).map(|(text, _)| text);
         let plan_note = self.plan_dir.as_deref().and_then(plan::carry_note);
         let mut prefix = Vec::new();
         if !system_prompt.is_empty() {
@@ -507,7 +503,7 @@ impl SummarizationHook {
             meta.extra = Some(e);
         }
         state.messages.insert(first_kept, ChatMessage::User { content: Some(text.clone()), parts: None, meta });
-        let plan_carried = carry_plan(state, first_kept, plan_note, saved_plan.as_deref());
+        let plan_carried = carry_plan(state, first_kept, plan_note);
         *self.at_last_summary.lock().unwrap() = state.messages.len();
         span.set_attr("summarization.summary_length", text.chars().count());
         span.set_attr("summarization.kept", eligible.len() - to_summarise.len());
@@ -648,7 +644,7 @@ mod tests {
     /// Compacting a Plan-mode session must not drop the Plan instructions: the
     /// note is appended once per switch and not re-added while it exists in
     /// history, so losing it leaves the model without the read-only workflow
-    /// and `<proposed_plan>` format for the rest of the mode.
+    /// and plan tools for the rest of the mode.
     #[tokio::test]
     async fn active_plan_mode_note_stays_in_context_after_compaction() {
         let note = mode_note("plan");
@@ -719,8 +715,21 @@ mod tests {
 
     const PLAN: &str = "## Steps\n1. Build\n2. Test";
 
-    fn plan_reply() -> ChatMessage {
-        ChatMessage::assistant(format!("Findings.\n<proposed_plan>\n{PLAN}\n</proposed_plan>"))
+    fn save_plan(dir: &std::path::Path, body: &str) {
+        plan::save_agent(dir, plan::PlanTarget::DataDir, plan::PlanChange::Write(body)).unwrap();
+    }
+
+    /// A pinned `<session_plan>` note as an earlier compaction left it.
+    fn plan_note() -> ChatMessage {
+        let mut m = ChatMessage::user(format!("<session_plan path=\"plan.md\">\n{PLAN}\n</session_plan>"));
+        let meta = m.meta_mut();
+        meta.kind = "note".into();
+        meta.pinned = true;
+        let mut extra = Map::new();
+        extra.insert("hidden_from_user".into(), json!(true));
+        extra.insert(plan::SESSION_PLAN_KEY.into(), json!(true));
+        meta.extra = Some(extra);
+        m
     }
 
     fn plan_notes(state: &AgentState) -> Vec<(usize, &ChatMessage)> {
@@ -737,14 +746,12 @@ mod tests {
     #[tokio::test]
     async fn compaction_restates_the_saved_plan_before_the_summary() {
         let dir = tempfile::tempdir().unwrap();
-        plan::save(dir.path(), PLAN).unwrap();
+        save_plan(dir.path(), PLAN);
         let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")]));
         let hook = hook_with(provider.clone(), 0).with_plan_dir(dir.path().to_path_buf());
-        let state = compact_with(
-            &hook,
-            vec![mode_note("code"), ChatMessage::user("Plan it."), plan_reply(), ChatMessage::user("Approve, proceed."), ChatMessage::assistant("Implementing step 1.")],
-        )
-        .await;
+        let state =
+            compact_with(&hook, vec![mode_note("code"), ChatMessage::user("Plan it."), ChatMessage::assistant("Plan submitted."), ChatMessage::assistant("Implementing step 1.")])
+                .await;
 
         let notes = plan_notes(&state);
         assert_eq!(notes.len(), 1);
@@ -753,7 +760,6 @@ mod tests {
         assert_eq!(note.meta().kind, "note");
         assert_eq!(idx + 1, summary_index(&state), "the summary is read after the plan");
         assert!(note.content().unwrap().contains(&format!("\n{PLAN}\n</session_plan>")));
-        assert!(!state.messages_for_llm().iter().any(|m| m.content().is_some_and(|c| c.contains("<proposed_plan>"))));
 
         let request = summariser_request(&provider, 0);
         assert!(request.last().unwrap().content().unwrap().ends_with(plan::PLAN_SUMMARY_RULE));
@@ -762,11 +768,11 @@ mod tests {
     #[tokio::test]
     async fn a_later_compaction_replaces_the_plan_note() {
         let dir = tempfile::tempdir().unwrap();
-        plan::save(dir.path(), PLAN).unwrap();
+        save_plan(dir.path(), PLAN);
         let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary one."), MockProvider::text("Summary two.")]));
         let hook = hook_with(provider.clone(), 0).with_plan_dir(dir.path().to_path_buf());
-        let mut state = compact_with(&hook, vec![ChatMessage::user("Plan it."), plan_reply()]).await;
-        plan::save(dir.path(), "## Steps\n1. Build\n2. Test\n3. Ship").unwrap();
+        let mut state = compact_with(&hook, vec![ChatMessage::user("Plan it."), ChatMessage::assistant("Plan written.")]).await;
+        save_plan(dir.path(), "## Steps\n1. Build\n2. Test\n3. Ship");
         state.messages.push(ChatMessage::user("Add a ship step."));
         state.messages.push(ChatMessage::assistant("Added."));
         assert!(hook.summarise(&ctx(), &mut state, "sys").await);
@@ -792,23 +798,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_message_still_in_the_kept_window_is_not_duplicated() {
+    async fn plan_note_still_in_the_kept_window_is_not_duplicated() {
         let dir = tempfile::tempdir().unwrap();
-        plan::save(dir.path(), PLAN).unwrap();
+        save_plan(dir.path(), PLAN);
         let hook = hook(2).with_plan_dir(dir.path().to_path_buf());
         let state = compact_with(
             &hook,
             vec![
                 ChatMessage::user("first"),
                 ChatMessage::assistant("first reply"),
-                ChatMessage::user("Plan it."),
-                plan_reply(),
-                ChatMessage::user("ok"),
-                ChatMessage::assistant("ok reply"),
+                ChatMessage::user("second"),
+                ChatMessage::assistant("second reply"),
+                plan_note(),
+                ChatMessage::user("third"),
+                ChatMessage::assistant("third reply"),
             ],
         )
         .await;
-        assert!(plan_notes(&state).is_empty());
-        assert!(state.messages_for_llm().iter().any(|m| m.content().is_some_and(|c| c.contains("<proposed_plan>"))));
+        let notes = plan_notes(&state);
+        assert_eq!(notes.len(), 1, "the kept note is not restated again");
+        assert!(!notes[0].1.meta().exclude_from_context);
     }
 }

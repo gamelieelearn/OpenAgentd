@@ -1,7 +1,6 @@
 //! `ask_user` — hand the turn to the user (port of `tools/builtin/question.py`).
 
-use super::{invalid_args, lax_bool};
-use crate::broadcaster;
+use super::{invalid_args, lax_bool, publish_input_needed};
 use crate::events;
 use crate::stream_store::store;
 use appv3_db::DbPool;
@@ -201,26 +200,18 @@ impl Tool for AskUserTool {
             return Ok(ToolOutput::text("Your question could not be delivered (no tool call id). Continue with your best judgment."));
         }
         let row = appv3_db::create_pending_question(&self.pool, &self.session_id, &ctx.tool_call_id, &payload).await.map_err(ToolError::exec)?;
-        let session = appv3_db::get_session(&self.pool, &self.session_id).await.ok().flatten();
-        let title = session.as_ref().and_then(|s| s.title.clone());
-        let workspace = session.as_ref().map(|s| s.workspace.clone()).filter(|w| !w.is_empty());
         let sid = appv3_db::codec::api_uuid(&appv3_db::codec::db_id(&self.session_id));
         let qid = appv3_db::codec::api_uuid(&row.id);
         store().push_event(&sid, &events::question_asked(&qid, &sid, &ctx.tool_call_id, &payload), false);
         let headline = payload.first().and_then(|q| q.get("question")).and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let ws_name = workspace.as_deref().and_then(|w| std::path::Path::new(w).file_name()).map(|n| n.to_string_lossy().to_string());
-        broadcaster::publish(
-            "desktop_notification",
-            json!({
-                "type": "desktop_notification",
-                "notification_id": uuid::Uuid::new_v4().to_string(),
-                "kind": "input_needed",
-                "session_id": sid,
-                "title": match &ws_name { Some(n) => format!("Needs your input - {n}"), None => "Needs your input".into() },
-                "body": if !headline.is_empty() { headline } else { title.unwrap_or_else(|| "The agent has a question".into()) },
-                "metadata": {"session_id": sid, "question_id": qid, "mode": "coding", "workspace": workspace},
-            }),
-        );
+        publish_input_needed(&self.pool, &self.session_id, &qid, "Needs your input", |title| {
+            if !headline.is_empty() {
+                headline
+            } else {
+                title.unwrap_or_else(|| "The agent has a question".into())
+            }
+        })
+        .await;
         let _ = &self.agent_name;
         Err(ToolError::Suspended(Suspension::Question { question_id: qid, session_id: sid }))
     }

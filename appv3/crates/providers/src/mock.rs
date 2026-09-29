@@ -40,21 +40,22 @@ impl MockProvider {
     }
 
     pub fn tool_call(id: &str, name: &str, args: &str) -> MockTurn {
+        Self::tool_calls(&[(id, name, args)])
+    }
+
+    /// One response making several tool calls: `(id, name, arguments)`.
+    pub fn tool_calls(calls: &[(&str, &str, &str)]) -> MockTurn {
+        let deltas = calls
+            .iter()
+            .enumerate()
+            .map(|(i, (id, name, args))| ToolCallDelta {
+                index: Some(i as _),
+                id: Some((*id).into()),
+                function: Some(FunctionCallDelta { name: Some((*name).into()), arguments: Some((*args).into()), ..Default::default() }),
+            })
+            .collect();
         MockTurn::Chunks(vec![
-            ChatCompletionChunk::delta(
-                "mock",
-                "mock",
-                ChatCompletionDelta {
-                    tool_calls: Some(vec![ToolCallDelta {
-                        index: Some(0),
-                        id: Some(id.into()),
-                        function: Some(FunctionCallDelta { name: Some(name.into()), arguments: Some(args.into()), ..Default::default() }),
-                    }]),
-                    ..Default::default()
-                },
-                None,
-                None,
-            ),
+            ChatCompletionChunk::delta("mock", "mock", ChatCompletionDelta { tool_calls: Some(deltas), ..Default::default() }, None, None),
             ChatCompletionChunk::delta(
                 "mock",
                 "mock",

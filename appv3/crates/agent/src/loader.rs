@@ -432,7 +432,7 @@ pub fn detect_drift(stamp: &ConfigStamp) -> Vec<PathBuf> {
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
-const CONTEXT_INJECTED_TOOLS: &[&str] = &["skill", "todo_manage", "schedule_task", "lsp", "ask_user"];
+const CONTEXT_INJECTED_TOOLS: &[&str] = &["skill", "todo_manage", "schedule_task", "lsp", "ask_user", "plan", "submit_plan"];
 /// v2 registry names that v3 does not implement (skipped, never pruned).
 const V2_ONLY_TOOLS: &[&str] = &[];
 

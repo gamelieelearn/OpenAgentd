@@ -234,6 +234,11 @@ impl AgentSession {
     pub fn queue_interaction_mode(&self, mode: &str) {
         *self.pending_interaction_mode.lock().unwrap() = Some(interaction_mode::normalize(mode).to_string());
     }
+    /// Drop a mode switch queued while the turn was busy; plan approval
+    /// sets the mode itself and must not be undone when the turn ends.
+    pub fn clear_pending_interaction_mode(&self) {
+        *self.pending_interaction_mode.lock().unwrap() = None;
+    }
     pub fn is_cancelled(&self) -> bool {
         self.cancel.is_set()
     }
@@ -834,6 +839,12 @@ impl AgentSession {
                 runtime_thinking = row.thinking_level.clone();
             }
         }
+        if self.parent_session_id.is_none() {
+            let plan_dir = appv3_tools::denied::session_artifacts_dir(Some(&sid));
+            if let Err(e) = crate::plan::announce_user_edits(&self.pool, &sid, &plan_dir).await {
+                tracing::warn!("plan_edit_note_failed session_id={} error={}", sid, e);
+            }
+        }
         let history = crate::history::get_messages_for_llm(&self.pool, &sid).await.map_err(dberr)?;
 
         let effective_model = runtime_model.clone().filter(|m| !m.is_empty()).or_else(|| agent.model_id.clone());
@@ -881,10 +892,7 @@ impl AgentSession {
         if is_lead {
             let plan_dir = appv3_tools::denied::session_artifacts_dir(Some(&sid));
             if let Some(h) = build_summarization_hook(provider_for_hooks.clone(), agent_mode, effective_model.as_deref(), provider_for_hooks.support_interrupt()) {
-                hooks.push(Arc::new(h.with_plan_dir(plan_dir.clone())));
-            }
-            if interaction == "plan" {
-                hooks.push(Arc::new(crate::plan::PlanCaptureHook { dir: plan_dir }));
+                hooks.push(Arc::new(h.with_plan_dir(plan_dir)));
             }
         }
 
@@ -892,6 +900,9 @@ impl AgentSession {
         if !self.is_scheduler_session.load(Ordering::SeqCst) && is_lead {
             injected.push(Arc::new(crate::tools::ask_user::AskUserTool { session_id: sid.clone(), pool: self.pool.clone(), agent_name: name.clone() }));
             injected.push(Arc::new(crate::tools::team::DelegateTool { lead_session_id: sid.clone(), pool: self.pool.clone(), provider_factory: self.provider_factory.clone() }));
+            // Sessions without a user workspace keep the plan in the data dir.
+            injected.push(Arc::new(crate::tools::plan::PlanTool { session_id: sid.clone(), coding: agent_mode == "coding" && !workspace.is_empty() }));
+            injected.push(Arc::new(crate::tools::plan::SubmitPlanTool { session_id: sid.clone(), pool: self.pool.clone() }));
         } else if let Some(lead) = &self.parent_session_id {
             injected.push(Arc::new(crate::tools::team::AskLeadTool { lead_session_id: lead.clone(), member_handle: name.clone() }));
         }
