@@ -804,6 +804,32 @@ agent against it.
     hides the dock; the header's review-dock button shows and hides it. On
     phones with a workspace, scheduled tasks open as a tab in the review sheet
     too, while the task list stays a popover so the chat remains visible.
+  - **Web preview and design comments in the dock** `[v3.3.0]` — **New
+    preview** in the dock's actions, **Open Preview** in the palette, or the
+    globe on an HTML file tab opens a **Preview** tab. It shows a local dev
+    server (`localhost`, `127.0.0.1` or `::1`) or a workspace HTML file, with
+    back, forward, reload, an address bar, **Responsive / Mobile / Tablet /
+    Desktop** sizes with rotate, a console with an error count, and **Open in
+    browser**. The page runs through a proxy on its own loopback port, so it
+    cannot read the app's storage or access key, and dev-server hot reload
+    keeps working. File previews reload when the workspace files change.
+    **⌘W** / **Ctrl+W** closes the Preview tab, also while the page has focus.
+    **Design** (or **⌥C** / **Alt+C**, also while the page has focus) turns on
+    an element picker: click an element, write a comment, and a numbered pin
+    stays on the page; picking stays on for the next element. Comments can be
+    edited in the list. **Send to agent** attaches the comments to the
+    composer as one **Design feedback** chip; add your own instruction and
+    send. The chip's **×** puts the comments back in the Preview tab's list.
+    The agent gets each element's selector, text, opening tag and key styles
+    and, for React (18 and 19), Vue or Svelte dev builds, 30 lines of its
+    source, attached like an `@path#Lx-Ly` mention. React 19 sources come
+    from where the JSX ran, mapped through the dev server's source maps.
+    In the chat the feedback shows as a card of numbered comments, and
+    restoring the message (undo, edit, history) brings the chip back.
+    While the agent uses the page, the toolbar shows **Agent**.
+    Tabs keep their page and comments while another tab is open. Previews
+    need the backend on the same computer; remote servers and the mobile app
+    show a notice instead.
 - **Keyboard and touch access** `[v3.0.0]` — right-click menus (dock rows,
   terminal tabs, sidebar sessions and workspaces, scheduled tasks, provider
   models) take keyboard focus when they open. Arrow keys, Home and End move
@@ -1198,8 +1224,21 @@ MCP.
 | Team orchestration | `delegate` (lead agent) `[v2.16.0]` |
 | Subagent communication | `ask_lead` (subagents) `[v2.16.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
+| Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |
 | Utility | `skill` |
 
+- **`preview` — show a page, read its console, and use it** `[v3.3.0]` — the agent
+  opens a running local dev server or a workspace HTML file in your Preview
+  tab (it comes forward on desktop, and the tool card has **Open preview**).
+  It then reads that page's recent console errors, warnings and logs, newest
+  first, and can clear them to see only new output after a fix. It can also
+  use the open page: a **snapshot** lists headings, text and controls with
+  refs (`e1`, `e2`, …), and it can **click**, **fill** fields, **press**
+  keys, **scroll**, **navigate**, **wait** for text, and **inspect** an
+  element's source, styles and HTML. Acted-on elements flash in the page.
+  Only loopback URLs are accepted, never the OpenAgentd API port. Everything
+  works only while the page is open in the Preview tab; there is no headless
+  browser and no screenshots.
 - **`ask_user` — durable suspend and resume** `[v1.131.0, v2.1.0]` — in
   **coding mode** `[v2.1.0]`, the agent can stop mid-turn and ask you 1–4 questions rather
   than guessing on a decision that would cost real work to undo. Each question
