@@ -25,6 +25,8 @@ const storeState = {
   _loadingOlder: false,
   _pendingMessages: [] as unknown[],
   loadOlderMessages: mockLoadOlderMessages,
+  // A prompt-less page seeks its prompt on mount; not what these tests cover.
+  loadOlderUntilPrompt: mock(() => Promise.resolve(false)),
   pendingQuestion: null,
   resolvedQuestions: {},
 }
