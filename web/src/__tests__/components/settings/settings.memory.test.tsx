@@ -6,6 +6,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 
 import { MemorySettingsPage } from '@/components/settings/pages/settings.memory'
 import { ApiValidationError } from '@/api/client'
+import { getPlatform } from '@/hooks/use-platform'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
@@ -122,11 +123,13 @@ describe('MemorySettingsPage', () => {
   })
 
   it('saves with Cmd+S keyboard shortcut when dirty', async () => {
-    render(<MemorySettingsPage />)
+    // Pages live inside the Settings modal; their ⌘S is scoped to it.
+    render(<div data-settings-modal=""><MemorySettingsPage /></div>)
     const textarea = screen.getByPlaceholderText('Markdown content...') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: '# Preferences\nKeyboard save content\n' } })
 
-    fireEvent.keyDown(window, { key: 's', metaKey: true })
+    const mac = getPlatform().os === 'macos'
+    fireEvent.keyDown(textarea, { key: 's', metaKey: mac, ctrlKey: !mac })
 
     await waitFor(() => {
       expect(mockSaveMutate).toHaveBeenCalled()

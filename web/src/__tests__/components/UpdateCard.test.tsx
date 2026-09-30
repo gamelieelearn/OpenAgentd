@@ -412,7 +412,8 @@ describe('UpdateCard — release notes modal', () => {
     await waitFor(() => screen.getByRole('dialog', { name: /release notes/i }))
 
     act(() => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      // Real key presses bubble to `window`, where the keyboard dispatcher listens.
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     })
 
     await waitFor(() => expect(screen.getByRole('button', { name: /see release notes/i })).toHaveFocus())

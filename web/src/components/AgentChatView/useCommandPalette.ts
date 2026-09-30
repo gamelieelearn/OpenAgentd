@@ -8,19 +8,16 @@
  * hook avoids threading the same dozen callbacks through two separate
  * places in the shell.
  */
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { useHotkeys } from '@tanstack/react-hotkeys'
 import { useQuery } from '@tanstack/react-query'
 import {
   WORKSPACE_FILES_STALE_MS,
   workspaceFileListQueryOptions,
 } from '@/queries/workspace-files'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { getPlatform } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
 import { routeFindShortcut } from '@/lib/find-shortcut'
-import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
+import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -150,48 +147,25 @@ export function useCommandPalette({
     if (line) useFileRevealStore.getState().reveal(file.path, line, endLine)
   }, [setFileViewer, setFileOpenKey, setWorkspacePanel])
 
-  const { os } = getPlatform()
-  useHotkeys(
-    [
-      { hotkey: hotkeyOf(APP_SHORTCUTS.newSession), callback: handleNewSession, options: { meta: { name: 'New session' } } },
-      { hotkey: hotkeyOf(APP_SHORTCUTS.sessionSettings), callback: handleToggleAgentCapabilities, options: { meta: { name: 'Agent capabilities' } } },
-      { hotkey: hotkeyOf(APP_SHORTCUTS.findInTranscript), callback: () => routeFindShortcut(handleFindInTranscript), options: { meta: { name: 'Find in transcript or sessions' } } },
-      { hotkey: hotkeyOf(APP_SHORTCUTS.workspaceFiles), callback: handleWorkspaceFiles, options: { meta: { name: 'Workspace files' } } },
-      { hotkey: hotkeyOf(APP_SHORTCUTS.maximizeDock), callback: handleToggleDockMaximized, options: { enabled: !isMobile && Boolean(workspace), meta: { name: 'Maximize review dock' } } },
-      { hotkey: hotkeyOf(APP_SHORTCUTS.tasks), callback: handleToggleTasks, options: { enabled: Boolean(sessionIdState), meta: { name: 'Todos' } } },
-      { hotkey: hotkeyOf(APP_SHORTCUTS.quickOpen), callback: handleToggleQuickOpen, options: { enabled: !isMobile && hasQuickOpenWorkspace, meta: { name: 'Quick Open' } } },
-      { hotkey: hotkeyOf(APP_SHORTCUTS.commandPalette), callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
-      { hotkey: hotkeyOf(APP_SHORTCUTS.sidebar), callback: handleSidebarToggle, options: { meta: { name: 'Sidebar' } } },
-      {
-        hotkey: hotkeyOf(APP_SHORTCUTS.focusChat),
-        callback: () => {
-          // The composer is inert under a maximized dock; restore it first.
-          useLayoutStore.getState().setDockMaximized(false)
-          window.dispatchEvent(new CustomEvent('focus-chat-input'))
-        },
-        options: { meta: { name: 'Focus chat input' } },
-      },
-    ],
-    {
-      target: document,
-      platform: os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux',
-      preventDefault: true,
-      stopPropagation: false,
-      ignoreInputs: false,
-    },
-  )
-
-  // Keep this physical-key shortcut custom: layouts can report Shift+Backquote
-  // as `~`, `` ` ``, or `Dead`, which a character hotkey cannot represent.
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (event.code !== 'Backquote' || !isPrimaryShortcut(event, os, { shift: true })) return
-      event.preventDefault()
-      handleOpenTerminal()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [handleOpenTerminal, os])
+  // The shell's shortcut map. Behind a dialog or overlay the dispatcher blocks
+  // these (switchers aside), so none of them act on the app underneath.
+  useShortcuts([
+    appShortcut('newSession', () => { handleNewSession() }),
+    appShortcut('sessionSettings', () => { handleToggleAgentCapabilities() }),
+    appShortcut('findInTranscript', () => { routeFindShortcut(handleFindInTranscript) }),
+    appShortcut('workspaceFiles', () => { handleWorkspaceFiles() }),
+    appShortcut('maximizeDock', () => { handleToggleDockMaximized() }, { enabled: !isMobile && Boolean(workspace) }),
+    appShortcut('tasks', () => { handleToggleTasks() }, { enabled: Boolean(sessionIdState) }),
+    appShortcut('quickOpen', () => { handleToggleQuickOpen() }, { enabled: !isMobile && hasQuickOpenWorkspace }),
+    appShortcut('commandPalette', () => { handleTogglePalette() }, { enabled: !isMobile }),
+    appShortcut('sidebar', () => { handleSidebarToggle() }),
+    appShortcut('focusChat', () => {
+      // The composer is inert under a maximized dock; restore it first.
+      useLayoutStore.getState().setDockMaximized(false)
+      window.dispatchEvent(new CustomEvent('focus-chat-input'))
+    }),
+    appShortcut('terminal', () => { handleOpenTerminal() }),
+  ])
 
   return {
     paletteCommands,

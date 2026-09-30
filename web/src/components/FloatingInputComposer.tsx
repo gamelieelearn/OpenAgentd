@@ -12,6 +12,7 @@ import {
 import { JumpToLatestChip } from './JumpToLatestChip'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useShortcut } from '@/lib/keyboard/hooks'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 import type { DesignFeedback } from '@/lib/design-feedback'
 
@@ -300,19 +301,9 @@ export const FloatingInputComposer = memo(
     // The ⌘I / Ctrl+I summon shortcut is owned by ``useCommandPalette``
     // (focusChat), which reaches this component through the imperative
     // ``focus()`` handle — so it also expands the bar.
-    useEffect(() => {
-      if (isMobile) return
-      const onKeyDown = (e: KeyboardEvent) => {
-        const target = e.target
-        const isComposerTarget = target instanceof Node && panelRef.current?.contains(target)
-        if (e.key === 'Escape' && isComposerTarget) {
-          e.preventDefault()
-          minimize()
-        }
-      }
-      window.addEventListener('keydown', onKeyDown)
-      return () => window.removeEventListener('keydown', onKeyDown)
-    }, [isMobile, minimize])
+    // Escape inside the bar minimizes it, unless the input already used it
+    // (closing a suggestion menu) or a layer above the chat is open.
+    useShortcut({ key: 'Escape' }, () => { minimize() }, { enabled: !isMobile, within: () => panelRef.current })
 
     // ── Global paste: expand + forward when bar is minimized ─────────────
     // When the floating bar is collapsed (minimized) and the user hits

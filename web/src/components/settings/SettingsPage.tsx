@@ -22,6 +22,8 @@ import { ICON_SIZE, TEXT } from '@/components/settings/tokens'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 import type { DraftControls } from '@/components/settings/useSettingsDraft'
+import { settingsRoot } from '@/components/settings/settings-root'
+import { useShortcut } from '@/lib/keyboard/hooks'
 import { EASINGS } from '@/lib/motion'
 
 interface SettingsPageProps {
@@ -58,18 +60,12 @@ export function SettingsPage({
     draftRef.current = draft
   }, [draft])
 
-  // Cmd/Ctrl+S saves without hunting for the button.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (!((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's')) return
-      const current = draftRef.current
-      if (!current?.canSave) return
-      e.preventDefault()
-      void current.save()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [])
+  // ⌘S / Ctrl+S saves without hunting for the button.
+  useShortcut({ key: 'S', mod: true }, () => {
+    const current = draftRef.current
+    if (!current?.canSave) return false
+    void current.save()
+  }, { within: settingsRoot })
 
   return (
     <>

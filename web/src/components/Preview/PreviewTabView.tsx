@@ -37,6 +37,7 @@ import { DOCK_ACTION_BUTTON_CLASS } from '../WorkspacePanel/dock-tab-styles'
 import { DEVICE_PRESETS, type DevicePreset, deviceLabel, devicePreset, fitScale, frameSize } from './devices'
 import { type ComposerAnchor, PreviewCommentComposer, PreviewCommentList } from './PreviewComments'
 import type { DesignFeedback } from '@/lib/design-feedback'
+import { useShortcut } from '@/lib/keyboard/hooks'
 import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
 import { type PreviewComment, buildDesignFeedback, commentsFromFeedback, feedbackMatchesTarget, resolveSourceFile } from './preview-comments'
 import {
@@ -146,14 +147,7 @@ function siblingsSignature(files: { path: string; mtime: number }[] | undefined,
 }
 
 /** Alt+C / ⌥C: toggle Design picking, whether focus is in the dock or the page. */
-function isDesignShortcut(event: KeyboardEvent): boolean {
-  return event.altKey && !event.metaKey && !event.ctrlKey && event.code === 'KeyC'
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
-}
+const DESIGN_CHORD = { key: 'C', code: 'KeyC', alt: true } as const
 
 export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, onSendComments, onOpenTarget, active = true, onRequestClose }: PreviewTabViewProps) {
   const local = isLocalBackend()
@@ -322,17 +316,9 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
     setComments((prev) => [...prev, ...back])
   }, [returned, workspace, targetKey])
 
-  // Alt+C toggles picking while this tab shows; the page forwards it when focused.
-  useEffect(() => {
-    if (!active || !local) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || !isDesignShortcut(event) || isEditableTarget(event.target)) return
-      event.preventDefault()
-      toggleDesignRef.current()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [active, local])
+  // Alt+C toggles picking while this tab shows (not while typing in a field);
+  // the page forwards it when focused.
+  useShortcut(DESIGN_CHORD, () => { toggleDesignRef.current() }, { enabled: active && local })
 
   useEffect(() => {
     post({ type: 'set-mode', mode })

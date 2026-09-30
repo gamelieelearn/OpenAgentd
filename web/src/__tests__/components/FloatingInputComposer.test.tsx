@@ -301,6 +301,18 @@ describe('FloatingInputComposer', () => {
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
   })
 
+  it('does not also minimize when the input handled Escape (closing its menu)', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    await user.click(textarea)
+    // The @-mention / slash menu claims Escape like this.
+    textarea.addEventListener('keydown', (e) => { if (e.key === 'Escape') e.preventDefault() })
+    await user.keyboard('{Escape}')
+    expect(textarea.getAttribute('disabled')).toBeNull()
+  })
+
   it('auto-minimizes when the empty input loses focus', async () => {
     const user = userEvent.setup()
     render(<Harness exposeFocus />)

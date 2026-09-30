@@ -16,7 +16,6 @@
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
-import { useHotkeys } from '@tanstack/react-hotkeys'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { MarkdownBlock } from '@/utils/markdown'
@@ -35,8 +34,7 @@ import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppRes
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
-import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
-import { getPlatform } from '@/hooks/use-platform'
+import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { ErrorCard } from './AgentView/ErrorCard'
@@ -762,20 +760,10 @@ export function AgentView({
     return () => useTranscriptFollowStore.setState({ jumpToPrompt: null })
   }, [])
 
-  const { os } = getPlatform()
-  useHotkeys(
-    [
-      { hotkey: hotkeyOf(APP_SHORTCUTS.previousPrompt), callback: () => jumpToPrompt(-1), options: { meta: { name: 'Previous prompt' } } },
-      { hotkey: hotkeyOf(APP_SHORTCUTS.nextPrompt), callback: () => jumpToPrompt(1), options: { meta: { name: 'Next prompt' } } },
-    ],
-    {
-      target: typeof document === 'undefined' ? null : document,
-      platform: os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux',
-      preventDefault: true,
-      stopPropagation: false,
-      ignoreInputs: false,
-    },
-  )
+  useShortcuts([
+    appShortcut('previousPrompt', () => { jumpToPrompt(-1) }),
+    appShortcut('nextPrompt', () => { jumpToPrompt(1) }),
+  ])
 
   const cycleFind = useCallback((delta: number) => {
     if (findMatches.length === 0) return

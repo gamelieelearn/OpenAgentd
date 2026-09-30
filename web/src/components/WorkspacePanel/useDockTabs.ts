@@ -9,12 +9,11 @@
  * dock, which owns those queries.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useHotkey } from '@tanstack/react-hotkeys'
 import { useShallow } from 'zustand/react/shallow'
 
 import type { GitCommit, WorkspaceFileInfo } from '@/api/types'
 import type { PreviewTarget } from '@/api/preview'
-import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
+import { useAppShortcut } from '@/lib/keyboard/hooks'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 
 import type { ChangedFileInfo } from './diff-helpers'
@@ -49,7 +48,6 @@ function withTab(current: DockTab[], tab: DockTab): DockTab[] {
 interface DockTabsOptions {
   workspace: string
   chatWorkspace: boolean
-  os: string
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   terminalOpenKey: number
   handledTerminalOpenKeyRef?: React.RefObject<number | null>
@@ -67,7 +65,6 @@ interface DockTabsOptions {
 export function useDockTabs({
   workspace,
   chatWorkspace,
-  os,
   onFileSelect,
   terminalOpenKey,
   handledTerminalOpenKeyRef: parentHandledTerminalOpenKeyRef,
@@ -261,13 +258,8 @@ export function useDockTabs({
     }
   }
 
-  useHotkey(hotkeyOf(APP_SHORTCUTS.closeTab), () => closeTab(activeTabId), {
+  useAppShortcut('closeTab', () => closeTab(activeTabId), {
     enabled: activeTab !== undefined && activeTab.id === activeTabId && activeTab.type !== 'review',
-    ignoreInputs: false,
-    platform: os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux',
-    preventDefault: true,
-    stopPropagation: false,
-    target: typeof document === 'undefined' ? null : document,
   })
 
   return {

@@ -49,6 +49,7 @@ import { AutomationSettingsPage } from '@/components/settings/pages/settings.aut
 import { PluginsSettingsPage } from '@/components/settings/pages/settings.plugins'
 
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
+import { useAppShortcut } from '@/lib/keyboard/hooks'
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 
@@ -290,7 +291,14 @@ export function SettingsModal() {
   const prefersReducedMotion = useReducedMotion()
   const panel = prefersReducedMotion ? PANEL_VARIANTS_REDUCED : PANEL_VARIANTS
 
-  useModalFocus(open, closeSettings)
+  // Switching to the palette would raise the unsaved-changes prompt under it.
+  const layer = useModalFocus(open, closeSettings, undefined, {
+    kind: 'overlay',
+    allowSwitch: () => Object.keys(useSettingsStore.getState().dirtyDrafts).length === 0,
+  })
+  // ⌘, closes Settings even with unsaved changes (the prompt asks first);
+  // opening something else over it is what `allowSwitch` blocks.
+  useAppShortcut('settings', () => { closeSettings() }, { layer })
 
   return (
     <AnimatePresence>
@@ -316,6 +324,7 @@ export function SettingsModal() {
             aria-modal="true"
             aria-label="Settings"
             data-modal-focus="true"
+            data-settings-modal=""
             initial={panel.hidden}
             animate={panel.visible}
             exit={panel.hidden}

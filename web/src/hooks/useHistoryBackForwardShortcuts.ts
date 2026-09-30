@@ -1,12 +1,5 @@
-import { useHotkeys } from '@tanstack/react-hotkeys'
 import { useRouter } from '@tanstack/react-router'
-import { getPlatform } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
-
-function hotkeyPlatform() {
-  const { os } = getPlatform()
-  return os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux'
-}
+import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 
 /**
  * ``⌘[`` / ``⌘]`` (``Ctrl+[`` / ``Ctrl+]`` on Windows/Linux) — step
@@ -22,25 +15,8 @@ function hotkeyPlatform() {
  */
 export function useHistoryBackForwardShortcuts(): void {
   const router = useRouter()
-  useHotkeys(
-    [
-      {
-        hotkey: hotkeyOf(APP_SHORTCUTS.historyBack),
-        callback: () => router.history.back(),
-        options: { meta: { name: 'History back', description: 'Navigate backward' } },
-      },
-      {
-        hotkey: hotkeyOf(APP_SHORTCUTS.historyForward),
-        callback: () => router.history.forward(),
-        options: { meta: { name: 'History forward', description: 'Navigate forward' } },
-      },
-    ],
-    {
-      target: document,
-      platform: hotkeyPlatform(),
-      preventDefault: true,
-      stopPropagation: false,
-      ignoreInputs: false,
-    },
-  )
+  useShortcuts([
+    appShortcut('historyBack', () => { router.history.back() }),
+    appShortcut('historyForward', () => { router.history.forward() }),
+  ])
 }

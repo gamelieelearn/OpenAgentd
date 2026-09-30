@@ -216,7 +216,6 @@ export function WorkspacePanel({
   } = useDockTabs({
     workspace,
     chatWorkspace,
-    os,
     onFileSelect,
     terminalOpenKey,
     handledTerminalOpenKeyRef: parentHandledTerminalOpenKeyRef,

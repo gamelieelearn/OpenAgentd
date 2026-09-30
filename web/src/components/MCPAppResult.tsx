@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useHotkey } from '@tanstack/react-hotkeys'
 import {
   AppBridge,
   buildAllowAttribute,
@@ -21,6 +20,7 @@ import {
 import { ExternalLink, Maximize2, X } from 'lucide-react'
 import { callMcpAppTool } from '@/api/client'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { openExternalUrl } from '@/lib/open-external'
 
 interface MCPAppPayload {
@@ -228,8 +228,10 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     }
   }, [])
 
-  useHotkey('Escape', () => setDisplayMode(INLINE_DISPLAY_MODE), {
-    enabled: displayMode === FULLSCREEN_DISPLAY_MODE,
+  useKeyLayer(displayMode === FULLSCREEN_DISPLAY_MODE, {
+    kind: 'overlay',
+    closeOnSwitch: true,
+    onClose: () => setDisplayMode(INLINE_DISPLAY_MODE),
   })
 
   useEffect(() => {

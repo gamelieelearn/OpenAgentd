@@ -52,6 +52,7 @@ import { cn } from '@/lib/utils'
 import { DURATIONS_S } from '@/lib/motion'
 import { buttonVariants } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { useKeyLayer } from '@/lib/keyboard/hooks'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -205,13 +206,8 @@ function Dropdown({
     }
   }, [open])
 
-  // Escape closes
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [open])
+  // Escape closes it while it is the top layer (the trigger handles its own).
+  useKeyLayer(open, { kind: 'transient', onClose: () => setOpen(false) })
 
   // Drop the active option when the menu closes so a stale
   // aria-activedescendant never points at a hidden node.

@@ -106,7 +106,8 @@ export function AppOverlay({
   initialFocus,
 }: AppOverlayProps) {
   const reduced = useReducedMotion()
-  useModalFocus(open, onClose, initialFocus)
+  // An overlay: ⌘K / ⌘P / ⌘, may swap it for another one.
+  useModalFocus(open, onClose, initialFocus, { kind: 'overlay' })
 
   const panelVariants = reduced ? MODAL_VARIANTS_REDUCED : MODAL_VARIANTS
 

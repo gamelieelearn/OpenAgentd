@@ -8,8 +8,8 @@
 
 import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
-import { useHotkey } from '@tanstack/react-hotkeys'
 
+import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { cn } from '@/lib/utils'
 import { formatSpend } from '@/utils/telemetryFormat'
 
@@ -171,10 +171,13 @@ export function TokenMeter({
     }
   }, [pinnedOpen])
 
-  useHotkey('Escape', () => {
-    setPinnedOpen(false)
-    setHoverOpen(false)
-  }, { enabled: pinnedOpen })
+  useKeyLayer(pinnedOpen, {
+    kind: 'transient',
+    onClose: () => {
+      setPinnedOpen(false)
+      setHoverOpen(false)
+    },
+  })
 
   return (
     <div

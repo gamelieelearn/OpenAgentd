@@ -69,7 +69,7 @@ export function findSelectContainer(el: Element | null): Element | null {
  * a palette item or native-menu command is activated in place of a real
  * key press.
  */
-export function dispatchShortcutKey(key: string, os: OS, opts: { shift?: boolean } = {}): void {
+export function dispatchShortcutKey(key: string, os: OS, opts: { shift?: boolean; alt?: boolean; code?: string } = {}): void {
   const mac = isPrimaryModifierOS(os)
   // Dispatch from the document rather than window. Consumers such as the
   // sidebar's `useHotkey` listener attach to `document`; an event dispatched
@@ -78,9 +78,11 @@ export function dispatchShortcutKey(key: string, os: OS, opts: { shift?: boolean
   document.dispatchEvent(
     new KeyboardEvent('keydown', {
       key,
+      code: opts.code ?? '',
       ctrlKey: !mac,
       metaKey: mac,
       shiftKey: opts.shift ?? false,
+      altKey: opts.alt ?? false,
       bubbles: true,
     }),
   )
