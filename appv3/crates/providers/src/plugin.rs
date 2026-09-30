@@ -196,9 +196,8 @@ pub fn sha256_hex(s: &str) -> String {
 }
 
 pub fn random_bytes(n: usize) -> Vec<u8> {
-    use rand::RngCore;
     let mut b = vec![0u8; n];
-    rand::thread_rng().fill_bytes(&mut b);
+    rand::fill(&mut b[..]);
     b
 }
 

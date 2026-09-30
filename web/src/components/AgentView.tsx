@@ -483,6 +483,26 @@ export function AgentView({
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
     [renderedTurnCount, turnItems],
   )
+  // A reload shows only the newest page of history. When one long agent run
+  // fills it, no prompt is loaded at all, and reader mode folds the run into
+  // a short view that may not scroll, so nothing ever asks for older pages.
+  // Fetch back to the nearest prompt once per session so the run shows what
+  // it answers.
+  const hasMoreHistory = useAgentStore((s) => s.hasMore)
+  const hasLoadedPrompt = useMemo(
+    () => turnItems.some((item) => item.kind === 'user' && isDirectUserBlock(item.block)),
+    [turnItems],
+  )
+  const promptSeekedForRef = useRef<string | null>(null)
+  const hasTurns = turnItems.length > 0
+  useEffect(() => {
+    if (!hasMoreHistory || hasLoadedPrompt || !hasTurns) return
+    const state = useAgentStore.getState()
+    // A page already on its way lands new turns, which runs this again.
+    if (state._loadingOlder || promptSeekedForRef.current === (sessionId ?? '')) return
+    promptSeekedForRef.current = sessionId ?? ''
+    void state.loadOlderUntilPrompt().catch(() => false)
+  }, [hasLoadedPrompt, hasMoreHistory, hasTurns, sessionId, turnItems])
   const finalizedMCPAppResources = useMemo(() => latestMCPAppResources(blocks), [blocks])
   const latestMCPAppBlockIds = useMemo(
     () => latestMCPAppResourceBlockIdsFromParts(finalizedMCPAppResources, currentBlocks),

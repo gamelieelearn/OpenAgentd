@@ -7,13 +7,17 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { SessionSettingsPanel } from '@/components/SessionSettingsPanel'
+import { getPlatform } from '@/hooks/use-platform'
+import { _resetKeyboardForTests } from '@/lib/keyboard/dispatcher'
+
+const MOD = getPlatform().os === 'macos' ? { metaKey: true } : { ctrlKey: true }
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -70,13 +74,14 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  _resetKeyboardForTests()
   server.resetHandlers()
   if (originalFetch) globalThis.fetch = originalFetch
   originalFetch = undefined
   server.close()
 })
 
-function renderPanel() {
+function renderPanel(onClose: () => void = () => undefined) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -88,7 +93,7 @@ function renderPanel() {
         sessionModel={null}
         sessionThinkingLevel={null}
         onSessionModelSettingsChange={() => undefined}
-        onClose={() => undefined}
+        onClose={onClose}
       />
     </QueryClientProvider>,
   )
@@ -126,5 +131,21 @@ describe('SessionSettingsPanel — keyboard entry', () => {
     const toolsButton = screen.getByRole('button', { name: /^tools/i })
     expect(toolsButton.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByText('read')).toBeTruthy()
+  })
+
+  it('closes on its own toggle shortcut, even with focus in the model field', async () => {
+    const onClose = mock(() => {})
+    renderPanel(onClose)
+
+    await screen.findByRole('combobox', { name: 'Search session model' })
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('aria-label')).toBe('Search session model'),
+    )
+
+    const event = new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true, cancelable: true, ...MOD })
+    act(() => { document.activeElement?.dispatchEvent(event) })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(event.defaultPrevented).toBe(true)
   })
 })

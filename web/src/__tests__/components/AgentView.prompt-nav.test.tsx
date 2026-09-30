@@ -307,3 +307,48 @@ describe('AgentView — previous prompt that is not loaded yet', () => {
     expect(loadOlderPage).not.toHaveBeenCalled()
   })
 })
+
+/** A reload shows the newest page only; one long run can fill it with no prompt. */
+describe('AgentView — a loaded page holding no prompt', () => {
+  const { loadOlderUntilPrompt } = useAgentStore.getState()
+  const RUN: ContentBlock[] = [
+    { id: 'run:t1', type: 'thinking', content: 'thinking' },
+    { id: 'run:a1', type: 'text', content: 'still working' },
+  ]
+
+  afterEach(() => {
+    useAgentStore.setState({ hasMore: false, loadOlderUntilPrompt })
+  })
+
+  it('loads back to the nearest prompt once, without a scroll', async () => {
+    const loadOlder = mock(async () => true)
+    useAgentStore.setState({ hasMore: true, loadOlderUntilPrompt: loadOlder })
+
+    const view = render(<AgentView blocks={RUN} currentBlocks={[]} isWorking={false} />)
+    await act(async () => {})
+    view.rerender(<AgentView blocks={[...RUN, { id: 'run:a2', type: 'text', content: 'more' }]} currentBlocks={[]} isWorking={false} />)
+    await act(async () => {})
+
+    expect(loadOlder).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves history alone when a prompt is already loaded', async () => {
+    const loadOlder = mock(async () => true)
+    useAgentStore.setState({ hasMore: true, loadOlderUntilPrompt: loadOlder })
+
+    render(<AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} />)
+    await act(async () => {})
+
+    expect(loadOlder).not.toHaveBeenCalled()
+  })
+
+  it('leaves history alone when there is none older', async () => {
+    const loadOlder = mock(async () => true)
+    useAgentStore.setState({ hasMore: false, loadOlderUntilPrompt: loadOlder })
+
+    render(<AgentView blocks={RUN} currentBlocks={[]} isWorking={false} />)
+    await act(async () => {})
+
+    expect(loadOlder).not.toHaveBeenCalled()
+  })
+})

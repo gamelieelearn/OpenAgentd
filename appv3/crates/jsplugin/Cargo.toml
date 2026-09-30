@@ -16,17 +16,17 @@ uuid.workspace = true
 chrono.workspace = true
 regex.workspace = true
 fancy-regex = "0.14"
-base64 = "0.22"
+base64 = "0.23"
 hex = "0.4"
-rand = "0.8"
+rand = "0.10"
 rquickjs = { version = "0.14", features = ["futures", "loader"] }
-oxc_allocator = "0.146"
-oxc_codegen = "0.146"
-oxc_diagnostics = "0.146"
-oxc_parser = "0.146"
-oxc_semantic = "0.146"
-oxc_span = "0.146"
-oxc_transformer = "0.146"
+oxc_allocator = "0.151"
+oxc_codegen = "0.151"
+oxc_diagnostics = "0.151"
+oxc_parser = "0.151"
+oxc_semantic = "0.151"
+oxc_span = "0.151"
+oxc_transformer = "0.151"
 
 [dev-dependencies]
 tempfile = "3"

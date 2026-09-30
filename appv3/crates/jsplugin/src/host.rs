@@ -192,13 +192,12 @@ fn sync_call(st: &HostState, name: &str, arg: Value) -> NResult {
         })),
         "version" => Ok(json!(appv3_core::VERSION)),
         "randomHex" => {
-            use rand::RngCore;
             let n = arg.get("n").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
             if n > 1 << 20 {
                 return Err(NativeError::new("RangeError", "randomBytes: too many bytes requested"));
             }
             let mut b = vec![0u8; n];
-            rand::thread_rng().fill_bytes(&mut b);
+            rand::fill(&mut b[..]);
             Ok(json!(hex::encode(b)))
         }
         "uuid" => Ok(json!(if arg.get("version").and_then(|x| x.as_i64()) == Some(7) { uuid::Uuid::now_v7() } else { uuid::Uuid::new_v4() }.to_string())),
