@@ -1,8 +1,9 @@
-//! Small hooks: current date, workspace instructions, memory context,
-//! tool-result offload, queued-message injection.
+//! Small hooks: current date, workspace instructions, runtime protocol,
+//! memory context, tool-result offload, queued-message injection.
 
 use super::{AgentState, Hook, ModelRequest, RunContext, SharedMeta, ToolCallScope};
 use crate::events::Envelope;
+use crate::prompts;
 use crate::stream_store::store;
 use crate::util::{head_chars, tail_chars};
 use appv3_db::DbPool;
@@ -136,18 +137,46 @@ impl Hook for WorkspaceInstructionsHook {
     }
 }
 
+fn append_block(prompt: &mut String, block: &str) {
+    if block.is_empty() {
+        return;
+    }
+    if !prompt.is_empty() {
+        prompt.push_str("\n\n");
+    }
+    prompt.push_str(block);
+}
+
+// ── RuntimeProtocolHook ──────────────────────────────────────────────────────
+
+/// Appends the runtime protocol (instruction sources, secrets, workspace and
+/// git safety) to every agent. It lives here, not in the built-in prompt,
+/// because an agent file's own prompt replaces that prompt entirely.
+pub struct RuntimeProtocolHook;
+
+#[async_trait]
+impl Hook for RuntimeProtocolHook {
+    async fn before_agent(&self, _ctx: &RunContext, state: &mut AgentState) {
+        append_block(&mut state.system_prompt, prompts::runtime_protocol());
+    }
+}
+
 // ── MemoryContextHook ────────────────────────────────────────────────────────
 
-/// Appends the rendered `<openagentd_memory>` block (computed by the session).
+/// Appends the memory rules and the rendered `<openagentd_memory>` block
+/// (computed by the session). The lead saves memory; delegated agents only
+/// read it, since their "user" is the lead rather than the person.
 pub struct MemoryContextHook {
     pub content: String,
+    pub lead: bool,
 }
 
 #[async_trait]
 impl Hook for MemoryContextHook {
     async fn before_agent(&self, _ctx: &RunContext, state: &mut AgentState) {
         if !self.content.is_empty() {
-            state.system_prompt = format!("{}\n\n{}", state.system_prompt, self.content);
+            append_block(&mut state.system_prompt, prompts::memory_protocol(self.lead));
+            append_block(&mut state.system_prompt, &self.content);
         }
     }
 }

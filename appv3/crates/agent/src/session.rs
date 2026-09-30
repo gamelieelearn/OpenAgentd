@@ -5,7 +5,7 @@ use crate::broadcaster;
 use crate::checkpointer::Checkpointer;
 use crate::errors::{format_agent_error, AgentError};
 use crate::events::{self, Envelope};
-use crate::hooks::basic::{CurrentDateHook, MemoryContextHook, QueuedInjectionHook, ToolResultOffloadHook, WorkspaceInstructionsHook};
+use crate::hooks::basic::{CurrentDateHook, MemoryContextHook, QueuedInjectionHook, RuntimeProtocolHook, ToolResultOffloadHook, WorkspaceInstructionsHook};
 use crate::hooks::publisher::StreamPublisherHook;
 use crate::hooks::summarization::build_summarization_hook;
 use crate::hooks::title::build_title_generation_hook;
@@ -872,7 +872,8 @@ impl AgentSession {
             Arc::new(StreamPublisherHook::new(&sid, &name, true)),
             Arc::new(crate::hooks::otel::OtelHook::new(&name, effective_model.as_deref())),
             Arc::new(crate::hooks::lsp::LspHook { enabled: agent_mode == "coding", denied: denied.clone() }),
-            Arc::new(MemoryContextHook { content: appv3_memory::memory_context() }),
+            Arc::new(RuntimeProtocolHook),
+            Arc::new(MemoryContextHook { content: appv3_memory::memory_context(), lead: is_lead }),
         ];
         if is_lead {
             hooks.push(Arc::new(QueuedInjectionHook {

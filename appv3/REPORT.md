@@ -551,6 +551,27 @@ explicitly.
   - **v2 compatibility.** v2 ignores the state file, the workspace plan
     files, the extra payload and `extra` keys; the web client treats the v2
     404 as "no plan".
+- **Runtime protocol and proactive memory** (`agent/src/hooks/basic.rs`,
+  `memory/src/lib.rs`; tested there and in `agent/tests/runtime_protocol.rs`).
+  v2 keeps its memory and git-safety rules inside the built-in `code` prompt,
+  so an agent file with its own prompt loses them, and delegated agents get
+  the memory block with no rules.
+  - **Protocol.** `RuntimeProtocolHook` appends `runtime_protocol`
+    (instruction sources, interaction mode, secrets, workspace and destructive
+    git rules) to every agent's prompt, and `MemoryContextHook` puts
+    `memory_protocol_lead` or `memory_protocol_member` just before
+    `<openagentd_memory>`. The texts are new keys in
+    `contract/builtin_prompts.json`; `coding_prompt` drops its memory,
+    interaction-mode and git-safety sections and one duplicated rule. The
+    member rules are prompt-level only: the `patch` tool does not refuse
+    memory writes from delegated agents.
+  - **Proactive saving.** The lead is told to save preferences, corrections
+    and durable facts the user states, in the same turn and without asking,
+    using its normal file tools; no extra model call is made. v2 allows
+    `preferences.md` edits only on explicit request.
+  - **Limits.** `preferences.md` is pinned up to 1,500 characters (v2: 400)
+    and the memory block up to 3,000 (v2: 1,500). The "more pages" marker now
+    counts against the budget, which v2 overshoots by its length.
 - **Transport retries** (`agent/src/retry.rs`, `agent/src/streaming.rs`):
   a dropped connection, DNS failure or timeout retries on a flat, jittered
   3–5 s interval. The turn's model call retries without limit until the

@@ -1064,12 +1064,19 @@ OpenAgentd carries context across sessions via rolling-window summarization.
 - **Persistent Markdown memory subsystem** `[v2.22.0]` — file-backed persistent knowledge
   in global (`{OPENAGENTD_CONFIG_DIR}/memory/`) storing authoritative human-editable `.md` pages.
   Dynamically compiles a bounded
-  XML catalog (`<openagentd_memory>`) capped at 1,500 rendered characters into
+  XML catalog (`<openagentd_memory>`) capped at 3,000 rendered characters (up from 1,500 `[v3.3.0]`) into
   `state.system_prompt` during `before_agent` (0 filesystem I/O across model turns),
-  pins `preferences.md` directives (<= 400 chars), synchronizes concurrent edits with reference-counted
+  pins `preferences.md` directives (<= 1,500 chars, up from 400 `[v3.3.0]`), synchronizes concurrent edits with reference-counted
   path locks and quoted strong SHA-256 ETags (HTTP 412/428), provides `/memory` slash
   commands, and exposes a Settings viewer/editor with conflict resolution and deterministic
   wikilink linting.
+- **Proactive memory about the user** `[v3.3.0]` — the lead agent saves stated
+  preferences, corrections, and durable facts about the user (to `preferences.md`,
+  `user.md`, or topic pages) in the same turn without asking, and says what it saved.
+  Delegated agents read memory but do not write it.
+- **Runtime protocol for every agent** `[v3.3.0]` — rules for instruction sources,
+  secrets, workspace and git safety, and memory are added by the runtime, so agents
+  with a custom prompt in their agent file get them too.
 - **`/compact` rolling-window summarization** `[v1.5.0, v2.7.0]` — compresses old turns
   into a single summary message kept in context; UI shows the unabridged
   conversation. Preserves reasoning and loaded skill/tool context; skill
