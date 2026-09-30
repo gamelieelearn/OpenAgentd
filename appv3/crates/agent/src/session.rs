@@ -903,6 +903,9 @@ impl AgentSession {
             // Sessions without a user workspace keep the plan in the data dir.
             injected.push(Arc::new(crate::tools::plan::PlanTool { session_id: sid.clone(), coding: agent_mode == "coding" && !workspace.is_empty() }));
             injected.push(Arc::new(crate::tools::plan::SubmitPlanTool { session_id: sid.clone(), pool: self.pool.clone() }));
+            if agent_mode == "coding" && !workspace.is_empty() {
+                injected.push(Arc::new(crate::tools::preview::PreviewTool));
+            }
         } else if let Some(lead) = &self.parent_session_id {
             injected.push(Arc::new(crate::tools::team::AskLeadTool { lead_session_id: lead.clone(), member_handle: name.clone() }));
         }

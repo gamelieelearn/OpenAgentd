@@ -829,3 +829,25 @@ SSE client, or after 30 minutes idle regardless; the next read restarts it.
 Not done on purpose: provider plugins still load once per process (v2
 parity; hot reload would need a JS runtime lifecycle). Instruction, agent
 and skill files are already re-validated by mtime on every turn.
+
+### Web preview (`crates/preview`)
+
+v3 only; v2 has no counterpart. `POST /api/preview` starts (or reuses) one
+listener per workspace and target on `127.0.0.1:<port>`. The listener proxies
+a loopback dev server (HTTP, SSE and `ws://` hot reload) or serves the
+workspace as static files under the file tools' denied-path rules, and adds
+`/__openagentd/inspector.js` to HTML pages for the dock's element picker and
+console capture. It refuses foreign `Host` headers, never proxies to the API
+port or another preview, removes the target's `X-Frame-Options` and
+`frame-ancestors`, and sets its own `frame-ancestors` (loopback pages and
+Tauri webviews). Listeners are capped at 8 and close after 30 minutes idle.
+The app CSP gains `frame-src 'self' http://127.0.0.1:*`. The lead's
+`preview` tool opens pages, reads the captured console, and drives the open
+page: the inspector long-polls `/__openagentd/agent` on the preview origin
+for commands (snapshot, click, fill, press, scroll, navigate, wait, inspect)
+and posts results back there, so commands fail fast when no Preview tab has
+the page open. Its definition lives in `crates/agent/src/tools/preview.rs`,
+not in the v2 tool contract. Design feedback travels inside the user message
+as a `<design-feedback>` block that the web UI renders as a card; the wire
+format is unchanged.
+Not done: `wss://` relays, LAN or mobile access, and headless capture.

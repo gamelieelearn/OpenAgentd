@@ -139,6 +139,7 @@ dependencies = [
  "appv3-db",
  "appv3-jsplugin",
  "appv3-memory",
+ "appv3-preview",
  "appv3-providers",
  "appv3-tools",
  "async-trait",

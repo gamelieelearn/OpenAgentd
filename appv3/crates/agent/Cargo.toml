@@ -10,6 +10,7 @@ dunce.workspace = true
 appv3-core.workspace = true
 appv3-db.workspace = true
 appv3-tools.workspace = true
+appv3-preview.workspace = true
 appv3-providers.workspace = true
 appv3-jsplugin.workspace = true
 sqlx.workspace = true
