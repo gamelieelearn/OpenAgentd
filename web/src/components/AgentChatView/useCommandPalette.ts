@@ -49,6 +49,8 @@ export interface UseCommandPaletteArgs {
   /** Only while the session has a plan; lists Open Plan. */
   handleOpenPlan?: () => void
   planAwaitingReview?: boolean
+  /** Workspace with a local backend only: opens a web preview tab. */
+  handleOpenPreview?: () => void
 
   setFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
   setFileOpenKey: Dispatch<SetStateAction<number>>
@@ -81,6 +83,7 @@ export function useCommandPalette({
   handleFindInTranscript,
   handleOpenPlan,
   planAwaitingReview,
+  handleOpenPreview,
   setFileViewer,
   setFileOpenKey,
   setWorkspacePanel,
@@ -112,6 +115,7 @@ export function useCommandPalette({
     handleToggleDockMaximized: workspace && !isMobile ? handleToggleDockMaximized : undefined,
     handleOpenPlan,
     planAwaitingReview,
+    handleOpenPreview,
   })
   const switchCommands = usePaletteSwitchCommands({ workspace, sessionId: sessionIdState })
   const paletteCommands = useMemo(() => [...agentCommands, ...switchCommands], [agentCommands, switchCommands])

@@ -45,7 +45,11 @@ if (import.meta.main) {
   // xterm. Limits sit just above the measured 2.54 MB / 754 kB gzip, and the
   // 1.90 MB index chunk is now the largest one.
   // The plan review (Plan tab, transcript card) raised it to 2.57 MB / 765 kB.
-  const limits = { eagerBytes: 2_600_000, eagerGzipBytes: 770_000, largestChunkBytes: 1_950_000 }
+  // The web preview (Preview tab, design comments) raised it to 2.61 MB /
+  // 778 kB, with a 1.97 MB index chunk.
+  // Design feedback chips, comment editing and React 19 source mapping
+  // raised it to 2.62 MB / 783 kB, with a 1.98 MB index chunk.
+  const limits = { eagerBytes: 2_640_000, eagerGzipBytes: 790_000, largestChunkBytes: 1_990_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

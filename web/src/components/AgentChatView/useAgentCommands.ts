@@ -44,6 +44,8 @@ interface UseAgentCommandsArgs {
   handleOpenPlan?: () => void
   /** The plan is waiting for the user's review. */
   planAwaitingReview?: boolean
+  /** Opens a web preview tab in the review dock (workspace + local backend). */
+  handleOpenPreview?: () => void
 }
 
 export function useAgentCommands({
@@ -58,6 +60,7 @@ export function useAgentCommands({
   handleToggleDockMaximized,
   handleOpenPlan,
   planAwaitingReview = false,
+  handleOpenPreview,
 }: UseAgentCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
   const { setPreference: setTheme } = useThemePreference()
@@ -85,6 +88,16 @@ export function useAgentCommands({
       : []),
     { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: shortcutLabel(KEYS.sidebar, os), action: handleSidebarToggle },
     { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', action: toggleScheduler },
+    ...(handleOpenPreview
+      ? [{
+          id: 'open-preview',
+          group: 'View' as const,
+          label: 'Open Preview',
+          description: 'Show a local dev server or HTML file in the review dock, with design comments',
+          keywords: 'browser web view localhost dev server design inspect',
+          action: handleOpenPreview,
+        }]
+      : []),
     { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'Interactive shell in the workspace (runs on the connected server)', shortcut: shortcutLabel(KEYS.terminal, os), action: handleOpenTerminal },
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: shortcutLabel(KEYS.settings, os), action: () => openSettings('agents') },
     { id: 'go-telemetry', group: 'Navigation', label: 'Open Telemetry', description: 'Spend, turns, and traces by workspace and model', action: () => openTelemetry() },
@@ -106,5 +119,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme, readerMode, toggleReaderMode])
+  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme, readerMode, toggleReaderMode])
 }

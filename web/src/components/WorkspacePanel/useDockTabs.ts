@@ -13,6 +13,7 @@ import { useHotkey } from '@tanstack/react-hotkeys'
 import { useShallow } from 'zustand/react/shallow'
 
 import type { GitCommit, WorkspaceFileInfo } from '@/api/types'
+import type { PreviewTarget } from '@/api/preview'
 import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 
@@ -22,12 +23,15 @@ import {
   type DockTab,
   type DockView,
   type DockViewRequest,
+  type PreviewTabRequest,
   REVIEW_TAB,
   REVIEW_TAB_ID,
   basename,
   commitTabId,
   diffTabId,
   fileTabId,
+  previewTabId,
+  previewTabTitle,
   terminalIdFromTabId,
   terminalTabId,
   viewTab,
@@ -54,6 +58,10 @@ interface DockTabsOptions {
   onActiveViewChange?: (view: DockView | null) => void
   diffRequest?: DiffTabRequest | null
   handledDiffRequestKeyRef?: React.RefObject<number>
+  previewRequest?: PreviewTabRequest | null
+  handledPreviewRequestKeyRef?: React.RefObject<number>
+  /** Called after a tab leaves the strip (close button, middle-click, Mod+W). */
+  onTabClosed?: (tab: DockTab) => void
 }
 
 export function useDockTabs({
@@ -68,6 +76,9 @@ export function useDockTabs({
   onActiveViewChange,
   diffRequest,
   handledDiffRequestKeyRef: parentHandledDiffRequestKeyRef,
+  previewRequest,
+  handledPreviewRequestKeyRef: parentHandledPreviewRequestKeyRef,
+  onTabClosed,
 }: DockTabsOptions) {
   // Chat workspaces have no Git review tab — the root is not a repository.
   const defaultTabId = chatWorkspace ? '' : REVIEW_TAB_ID
@@ -123,6 +134,18 @@ export function useDockTabs({
   const openCommitTab = useCallback((commit: GitCommit) => {
     openTab({ id: commitTabId(commit.sha), type: 'commit', title: commit.short_sha, commit })
   }, [openTab])
+
+  /** Open or focus the preview for ``target``; an open tab navigates to it. */
+  const openPreviewTab = useCallback((target: PreviewTarget, options?: { focusOnly?: boolean }) => {
+    const id = previewTabId(target)
+    setTabs((current) => {
+      const existing = current.find((item) => item.id === id)
+      if (existing && options?.focusOnly) return current
+      const navKey = existing?.type === 'preview' ? existing.navKey + 1 : 0
+      return withTab(current, { id, type: 'preview', title: previewTabTitle(target), target, navKey })
+    })
+    setActiveTabId(id)
+  }, [])
 
   useEffect(() => {
     setTabs((current) => {
@@ -188,6 +211,14 @@ export function useDockTabs({
     })
   }, [diffRequest, openDiffTab, handledDiffRequestKeyRef])
 
+  const fallbackHandledPreviewRequestKeyRef = useRef(0)
+  const handledPreviewRequestKeyRef = parentHandledPreviewRequestKeyRef ?? fallbackHandledPreviewRequestKeyRef
+  useEffect(() => {
+    if (!previewRequest || previewRequest.key <= handledPreviewRequestKeyRef.current) return
+    handledPreviewRequestKeyRef.current = previewRequest.key
+    openPreviewTab(previewRequest.target, { focusOnly: previewRequest.focusOnly })
+  }, [previewRequest, openPreviewTab, handledPreviewRequestKeyRef])
+
   const activeView: DockView | null =
     activeTab?.type === 'tasks' || activeTab?.type === 'schedule' || activeTab?.type === 'plan' ? activeTab.type : null
   const onActiveViewChangeRef = useRef(onActiveViewChange)
@@ -220,6 +251,7 @@ export function useDockTabs({
       useTerminalStore.getState().close(target.termId)
     }
     setTabs((current) => current.filter((item) => item.id !== id))
+    if (target) onTabClosed?.(target)
     if (activeTabId === id) {
       // Editor convention: focus the neighbour on the left, else the right.
       const index = visibleTabs.findIndex((item) => item.id === id)
@@ -249,6 +281,7 @@ export function useDockTabs({
     openFileTab,
     openDiffTab,
     openCommitTab,
+    openPreviewTab,
     openTerminal,
     closeTab,
   }

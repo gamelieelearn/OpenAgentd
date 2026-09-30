@@ -214,7 +214,45 @@ function planDisplay(parsed: Record<string, unknown>, done: boolean): ToolDispla
   return { header, headerTitle: header, formattedArgs: typeof parsed.content === 'string' && parsed.content ? parsed.content : null }
 }
 
+/** ``Click e3``, ``Fill #email``, ``Go to /pricing``; ``null`` for open and logs. */
+function previewPageActionLabel(action: string, parsed: Record<string, unknown>): string | null {
+  const target = str(parsed, 'ref') || str(parsed, 'selector')
+  const key = str(parsed, 'key') ?? ''
+  const to = str(parsed, 'to') ?? ''
+  const text = str(parsed, 'text')
+  const withTarget = (verb: string) => (target ? `${verb} ${target}` : verb)
+  switch (action) {
+    case 'snapshot': return withTarget('Page snapshot')
+    case 'click': return withTarget('Click')
+    case 'fill': return withTarget('Fill')
+    case 'inspect': return withTarget('Inspect')
+    case 'press': return target ? `Press ${key} on ${target}` : `Press ${key}`
+    case 'scroll': return target || to ? `Scroll to ${target || to}` : 'Scroll'
+    case 'navigate': return to ? `Go to ${to}` : 'Navigate'
+    case 'wait': {
+      const what = text ? `"${text}"` : str(parsed, 'selector')
+      if (!what) return 'Wait'
+      return parsed.gone === true ? `Wait for ${what} to go` : `Wait for ${what}`
+    }
+    default: return null
+  }
+}
+
 function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): ToolDisplay {
+  // ── preview: the page it opens, the console it reads, or the page action ──
+  if (name === 'preview') {
+    const action = str(parsed, 'action')
+    if (action === 'logs') {
+      const label = str(parsed, 'level') === 'error' ? 'Console errors' : 'Console'
+      return { header: <Arg>{label}</Arg>, headerTitle: label, formattedArgs: null }
+    }
+    const page = action ? previewPageActionLabel(action, parsed) : null
+    if (page) return { header: <Arg>{page}</Arg>, headerTitle: page, formattedArgs: null }
+    const url = str(parsed, 'url')
+    const label = url ? shortUrl(url) : str(parsed, 'path')
+    return { header: label ? <Arg>{label}</Arg> : null, headerTitle: label, formattedArgs: null }
+  }
+
   // ── shell: description as header, command as bash block ─────────────
   if (name === 'shell') {
     const description = str(parsed, 'description')

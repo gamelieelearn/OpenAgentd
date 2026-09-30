@@ -18,11 +18,13 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronRight, Copy, Check } from 'lucide-react'
+import { ChevronRight, Copy, Check, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { isLocalBackend } from '@/api/preview'
 import { ToolResult } from '../ToolResult'
 import { AskUser } from '../AskUser'
 import { PlanReviewCard } from '../PlanReview/PlanReviewCard'
+import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { tokenizeCode } from '@/utils/code-highlight'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -239,6 +241,10 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     () => usesDiffView && args && !isFailedResult(result) ? getDiffStats(name, args, result) : null,
     [usesDiffView, name, args, result],
   )
+  const previewTarget = useMemo(
+    () => (name === PREVIEW_TOOL && done && isPreviewOpenSuccess(result) && isLocalBackend() ? previewTargetFromArgs(args) : null),
+    [name, done, result, args],
+  )
   // Pending-state header comes from getToolDisplay's no-args branch
   // (e.g. ``recall`` → "Checking memory…"). Tools without a custom pending header return
   // ``header: null`` from that branch and fall back to the raw tool name
@@ -403,6 +409,16 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
           />
         )}
       </button>
+      {previewTarget && (
+        <button
+          type="button"
+          onClick={() => requestOpenPreview(previewTarget)}
+          className="ml-2 inline-flex items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 align-middle text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 pointer-coarse:py-2"
+        >
+          <Globe size={11} aria-hidden="true" />
+          Open preview
+        </button>
+      )}
 
       {/* Expandable details — divider then warm paper body per pencil LJOUY */}
       <AnimatePresence initial={false}>

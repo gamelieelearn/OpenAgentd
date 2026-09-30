@@ -2,7 +2,7 @@
  * DockTabBar — the review dock's editor-tab strip.
  *
  * One row: scrolling tabs on the left, a fixed action cluster on the right
- * (new terminal, refresh, and on desktop maximize; file search is Quick
+ * (new preview, new terminal, refresh, and on desktop maximize; file search is Quick
  * Open, ⌘P). Hiding the
  * dock lives on the header's review-dock toggle (and ⌘D), which is always
  * visible because the dock never covers the header.
@@ -11,7 +11,7 @@
  * and file tabs a sibling close button, which roving-tabindex tab semantics
  * do not model well.
  */
-import { CalendarClock, FileDiff, FileText, GitCommitHorizontal, GitCompare, ListTodo, Maximize2, Minimize2, RefreshCw, TerminalSquare, X } from 'lucide-react'
+import { CalendarClock, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, Minimize2, RefreshCw, TerminalSquare, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { TerminalTabButton } from '../Terminal/TerminalTabButton'
@@ -39,6 +39,8 @@ export interface DockTabBarProps {
   onActivate: (id: string) => void
   onClose: (id: string) => void
   onNewTerminal: () => void
+  /** Opens a web preview tab; omitted when previews are unavailable. */
+  onNewPreview?: () => void
   onRefresh: () => void
   /** ``null`` hides the toggle (mobile, or a forced narrow-window overlay). */
   maximized: boolean | null
@@ -61,6 +63,8 @@ function TabIcon({ tab }: { tab: DockTab }) {
       return <FileDiff size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
     case 'commit':
       return <GitCommitHorizontal size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+    case 'preview':
+      return <Globe size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
     default:
       return null
   }
@@ -92,6 +96,7 @@ export function DockTabBar({
   onActivate,
   onClose,
   onNewTerminal,
+  onNewPreview,
   onRefresh,
   maximized,
   onToggleMaximized,
@@ -160,6 +165,11 @@ export function DockTabBar({
         <div aria-hidden="true" className="min-w-2 flex-1 border-b border-(--color-border)" />
       </div>
       <div className="flex shrink-0 items-center gap-0.5 border-b border-(--color-border) px-1">
+        {onNewPreview && (
+          <ActionButton label="New preview" onClick={onNewPreview}>
+            <Globe size={14} aria-hidden="true" />
+          </ActionButton>
+        )}
         <ActionButton label="New terminal" onClick={onNewTerminal}>
           <TerminalSquare size={14} aria-hidden="true" />
         </ActionButton>
