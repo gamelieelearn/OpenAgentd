@@ -276,6 +276,19 @@ run from the terminal (the native Rust binary since v3.0.0).
   focus trap). `Escape` now closes the innermost layer first, so dismissing an
   open list no longer closes the surrounding modal. Session Settings opens with
   focus in the model field instead of the close button.
+- **Shortcuts that follow what is on top** `[v3.3.0]` — one keyboard layer
+  model for the whole app. Escape closes only what opened last (a popover in
+  a dialog, a lightbox under the palette), one thing per press. While a
+  dialog, Settings, a lightbox or an MCP app's fullscreen view is open, app
+  shortcuts (`⌘N`, `⌘W`, `⌘B`, `⌘[`…) no longer act on the app behind it;
+  `⌘K`, `⌘P` and `⌘,` can still switch to another overlay, except over a
+  confirmation or form dialog and over Settings with unsaved changes.
+  Letters typed in a dialog stay out of the composer, and Escape that closes
+  the composer's @-mention or slash menu no longer also minimizes it. App
+  shortcuts also work while a Preview page or an MCP app has focus (keys the
+  page uses itself stay with it), so `⌘W` there closes the tab instead of the
+  window. **Keyboard Shortcuts** (`⌘/`/`Ctrl+/`, or the palette) lists every
+  shortcut by area.
 - **Type-to-focus composer** `[v1.40.0]` — in coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
   character without pressing `⌘I`/`Ctrl+I` first.
@@ -1029,6 +1042,8 @@ agent against it.
   (MesloLGS NF and similar) for correct Powerlevel10k/Starship glyph rendering.
   On macOS a focused terminal keeps `⌘K` (clears it, as in Terminal.app) and
   `⌘F` instead of opening the palette or transcript find `[v3.0.0]`.
+  `⌘W` on a terminal whose shell is still running asks before closing it; the
+  tab's close button still closes right away `[v3.3.0]`.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
   agent-selection fallback. Since `[v3.0.0]` the card shows the workspace
