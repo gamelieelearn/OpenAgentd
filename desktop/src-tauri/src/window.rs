@@ -1,8 +1,9 @@
 use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tauri::{
-    AppHandle, Emitter, Manager, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, EventTarget, Manager, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
 };
 
 use crate::AppState;
@@ -106,15 +107,44 @@ pub fn show_target_window(app: &AppHandle) {
     }
 }
 
+static NEXT_FRONTEND_COMMAND_ID: AtomicU64 = AtomicU64::new(1);
+
+/// `desktop-command` payload. The web runs each `id` once (see
+/// `web/src/lib/desktop-commands.ts`), so repeats below are harmless and a
+/// second real press right after still runs.
+#[derive(Clone, Debug, serde::Serialize)]
+struct FrontendCommand {
+    command: String,
+    id: u64,
+}
+
+fn frontend_command(command: &str) -> FrontendCommand {
+    FrontendCommand {
+        command: command.to_string(),
+        id: NEXT_FRONTEND_COMMAND_ID.fetch_add(1, Ordering::Relaxed),
+    }
+}
+
 pub fn emit_frontend_command(app: &AppHandle, command: &str) {
     show_target_window(app);
-    let command = command.to_string();
+    // Only the window the command is for: every window listens, and a global
+    // emit would run the command in all of them. With no window yet, one is
+    // being created and a global emit reaches it.
+    let label = target_webview_window(app).map(|window| window.label().to_string());
+    let payload = frontend_command(command);
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         // If a tray command summons a just-created or still-loading webview,
         // give React a short window to mount its event listener.
         for _ in 0..5 {
-            let _ = handle.emit("desktop-command", command.as_str());
+            let _ = match &label {
+                Some(label) => handle.emit_to(
+                    EventTarget::webview_window(label.as_str()),
+                    "desktop-command",
+                    payload.clone(),
+                ),
+                None => handle.emit("desktop-command", payload.clone()),
+            };
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     });
@@ -389,6 +419,16 @@ pub fn apply_zoom_to_window(app: &AppHandle, label: &str, factor: f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frontend_commands_carry_a_fresh_id() {
+        let first = frontend_command("find");
+        let second = frontend_command("find");
+        assert!(second.id > first.id);
+        let json = serde_json::to_value(&first).unwrap();
+        assert_eq!(json["command"], "find");
+        assert_eq!(json["id"], first.id);
+    }
 
     #[test]
     fn window_identity_script_defines_both_globals() {
