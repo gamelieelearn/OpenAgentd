@@ -76,10 +76,17 @@ async fn tool_turn_persists_and_streams_like_v2() {
     assert_eq!(session.state(), "idle");
 
     let mut seen = vec![];
+    let mut notification = None;
     while let Ok(Some(e)) = tokio::time::timeout(Duration::from_millis(200), global.next()).await {
+        if e.event == "desktop_notification" && e.data.contains(&sid) {
+            notification = Some(serde_json::from_str::<serde_json::Value>(&e.data).unwrap());
+        }
         seen.push(e.event.clone());
     }
     assert!(seen.contains(&"session_turn_started".to_string()), "{seen:?}");
     assert!(seen.contains(&"session_turn_completed".to_string()), "{seen:?}");
-    assert!(seen.contains(&"desktop_notification".to_string()), "{seen:?}");
+    let notification = notification.unwrap_or_else(|| panic!("no desktop_notification in {seen:?}"));
+    assert_eq!(notification["kind"], "assistant_done");
+    assert_eq!(notification["title"], format!("Done · {}", ws.file_name().unwrap().to_string_lossy()));
+    assert_eq!(notification["body"], "hi");
 }

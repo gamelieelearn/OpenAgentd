@@ -593,6 +593,18 @@ explicitly.
   `contract/tool_definitions.json` says so). v2 defaults to `finished`, so
   agents resetting the board for a new plan left the old plan's pending and
   in-progress tasks behind.
+- **Notifications** (`agent/src/notification.rs`, `agent/src/session.rs`):
+  `desktop_notification` titles are a short status and the workspace
+  directory name (`Done · openagentd`, `Failed · …`, `Needs input · …`,
+  `Plan ready · …`), and each body is one line of at most 100 characters,
+  cut with `…`. v2 sends `Session completed - …` / `Needs your input - …`
+  and the full question or session title, newlines included. The event
+  shape is unchanged. v3 also changes when a lead turn notifies: a failed
+  turn sends `Failed` (kind `assistant_done`), while v2 sends nothing. A turn
+  the user stopped or ended by dismissing a question sends nothing, where v2
+  sends `Session completed`. A turn that ends while its subagents still run
+  also sends nothing: their reports start another lead turn, and the last
+  one notifies.
 - **Active sessions filter:** `GET /api/agent/sessions?active=true` returns
   every top-level session that is running or waiting on a question, as one
   page (`next_cursor: null`, `has_more: false`), newest first. `limit` and

@@ -71,6 +71,14 @@ fn find_by_session<R>(lead: &str, child: &str, f: impl FnOnce(&mut SubagentInsta
     r.live.get_mut(lead).and_then(|m| m.values_mut().find(|i| i.session_id == child)).map(f)
 }
 
+/// Whether a subagent of `lead` is still running. Its report will start
+/// another lead turn, so the lead's work is not finished yet. A subagent that
+/// just ended is already marked done before its report reaches the lead.
+pub fn has_working_subagents(lead: &str) -> bool {
+    let r = reg().lock().unwrap();
+    r.live.get(lead).is_some_and(|m| m.values().any(|i| i.status == "working" && i.session.is_busy()))
+}
+
 /// `prune_subagent_output`.
 pub fn prune_subagent_output(output: &str, child_session_id: &str, max_chars: usize) -> String {
     let n = output.chars().count();
@@ -542,5 +550,43 @@ mod tests {
         let p = prune_subagent_output(&long, "sid", MAX_SUBAGENT_OUTPUT_CHARS);
         assert!(p.contains("Output truncated: 40000 chars total"));
         assert_eq!(resolve_instance("L", "nobody").unwrap_err().to_string(), "Member 'nobody' not found. Live instances: None.");
+    }
+
+    #[tokio::test]
+    async fn only_a_running_subagent_keeps_the_lead_working() {
+        let root = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(root.path().join("oad.db")).await.unwrap();
+        let provider: Arc<dyn appv3_providers::LlmProvider> = Arc::new(appv3_providers::mock::MockProvider::new(vec![]));
+        let p2 = provider.clone();
+        let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
+        let lead = "lead-working-subagents";
+        let add = |handle: &str, status: &str, state: &str| {
+            let agent = Agent::new(provider.clone(), handle, "", vec![], None);
+            let session = AgentSession::new(agent, Some(format!("{handle}-sid")), None, pool.clone(), factory.clone(), Some(lead.into()));
+            session.set_state(state);
+            let inst = SubagentInstance {
+                handle: handle.into(),
+                profile_name: "explorer".into(),
+                lead_session_id: lead.into(),
+                session_id: format!("{handle}-sid"),
+                session,
+                status: status.into(),
+                last_result: None,
+                pending_lead_question: None,
+                last_error: None,
+                question_delivered: false,
+                result_delivered: false,
+                pending_tool_call_id: None,
+            };
+            reg().lock().unwrap().live.entry(lead.into()).or_default().insert(handle.into(), inst);
+        };
+        assert!(!has_working_subagents(lead), "no subagents");
+        // Done (its report is on its way to the lead), or marked working with no turn left.
+        add("explorer#1", "completed", "idle");
+        add("explorer#2", "working", "idle");
+        assert!(!has_working_subagents(lead));
+        add("explorer#3", "working", "working");
+        assert!(has_working_subagents(lead));
+        assert!(!has_working_subagents("another-lead"));
     }
 }

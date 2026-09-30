@@ -64,6 +64,7 @@ async fn stopping_a_running_tool_keeps_its_output_and_runtime() {
     let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
     let agent = Agent::new(provider.clone(), "code", "You are a test agent.", vec![Arc::new(NeverEnds)], Some("mock:mock".into()));
     let session = AgentSession::new(agent, None, Some(ws.display().to_string()), pool.clone(), factory, None);
+    let mut global = appv3_agent::broadcaster::broadcaster().attach();
 
     let sid = uuid::Uuid::now_v7().to_string();
     session.handle_user_message(UserMessage { content: "build".into(), session_id: sid.clone(), origin: "user".into(), ..Default::default() }).await.unwrap();
@@ -95,4 +96,14 @@ async fn stopping_a_running_tool_keeps_its_output_and_runtime() {
     let rows = appv3_db::llm_window_rows(&pool, &sid, false).await.unwrap();
     let tool = rows.iter().find(|r| r.role == "tool" && r.tool_call_id.as_deref() == Some("call_1")).expect("tool result persisted");
     assert_cancelled_result(tool.content.as_deref().unwrap());
+
+    // The user stopped it themselves: no "Done" notification.
+    let mut seen = vec![];
+    while let Ok(Some(e)) = tokio::time::timeout(Duration::from_millis(200), global.next()).await {
+        if e.data.contains(&sid) {
+            seen.push(e.event.clone());
+        }
+    }
+    assert!(seen.contains(&"session_turn_completed".to_string()), "{seen:?}");
+    assert!(!seen.contains(&"desktop_notification".to_string()), "{seen:?}");
 }

@@ -12,6 +12,7 @@ use crate::hooks::title::build_title_generation_hook;
 use crate::hooks::HookRef;
 use crate::interaction_mode;
 use crate::loader::{self, ProviderFactory};
+use crate::notification;
 use crate::stream_store::store;
 use crate::util::Event;
 use appv3_core::settings::settings;
@@ -209,7 +210,7 @@ impl AgentSession {
     pub fn state(&self) -> String {
         self.state.lock().unwrap().clone()
     }
-    fn set_state(&self, s: &str) {
+    pub(crate) fn set_state(&self, s: &str) {
         *self.state.lock().unwrap() = s.to_string();
     }
     pub fn last_error(&self) -> Option<String> {
@@ -635,17 +636,19 @@ impl AgentSession {
             return true;
         }
         self.set_active_turn(false);
-        self.close_turn(session_id, "completed").await;
+        // The user ended the turn by dismissing the question; nothing new to tell them.
+        self.close_turn(session_id, "completed", false).await;
         true
     }
 
-    async fn close_turn(&self, session_id: &str, status: &str) {
+    async fn close_turn(&self, session_id: &str, status: &str, notify: bool) {
         store().push_event(session_id, &events::done(Some(json!({"session_id": session_id}))), true);
         store().mark_done(session_id);
         match &self.parent_session_id {
             None => {
-                if status == "completed" {
-                    broadcaster::publish("desktop_notification", self.completion_notification(session_id).await);
+                let label = if notify { self.notification_status(session_id, status) } else { None };
+                if let Some(label) = label {
+                    broadcaster::publish("desktop_notification", self.completion_notification(session_id, label).await);
                 }
             }
             Some(lead) => {
@@ -667,7 +670,25 @@ impl AgentSession {
         broadcaster::publish("session_turn_completed", payload);
     }
 
-    async fn completion_notification(&self, session_id: &str) -> Value {
+    /// The notification status for a lead turn that just ended, or `None`
+    /// when it should not notify: the user stopped it, or subagents are still
+    /// working and their reports will run the lead again (that last turn
+    /// notifies instead). A failed turn notifies: the user may be away.
+    fn notification_status(&self, session_id: &str, status: &str) -> Option<&'static str> {
+        if self.cancel.is_set() {
+            return None;
+        }
+        match status {
+            "completed" if crate::subagents::has_working_subagents(session_id) => None,
+            "completed" => Some("Done"),
+            "error" => Some("Failed"),
+            _ => None,
+        }
+    }
+
+    /// `kind` stays `assistant_done` for a failed turn so clients that only
+    /// know the original kinds still show it.
+    async fn completion_notification(&self, session_id: &str, status: &str) -> Value {
         let (title, workspace) = match db::get_session(&self.pool, session_id).await {
             Ok(Some(r)) => (r.title, Some(r.workspace)),
             Ok(None) => (None, None),
@@ -676,14 +697,13 @@ impl AgentSession {
                 (None, None)
             }
         };
-        let ws_name = workspace.filter(|w| !w.is_empty()).and_then(|w| Path::new(&w).file_name().map(|n| n.to_string_lossy().to_string())).filter(|n| !n.is_empty());
-        let body = title.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).unwrap_or_else(|| format!("Session {}", crate::util::head_chars(session_id, 8)));
+        let body = title.as_deref().and_then(notification::body).unwrap_or_else(|| format!("Session {}", crate::util::head_chars(session_id, 8)));
         json!({
             "type": "desktop_notification",
             "notification_id": uuid::Uuid::new_v4().to_string(),
             "kind": "assistant_done",
             "session_id": session_id,
-            "title": match ws_name { Some(n) => format!("Session completed - {n}"), None => "Session completed".to_string() },
+            "title": notification::title(status, workspace.as_deref()),
             "body": body,
         })
     }
@@ -804,10 +824,10 @@ impl AgentSession {
             if !activated {
                 self.set_state("idle");
                 self.emit("agent_status", Some("idle"), None);
-                self.close_turn(&sid, "completed").await;
+                self.close_turn(&sid, "completed", true).await;
             }
         } else {
-            self.close_turn(&sid, "error").await;
+            self.close_turn(&sid, "error", true).await;
         }
         if !activated {
             self.set_active_turn(false);

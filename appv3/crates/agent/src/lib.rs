@@ -12,6 +12,7 @@ pub mod hooks;
 pub mod interaction_mode;
 pub mod loader;
 pub mod manager;
+pub mod notification;
 pub mod plan;
 pub mod plugins;
 pub mod prompts;

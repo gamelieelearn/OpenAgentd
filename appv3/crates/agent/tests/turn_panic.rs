@@ -58,6 +58,7 @@ async fn a_panic_mid_turn_ends_the_turn_as_an_error() {
     let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
     let agent = Agent::new(provider, "code", "You are a test agent.", vec![], Some("mock:boom".into()));
     let session = AgentSession::new(agent, None, Some(ws.display().to_string()), pool.clone(), factory, None);
+    let mut global = appv3_agent::broadcaster::broadcaster().attach();
 
     let sid = uuid::Uuid::now_v7().to_string();
     session.handle_user_message(UserMessage { content: "hi".into(), session_id: sid.clone(), origin: "user".into(), ..Default::default() }).await.unwrap();
@@ -66,6 +67,18 @@ async fn a_panic_mid_turn_ends_the_turn_as_an_error() {
     assert!(!session.is_busy());
     let err = session.last_error().unwrap_or_default();
     assert!(err.contains("provider bug"), "{err}");
+
+    // Someone away from the app learns the turn failed.
+    let mut notification = None;
+    while let Ok(Some(e)) = tokio::time::timeout(Duration::from_millis(200), global.next()).await {
+        if e.event == "desktop_notification" && e.data.contains(&sid) {
+            notification = Some(serde_json::from_str::<serde_json::Value>(&e.data).unwrap());
+        }
+    }
+    let notification = notification.expect("a failed turn notifies");
+    assert_eq!(notification["kind"], "assistant_done");
+    assert_eq!(notification["title"], "Failed · project");
+    assert_eq!(notification["body"], "hi");
 
     // The session stays usable: the next message starts (and ends) a turn.
     session.handle_user_message(UserMessage { content: "again".into(), session_id: sid, origin: "user".into(), ..Default::default() }).await.unwrap();

@@ -171,6 +171,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   one opens its session, and the one for the session already on screen is
   skipped while the app is open `[v3.0.0]`. iOS pauses the app in the
   background, so mobile notifications arrive only while it is running.
+  Notifications are shorter `[v3.3.0]`: the title is a status and the workspace
+  name (`Done · openagentd`, `Failed · …`, `Needs input · …`, `Plan ready · …`),
+  and the session title, question, or plan summary shows as one line of up to
+  100 characters. A failed turn now notifies too. Stopping a turn or dismissing
+  a question does not, and a lead that is waiting on subagents notifies once,
+  after their reports are handled.
 - **Quick Open and Command Palette** `[v2.3.0]` — `⌘P`/`Ctrl+P` searches and
   opens files in the active workspace; `⌘K`/`Ctrl+K` searches app actions.
   Both use the compact warm-paper search surface, keyboard navigation, and a

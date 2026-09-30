@@ -204,11 +204,11 @@ impl Tool for AskUserTool {
         let qid = appv3_db::codec::api_uuid(&row.id);
         store().push_event(&sid, &events::question_asked(&qid, &sid, &ctx.tool_call_id, &payload), false);
         let headline = payload.first().and_then(|q| q.get("question")).and_then(|v| v.as_str()).unwrap_or("").to_string();
-        publish_input_needed(&self.pool, &self.session_id, &qid, "Needs your input", |title| {
-            if !headline.is_empty() {
+        publish_input_needed(&self.pool, &self.session_id, &qid, "Needs input", |title| {
+            if !headline.trim().is_empty() {
                 headline
             } else {
-                title.unwrap_or_else(|| "The agent has a question".into())
+                title.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| "The agent has a question".into())
             }
         })
         .await;
