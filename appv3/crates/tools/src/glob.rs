@@ -167,7 +167,7 @@ impl Tool for GlobTool {
         let max_results = a.opt_int(&["max_results"], Some(1), None).unwrap_or(200) as usize;
         a.finish()?;
         let denied = ctx.denied.clone();
-        let resolved = denied.validate_path(&directory)?;
+        let resolved = denied.validate_read_path(&directory)?;
         if !resolved.is_dir() {
             return Err(ToolError::Execution(format!("Not a directory: {}", denied.display_path(&resolved))));
         }
@@ -225,7 +225,7 @@ impl Tool for GlobTool {
             }
             let mut hits = vec![];
             for (_, p) in matched {
-                if !p.is_file() || denied.is_denied_path(&p) {
+                if !p.is_file() || denied.is_denied_read_path(&p) {
                     continue;
                 }
                 hits.push(denied.display_path(&p));
@@ -249,7 +249,7 @@ impl Tool for GlobTool {
         .await
         .map_err(ToolError::exec)?;
         if hits.is_empty() {
-            let miss = format!("No files matching '{pattern}' in {}", ctx.denied.display_path(&ctx.denied.validate_path(&directory)?));
+            let miss = format!("No files matching '{pattern}' in {}", ctx.denied.display_path(&ctx.denied.validate_read_path(&directory)?));
             if !dir_hints.is_empty() {
                 let named = dir_hints.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
                 return Ok(ToolOutput::Text(format!("{miss}; it matches directories ({named}) — use '{}/**' to list files inside", dir_hints[0])));
