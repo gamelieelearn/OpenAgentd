@@ -235,6 +235,34 @@ describe('PreviewTabView', () => {
     expect(onRequestClose).toHaveBeenCalledTimes(1)
   })
 
+  it('sends the page its keymap and replays forwarded keys through the app', async () => {
+    const { iframe, frameWindow, commands } = await renderView()
+    fromPage(frameWindow, { type: 'ready', path: '/pricing', title: 'Pricing', status: 'ok' })
+    await waitFor(() => expect(commands.some((c) => c.type === 'keymap')).toBe(true))
+    const keymap = commands.find((c) => c.type === 'keymap')?.keymap as { chords: { key: string; alt: boolean }[]; escape: boolean }
+    expect(keymap.escape).toBe(true)
+    expect(keymap.chords).toContainEqual(expect.objectContaining({ key: 'c', alt: true }))
+    expect(keymap.chords).toContainEqual(expect.objectContaining({ key: 'w' }))
+
+    const design = await waitFor(() => {
+      const button = screen.getByRole('button', { name: /Design/ }) as HTMLButtonElement
+      if (button.disabled) throw new Error('not ready')
+      return button
+    })
+    iframe.focus()
+    const forward = (origin: string) => act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        data: { ns: 'openagentd-keys', v: 1, type: 'key', key: 'ç', code: 'KeyC', altKey: true },
+        origin,
+        source: frameWindow,
+      }))
+    })
+    forward('http://evil.example')
+    expect(design.getAttribute('aria-pressed')).toBe('false')
+    forward(ORIGIN)
+    expect(design.getAttribute('aria-pressed')).toBe('true')
+  })
+
   it('counts console errors from the page', async () => {
     const { frameWindow } = await renderView()
     fromPage(frameWindow, { type: 'console', entries: [{ level: 'error', message: 'boom', url: '/', ts: 0 }, { level: 'log', message: 'hi', url: '/', ts: 0 }] })

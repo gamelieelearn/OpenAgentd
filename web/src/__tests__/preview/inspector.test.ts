@@ -159,6 +159,60 @@ describe('preview inspector', () => {
     expect(closes()).toHaveLength(2)
   })
 
+  describe('with the dock keymap', () => {
+    const KEYS_NS = 'openagentd-keys'
+    let keys: Record<string, unknown>[]
+    const onKeys = (event: MessageEvent) => { if (event.data?.ns === KEYS_NS) keys.push(event.data) }
+    const keymap = {
+      mac: false,
+      escape: true,
+      chords: [
+        { key: 'w', mod: true, shift: false, alt: false },
+        { key: 'k', mod: true, shift: false, alt: false },
+        { key: 'c', code: 'KeyC', mod: false, shift: false, alt: true },
+      ],
+    }
+    const press = (target: EventTarget, init: KeyboardEventInit) => {
+      const event = new frame.KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })
+      target.dispatchEvent(event)
+      return event
+    }
+
+    beforeEach(() => {
+      keys = []
+      window.addEventListener('message', onKeys)
+      sendFromParent({ type: 'keymap', keymap })
+    })
+    afterEach(() => window.removeEventListener('message', onKeys))
+
+    it('forwards the app chords the page left alone, instead of the fixed shortcuts', async () => {
+      expect(press(frame.document.body, { key: 'k', ctrlKey: true }).defaultPrevented).toBe(true)
+      press(frame.document.body, { key: 'w', code: 'KeyW', ctrlKey: true })
+      press(frame.document.body, { key: 'ç', code: 'KeyC', altKey: true })
+      await settle()
+      expect(keys.map((m) => m.key)).toEqual(['k', 'w', 'ç'])
+      expect(received.filter((m) => m.type === 'shortcut')).toHaveLength(0)
+    })
+
+    it('keeps keys the page handled, and Alt chords typed in a field', async () => {
+      frame.document.body.insertAdjacentHTML('beforeend', '<input id="field">')
+      frame.document.body.addEventListener('keydown', (e) => { if (e.key === 'k') e.preventDefault() }, { once: true })
+      press(frame.document.body, { key: 'k', ctrlKey: true })
+      expect(press(frame.document.getElementById('field') as HTMLElement, { key: 'ç', code: 'KeyC', altKey: true }).defaultPrevented).toBe(false)
+      await settle()
+      expect(keys).toHaveLength(0)
+    })
+
+    it('forwards unhandled Escape, but Escape leaves inspect mode first', async () => {
+      press(frame.document.body, { key: 'Escape' })
+      sendFromParent({ type: 'set-mode', mode: 'inspect' })
+      press(frame.document.body, { key: 'Escape' })
+      await settle()
+      expect(keys.map((m) => m.key)).toEqual(['Escape'])
+      expect(internals().getMode()).toBe('browse')
+    })
+  })
+
   it('forwards console output to the dock and the backend', async () => {
     frame.console.error('boom', { a: 1 })
     frame.console.warn(new Error('careful'))

@@ -5,6 +5,7 @@
  * The page runs on its own loopback origin, so every message is checked for
  * both the expected origin and the tab's own iframe window before use.
  */
+import type { FrameKeymap } from '@/lib/keyboard/frames'
 
 export const PREVIEW_NS = 'openagentd-preview'
 export const PREVIEW_VERSION = 1
@@ -68,6 +69,8 @@ export type DockCommand =
   | { type: 'reload' }
   | { type: 'navigate'; path: string }
   | { type: 'history'; dir: -1 | 1 }
+  /** App shortcuts the page should forward (``lib/keyboard/frames``). */
+  | { type: 'keymap'; keymap: FrameKeymap }
 
 const LEVELS = new Set(['error', 'warn', 'info', 'log', 'debug'])
 

@@ -38,6 +38,7 @@ import { DEVICE_PRESETS, type DevicePreset, deviceLabel, devicePreset, fitScale,
 import { type ComposerAnchor, PreviewCommentComposer, PreviewCommentList } from './PreviewComments'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { useShortcut } from '@/lib/keyboard/hooks'
+import { frameKeymap, useFrameKeys } from '@/lib/keyboard/frames'
 import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
 import { type PreviewComment, buildDesignFeedback, commentsFromFeedback, feedbackMatchesTarget, resolveSourceFile } from './preview-comments'
 import {
@@ -178,6 +179,8 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   // Workspace-relative file paths, to place React 19 sources (``/src/…``).
   const filePathsRef = useRef<string[]>([])
   const frameRef = useRef<HTMLIFrameElement>(null)
+  const osRef = useRef(os)
+  osRef.current = os
   const stageRef = useRef<HTMLDivElement>(null)
   const frameBoxRef = useRef<HTMLDivElement>(null)
   const readyRef = useRef(false)
@@ -254,6 +257,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           const win = frameRef.current?.contentWindow
           win?.postMessage(commandMessage({ type: 'set-mode', mode: modeRef.current }), origin)
           win?.postMessage(commandMessage({ type: 'pins', pins: commentsRef.current.map((c) => ({ n: c.n, selector: c.element.selector })) }), origin)
+          win?.postMessage(commandMessage({ type: 'keymap', keymap: frameKeymap(osRef.current, [DESIGN_CHORD]) }), origin)
           break
         }
         case 'location':
@@ -319,6 +323,8 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
   // Alt+C toggles picking while this tab shows (not while typing in a field);
   // the page forwards it when focused.
   useShortcut(DESIGN_CHORD, () => { toggleDesignRef.current() }, { enabled: active && local })
+  // Keys the page forwards (per the keymap sent on `ready`) replay here.
+  useFrameKeys(frameRef, { origin: info?.origin ?? null, enabled: Boolean(info) })
 
   useEffect(() => {
     post({ type: 'set-mode', mode })

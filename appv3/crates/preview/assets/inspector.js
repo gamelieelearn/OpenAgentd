@@ -570,14 +570,65 @@
 
   var isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
 
-  // Cmd+W (macOS) / Ctrl+W: key presses in the page never reach the dock, so
-  // without this the desktop app's native Close Window would close the app.
+  // Key presses in the page never reach the dock. Once the dock sends its
+  // keymap (the app's shortcuts), chords the page left alone are forwarded
+  // after the page's own handlers, plus unhandled Escape; the dock replays
+  // them as if pressed in the app. Before that (an older dock), only the
+  // fixed Cmd/Ctrl+W and Alt+C below are forwarded.
+  var KEYS_NS = 'openagentd-keys';
+  var keymap = null;
+
+  function setKeymap(value) {
+    if (!value || typeof value !== 'object' || !Array.isArray(value.chords)) return;
+    keymap = {
+      mac: value.mac === true,
+      escape: value.escape === true,
+      chords: value.chords.filter(function (c) { return c && typeof c.key === 'string'; }).slice(0, 64),
+    };
+  }
+
+  function keymapHit(event) {
+    var primary = keymap.mac ? event.metaKey : event.ctrlKey;
+    var other = keymap.mac ? event.ctrlKey : event.metaKey;
+    if (other) return false;
+    var key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    for (var i = 0; i < keymap.chords.length; i++) {
+      var c = keymap.chords[i];
+      if (primary !== !!c.mod || event.altKey !== !!c.alt || event.shiftKey !== !!c.shift) continue;
+      // Like the dock: chords without Cmd/Ctrl are typing inside a field.
+      if (!c.mod && isEditable(event.target)) continue;
+      if (c.code ? event.code === c.code : key === c.key) return true;
+    }
+    return false;
+  }
+
+  function onKeyForward(event) {
+    if (!keymap || event.defaultPrevented || event.isComposing) return;
+    var escape = keymap.escape && event.key === 'Escape' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+    if (!escape && !keymapHit(event)) return;
+    event.preventDefault();
+    try {
+      w.parent.postMessage({ ns: KEYS_NS, v: 1, type: 'key', key: event.key, code: event.code, metaKey: event.metaKey, ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, altKey: event.altKey }, '*');
+    } catch (_) {
+      /* the dock went away */
+    }
+  }
+
+  // Cmd+W (macOS) / Ctrl+W: without forwarding, the desktop app's native
+  // Close Window would close the app.
   function isCloseTab(event) {
     var primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
     return primary && !event.altKey && !event.shiftKey && event.code === 'KeyW';
   }
 
   function onKey(event) {
+    if (mode === 'inspect' && event.key === 'Escape') {
+      swallow(event);
+      setMode('browse');
+      post({ type: 'mode', mode: 'browse' });
+      return;
+    }
+    if (keymap) return;
     if (isCloseTab(event)) {
       event.preventDefault();
       event.stopPropagation();
@@ -589,12 +640,6 @@
       event.preventDefault();
       event.stopPropagation();
       post({ type: 'shortcut', name: 'toggle-design' });
-      return;
-    }
-    if (mode === 'inspect' && event.key === 'Escape') {
-      swallow(event);
-      setMode('browse');
-      post({ type: 'mode', mode: 'browse' });
     }
   }
 
@@ -610,6 +655,8 @@
     w.addEventListener(type, swallow, true);
   });
   w.addEventListener('keydown', onKey, true);
+  // Bubble phase: the page's own handlers run first.
+  w.addEventListener('keydown', onKeyForward);
 
   // ── Pins ──────────────────────────────────────────────────────────────
 
@@ -1215,6 +1262,9 @@
       case 'history':
         if (data.dir === -1) w.history.back();
         else if (data.dir === 1) w.history.forward();
+        break;
+      case 'keymap':
+        setKeymap(data.keymap);
         break;
     }
   });

@@ -3,6 +3,7 @@ import { act, render, screen, cleanup, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import "@testing-library/jest-dom"
 import { MCPAppResult } from "@/components/MCPAppResult"
+import { FRAME_KEYS_NS } from "@/lib/keyboard/frames"
 
 const callMcpAppTool = mock(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
 
@@ -183,6 +184,48 @@ describe("MCPAppResult", () => {
     const appHtml = document.body.querySelector("iframe")?.getAttribute("srcdoc") ?? ""
     expect(appHtml.indexOf("function createStorage")).toBeLessThan(appHtml.indexOf('localStorage.getItem("x")'))
     expect(appHtml).toContain("'localStorage','sessionStorage'")
+  })
+
+  it("injects the key forwarder so app keys and Escape reach the host", async () => {
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: '<html><head></head><body><script>boot()</script></body></html>',
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("srcdoc")).toContain("boot()"))
+    const appHtml = document.body.querySelector("iframe")?.getAttribute("srcdoc") ?? ""
+    expect(appHtml).toContain(FRAME_KEYS_NS)
+    expect(appHtml.indexOf(FRAME_KEYS_NS)).toBeLessThan(appHtml.indexOf("boot()"))
+  })
+
+  it("leaves fullscreen when the focused app forwards Escape", async () => {
+    const user = userEvent.setup()
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+    await user.click(screen.getByRole("button", { name: "Open create_view fullscreen" }))
+    expect(screen.getByRole("dialog", { name: "create_view fullscreen MCP app" })).toBeTruthy()
+    const iframe = document.body.querySelector("iframe") as HTMLIFrameElement
+    iframe.focus()
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: { ns: FRAME_KEYS_NS, v: 1, type: "key", key: "Escape", code: "Escape" },
+        source: iframe.contentWindow,
+      }))
+    })
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "create_view fullscreen MCP app" })).toBeNull())
   })
 
   it("starts the bridge transport before loading app HTML so app initialization is not missed", async () => {

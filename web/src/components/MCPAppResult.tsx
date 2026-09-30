@@ -21,6 +21,8 @@ import { ExternalLink, Maximize2, X } from 'lucide-react'
 import { callMcpAppTool } from '@/api/client'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useKeyLayer } from '@/lib/keyboard/hooks'
+import { frameKeyForwarderScript, frameKeymap, useFrameKeys } from '@/lib/keyboard/frames'
+import { getPlatform } from '@/hooks/use-platform'
 import { openExternalUrl } from '@/lib/open-external'
 
 interface MCPAppPayload {
@@ -116,7 +118,10 @@ function storageShimScript(): string {
 
 function wrapAppHtml(html: string, csp?: McpUiResourceCsp): string {
   const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${buildCsp(csp).replaceAll('"', '&quot;')}">`
-  const prefix = `${cspMeta}${storageShimScript()}`
+  // Key presses stay in the frame: forward app shortcuts and Escape the app
+  // did not use, so ⌘W and fullscreen Escape work while it has focus.
+  const keys = `<script>${frameKeyForwarderScript(frameKeymap(getPlatform().os))}</script>`
+  const prefix = `${cspMeta}${storageShimScript()}${keys}`
   if (/<head\b[^>]*>/i.test(html)) {
     return html.replace(/<head\b[^>]*>/i, (match) => `${match}${prefix}`)
   }
@@ -191,6 +196,7 @@ class DeferredPostMessageTransport implements Transport {
 
 export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
+  useFrameKeys(iframeRef)
   const bridgeRef = useRef<AppBridge | null>(null)
   const [height, setHeight] = useState(DEFAULT_HEIGHT)
   const [displayMode, setDisplayMode] = useState<typeof INLINE_DISPLAY_MODE | typeof FULLSCREEN_DISPLAY_MODE>(INLINE_DISPLAY_MODE)
