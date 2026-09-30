@@ -109,6 +109,43 @@ describe('WorkspacePanel terminal tabs', () => {
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(0)
   })
 
+  const pressCtrlW = () => act(async () => {
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true, bubbles: true, cancelable: true }))
+  })
+
+  it('asks before Ctrl+W stops a live shell', async () => {
+    await renderPanel(1)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
+
+    await pressCtrlW()
+    expect(await screen.findByRole('dialog', { name: 'Close terminal?' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy()
+
+    await act(async () => { screen.getByRole('button', { name: 'Cancel' }).click() })
+    // Let the dialog's exit animation finish (same wait as UpdateCard's tests).
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 150)) })
+    expect(screen.queryByRole('dialog', { name: 'Close terminal?' })).toBeNull()
+    expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
+
+    await pressCtrlW()
+    await act(async () => { (await screen.findByRole('button', { name: 'Close terminal' })).click() })
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Close Terminal 1' })).toBeNull())
+    expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(0)
+  })
+
+  it('closes an exited terminal on Ctrl+W without asking', async () => {
+    await renderPanel(1)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
+    const [session] = useTerminalStore.getState().sessionsForContext(WORKSPACE)
+    act(() => {
+      useTerminalStore.setState((state) => ({ sessions: { ...state.sessions, [session.id]: { ...state.sessions[session.id], status: 'exited' } } }))
+    })
+
+    await pressCtrlW()
+    expect(screen.queryByRole('dialog', { name: 'Close terminal?' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Close Terminal 1' })).toBeNull()
+  })
+
   it('remount re-adopts live sessions from the store as tabs', async () => {
     // Session opened before the panel mounts (e.g. panel was closed and
     // reopened) — the tab must reappear and the session must survive.

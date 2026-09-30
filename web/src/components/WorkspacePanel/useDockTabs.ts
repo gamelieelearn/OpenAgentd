@@ -258,9 +258,29 @@ export function useDockTabs({
     }
   }
 
-  useAppShortcut('closeTab', () => closeTab(activeTabId), {
+  // ⌘W on a terminal whose shell is still running asks first: the key is
+  // easy to hit while typing in it, and closing stops the shell. The tab's ×
+  // button is a deliberate click and closes right away.
+  const [confirmCloseTabId, setConfirmCloseTabId] = useState<string | null>(null)
+  // With no closable tab the key is left alone, so the desktop's native
+  // Close Window still works; behind a dialog the dispatcher swallows it.
+  useAppShortcut('closeTab', () => {
+    if (activeTab?.type === 'terminal') {
+      const status = useTerminalStore.getState().sessions[activeTab.termId]?.status
+      if (status === 'connected' || status === 'connecting') {
+        setConfirmCloseTabId(activeTab.id)
+        return
+      }
+    }
+    closeTab(activeTabId)
+  }, {
     enabled: activeTab !== undefined && activeTab.id === activeTabId && activeTab.type !== 'review',
   })
+  const confirmCloseTab = () => {
+    if (confirmCloseTabId) closeTab(confirmCloseTabId)
+    setConfirmCloseTabId(null)
+  }
+  const cancelCloseTab = () => setConfirmCloseTabId(null)
 
   return {
     tabs,
@@ -276,5 +296,8 @@ export function useDockTabs({
     openPreviewTab,
     openTerminal,
     closeTab,
+    confirmCloseTabId,
+    confirmCloseTab,
+    cancelCloseTab,
   }
 }

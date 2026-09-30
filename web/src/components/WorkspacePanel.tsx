@@ -68,6 +68,7 @@ import type { DesignFeedback } from '@/lib/design-feedback'
 import { SchedulerDockView } from './SchedulerPanel/SchedulerDockView'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { DockActionMenus, type CommitActionTarget } from './WorkspacePanel/DockActionMenus'
+import { CloseTerminalDialog } from './WorkspacePanel/CloseTerminalDialog'
 import { useGitActions } from './WorkspacePanel/useGitActions'
 import { useDockTabs } from './WorkspacePanel/useDockTabs'
 import {
@@ -213,6 +214,9 @@ export function WorkspacePanel({
     openPreviewTab,
     openTerminal,
     closeTab,
+    confirmCloseTabId,
+    confirmCloseTab,
+    cancelCloseTab,
   } = useDockTabs({
     workspace,
     chatWorkspace,
@@ -634,6 +638,12 @@ export function WorkspacePanel({
             </div>
           ) : null}
         </div>
+        <CloseTerminalDialog
+          open={confirmCloseTabId !== null}
+          title={visibleTabs.find((tab) => tab.id === confirmCloseTabId)?.title ?? 'This terminal'}
+          onConfirm={confirmCloseTab}
+          onCancel={cancelCloseTab}
+        />
         <DockActionMenus
           mobileFileActions={mobileFileActions}
           setMobileFileActions={setMobileFileActions}
