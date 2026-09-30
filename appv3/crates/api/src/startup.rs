@@ -112,6 +112,7 @@ pub async fn shutdown() {
     // desktop's shutdown grace period.
     let _ = tokio::time::timeout(std::time::Duration::from_secs(1), crate::registry_refresh_gate().read()).await;
     appv3_terminal::close_all().await;
+    appv3_preview::shutdown();
     scheduler::scheduler().stop();
     appv3_agent::snapshot::stop_maintenance();
     manager::stop().await;

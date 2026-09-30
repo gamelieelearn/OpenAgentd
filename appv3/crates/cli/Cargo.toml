@@ -13,6 +13,7 @@ dunce.workspace = true
 appv3-core.workspace = true
 appv3-db.workspace = true
 appv3-api.workspace = true
+appv3-preview.workspace = true
 appv3-tools.workspace = true
 axum.workspace = true
 anyhow.workspace = true

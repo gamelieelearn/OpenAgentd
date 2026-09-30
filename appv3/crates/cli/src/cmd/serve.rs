@@ -126,6 +126,8 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
         let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
         let port = listener.local_addr()?.port();
         tracing::info!("server_listening host={} port={}", host, port);
+        // A preview must never proxy back to this API from loopback.
+        appv3_preview::block_port(port);
         if handshake {
             emit_handshake(port, token.as_deref(), handshake_file.as_deref());
         }
