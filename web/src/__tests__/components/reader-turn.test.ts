@@ -11,6 +11,7 @@ function tool(id: string, toolName: string, args: unknown = {}, extra: Partial<C
 function patch(id: string, lines: string[], extra: Partial<ContentBlock> = {}): ContentBlock {
   return tool(id, 'patch', { patch_text: ['*** Begin Patch', ...lines, '*** End Patch'].join('\n') }, extra)
 }
+const report = (id: string): ContentBlock => ({ id, type: 'user', content: 'findings', extra: { from_agent: 'explorer#1' } })
 /** No ``ask_user`` card is waiting on the user. */
 const settled = () => false
 
@@ -60,6 +61,12 @@ describe('readerSegments — what folds behind the work summary', () => {
     expect(readerSegments([text('n1'), tool('s1', 'shell', {}, { toolDone: false })], settled)).toEqual([{ kind: 'work', indices: [0, 1] }])
   })
 
+  it("folds a subagent's report with the work, and the text before it as narration", () => {
+    const blocks = [tool('d1', 'delegate'), text('n1', 'Waiting on the explorer.'), report('r1'), text('a1')]
+
+    expect(readerSegments(blocks, settled)).toEqual([{ kind: 'work', indices: [0, 1, 2] }, { kind: 'block', index: 3 }])
+  })
+
   it('starts a new fold after a compaction divider, so the work before and after it reads apart', () => {
     const blocks = [
       thinking('t1'), tool('r1', 'read'), text('n1', 'Running the tests next.'),
@@ -86,13 +93,14 @@ describe('summarizeWork', () => {
       tool('s1', 'shell', {}, { toolResult: '[Failed — exit code 1]\nnope' }),
       patch('p1', ['*** Update File: a.ts', '@@', '-a', '+b']),
       tool('d1', 'delegate'),
+      report('rp1'),
       text('n1'),
     ]
 
     const summary = summarizeWork(blocks)
 
-    expect(summary).toEqual({ reads: 2, searches: 3, fetches: 1, commands: 1, edits: 1, other: 1, failed: 1, thought: true })
-    expect(workSummaryDetail(summary)).toBe('2 reads, 3 searches, 1 fetch, 1 command, 1 edit, 1 other')
+    expect(summary).toEqual({ reads: 2, searches: 3, fetches: 1, commands: 1, edits: 1, reports: 1, other: 1, failed: 1, thought: true })
+    expect(workSummaryDetail(summary)).toBe('2 reads, 3 searches, 1 fetch, 1 command, 1 edit, 1 report, 1 other')
   })
 
   it('says nothing about steps for a trace that only thought', () => {

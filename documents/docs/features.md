@@ -526,6 +526,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     Since `[v3.1.0]` a compaction divider also splits the work: the steps
     before it fold into a finished row above it, and the steps after it into
     a row of their own below, which is the one that reads "Working".
+    A subagent's report that arrives while the lead works folds into the
+    same row ("… 1 report") instead of splitting the turn, so the lead's
+    answer after it reads as the turn's answer under one footer; while the
+    lead picks up after it, the row reads "Working · Report from explorer#1".
   - A finished turn lists the files its `patch` calls changed, with line
     counts; each opens its git diff in the review dock. Since `[v3.1.0]` the list starts
     closed behind its "N files changed" header.

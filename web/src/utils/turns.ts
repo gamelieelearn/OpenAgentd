@@ -4,12 +4,28 @@
  * A "turn" is a contiguous run of non-user blocks (thinking / tool / text).
  * User blocks are their own items. Used to render one footer (copy + time)
  * per assistant turn, regardless of how many internal blocks the turn has.
+ *
+ * With ``foldAgentReports`` (reader mode), a message another agent sent, such
+ * as a subagent's report, that arrives after the agent's work joins that turn
+ * as one more step instead of starting a new one. An agent's message that
+ * opens a turn (e.g. a lead's task for a member) stays its prompt.
  */
 import type { ContentBlock } from '@/api/types'
 
 export type TurnItem =
   | { kind: 'user'; block: ContentBlock; index: number }
   | { kind: 'assistant'; blocks: ContentBlock[]; startIndex: number }
+
+export interface PartitionOptions {
+  /** Fold agent-sent messages that follow the agent's work into its turn. */
+  foldAgentReports?: boolean
+}
+
+/** A message another agent sent into this session, e.g. a subagent's report. */
+export function isAgentReport(block: ContentBlock): boolean {
+  const fromAgent = block.extra?.from_agent
+  return block.type === 'user' && typeof fromAgent === 'string' && fromAgent !== '' && fromAgent !== 'user'
+}
 
 export interface VisibleTurnWindow {
   hiddenTurnCount: number
@@ -27,25 +43,31 @@ export function getVisibleTurnWindow(
   }
 }
 
-export function partitionTurns(blocks: ContentBlock[]): TurnItem[] {
+/** ``continuesTurn``: ``blocks`` pick up after an assistant turn, so a leading report folds into it. */
+function partition(blocks: ContentBlock[], foldAgentReports: boolean, continuesTurn: boolean): TurnItem[] {
   const items: TurnItem[] = []
-  let i = 0
-  while (i < blocks.length) {
-    const b = blocks[i]
-    if (b.type === 'user') {
-      items.push({ kind: 'user', block: b, index: i })
-      i++
-      continue
+  let turn: ContentBlock[] | null = null
+  let followsWork = continuesTurn
+  blocks.forEach((block, index) => {
+    const joinsTurn = block.type !== 'user' || (foldAgentReports && followsWork && isAgentReport(block))
+    if (!joinsTurn) {
+      items.push({ kind: 'user', block, index })
+      turn = null
+      followsWork = false
+      return
     }
-    const startIndex = i
-    const turnBlocks: ContentBlock[] = []
-    while (i < blocks.length && blocks[i].type !== 'user') {
-      turnBlocks.push(blocks[i])
-      i++
+    if (!turn) {
+      turn = []
+      items.push({ kind: 'assistant', blocks: turn, startIndex: index })
     }
-    items.push({ kind: 'assistant', blocks: turnBlocks, startIndex })
-  }
+    turn.push(block)
+    followsWork = true
+  })
   return items
+}
+
+export function partitionTurns(blocks: ContentBlock[], options: PartitionOptions = {}): TurnItem[] {
+  return partition(blocks, options.foldAgentReports ?? false, false)
 }
 
 /**
@@ -87,15 +109,16 @@ export function appendCurrentTurns(
   finalizedTurns: TurnItem[],
   finalizedBlockCount: number,
   currentBlocks: ContentBlock[],
+  options: PartitionOptions = {},
 ): TurnItem[] {
   if (currentBlocks.length === 0) return finalizedTurns
 
-  const currentTurns = partitionTurns(currentBlocks).map((item) => (
+  const lastFinalized = finalizedTurns[finalizedTurns.length - 1]
+  const currentTurns = partition(currentBlocks, options.foldAgentReports ?? false, lastFinalized?.kind === 'assistant').map((item) => (
     item.kind === 'user'
       ? { ...item, index: item.index + finalizedBlockCount }
       : { ...item, startIndex: item.startIndex + finalizedBlockCount }
   ))
-  const lastFinalized = finalizedTurns[finalizedTurns.length - 1]
   const firstCurrent = currentTurns[0]
 
   if (lastFinalized?.kind === 'assistant' && firstCurrent?.kind === 'assistant') {

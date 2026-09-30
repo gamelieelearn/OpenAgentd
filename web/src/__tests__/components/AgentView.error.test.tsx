@@ -2,9 +2,13 @@ import { describe, it, expect, afterEach, mock } from "bun:test"
 import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import "@testing-library/jest-dom"
 import { AgentView } from "@/components/AgentView"
+import { useDisplayPrefsStore } from "@/stores/useDisplayPrefsStore"
 import type { ContentBlock } from "@/api/types"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  useDisplayPrefsStore.setState({ transcriptStyle: "detailed" })
+})
 
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
 
@@ -194,6 +198,20 @@ describe("AgentView — error card actions", () => {
 
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Switch model" })).toBeNull()
+  })
+
+  it("offers no Retry when a subagent's report came in after the prompt, even folded in reader mode", () => {
+    useDisplayPrefsStore.setState({ transcriptStyle: "reader" })
+    const blocks: ContentBlock[] = [
+      { id: "m1", type: "user", content: "prompt" },
+      { id: "d1", type: "tool", content: "", toolName: "delegate", toolDone: true },
+      { id: "r1", type: "user", content: "report", extra: { from_agent: "explorer#1" } },
+      providerError("e1", "Rate limit exceeded"),
+    ]
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} onRetry={() => {}} onSwitchModel={() => {}} />)
+
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Switch model" })).toBeTruthy()
   })
 
   it("shows a turn error once when the transcript already carries it", () => {

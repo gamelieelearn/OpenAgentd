@@ -10,6 +10,13 @@ function text(id: string): ContentBlock {
   return { id, type: "text", content: id }
 }
 
+function report(id: string, fromAgent = "explorer#1"): ContentBlock {
+  return { id, type: "user", content: id, extra: { from_agent: fromAgent } }
+}
+
+const ids = (item: ReturnType<typeof partitionTurns>[number]) =>
+  item.kind === "user" ? [item.block.id] : item.blocks.map((block) => block.id)
+
 describe("partitionTurns", () => {
   it("groups contiguous assistant blocks between user blocks", () => {
     const result = partitionTurns([
@@ -26,6 +33,27 @@ describe("partitionTurns", () => {
     expect(result[1].kind === "assistant" ? result[1].blocks.map((block) => block.id) : []).toEqual(["a1", "tool1"])
     expect(result[2]).toMatchObject({ kind: "user", index: 3 })
     expect(result[3]).toMatchObject({ kind: "assistant", startIndex: 4 })
+  })
+
+  it("keeps an agent's report as its own item by default", () => {
+    expect(partitionTurns([user("u1"), text("a1"), report("r1"), text("a2")]).map(ids)).toEqual([["u1"], ["a1"], ["r1"], ["a2"]])
+  })
+
+  it("folds a report that arrives after the agent's work into that turn", () => {
+    const result = partitionTurns([user("u1"), text("a1"), report("r1"), report("r2"), text("a2"), user("u2")], { foldAgentReports: true })
+
+    expect(result.map(ids)).toEqual([["u1"], ["a1", "r1", "r2", "a2"], ["u2"]])
+    expect(result[1]).toMatchObject({ kind: "assistant", startIndex: 1 })
+  })
+
+  it("keeps an agent's message that opens a turn, e.g. a lead's task, as its prompt", () => {
+    expect(partitionTurns([report("task", "lead"), text("a1"), user("u1"), report("r1"), text("a2")], { foldAgentReports: true }).map(ids))
+      .toEqual([["task"], ["a1"], ["u1"], ["r1"], ["a2"]])
+  })
+
+  it("does not fold a message the user sent through the agent inbox", () => {
+    expect(partitionTurns([user("u1"), text("a1"), report("u2", "user"), text("a2")], { foldAgentReports: true }).map(ids))
+      .toEqual([["u1"], ["a1"], ["u2"], ["a2"]])
   })
 })
 
@@ -60,6 +88,14 @@ describe("appendCurrentTurns", () => {
       { kind: "user", index: 2 },
       { kind: "assistant", startIndex: 3 },
     ])
+  })
+
+  it("folds a live report into the finalized turn it follows", () => {
+    const finalized = partitionTurns([user("u1"), text("a1")], { foldAgentReports: true })
+
+    const result = appendCurrentTurns(finalized, 2, [report("r1"), text("live")], { foldAgentReports: true })
+
+    expect(result.map(ids)).toEqual([["u1"], ["a1", "r1", "live"]])
   })
 })
 
