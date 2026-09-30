@@ -46,6 +46,8 @@ import { type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { APP_SHORTCUTS, chordOf, type AppShortcutName } from '@/lib/app-shortcuts'
+import { useShortcut } from '@/lib/keyboard/hooks'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -78,6 +80,13 @@ interface AppOverlayProps {
    * instead so keyboard users start where the work is.
    */
   initialFocus?: React.RefObject<HTMLElement | null>
+
+  /**
+   * The app shortcut that opens this overlay. Pressing it again closes it:
+   * app shortcuts are blocked behind an open overlay, so the toggle has to be
+   * a key the overlay's own layer owns.
+   */
+  toggleShortcut?: AppShortcutName
 }
 
 // ─── Animation variants ───────────────────────────────────────────────────────
@@ -104,10 +113,12 @@ export function AppOverlay({
   maxWidth = '860px',
   className = '',
   initialFocus,
+  toggleShortcut,
 }: AppOverlayProps) {
   const reduced = useReducedMotion()
   // An overlay: ⌘K / ⌘P / ⌘, may swap it for another one.
-  useModalFocus(open, onClose, initialFocus, { kind: 'overlay' })
+  const layer = useModalFocus(open, onClose, initialFocus, { kind: 'overlay' })
+  useShortcut(toggleShortcut ? chordOf(APP_SHORTCUTS[toggleShortcut]) : null, () => { onClose() }, { layer })
 
   const panelVariants = reduced ? MODAL_VARIANTS_REDUCED : MODAL_VARIANTS
 

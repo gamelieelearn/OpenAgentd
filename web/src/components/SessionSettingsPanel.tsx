@@ -75,6 +75,7 @@ export function SessionSettingsPanel({
       label="Session settings"
       maxWidth="560px"
       initialFocus={modelInputRef}
+      toggleShortcut="sessionSettings"
     >
       <header className="flex shrink-0 items-start justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-3 sm:px-5 sm:py-4">
         <div className="min-w-0 flex-1">
