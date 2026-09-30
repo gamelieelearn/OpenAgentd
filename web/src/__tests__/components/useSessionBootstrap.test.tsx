@@ -24,6 +24,7 @@ function Harness({
   beginResolvedSession = mock(() => {}),
   inputRef,
   isMobile = true,
+  onResult,
 }: {
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   connectStream: () => AbortController
@@ -31,8 +32,9 @@ function Harness({
   isMobile?: boolean
   beginResolvedSession?: UseSessionBootstrapArgs['beginResolvedSession']
   inputRef?: RefObject<InputComposerHandle | null>
+  onResult?: (result: ReturnType<typeof useSessionBootstrap>) => void
 }) {
-  useSessionBootstrap({
+  const result = useSessionBootstrap({
     sessionId,
     workspace: '/repo/app',
     agentWorkspace: '/repo/app',
@@ -53,6 +55,7 @@ function Harness({
     beginResolvedSession,
     consumeResolvedSessionReady: mock(() => false),
   })
+  onResult?.(result)
   return null
 }
 
@@ -181,6 +184,7 @@ describe('useSessionBootstrap undo draft-restore', () => {
       setFiles: setFilesMock,
       addFiles: () => {},
       restoreLastSubmission: () => {},
+      addDesignFeedback: () => {},
     }
 
     const loadSession = mock(async () => {
@@ -227,6 +231,32 @@ describe('useSessionBootstrap undo draft-restore', () => {
 })
 
 describe('useSessionBootstrap remount on screen switch', () => {
+  it('adds a file line comment to the composer as a real mention', async () => {
+    const inputRef = createRef<InputComposerHandle>()
+    const appendValue = mock((..._args: unknown[]) => {})
+    inputRef.current = {
+      focus: () => {},
+      setValue: () => {},
+      appendValue,
+      insertText: () => {},
+      setFiles: () => {},
+      addFiles: () => {},
+      restoreLastSubmission: () => {},
+      addDesignFeedback: () => {},
+    }
+    let result: ReturnType<typeof useSessionBootstrap> | null = null
+    render(
+      <Harness
+        loadSession={mock(async () => {})}
+        connectStream={mock(() => new AbortController())}
+        inputRef={inputRef}
+        onResult={(r) => { result = r }}
+      />,
+    )
+    result!.handleAddFileComment('src/a.ts', 3, 5)
+    expect(appendValue).toHaveBeenCalledWith('@src/a.ts#L3-L5 ', { mentions: ['src/a.ts#L3-L5'] })
+  })
+
   it('loads history and connects stream when mounting for an already-active session', async () => {
     useAgentStore.setState({
       sessionId: 'session-1',

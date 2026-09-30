@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event"
 import { AgentView } from "@/components/AgentView"
 import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
+import { composeWithDesignFeedback, type DesignFeedback } from "@/lib/design-feedback"
 
 // Seed sessionId so AgentView workspace links work
 beforeEach(() => {
@@ -625,6 +626,37 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(copyBtn).toBeTruthy()
     await user.click(copyBtn)
     expect(clipboardWriteText).toHaveBeenCalledWith(content)
+  })
+})
+
+describe("AgentView — design feedback in user messages", () => {
+  const feedback: DesignFeedback = {
+    where: "http://localhost:5173/pricing",
+    device: "Mobile 390×844",
+    items: [
+      { n: 1, element: "<button.cta>", text: "Start free", selector: "main > button.cta", source: "@src/Pricing.tsx#L42-L71", html: "<button class=\"cta\">", styles: "", page: null, comment: "Make this larger" },
+      { n: 2, element: "<h1>", text: "Plans", selector: "h1", source: null, html: "<h1>", styles: "", page: null, comment: "Warmer tone" },
+    ],
+  }
+
+  it("shows the block as a card and only the typed text in the bubble", () => {
+    const content = composeWithDesignFeedback("Please fix these", [feedback])
+    render(<AgentView blocks={[{ id: "u1", type: "user", content }]} currentBlocks={[]} isWorking={false} />)
+    expect(screen.getByText("Please fix these")).toBeTruthy()
+    const card = screen.getByRole("region", { name: "Design feedback · 2 comments" })
+    expect(card.textContent).toContain("localhost:5173/pricing · Mobile 390×844")
+    expect(card.textContent).toContain("Make this larger")
+    expect(card.textContent).toContain("@src/Pricing.tsx#L42-L71")
+    expect(screen.queryByText(/<design-feedback/)).toBeNull()
+    // A long block does not make the short typed text collapsible.
+    expect(screen.queryByLabelText("Expand")).toBeNull()
+  })
+
+  it("renders a feedback-only message without an empty bubble", () => {
+    const content = composeWithDesignFeedback("", [feedback])
+    const { container } = render(<AgentView blocks={[{ id: "u2", type: "user", content }]} currentBlocks={[]} isWorking={false} />)
+    expect(screen.getByRole("region", { name: "Design feedback · 2 comments" })).toBeTruthy()
+    expect(container.querySelector(".selectable-text")).toBeNull()
   })
 })
 

@@ -6,6 +6,8 @@ import { MarkdownBlock } from '@/utils/markdown'
 import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from '../FileLightbox'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { findCommittedMentions } from '../InputComposer.mentions'
+import { DesignFeedbackCard } from '../DesignFeedbackViews'
+import { splitDesignFeedback } from '@/lib/design-feedback'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
 import { formatTime, formatFullDateTime, shortModelName } from '@/utils/format'
@@ -218,14 +220,17 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
     }
   }
 
-  const lines = content.split('\n')
-  const needsCollapse = lines.length > USER_COLLAPSE_LINES || content.length > USER_COLLAPSE_CHARS
+  // Design feedback from the Preview tab shows as cards, not raw text; the
+  // collapse and mention rendering below only see the typed text.
+  const { text, blocks: feedbackBlocks } = splitDesignFeedback(content)
+  const lines = text.split('\n')
+  const needsCollapse = lines.length > USER_COLLAPSE_LINES || text.length > USER_COLLAPSE_CHARS
   const isSubagentLongReport = content.length > 240 || lines.length > 5
   const visibleContent = needsCollapse && !expanded
     ? lines.length > USER_COLLAPSE_LINES
       ? lines.slice(0, USER_COLLAPSE_LINES).join('\n')
-      : `${content.slice(0, USER_COLLAPSE_CHARS).trimEnd()}...`
-    : content
+      : `${text.slice(0, USER_COLLAPSE_CHARS).trimEnd()}...`
+    : text
   const visibleAttachments = attachments?.filter((att) => att.source !== 'mention') ?? []
 
   if (fromAgent) {
@@ -304,6 +309,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
 
           {/* No shadow: the bubble is a tonal step above the page, not a
               floating layer (see DESIGN.md — Elevation & Depth). */}
+          {text && (
           <div className="relative min-w-0 max-w-full overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2.5 text-sm leading-relaxed text-(--color-text) selectable-text">
            {/* Expand / collapse button — top-right inside bubble */}
            {needsCollapse && (
@@ -335,6 +341,11 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
              />
            )}
          </div>
+          )}
+
+         {feedbackBlocks.map((feedback, index) => (
+           <DesignFeedbackCard key={index} feedback={feedback} onMentionFileOpen={onMentionFileOpen} />
+         ))}
 
          {/* Actions + timestamp row. Always rendered: Copy and Edit do not
              depend on the metadata, and a pending prompt has neither yet. */}

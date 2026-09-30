@@ -367,8 +367,8 @@ export function useSessionBootstrap({
   }, [isSessionLoading, isMobile, paletteOpen, workspace, inputRef])
 
   const handleAddFileComment = useCallback((path: string, startLine: number, endLine: number) => {
-    const ref = startLine === endLine ? `@${path}#L${startLine}` : `@${path}#L${startLine}-L${endLine}`
-    inputRef.current?.appendValue(`${ref} `)
+    const mention = startLine === endLine ? `${path}#L${startLine}` : `${path}#L${startLine}-L${endLine}`
+    inputRef.current?.appendValue(`@${mention} `, { mentions: [mention] })
     inputRef.current?.focus()
   }, [inputRef])
 

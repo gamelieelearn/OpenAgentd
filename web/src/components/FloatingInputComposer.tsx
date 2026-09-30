@@ -13,6 +13,7 @@ import { JumpToLatestChip } from './JumpToLatestChip'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
+import type { DesignFeedback } from '@/lib/design-feedback'
 
 // ── Storage ──────────────────────────────────────────────────────────────────
 
@@ -136,6 +137,7 @@ interface FloatingInputComposerProps {
   onRedoAll?: () => void
   historyPrompts?: string[]
   onHistoryRecall?: (prompt: string | null) => void
+  onDesignFeedbackRemoved?: (feedback: DesignFeedback) => void
   value?: string
   onValueChange?: (value: string) => void
 }
@@ -212,9 +214,13 @@ export const FloatingInputComposer = memo(
         if (text) expand()
         innerRef.current?.setValue(text)
       },
-      appendValue: (text: string, options?: { paragraph?: boolean }) => {
+      appendValue: (text: string, options?: { paragraph?: boolean; mentions?: readonly string[] }) => {
         if (text) expand()
         innerRef.current?.appendValue(text, options)
+      },
+      addDesignFeedback: (feedback) => {
+        expand()
+        innerRef.current?.addDesignFeedback(feedback)
       },
       insertText: (text: string) => {
         if (text) expand()

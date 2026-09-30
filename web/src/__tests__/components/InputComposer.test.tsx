@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { createRef } from "react"
 import { InputComposer } from "@/components/InputComposer"
 import type { InputComposerHandle } from "@/components/InputComposer"
+import { composeWithDesignFeedback, type DesignFeedback } from "@/lib/design-feedback"
 import { buildAcceptString, isFileTypeAllowed } from "@/components/InputComposer.files"
 import {
   buildHistoryEntries,
@@ -457,6 +458,78 @@ describe("InputComposer — ref API", () => {
 
     act(() => { ref.current?.appendValue("second", { paragraph: true }) })
     expect(textarea.value).toBe("first\n\nsecond")
+  })
+
+  it("appendValue with mentions registers them so they are submitted with the message", () => {
+    const ref = createRef<InputComposerHandle>()
+    const onSubmit = mock((..._args: unknown[]) => {})
+    render(<InputComposer onSubmit={onSubmit} ref={ref} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    act(() => { ref.current?.appendValue("Fix @src/App.tsx#L42 please", { mentions: ["src/App.tsx#L42", "src/Missing.tsx"] }) })
+    fireEvent.keyDown(textarea, { key: "Enter" })
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    // Only mentions whose token is in the text survive.
+    expect(onSubmit.mock.calls[0][2]).toEqual(["src/App.tsx#L42"])
+  })
+})
+
+describe("InputComposer — design feedback chips", () => {
+  const feedback: DesignFeedback = {
+    where: "http://localhost:5173/pricing",
+    device: "Desktop 1440×900",
+    items: [{ n: 1, element: "<button.cta>", text: "Start free", selector: "main > button.cta", source: "@src/Pricing.tsx#L42-L71", html: "<button class=\"cta\">", styles: "", page: null, comment: "Make this larger" }],
+  }
+
+  it("shows attached feedback as a chip and sends it after the typed text, with its mentions", () => {
+    const ref = createRef<InputComposerHandle>()
+    const onSubmit = mock((..._args: unknown[]) => {})
+    render(<InputComposer onSubmit={onSubmit} ref={ref} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    act(() => { ref.current?.addDesignFeedback(feedback) })
+    expect(screen.getByText("Design feedback · 1 comment")).toBeTruthy()
+    expect(textarea.value).toBe("")
+    expect((screen.getByLabelText("Send message") as HTMLButtonElement).disabled).toBe(false)
+
+    fireEvent.change(textarea, { target: { value: "Please fix" } })
+    fireEvent.keyDown(textarea, { key: "Enter" })
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    const [message, , mentions] = onSubmit.mock.calls[0] as [string, unknown, string[]]
+    expect(message).toBe(composeWithDesignFeedback("Please fix", [feedback]))
+    expect(mentions).toEqual(["src/Pricing.tsx#L42-L71"])
+    expect(screen.queryByText("Design feedback · 1 comment")).toBeNull()
+  })
+
+  it("sends feedback alone, and can remove it", () => {
+    const ref = createRef<InputComposerHandle>()
+    const onSubmit = mock((..._args: unknown[]) => {})
+    const onDesignFeedbackRemoved = mock((..._args: unknown[]) => {})
+    render(<InputComposer onSubmit={onSubmit} ref={ref} onDesignFeedbackRemoved={onDesignFeedbackRemoved} />)
+    act(() => { ref.current?.addDesignFeedback(feedback) })
+    const other = { ...feedback, where: "http://localhost:5173/about" }
+    act(() => { ref.current?.addDesignFeedback(other) })
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove design feedback" })[0])
+    expect(screen.getAllByText("Design feedback · 1 comment")).toHaveLength(1)
+    // The removed feedback goes back to its Preview tab rather than away.
+    expect(onDesignFeedbackRemoved.mock.calls).toEqual([[feedback]])
+    fireEvent.keyDown(screen.getByLabelText("Message input"), { key: "Enter" })
+    expect(onSubmit.mock.calls[0][0]).toBe(composeWithDesignFeedback("", [other]))
+  })
+
+  it("turns blocks in restored text back into chips", () => {
+    const ref = createRef<InputComposerHandle>()
+    render(<InputComposer onSubmit={() => {}} ref={ref} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    act(() => { ref.current?.setValue(composeWithDesignFeedback("Undone text", [feedback])) })
+    expect(textarea.value).toBe("Undone text")
+    expect(screen.getByText("Design feedback · 1 comment")).toBeTruthy()
+    act(() => { ref.current?.setValue("") })
+    expect(screen.queryByText("Design feedback · 1 comment")).toBeNull()
+    act(() => { ref.current?.appendValue(composeWithDesignFeedback("held", [feedback]), { paragraph: true }) })
+    expect(textarea.value).toBe("held")
+    expect(screen.getByText("Design feedback · 1 comment")).toBeTruthy()
   })
 })
 

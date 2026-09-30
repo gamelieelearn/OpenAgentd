@@ -5,6 +5,7 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
+import { designFeedbackPlainText } from '@/lib/design-feedback'
 
 const QUEUED_COLLAPSE_LINES = 10
 const QUEUED_COLLAPSE_CHARS = 700
@@ -31,8 +32,9 @@ function QueuedAttachmentList({ attachments }: { attachments: MessageAttachment[
   )
 }
 
-function QueuedMessageContent({ content, attachments }: { content: string; attachments?: MessageAttachment[] }) {
+function QueuedMessageContent({ content: raw, attachments }: { content: string; attachments?: MessageAttachment[] }) {
   const [expanded, setExpanded] = useState(false)
+  const content = designFeedbackPlainText(raw)
   const lines = content.split('\n')
   const needsCollapse = lines.length > QUEUED_COLLAPSE_LINES || content.length > QUEUED_COLLAPSE_CHARS
   const visibleContent = needsCollapse && !expanded

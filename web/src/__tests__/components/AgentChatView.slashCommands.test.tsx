@@ -119,6 +119,7 @@ describe('useSlashCommands', () => {
       addFiles: mock(() => {}),
       focus: mock(() => {}),
       restoreLastSubmission: mock(() => {}),
+      addDesignFeedback: mock(() => {}),
     },
   }
   const handleNewSession = mock(() => {})

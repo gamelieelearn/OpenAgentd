@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffe
 import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
+import { DesignFeedbackStrip } from './DesignFeedbackViews'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer.mentions'
 import { MentionOverlay } from './InputComposer.overlay'
 import { findActiveSnippet } from './InputComposer.helpers'
@@ -13,6 +14,7 @@ import { buildAcceptString } from './InputComposer.files'
 import { useInputComposerAttachments } from './InputComposer.attachments'
 import { DeliveryMenu } from './InputComposer.deliveryMenu'
 import { cn } from '@/lib/utils'
+import { composeWithDesignFeedback, designFeedbackMentions, splitDesignFeedback, type DesignFeedback } from '@/lib/design-feedback'
 import { buildHistoryEntries } from './InputComposer.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
@@ -168,6 +170,8 @@ export interface InputComposerProps {
    * walked back out to an empty draft (``null``).
    */
   onHistoryRecall?: (prompt: string | null) => void
+  /** A design feedback chip's x was clicked; the chip is already gone. */
+  onDesignFeedbackRemoved?: (feedback: DesignFeedback) => void
 }
 
 export interface InputComposerHandle {
@@ -177,8 +181,14 @@ export interface InputComposerHandle {
    */
   focus: (options?: { expand?: boolean }) => void
   setValue: (text: string) => void
-  /** ``paragraph`` puts a blank line, rather than a space, before the text. */
-  appendValue: (text: string, options?: { paragraph?: boolean }) => void
+  /**
+   * ``paragraph`` puts a blank line, rather than a space, before the text.
+   * ``mentions`` registers ``@path`` tokens inside ``text`` as committed
+   * mentions, so they render as chips and the backend attaches the files.
+   */
+  appendValue: (text: string, options?: { paragraph?: boolean; mentions?: readonly string[] }) => void
+  /** Attach design feedback from a Preview tab as a removable chip. */
+  addDesignFeedback: (feedback: DesignFeedback) => void
   insertText: (text: string) => void
   setFiles: (files: File[]) => void
   addFiles: (files: File[]) => void
@@ -223,6 +233,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   onSuggestionsMenuChange,
   historyPrompts = [],
   onHistoryRecall,
+  onDesignFeedbackRemoved,
 }, ref) {
   const [value, setValue] = useState('')
   const {
@@ -242,6 +253,9 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const [localHistory, setLocalHistory] = useState<string[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [mentions, setMentions] = useState<string[]>([])
+  // Design feedback chips. Written into the message on send; text set from
+  // outside (restores, history) has its blocks turned back into chips.
+  const [designFeedback, setDesignFeedback] = useState<DesignFeedback[]>([])
   const [isComposing, setIsComposing] = useState(false)
 
   /** Last submitted draft, held only until the send is confirmed or restored. */
@@ -249,6 +263,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     value: string
     files: File[]
     mentions: string[]
+    designFeedback: DesignFeedback[]
   } | null>(null)
 
   // Single source of truth for where committed ``@mention`` tokens live in
@@ -360,7 +375,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const navigateHistory = useCallback((dir: 'up' | 'down') => {
     if (history.length === 0) return false
     const direction = dir === 'up' ? 1 : -1
-    const canEnterHistory = dir === 'up' && value.length === 0 && historyIndex === -1
+    // Attached design feedback counts as a draft: ↑ must not replace it.
+    const canEnterHistory = dir === 'up' && value.length === 0 && designFeedback.length === 0 && historyIndex === -1
     const inHistory = historyIndex >= 0
 
     if (canEnterHistory || inHistory) {
@@ -368,6 +384,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       if (nextIndex < 0) {
         setHistoryIndex(-1)
         setValue('')
+        setDesignFeedback([])
         setMentionRange(null)
         setSnippetRange(null)
         requestAnimationFrame(resize)
@@ -376,20 +393,23 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       }
       if (nextIndex >= history.length) return true
       const next = history[nextIndex]
+      // A recalled prompt's design feedback comes back as chips.
+      const recalled = splitDesignFeedback(next)
       setHistoryIndex(nextIndex)
-      setValue(next)
+      setValue(recalled.text)
+      setDesignFeedback(recalled.blocks)
       setMentionRange(null)
       setSnippetRange(null)
       requestAnimationFrame(() => {
         const el = textareaRef.current
-        el?.setSelectionRange(next.length, next.length)
+        el?.setSelectionRange(recalled.text.length, recalled.text.length)
         resize()
       })
       onHistoryRecall?.(next)
       return true
     }
     return false
-  }, [history, value, historyIndex, resize, setMentionRange, setSnippetRange, onHistoryRecall])
+  }, [history, value, designFeedback.length, historyIndex, resize, setMentionRange, setSnippetRange, onHistoryRecall])
 
   // Shared bookkeeping for every programmatic draft mutation: leave history
   // navigation and close any open picker — a value replacement invalidates
@@ -406,18 +426,40 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       target?.focus()
     },
     setValue: (text: string) => {
-      setValue(text)
+      // A restored message's design feedback blocks come back as chips.
+      const split = splitDesignFeedback(text)
+      setValue(split.text)
+      setDesignFeedback(split.blocks)
       resetDraftState()
       // Recalculate height after injecting text programmatically — see
       // ``resizeAfterLayout`` for why this must wait two frames.
       resizeAfterLayout()
     },
-    appendValue: (text: string, options?: { paragraph?: boolean }) => {
-      setValue((prev) => {
-        if (options?.paragraph) return prev.trim() ? `${prev.trimEnd()}\n\n${text}` : text
-        const spacer = prev && !/\s$/.test(prev) ? ' ' : ''
-        return `${prev}${spacer}${text}`
-      })
+    appendValue: (text: string, options?: { paragraph?: boolean; mentions?: readonly string[] }) => {
+      const split = splitDesignFeedback(text)
+      if (split.blocks.length > 0) setDesignFeedback((prev) => [...prev, ...split.blocks])
+      const added = split.text
+      if (added) {
+        setValue((prev) => {
+          if (options?.paragraph) return prev.trim() ? `${prev.trimEnd()}\n\n${added}` : added
+          const spacer = prev && !/\s$/.test(prev) ? ' ' : ''
+          return `${prev}${spacer}${added}`
+        })
+      }
+      const addedMentions = options?.mentions
+      if (addedMentions && addedMentions.length > 0) {
+        // Tokens not present in the text are pruned by the sync effect.
+        setMentions((prev) => {
+          const next = [...prev, ...addedMentions.filter((path) => path && !prev.includes(path))]
+          return next.length !== prev.length ? next : prev
+        })
+      }
+      resetDraftState()
+      resizeAfterLayout()
+    },
+    addDesignFeedback: (feedback: DesignFeedback) => {
+      if (feedback.items.length === 0) return
+      setDesignFeedback((prev) => [...prev, feedback])
       resetDraftState()
       resizeAfterLayout()
     },
@@ -452,11 +494,12 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       // The failure can land seconds later, by which time the user may have
       // moved on and started typing. Their current draft wins; overwriting it
       // would trade one lost message for another.
-      if (value.trim().length > 0 || files.length > 0) return
+      if (value.trim().length > 0 || files.length > 0 || designFeedback.length > 0) return
 
       setValue(snapshot.value)
       setFiles(snapshot.files)
       setMentions(snapshot.mentions)
+      setDesignFeedback(snapshot.designFeedback)
       resetDraftState()
       resizeAfterLayout(() => textareaRef.current?.focus())
     },
@@ -485,32 +528,39 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const submit = useCallback((delivery: SendDelivery = 'steer') => {
     if (disabled) return
     const trimmed = value.trim()
-    if (trimmed.length === 0 && files.length === 0) return
-    if (isStreaming && value.trim().length === 0) return
+    const hasFeedback = designFeedback.length > 0
+    if (trimmed.length === 0 && files.length === 0 && !hasFeedback) return
+    if (isStreaming && trimmed.length === 0 && !hasFeedback) return
 
     // Snapshot everything the clear below is about to throw away, so a
     // failed send can hand it back (see ``restoreLastSubmission``).
-    lastSubmissionRef.current = { value: trimmed, files, mentions }
+    lastSubmissionRef.current = { value: trimmed, files, mentions, designFeedback }
+
+    // Design feedback is written after the typed text (so slash commands
+    // still lead), and its workspace sources become mentions.
+    const message = composeWithDesignFeedback(trimmed, designFeedback)
+    const allMentions = [...new Set([...mentions, ...designFeedback.flatMap(designFeedbackMentions)])]
 
     onSubmit(
-      trimmed,
+      message,
       files.length > 0 ? files : undefined,
-      mentions.length > 0 ? mentions : undefined,
+      allMentions.length > 0 ? allMentions : undefined,
       delivery,
     )
     setLocalHistory((prev) =>
-      prev[0] === trimmed ? prev : [trimmed, ...prev].slice(0, 100),
+      prev[0] === message ? prev : [message, ...prev].slice(0, 100),
     )
     setValue('')
     setFiles([])
     setMentions([])
+    setDesignFeedback([])
     resetDraftState()
     setMenuIndex(0)
 
     // Reset the visible height synchronously — see ``resetHeightNow`` for
     // why this can't wait for the next animation frame.
     resetHeightNow()
-  }, [disabled, value, files, isStreaming, onSubmit, mentions, resetDraftState, resetHeightNow, setFiles, setMenuIndex])
+  }, [disabled, value, files, isStreaming, onSubmit, mentions, designFeedback, resetDraftState, resetHeightNow, setFiles, setMenuIndex])
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items
@@ -643,18 +693,21 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   }
 
   const hasText = value.trim().length > 0
+  // Design feedback alone is a sendable message.
+  const hasMessage = hasText || designFeedback.length > 0
   useEffect(() => {
-    onValueChange?.(value)
-  }, [onValueChange, value])
+    // Drafts include the feedback blocks, so a restored draft brings the chips back.
+    onValueChange?.(designFeedback.length > 0 ? composeWithDesignFeedback(value, designFeedback) : value)
+  }, [onValueChange, value, designFeedback])
 
-  const canSend = hasText && !disabled
+  const canSend = hasMessage && !disabled
   const canStop = isStreaming && !disabled && onStop != null
 
   // Surface "has uncommitted content" to the parent so a minimized bar
   // can re-expand when the user attaches a file via the slim strip.
   // Edge-triggered on the boolean — not on the underlying length values —
   // so we only re-render the parent when crossing 0↔1.
-  const hasContent = hasText || files.length > 0
+  const hasContent = hasMessage || files.length > 0
   const lastHasContentRef = useRef(hasContent)
   useEffect(() => {
     if (lastHasContentRef.current !== hasContent) {
@@ -672,6 +725,18 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       blobUrls={blobUrls}
       onRemove={removeFile}
       filesBelow={filesBelow}
+    />
+  ) : null
+
+  const feedbackChips = designFeedback.length > 0 ? (
+    <DesignFeedbackStrip
+      items={designFeedback}
+      below={filesBelow}
+      onRemove={(index) => {
+        const removed = designFeedback[index]
+        setDesignFeedback((prev) => prev.filter((_, i) => i !== index))
+        if (removed) onDesignFeedbackRemoved?.(removed)
+      }}
     />
   ) : null
 
@@ -736,9 +801,9 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
 
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
   const mac = isPrimaryModifierOS(os)
-  const splitSend = isStreaming && hasText && !disabled
+  const splitSend = isStreaming && hasMessage && !disabled
 
-  const sendOrStopEl = canStop && !hasText ? (
+  const sendOrStopEl = canStop && !hasMessage ? (
     <button
       type="button"
       onClick={(e) => { stopClick(e); onStop?.() }}
@@ -828,7 +893,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
           if (findActiveMention(value, e.currentTarget.selectionStart ?? value.length)) onFileRefsNeeded?.()
         }}
         onBlur={() => {
-          const canMinimize = value.trim().length === 0 && files.length === 0
+          const canMinimize = value.trim().length === 0 && files.length === 0 && designFeedback.length === 0
           onBlur?.(canMinimize)
           // Close all pickers on blur — clicks on their items use
           // ``onMouseDown`` with ``preventDefault`` so they fire before the
@@ -969,6 +1034,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     <div className={floating ? '' : 'border-t border-(--color-border) bg-(--bg-page) px-4 py-3'}>
       <div className={floating ? 'relative' : 'relative mx-auto max-w-3xl'}>
         {!minimized && !filesBelow && filePreviews}
+        {!minimized && !filesBelow && feedbackChips}
 
         <InputComposerSuggestions
           minimized={minimized}
@@ -986,6 +1052,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         </div>
 
         {!minimized && filesBelow && filePreviews}
+        {!minimized && filesBelow && feedbackChips}
 
         <input
           ref={fileInputRef}
