@@ -10,10 +10,13 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 
 pub const MAX_MEMORY_PAGE_BYTES: u64 = 256 * 1024;
-pub const MAX_TOTAL_CATALOG_CHARS: usize = 1500;
-pub const MAX_PREFERENCES_CHARS: usize = 400;
-pub const MAX_COMPONENT_CATALOG_CHARS: usize = 1100;
+pub const MAX_TOTAL_CATALOG_CHARS: usize = 3000;
+pub const MAX_PREFERENCES_CHARS: usize = 1500;
+pub const MAX_COMPONENT_CATALOG_CHARS: usize = 2600;
 pub const MAX_CATALOG_ENTRY_CHARS: usize = 200;
+
+/// Body of a fresh `preferences.md`, written at startup.
+pub const PREFERENCES_TEMPLATE: &str = "# User Preferences\n\nStanding directives and preferences across all workspaces.\n";
 
 #[derive(Debug, thiserror::Error)]
 pub enum MemoryError {
@@ -281,19 +284,27 @@ pub fn compose_memory_context(snap: &GlobalSnapshot, global_root: &Path) -> Stri
     let avail = MAX_TOTAL_CATALOG_CHARS as i64 - overhead as i64 - chars_len(&pref_xml) as i64;
     let avail = avail.max(0);
     let g_budget = avail - chars_len("  <global_knowledge>\n\n  </global_knowledge>\n") as i64;
-    let mut packed = Vec::new();
+    const MORE: &str = "    ... [more global pages via /memory search]";
+    let more_len = chars_len(MORE) as i64;
+    let mut packed: Vec<(String, i64)> = Vec::new();
     let mut curr = 0i64;
     for line in snap.knowledge_catalog.lines().filter(|l| !l.is_empty()) {
         let l = chars_len(line) as i64;
         if curr + l < g_budget {
-            packed.push(format!("    {line}"));
+            packed.push((format!("    {line}"), l + 5));
             curr += l + 5;
         } else {
-            packed.push("    ... [more global pages via /memory search]".to_string());
+            // Make room for the marker so the block stays within budget.
+            while curr + more_len > g_budget {
+                let Some((_, n)) = packed.pop() else { break };
+                curr -= n;
+            }
+            packed.push((MORE.to_string(), more_len + 1));
             break;
         }
     }
-    let g_xml = if packed.is_empty() { String::new() } else { format!("  <global_knowledge>\n{}\n  </global_knowledge>\n", packed.join("\n")) };
+    let lines: Vec<String> = packed.into_iter().map(|(s, _)| s).collect();
+    let g_xml = if lines.is_empty() { String::new() } else { format!("  <global_knowledge>\n{}\n  </global_knowledge>\n", lines.join("\n")) };
     format!("{prefix}{pref_xml}{g_xml}{suffix}")
 }
 
@@ -596,5 +607,34 @@ mod tests {
         let s = compose_memory_context(&snap, root);
         assert!(s.contains("  <global_preferences>\nUse tabs &lt;always&gt;\n  </global_preferences>\n"));
         assert!(s.contains("  <global_knowledge>\n    - [[global:db]]: Database — Postgres notes\n  </global_knowledge>\n"));
+    }
+
+    #[test]
+    fn preferences_are_pinned_up_to_1500_chars() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        let long = "p".repeat(1400);
+        std::fs::write(root.join("preferences.md"), &long).unwrap();
+        assert_eq!(compile_global_snapshot(root).preferences_content, long);
+        std::fs::write(root.join("preferences.md"), "q".repeat(1600)).unwrap();
+        let pref = compile_global_snapshot(root).preferences_content;
+        assert_eq!(pref.chars().count(), 1500);
+        assert!(pref.ends_with("..."));
+    }
+
+    #[test]
+    fn memory_block_fits_3000_chars_with_a_full_catalog() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        std::fs::write(root.join("preferences.md"), "r".repeat(1400)).unwrap();
+        for i in 0..40 {
+            std::fs::write(root.join(format!("topic{i:02}.md")), format!("# Topic {i}\n\nNotes about topic number {i} and its details.")).unwrap();
+        }
+        let s = compose_memory_context(&compile_global_snapshot(root), root);
+        assert!(s.chars().count() <= 3000, "block is {} chars", s.chars().count());
+        assert!(s.contains(&"r".repeat(1400)), "preferences were truncated");
+        // The old 1,500 budget left no room for a catalog next to long preferences.
+        assert!(s.contains("[[global:topic00]]"));
+        assert!(s.contains("more global pages via /memory search"));
     }
 }

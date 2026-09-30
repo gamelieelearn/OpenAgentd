@@ -36,7 +36,7 @@ pub fn ensure_workspace_initialized() -> anyhow::Result<()> {
     std::fs::create_dir_all(&mem)?;
     let pref = mem.join("preferences.md");
     if !pref.exists() {
-        std::fs::write(&pref, "# User Preferences\n\nStanding directives and preferences across all workspaces.\n")?;
+        std::fs::write(&pref, appv3_memory::PREFERENCES_TEMPLATE)?;
     }
     appv3_core::runtime_settings::ensure_runtime_settings(&s.runtime_settings_path(), DEFAULT_NEW_USER_MODEL)?;
     ensure_default_multimodal_config()?;
