@@ -10,6 +10,7 @@
     "react/refs": "off",
     "react/immutability": "off",
     "react/globals": "off",
+    "react/purity": "off",
     "eslint/no-unused-vars": [
       "error",
       {
