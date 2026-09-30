@@ -7,8 +7,10 @@ import { Home } from 'lucide-react'
 import { SettingsModal } from '@/components/SettingsModal'
 import { PluginNotice } from '@/components/settings/pages/settings.plugins'
 import { TelemetryOverlay } from '@/components/Telemetry/TelemetryOverlay'
+import { KeyboardShortcutsSheet } from '@/components/KeyboardShortcutsSheet'
 import { SkipLink } from '@/components/motion'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useUIStore } from '@/stores/useUIStore'
 import { MacTitleBar } from '@/components/MacTitleBar'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { useDynamicType } from '@/hooks/use-dynamic-type'
@@ -44,6 +46,8 @@ export function Root() {
   // open overlay. While Settings is on top its own binding closes it.
   const openSettings = useSettingsStore((s) => s.openSettings)
   useAppShortcut('settings', () => { openSettings() })
+  // ⌘/ — the Keyboard Shortcuts sheet, from any page.
+  useAppShortcut('shortcutsHelp', () => { useUIStore.getState().toggleShortcutsHelp() })
   // Theme application is handled by `initTheme()` in main.tsx and the
   // inline pre-paint script in index.html. Do not force `.dark` here —
   // it would override the user's preference.
@@ -100,6 +104,7 @@ export function Root() {
       </Suspense>
       <SettingsModal />
       <TelemetryOverlay />
+      <KeyboardShortcutsSheet />
       <FloatingNotices />
     </QueryClientProvider>
   )
