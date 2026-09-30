@@ -22,11 +22,11 @@ import {
   useCallback, useEffect, useLayoutEffect, useRef, useState,
   type ReactNode,
 } from 'react'
-import { useHotkey } from '@tanstack/react-hotkeys'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Download, ExternalLink, File, X } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
 import { usePanZoom } from '@/hooks/use-pan-zoom'
+import { useKeyLayer, useShortcut } from '@/lib/keyboard/hooks'
 import { resolveApiUrl } from '@/api/client'
 import { tauriDownload } from '@/lib/tauri-download'
 import { PdfDocumentViewer } from './PdfDocumentViewer'
@@ -446,13 +446,15 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
     }
   }, [isOpen])
 
-  useHotkey('Escape', onClose, { enabled: isOpen })
-  useHotkey('ArrowLeft', goPrev, { enabled: Boolean(isOpen && hasMultiple), preventDefault: true })
-  useHotkey('ArrowRight', goNext, { enabled: Boolean(isOpen && hasMultiple), preventDefault: true })
-  useHotkey({ key: '+' }, zoomIn, { enabled: Boolean(isOpen && active.type === 'image'), preventDefault: true })
-  useHotkey('=', zoomIn, { enabled: Boolean(isOpen && active.type === 'image'), preventDefault: true })
-  useHotkey('-', zoomOut, { enabled: Boolean(isOpen && active.type === 'image'), preventDefault: true })
-  useHotkey('0', resetZoom, { enabled: Boolean(isOpen && active.type === 'image'), preventDefault: true })
+  // Its keys only work while it is the top layer; ⌘K and friends close it.
+  const layer = useKeyLayer(isOpen, { kind: 'overlay', closeOnSwitch: true, onClose })
+  const isImage = active.type === 'image'
+  useShortcut({ key: 'ArrowLeft' }, goPrev, { layer, enabled: hasMultiple })
+  useShortcut({ key: 'ArrowRight' }, goNext, { layer, enabled: hasMultiple })
+  useShortcut({ key: '+' }, zoomIn, { layer, enabled: isImage })
+  useShortcut({ key: '=' }, zoomIn, { layer, enabled: isImage })
+  useShortcut({ key: '-' }, zoomOut, { layer, enabled: isImage })
+  useShortcut({ key: '0' }, resetZoom, { layer, enabled: isImage })
 
   // ── Close ──────────────────────────────────────────────────────────────────
   const closeLightbox = useCallback(() => {

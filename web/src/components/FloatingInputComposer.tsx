@@ -12,7 +12,9 @@ import {
 import { JumpToLatestChip } from './JumpToLatestChip'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useShortcut } from '@/lib/keyboard/hooks'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
+import type { DesignFeedback } from '@/lib/design-feedback'
 
 // ── Storage ──────────────────────────────────────────────────────────────────
 
@@ -136,6 +138,7 @@ interface FloatingInputComposerProps {
   onRedoAll?: () => void
   historyPrompts?: string[]
   onHistoryRecall?: (prompt: string | null) => void
+  onDesignFeedbackRemoved?: (feedback: DesignFeedback) => void
   value?: string
   onValueChange?: (value: string) => void
 }
@@ -212,9 +215,13 @@ export const FloatingInputComposer = memo(
         if (text) expand()
         innerRef.current?.setValue(text)
       },
-      appendValue: (text: string, options?: { paragraph?: boolean }) => {
+      appendValue: (text: string, options?: { paragraph?: boolean; mentions?: readonly string[] }) => {
         if (text) expand()
         innerRef.current?.appendValue(text, options)
+      },
+      addDesignFeedback: (feedback) => {
+        expand()
+        innerRef.current?.addDesignFeedback(feedback)
       },
       insertText: (text: string) => {
         if (text) expand()
@@ -294,19 +301,9 @@ export const FloatingInputComposer = memo(
     // The ⌘I / Ctrl+I summon shortcut is owned by ``useCommandPalette``
     // (focusChat), which reaches this component through the imperative
     // ``focus()`` handle — so it also expands the bar.
-    useEffect(() => {
-      if (isMobile) return
-      const onKeyDown = (e: KeyboardEvent) => {
-        const target = e.target
-        const isComposerTarget = target instanceof Node && panelRef.current?.contains(target)
-        if (e.key === 'Escape' && isComposerTarget) {
-          e.preventDefault()
-          minimize()
-        }
-      }
-      window.addEventListener('keydown', onKeyDown)
-      return () => window.removeEventListener('keydown', onKeyDown)
-    }, [isMobile, minimize])
+    // Escape inside the bar minimizes it, unless the input already used it
+    // (closing a suggestion menu) or a layer above the chat is open.
+    useShortcut({ key: 'Escape' }, () => { minimize() }, { enabled: !isMobile, within: () => panelRef.current })
 
     // ── Global paste: expand + forward when bar is minimized ─────────────
     // When the floating bar is collapsed (minimized) and the user hits

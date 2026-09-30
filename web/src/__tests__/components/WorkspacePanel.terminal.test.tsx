@@ -21,6 +21,7 @@ const diffResponse = { workspace: WORKSPACE, is_git_repo: false, diff: '', untra
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
+  Globe: Icon, ArrowRight: Icon, MousePointerClick: Icon, RotateCw: Icon, Smartphone: Icon, SquareTerminal: Icon, Send: Icon, Bot: Icon,
   CalendarClock: Icon, ListTodo: Icon, Unlink: Icon, MessageSquarePlus: Icon, FileVideo: Icon, ImageOff: Icon,
   AlertCircle: Icon, ArrowLeft: Icon, CalendarIcon: Icon, Circle: Icon, Clock: Icon, Minus: Icon,
   Pause: Icon, Play: Icon, Terminal: Icon, Trash2: Icon, Zap: Icon,
@@ -106,6 +107,43 @@ describe('WorkspacePanel terminal tabs', () => {
     })
     expect(screen.queryByRole('button', { name: 'Close Terminal 1' })).toBeNull()
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(0)
+  })
+
+  const pressCtrlW = () => act(async () => {
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true, bubbles: true, cancelable: true }))
+  })
+
+  it('asks before Ctrl+W stops a live shell', async () => {
+    await renderPanel(1)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
+
+    await pressCtrlW()
+    expect(await screen.findByRole('dialog', { name: 'Close terminal?' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy()
+
+    await act(async () => { screen.getByRole('button', { name: 'Cancel' }).click() })
+    // Let the dialog's exit animation finish (same wait as UpdateCard's tests).
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 150)) })
+    expect(screen.queryByRole('dialog', { name: 'Close terminal?' })).toBeNull()
+    expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
+
+    await pressCtrlW()
+    await act(async () => { (await screen.findByRole('button', { name: 'Close terminal' })).click() })
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Close Terminal 1' })).toBeNull())
+    expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(0)
+  })
+
+  it('closes an exited terminal on Ctrl+W without asking', async () => {
+    await renderPanel(1)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
+    const [session] = useTerminalStore.getState().sessionsForContext(WORKSPACE)
+    act(() => {
+      useTerminalStore.setState((state) => ({ sessions: { ...state.sessions, [session.id]: { ...state.sessions[session.id], status: 'exited' } } }))
+    })
+
+    await pressCtrlW()
+    expect(screen.queryByRole('dialog', { name: 'Close terminal?' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Close Terminal 1' })).toBeNull()
   })
 
   it('remount re-adopts live sessions from the store as tabs', async () => {

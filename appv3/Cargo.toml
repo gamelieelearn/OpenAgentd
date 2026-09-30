@@ -12,10 +12,11 @@ members = [
     "crates/mcp",
     "crates/api",
     "crates/cli",
+    "crates/preview",
 ]
 
 [workspace.package]
-version = "3.2.0"
+version = "3.3.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/lthoangg/openagentd"
@@ -61,6 +62,7 @@ appv3-terminal = { path = "crates/terminal" }
 appv3-memory = { path = "crates/memory" }
 appv3-mcp = { path = "crates/mcp" }
 appv3-api = { path = "crates/api" }
+appv3-preview = { path = "crates/preview" }
 
 [profile.release]
 lto = "thin"

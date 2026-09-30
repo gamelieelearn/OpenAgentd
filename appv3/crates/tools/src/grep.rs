@@ -197,7 +197,7 @@ fn candidate_files(root: &Path, include: &regex::Regex, gi: &Gitignore, denied: 
                 continue;
             }
             let fp = dir.join(&f);
-            if !denied.is_denied_path(&fp) {
+            if !denied.is_denied_read_path(&fp) {
                 out.push(fp);
             }
         }
@@ -250,7 +250,7 @@ impl Tool for GrepTool {
         }
         a.finish()?;
         let denied = ctx.denied.clone();
-        let resolved = denied.validate_path(&directory)?;
+        let resolved = denied.validate_read_path(&directory)?;
         if !resolved.exists() {
             return Err(ToolError::Execution(format!("File or directory not found: {}", denied.display_path(&resolved))));
         }

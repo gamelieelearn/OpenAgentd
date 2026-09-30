@@ -24,6 +24,7 @@ import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { useKeyLayer } from '@/lib/keyboard/hooks'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -108,12 +109,8 @@ function SheetContent({ className, children, side = 'right', showCloseButton = t
   const { mounted, closing } = useDeferredUnmount(open, 200)
   const contentRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [open, setOpen])
+  // A sheet covers the app like a dialog; switchers close it and move on.
+  useKeyLayer(open, { kind: 'overlay', closeOnSwitch: true, onClose: () => setOpen(false), element: () => contentRef.current })
 
   useEffect(() => {
     if (!open) return

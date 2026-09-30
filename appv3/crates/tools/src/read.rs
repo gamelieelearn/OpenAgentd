@@ -282,7 +282,7 @@ impl Tool for ReadTool {
 
         let denied = ctx.denied.clone();
         tokio::task::spawn_blocking(move || -> ToolResult {
-            let resolved = denied.validate_path(&path)?;
+            let resolved = denied.validate_read_path(&path)?;
             let rel = denied.display_path(&resolved);
             if !resolved.exists() {
                 return Err(ToolError::Execution(format!("File not found: {rel}")));

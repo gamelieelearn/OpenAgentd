@@ -18,6 +18,13 @@ pub fn session_artifacts_dir(session_id: Option<&str>) -> PathBuf {
     }
 }
 
+/// Where the bundled skills are materialised (`appv3_agent::skills`). It sits
+/// inside the denied cache dir, so it is exempted for reads only: skills point
+/// the agent at their reference files, which OpenAgentd itself rewrites.
+pub fn builtin_skills_root() -> PathBuf {
+    appv3_core::settings().cache_dir.join("v3-builtin-skills")
+}
+
 /// Python `fnmatch.translate` → anchored regex.
 pub fn fnmatch_translate(pat: &str) -> String {
     let chars: Vec<char> = pat.chars().collect();
@@ -187,6 +194,8 @@ pub struct DeniedPaths {
     pub denied_roots: Vec<PathBuf>,
     pub denied_patterns: Vec<(String, Regex)>,
     pub shell_denied_roots: Vec<PathBuf>,
+    /// Readable (not writable) despite a denied root; denied patterns still apply.
+    pub read_only_roots: Vec<PathBuf>,
     shielded: Vec<(PathBuf, Vec<PathBuf>)>,
 }
 
@@ -209,7 +218,8 @@ impl DeniedPaths {
             allowed.push(resolve(&session_artifacts_dir(Some(sid))));
         }
         let shielded = denied_roots.iter().map(|d| (d.clone(), allowed.iter().filter(|a| a.starts_with(d)).cloned().collect())).collect();
-        Self { workspace_root, session_id, denied_roots, denied_patterns, shell_denied_roots, shielded }
+        let read_only_roots = vec![resolve(&builtin_skills_root())];
+        Self { workspace_root, session_id, denied_roots, denied_patterns, shell_denied_roots, read_only_roots, shielded }
     }
 
     fn is_denied(&self, resolved: &Path) -> Option<String> {
@@ -225,19 +235,37 @@ impl DeniedPaths {
         self.denied_patterns.iter().find(|(_, rx)| rx.is_match(&s)).map(|(p, _)| p.clone())
     }
 
+    fn is_denied_for_read(&self, resolved: &Path) -> Option<String> {
+        if self.read_only_roots.iter().any(|r| resolved.starts_with(r)) {
+            let s = pattern_subject(resolved);
+            return self.denied_patterns.iter().find(|(_, rx)| rx.is_match(&s)).map(|(p, _)| p.clone());
+        }
+        self.is_denied(resolved)
+    }
+
     fn is_shell_denied(&self, resolved: &Path) -> Option<String> {
         self.shell_denied_roots.iter().find(|d| resolved.starts_with(d)).map(|d| d.display().to_string())
     }
 
     /// v2 `validate_path` — raises PermissionError text on denial.
     pub fn validate_path(&self, path: &str) -> Result<PathBuf, ToolError> {
+        self.validate_with(path, Self::is_denied)
+    }
+
+    /// [`validate_path`](Self::validate_path) for read-only tools (`read`,
+    /// `grep`, `glob`): also admits [`read_only_roots`](Self::read_only_roots).
+    pub fn validate_read_path(&self, path: &str) -> Result<PathBuf, ToolError> {
+        self.validate_with(path, Self::is_denied_for_read)
+    }
+
+    fn validate_with(&self, path: &str, check: fn(&Self, &Path) -> Option<String>) -> Result<PathBuf, ToolError> {
         if path.starts_with('~') {
             return Err(ToolError::Execution(format!("Tilde paths are not allowed: {path}")));
         }
         let p = Path::new(path);
         let candidate = if p.is_absolute() { p.to_path_buf() } else { self.workspace_root.join(p) };
         let resolved = resolve(&candidate);
-        if let Some(d) = self.is_denied(&resolved) {
+        if let Some(d) = check(self, &resolved) {
             tracing::warn!("path_denied path={} denied_root={}", resolved.display(), d);
             return Err(ToolError::Execution(format!("Path '{}' is inside a denied root: {}", resolved.display(), d)));
         }
@@ -245,11 +273,20 @@ impl DeniedPaths {
     }
 
     pub fn is_denied_path(&self, path: &Path) -> bool {
-        if self.is_denied(path).is_some() {
+        self.is_denied_path_with(path, Self::is_denied)
+    }
+
+    /// [`is_denied_path`](Self::is_denied_path) for read-only tools.
+    pub fn is_denied_read_path(&self, path: &Path) -> bool {
+        self.is_denied_path_with(path, Self::is_denied_for_read)
+    }
+
+    fn is_denied_path_with(&self, path: &Path, check: fn(&Self, &Path) -> Option<String>) -> bool {
+        if check(self, path).is_some() {
             return true;
         }
         match std::fs::symlink_metadata(path) {
-            Ok(m) if m.file_type().is_symlink() => self.is_denied(&resolve(path)).is_some(),
+            Ok(m) if m.file_type().is_symlink() => check(self, &resolve(path)).is_some(),
             // `Path.is_symlink()` is False for missing/unreadable paths.
             _ => false,
         }
@@ -371,6 +408,30 @@ mod tests {
         assert!(d.validate_path("~/x").is_err());
         assert_eq!(d.display_path(&d.workspace_root.join("a/b.txt")), "a/b.txt");
         assert!(d.check_command(&format!("cat {}", denied.join("x").display())).is_some());
+    }
+
+    #[test]
+    fn read_only_roots_allow_reads_but_not_writes_or_shell() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().join("ws");
+        let cache = tmp.path().join("cache");
+        let skills = cache.join("v3-builtin-skills/self-healing/references");
+        std::fs::create_dir_all(&skills).unwrap();
+        std::fs::write(skills.join("mcp.md"), "x").unwrap();
+        std::fs::write(cache.join("other.bin"), "x").unwrap();
+        let mut d = DeniedPaths::with(&ws, None, Some(vec![cache.clone()]), Some(vec!["**/.env".into()]));
+        d.read_only_roots = vec![resolve(&cache.join("v3-builtin-skills"))];
+        let reference = skills.join("mcp.md");
+        let reference = reference.to_str().unwrap();
+        assert!(d.validate_read_path(reference).is_ok());
+        assert!(d.validate_path(reference).is_err(), "write tools keep the cache denial");
+        let resolved = resolve(Path::new(reference));
+        assert!(!d.is_denied_read_path(&resolved));
+        assert!(d.is_denied_path(&resolved));
+        assert!(d.check_command(&format!("cat {reference}")).is_some(), "shell keeps the cache denial");
+        assert!(d.validate_read_path(cache.join("other.bin").to_str().unwrap()).is_err(), "only the read-only root is exempt");
+        assert!(d.validate_read_path(skills.join(".env").to_str().unwrap()).is_err(), "denied patterns still apply");
+        assert!(d.validate_read_path("~/x").is_err());
     }
 
     #[test]

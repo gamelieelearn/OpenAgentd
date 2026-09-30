@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { usePanZoom } from '@/hooks/use-pan-zoom'
 import { usePlatform } from '@/hooks/use-platform'
+import { useKeyLayer, useShortcut } from '@/lib/keyboard/hooks'
 
 interface MermaidBlockProps {
   source: string
@@ -264,23 +265,20 @@ export function MermaidLightbox({ onClose, svg, source }: MermaidLightboxProps) 
     }
   }
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-      else if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomIn() }
-      else if (e.key === '-') { e.preventDefault(); zoomOut() }
-      else if (e.key === '0') { e.preventDefault(); reset() }
-    }
+  const layer = useKeyLayer(true, { kind: 'overlay', closeOnSwitch: true, onClose })
+  useShortcut({ key: '+' }, zoomIn, { layer })
+  useShortcut({ key: '=' }, zoomIn, { layer })
+  useShortcut({ key: '-' }, zoomOut, { layer })
+  useShortcut({ key: '0' }, reset, { layer })
 
-    document.addEventListener('keydown', handleKeyDown)
+  useEffect(() => {
     const originalOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown)
       document.body.style.overflow = originalOverflow
     }
-  }, [onClose, reset, zoomIn, zoomOut])
+  }, [])
 
   return createPortal(
     <div

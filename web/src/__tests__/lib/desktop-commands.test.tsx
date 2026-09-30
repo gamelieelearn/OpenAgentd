@@ -23,11 +23,18 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 let listener: ((event: { payload: unknown }) => void) | null = null
 let notificationListener: ((event: { payload: unknown }) => void) | null = null
 let unlistenCalls = 0
+let commandListenOptions: unknown = undefined
+let notificationListenOptions: unknown = undefined
 
 mock.module('@tauri-apps/api/event', () => ({
-  listen: async (event: string, cb: (event: { payload: unknown }) => void) => {
-    if (event === 'desktop-command') listener = cb
-    else notificationListener = cb
+  listen: async (event: string, cb: (event: { payload: unknown }) => void, options?: unknown) => {
+    if (event === 'desktop-command') {
+      listener = cb
+      commandListenOptions = options
+    } else {
+      notificationListener = cb
+      notificationListenOptions = options
+    }
     return () => {
       unlistenCalls += 1
       if (event === 'desktop-command') listener = null
@@ -189,6 +196,31 @@ describe('useDesktopCommands', () => {
       expect(events.map((e) => e.key)).toEqual(['p', 'p'])
     } finally {
       Date.now = originalNow
+    }
+  })
+
+  it('runs each id once, and a new id for the same command right away', async () => {
+    const events = await captureKeys(async () => {
+      await renderBridge()
+      // The shell repeats one command while a new window mounts.
+      listener?.({ payload: { command: 'quick_open', id: 41 } })
+      listener?.({ payload: { command: 'quick_open', id: 41 } })
+      // A second, real press straight after.
+      listener?.({ payload: { command: 'quick_open', id: 42 } })
+    })
+    expect(events.map((e) => e.key)).toEqual(['p', 'p'])
+  })
+
+  it("listens for this window's commands only", async () => {
+    const win = window as Window & { __OAD_WINDOW_ID__?: string }
+    win.__OAD_WINDOW_ID__ = 'main-2'
+    try {
+      await renderBridge()
+      expect(commandListenOptions).toEqual({ target: 'main-2' })
+      // A notification click opens its session in one window, not all of them.
+      expect(notificationListenOptions).toEqual({ target: 'main-2' })
+    } finally {
+      delete win.__OAD_WINDOW_ID__
     }
   })
 

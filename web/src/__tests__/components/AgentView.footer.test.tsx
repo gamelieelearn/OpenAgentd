@@ -87,6 +87,45 @@ describe("AgentView — reader transcript", () => {
 
     expect(screen.getByRole("button", { name: /^Working · 1m 5s · Read/ })).toBeTruthy()
   })
+
+  describe("with a subagent report", () => {
+    const delegated = [
+      makeUserBlock("u1", "Find the bug"),
+      makeToolBlock("d1", "delegate"),
+      makeTextBlock("n1", "Waiting on the explorer."),
+      { id: "r1", type: "user", content: "The bug is in a.ts.", extra: { from_agent: "explorer#1" } } as ContentBlock,
+      makeTextBlock("a1", "Fixed the bug in a.ts."),
+    ]
+
+    it("folds the report into the turn's work, under one footer", async () => {
+      const user = userEvent.setup()
+      useDisplayPrefsStore.setState({ transcriptStyle: "reader" })
+      renderStream({ blocks: delegated })
+
+      expect(screen.getByText("Fixed the bug in a.ts.")).toBeTruthy()
+      expect(screen.queryByText("The bug is in a.ts.")).toBeNull()
+      expect(screen.queryByText("Waiting on the explorer.")).toBeNull()
+      expect(screen.getAllByRole("button", { name: /copy response/i })).toHaveLength(1)
+
+      await user.click(screen.getByRole("button", { name: /^1 report, 1 other/ }))
+
+      expect(screen.getByText("The bug is in a.ts.")).toBeTruthy()
+    })
+
+    it("shows the report in the detailed transcript", () => {
+      renderStream({ blocks: delegated })
+
+      expect(screen.getByText("The bug is in a.ts.")).toBeTruthy()
+    })
+
+    it("names the report as the running step while the lead picks up after it", () => {
+      useDisplayPrefsStore.setState({ transcriptStyle: "reader" })
+      renderStream({ blocks: delegated.slice(0, 3), currentBlocks: [delegated[3]], isWorking: true })
+
+      expect(screen.getByRole("button", { name: /^Working · .*Report from explorer#1/ })).toBeTruthy()
+      expect(screen.queryByRole("status", { name: "Agent is preparing a response" })).toBeNull()
+    })
+  })
 })
 
 describe("AgentView — mentioned files", () => {

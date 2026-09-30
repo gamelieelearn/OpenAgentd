@@ -24,7 +24,8 @@ function sendFromComposer(workspace: string, content: string, files?: File[], me
 /** Put held messages back in the composer, after anything it already holds. */
 export function returnToComposer(composer: InputComposerHandle | null, held: HeldMessage[]) {
   if (!composer || held.length === 0) return
-  composer.appendValue(held.map((message) => message.content).join('\n\n'), { paragraph: true })
+  const mentions = [...new Set(held.flatMap((message) => message.mentions ?? []))]
+  composer.appendValue(held.map((message) => message.content).join('\n\n'), { paragraph: true, ...(mentions.length > 0 ? { mentions } : {}) })
   const files = held.flatMap((message) => message.files ?? [])
   if (files.length > 0) composer.addFiles(files)
   composer.focus()

@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-29
+updated: 2026-09-30
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v3.2.0 · September 29, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.2.0)
+**Latest release:** v3.3.0 · September 30, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.3.0)
 
 ---
 
@@ -171,6 +171,15 @@ run from the terminal (the native Rust binary since v3.0.0).
   one opens its session, and the one for the session already on screen is
   skipped while the app is open `[v3.0.0]`. iOS pauses the app in the
   background, so mobile notifications arrive only while it is running.
+  Notifications are shorter `[v3.3.0]`: the title is a status and the workspace
+  name (`Done · openagentd`, `Failed · …`, `Needs input · …`, `Plan ready · …`),
+  and the session title, question, or plan summary shows as one line of up to
+  100 characters. A failed turn now notifies too. Stopping a turn or dismissing
+  a question does not, and a lead that is waiting on subagents notifies once,
+  after their reports are handled. With several desktop windows open, each
+  notification shows once and is skipped while another OpenAgentd window is
+  focused, and clicking it opens the session in one window instead of all of
+  them.
 - **Quick Open and Command Palette** `[v2.3.0]` — `⌘P`/`Ctrl+P` searches and
   opens files in the active workspace; `⌘K`/`Ctrl+K` searches app actions.
   Both use the compact warm-paper search surface, keyboard navigation, and a
@@ -276,6 +285,19 @@ run from the terminal (the native Rust binary since v3.0.0).
   focus trap). `Escape` now closes the innermost layer first, so dismissing an
   open list no longer closes the surrounding modal. Session Settings opens with
   focus in the model field instead of the close button.
+- **Shortcuts that follow what is on top** `[v3.3.0]` — one keyboard layer
+  model for the whole app. Escape closes only what opened last (a popover in
+  a dialog, a lightbox under the palette), one thing per press. While a
+  dialog, Settings, a lightbox or an MCP app's fullscreen view is open, app
+  shortcuts (`⌘N`, `⌘W`, `⌘B`, `⌘[`…) no longer act on the app behind it;
+  `⌘K`, `⌘P` and `⌘,` can still switch to another overlay, except over a
+  confirmation or form dialog and over Settings with unsaved changes.
+  Letters typed in a dialog stay out of the composer, and Escape that closes
+  the composer's @-mention or slash menu no longer also minimizes it. App
+  shortcuts also work while a Preview page or an MCP app has focus (keys the
+  page uses itself stay with it), so `⌘W` there closes the tab instead of the
+  window. **Keyboard Shortcuts** (`⌘/`/`Ctrl+/`, or the palette) lists every
+  shortcut by area.
 - **Type-to-focus composer** `[v1.40.0]` — in coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
   character without pressing `⌘I`/`Ctrl+I` first.
@@ -513,6 +535,10 @@ run from the terminal (the native Rust binary since v3.0.0).
     Since `[v3.1.0]` a compaction divider also splits the work: the steps
     before it fold into a finished row above it, and the steps after it into
     a row of their own below, which is the one that reads "Working".
+    A subagent's report that arrives while the lead works folds into the
+    same row ("… 1 report") instead of splitting the turn, so the lead's
+    answer after it reads as the turn's answer under one footer; while the
+    lead picks up after it, the row reads "Working · Report from explorer#1".
   - A finished turn lists the files its `patch` calls changed, with line
     counts; each opens its git diff in the review dock. Since `[v3.1.0]` the list starts
     closed behind its "N files changed" header.
@@ -804,6 +830,32 @@ agent against it.
     hides the dock; the header's review-dock button shows and hides it. On
     phones with a workspace, scheduled tasks open as a tab in the review sheet
     too, while the task list stays a popover so the chat remains visible.
+  - **Web preview and design comments in the dock** `[v3.3.0]` — **New
+    preview** in the dock's actions, **Open Preview** in the palette, or the
+    globe on an HTML file tab opens a **Preview** tab. It shows a local dev
+    server (`localhost`, `127.0.0.1` or `::1`) or a workspace HTML file, with
+    back, forward, reload, an address bar, **Responsive / Mobile / Tablet /
+    Desktop** sizes with rotate, a console with an error count, and **Open in
+    browser**. The page runs through a proxy on its own loopback port, so it
+    cannot read the app's storage or access key, and dev-server hot reload
+    keeps working. File previews reload when the workspace files change.
+    **⌘W** / **Ctrl+W** closes the Preview tab, also while the page has focus.
+    **Design** (or **⌥C** / **Alt+C**, also while the page has focus) turns on
+    an element picker: click an element, write a comment, and a numbered pin
+    stays on the page; picking stays on for the next element. Comments can be
+    edited in the list. **Send to agent** attaches the comments to the
+    composer as one **Design feedback** chip; add your own instruction and
+    send. The chip's **×** puts the comments back in the Preview tab's list.
+    The agent gets each element's selector, text, opening tag and key styles
+    and, for React (18 and 19), Vue or Svelte dev builds, 30 lines of its
+    source, attached like an `@path#Lx-Ly` mention. React 19 sources come
+    from where the JSX ran, mapped through the dev server's source maps.
+    In the chat the feedback shows as a card of numbered comments, and
+    restoring the message (undo, edit, history) brings the chip back.
+    While the agent uses the page, the toolbar shows **Agent**.
+    Tabs keep their page and comments while another tab is open. Previews
+    need the backend on the same computer; remote servers and the mobile app
+    show a notice instead.
 - **Keyboard and touch access** `[v3.0.0]` — right-click menus (dock rows,
   terminal tabs, sidebar sessions and workspaces, scheduled tasks, provider
   models) take keyboard focus when they open. Arrow keys, Home and End move
@@ -1003,6 +1055,8 @@ agent against it.
   (MesloLGS NF and similar) for correct Powerlevel10k/Starship glyph rendering.
   On macOS a focused terminal keeps `⌘K` (clears it, as in Terminal.app) and
   `⌘F` instead of opening the palette or transcript find `[v3.0.0]`.
+  `⌘W` on a terminal whose shell is still running asks before closing it; the
+  tab's close button still closes right away `[v3.3.0]`.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
   agent-selection fallback. Since `[v3.0.0]` the card shows the workspace
@@ -1019,18 +1073,27 @@ OpenAgentd carries context across sessions via rolling-window summarization.
 - **Persistent Markdown memory subsystem** `[v2.22.0]` — file-backed persistent knowledge
   in global (`{OPENAGENTD_CONFIG_DIR}/memory/`) storing authoritative human-editable `.md` pages.
   Dynamically compiles a bounded
-  XML catalog (`<openagentd_memory>`) capped at 1,500 rendered characters into
+  XML catalog (`<openagentd_memory>`) capped at 3,000 rendered characters (up from 1,500 `[v3.3.0]`) into
   `state.system_prompt` during `before_agent` (0 filesystem I/O across model turns),
-  pins `preferences.md` directives (<= 400 chars), synchronizes concurrent edits with reference-counted
+  pins `preferences.md` directives (<= 1,500 chars, up from 400 `[v3.3.0]`), synchronizes concurrent edits with reference-counted
   path locks and quoted strong SHA-256 ETags (HTTP 412/428), provides `/memory` slash
   commands, and exposes a Settings viewer/editor with conflict resolution and deterministic
   wikilink linting.
+- **Proactive memory about the user** `[v3.3.0]` — the lead agent saves stated
+  preferences, corrections, and durable facts about the user (to `preferences.md`,
+  `user.md`, or topic pages) in the same turn without asking, and says what it saved.
+  Delegated agents read memory but do not write it.
+- **Runtime protocol for every agent** `[v3.3.0]` — rules for instruction sources,
+  secrets, workspace and git safety, and memory are added by the runtime, so agents
+  with a custom prompt in their agent file get them too.
 - **`/compact` rolling-window summarization** `[v1.5.0, v2.7.0]` — compresses old turns
   into a single summary message kept in context; UI shows the unabridged
   conversation. Preserves reasoning and loaded skill/tool context; skill
   Auto-compaction default threshold is raised to 90% of model context `[v2.7.0]`.
   instruction tool-call pairs remain active after repeated compaction while the
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
+  Changing the trigger in Settings → Automation applies from the next model
+  call, including inside a turn that is already running `[v3.3.0]`.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at
@@ -1198,8 +1261,21 @@ MCP.
 | Team orchestration | `delegate` (lead agent) `[v2.16.0]` |
 | Subagent communication | `ask_lead` (subagents) `[v2.16.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
+| Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |
 | Utility | `skill` |
 
+- **`preview` — show a page, read its console, and use it** `[v3.3.0]` — the agent
+  opens a running local dev server or a workspace HTML file in your Preview
+  tab (it comes forward on desktop, and the tool card has **Open preview**).
+  It then reads that page's recent console errors, warnings and logs, newest
+  first, and can clear them to see only new output after a fix. It can also
+  use the open page: a **snapshot** lists headings, text and controls with
+  refs (`e1`, `e2`, …), and it can **click**, **fill** fields, **press**
+  keys, **scroll**, **navigate**, **wait** for text, and **inspect** an
+  element's source, styles and HTML. Acted-on elements flash in the page.
+  Only loopback URLs are accepted, never the OpenAgentd API port. Everything
+  works only while the page is open in the Preview tab; there is no headless
+  browser and no screenshots.
 - **`ask_user` — durable suspend and resume** `[v1.131.0, v2.1.0]` — in
   **coding mode** `[v2.1.0]`, the agent can stop mid-turn and ask you 1–4 questions rather
   than guessing on a decision that would cost real work to undo. Each question
@@ -1429,6 +1505,11 @@ Four orthogonal ways to add capability.
     tokens `[v1.92.0]`. Skill cache invalidation now also watches project-local skill roots
     (`.openagentd/skills/`, `.agents/skills/` `[v2.12.0]`, `.opencode/skills/`), not just the global config directory, so
     edits are picked up on the next `discover_skills()` call `[v1.92.0]`.
+  - **Bundled `self-healing` skill with references** `[v3.3.0]` — one bundled skill covers the
+    agent's own setup: its `SKILL.md` is an index linking reference files for agents, MCP servers,
+    skills, plugins (with the `openagentd` plugin API typings), and image/video generation. It
+    replaces the separate `skill-installer` skill. `read`, `grep`, and `glob` may open bundled
+    skill files, while write tools and `shell` still cannot touch them.
   - **Semantic docs search skill experiment** `[v1.98.0]` *(beta)* — project workspaces can ship
     an `oad/search-doc` skill plus a turbovec-based document-search experiment for semantic lookup
     over `documents/`, giving agents a higher-level alternative to exact-string grep when docs

@@ -453,7 +453,7 @@ describe('handleGlobalEvent', () => {
       ['session_turn_started', { session_id: 's1' }],
       ['session_turn_completed', { session_id: 's1', status: 'completed' }],
       ['desktop_notification', {
-        notification_id: 'n-active', kind: 'input_needed', session_id: 's1', title: 'Needs your input', body: 'Which?',
+        notification_id: 'n-active', kind: 'input_needed', session_id: 's1', title: 'Needs input', body: 'Which?',
       }],
     ]
     for (const [type, data] of events) {

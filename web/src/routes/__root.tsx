@@ -1,6 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { useHotkey } from '@tanstack/react-hotkeys'
-import { Suspense, useEffect, useRef } from 'react'
+import { Suspense, useEffect } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
 import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
@@ -8,15 +7,16 @@ import { Home } from 'lucide-react'
 import { SettingsModal } from '@/components/SettingsModal'
 import { PluginNotice } from '@/components/settings/pages/settings.plugins'
 import { TelemetryOverlay } from '@/components/Telemetry/TelemetryOverlay'
+import { KeyboardShortcutsSheet } from '@/components/KeyboardShortcutsSheet'
 import { SkipLink } from '@/components/motion'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useUIStore } from '@/stores/useUIStore'
 import { MacTitleBar } from '@/components/MacTitleBar'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { useDynamicType } from '@/hooks/use-dynamic-type'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { closestRestorableRoute, LAST_ROUTE_KEY, lastRouteStorageKey } from '@/lib/route-restore'
-import { getPlatform } from '@/hooks/use-platform'
-import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
+import { useAppShortcut } from '@/lib/keyboard/hooks'
 import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
 import { usePreventBackspaceNavigation } from '@/hooks/usePreventBackspaceNavigation'
 import { usePreventStrayFileDrop } from '@/hooks/usePreventStrayFileDrop'
@@ -42,28 +42,12 @@ export function Root() {
   useHistoryBackForwardShortcuts()
   useDeepLinkRouter()
 
-  // Global ⌘, / Ctrl+, shortcut — opens/toggles the Settings modal from any page.
+  // Global ⌘, / Ctrl+, — opens Settings from any page, and may replace an
+  // open overlay. While Settings is on top its own binding closes it.
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const closeSettings = useSettingsStore((s) => s.closeSettings)
-  const settingsOpen = useSettingsStore((s) => s.open)
-  const settingsOpenRef = useRef(settingsOpen)
-  useEffect(() => { settingsOpenRef.current = settingsOpen }, [settingsOpen])
-  const { os } = getPlatform()
-  useHotkey(
-    hotkeyOf(APP_SHORTCUTS.settings),
-    () => {
-      if (settingsOpenRef.current) closeSettings()
-      else openSettings()
-    },
-    {
-      target: document,
-      platform: os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux',
-      preventDefault: true,
-      stopPropagation: false,
-      ignoreInputs: false,
-      meta: { name: 'Settings', description: 'Toggle settings' },
-    },
-  )
+  useAppShortcut('settings', () => { openSettings() })
+  // ⌘/ — the Keyboard Shortcuts sheet, from any page.
+  useAppShortcut('shortcutsHelp', () => { useUIStore.getState().toggleShortcutsHelp() })
   // Theme application is handled by `initTheme()` in main.tsx and the
   // inline pre-paint script in index.html. Do not force `.dark` here —
   // it would override the user's preference.
@@ -120,6 +104,7 @@ export function Root() {
       </Suspense>
       <SettingsModal />
       <TelemetryOverlay />
+      <KeyboardShortcutsSheet />
       <FloatingNotices />
     </QueryClientProvider>
   )

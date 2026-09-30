@@ -8,6 +8,7 @@ pub mod library;
 pub mod mcp;
 pub mod misc;
 pub mod plugins;
+pub mod preview;
 pub mod scheduler;
 pub mod settings;
 pub mod terminal;
@@ -34,6 +35,7 @@ pub fn router() -> Router<AppState> {
         .nest("/api/diagnostics", misc::diagnostics_router())
         .nest("/api/observability", misc::observability_router())
         .nest("/api/terminal", terminal::router())
+        .nest("/api/preview", preview::router())
         .fallback(|| async { json_code(404, json!({"detail": "Not Found"})) })
         .method_not_allowed_fallback(|| async { json_code(405, json!({"detail": "Method Not Allowed"})) })
 }

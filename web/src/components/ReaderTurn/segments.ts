@@ -1,7 +1,9 @@
 /**
  * Reader mode reads a turn as its answer. The work behind it (thinking,
- * tool calls, and the narration between them) folds into one summary row,
- * and the files it edited are listed after the answer.
+ * tool calls, subagent reports, and the narration between them) folds into
+ * one summary row, and the files it edited are listed after the answer.
+ * A report only sits inside a turn in reader mode, where ``partitionTurns``
+ * folds it into the work it arrived after.
  *
  * Narration is any text with more work after it, so the answer is the text
  * after the last work. While a turn runs, text that gets followed by
@@ -17,6 +19,7 @@
  * user; once answered or closed it is one more step of the work.
  */
 import type { ContentBlock } from '@/api/types'
+import { isAgentReport } from '@/utils/turns'
 
 import { patchFileStats } from '../ToolCall/diffUtils'
 import { isFailedResult } from '../ToolCall/toolResultStatus'
@@ -35,6 +38,7 @@ const USER_GATED_TOOLS = new Set(['ask_user', 'submit_plan'])
 
 function isWork(block: ContentBlock, awaitsUser: AwaitsUser): boolean {
   if (block.type === 'thinking') return true
+  if (isAgentReport(block)) return true
   if (block.type !== 'tool') return false
   if (USER_GATED_TOOLS.has(block.toolName ?? '')) return !awaitsUser(block)
   return !(block.extra as { mcp_app?: unknown } | null | undefined)?.mcp_app
@@ -71,6 +75,7 @@ export interface WorkSummary {
   fetches: number
   commands: number
   edits: number
+  reports: number
   other: number
   failed: number
   thought: boolean
@@ -92,9 +97,10 @@ const STEP_KIND: Record<string, StepKind> = {
 }
 
 export function summarizeWork(blocks: readonly ContentBlock[]): WorkSummary {
-  const summary: WorkSummary = { reads: 0, searches: 0, fetches: 0, commands: 0, edits: 0, other: 0, failed: 0, thought: false }
+  const summary: WorkSummary = { reads: 0, searches: 0, fetches: 0, commands: 0, edits: 0, reports: 0, other: 0, failed: 0, thought: false }
   for (const block of blocks) {
     if (block.type === 'thinking' && block.content.trim()) summary.thought = true
+    if (isAgentReport(block)) summary.reports += 1
     if (block.type !== 'tool') continue
     summary[STEP_KIND[block.toolName ?? ''] ?? 'other'] += 1
     if (block.toolDone && isFailedResult(block.toolResult)) summary.failed += 1
@@ -112,6 +118,7 @@ export function workSummaryDetail(summary: WorkSummary): string {
     count(summary.fetches, 'fetch', 'fetches'),
     count(summary.commands, 'command'),
     count(summary.edits, 'edit'),
+    count(summary.reports, 'report'),
     summary.other ? `${summary.other} other` : '',
   ].filter(Boolean).join(', ')
 }

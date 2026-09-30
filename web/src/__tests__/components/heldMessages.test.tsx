@@ -14,16 +14,17 @@ import type { InputComposerHandle } from '@/components/InputComposer'
 const INITIAL_AGENT_STATE = useAgentStore.getState()
 
 function fakeComposer() {
-  const appended: Array<{ text: string; paragraph?: boolean }> = []
+  const appended: Array<{ text: string; paragraph?: boolean; mentions?: readonly string[] }> = []
   const added: File[] = []
   const handle: InputComposerHandle = {
     focus: () => {},
     setValue: () => {},
     insertText: () => {},
     setFiles: () => {},
-    appendValue: (text, options) => { appended.push({ text, paragraph: options?.paragraph }) },
+    appendValue: (text, options) => { appended.push({ text, paragraph: options?.paragraph, ...(options?.mentions ? { mentions: options.mentions } : {}) }) },
     addFiles: (files) => { added.push(...files) },
     restoreLastSubmission: () => {},
+    addDesignFeedback: () => {},
   }
   return { ref: { current: handle }, appended, added }
 }
@@ -107,15 +108,16 @@ describe('useReleaseHeldMessages', () => {
   it('returns a message that could not be sent, and the ones behind it, to the composer', async () => {
     const sendMessage = mock(async (..._args: unknown[]) => false)
     useAgentStore.setState({ sendMessage })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'first' })
-    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'second' })
+    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'first @src/a.ts', mentions: ['src/a.ts'] })
+    useHeldMessagesStore.getState().hold({ sessionId: 's1', content: 'second @src/b.ts', mentions: ['src/b.ts', 'src/a.ts'] })
     const composer = fakeComposer()
 
     renderHook(() => useReleaseHeldMessages({ workspace: '/repo', sessionId: 's1', composerRef: composer.ref }))
     await act(async () => { useAgentStore.setState({ isAgentWorking: false }) })
 
     expect(sendMessage).toHaveBeenCalledTimes(1)
-    expect(composer.appended).toEqual([{ text: 'first\n\nsecond', paragraph: true }])
+    // Mentions come back too, so the files are still attached when resent.
+    expect(composer.appended).toEqual([{ text: 'first @src/a.ts\n\nsecond @src/b.ts', paragraph: true, mentions: ['src/a.ts', 'src/b.ts'] }])
     expect(held()).toEqual([])
   })
 

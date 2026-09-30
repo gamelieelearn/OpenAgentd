@@ -6,8 +6,8 @@
  * same checklist lives in the review dock's Tasks tab instead.
  */
 import { ListTodo } from 'lucide-react'
-import { useHotkey } from '@tanstack/react-hotkeys'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { cn } from '@/lib/utils'
 import type { SessionPlan, TodoItem } from '@/api/types'
 import { ActivePlanSection } from './ActivePlanSection'
@@ -27,7 +27,7 @@ interface TodosPopoverProps {
 export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPlan, onOpenPlan }: TodosPopoverProps) {
   const summary = summarizeTodos(todos)
   const { mounted, closing } = useDeferredUnmount(open, 100)
-  useHotkey('Escape', () => onOpenChange(false), { enabled: open })
+  useKeyLayer(open, { kind: 'transient', onClose: () => onOpenChange(false) })
   if (!mounted) return null
 
   return (

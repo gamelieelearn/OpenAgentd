@@ -15,6 +15,7 @@ import fuzzysort from 'fuzzysort'
 import { Search, CornerDownLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import { AppOverlay } from '@/components/ui/app-overlay'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { isImeComposing } from '@/lib/keyboard/chord'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 /** Nested list a command opens in place of running. */
@@ -264,7 +265,12 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
       showPage(null)
       return
     }
-    if (e.key === 'Escape') { onClose(); return }
+    if (e.key === 'Escape') {
+      // Handled here; the overlay layer must not close it a second time.
+      e.preventDefault()
+      onClose()
+      return
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setActiveIdx((i) => Math.min(i + 1, totalCount - 1))
@@ -276,6 +282,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
       return
     }
     if (e.key === 'Enter') {
+      if (isImeComposing(e.nativeEvent)) return
       e.preventDefault()
       const row = byIdx.get(activeIdx)
       if (row?.type === 'cmd') runCmd(row.cmd)

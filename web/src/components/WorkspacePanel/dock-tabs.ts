@@ -2,7 +2,8 @@
  * Review dock tab model.
  *
  * The dock is an editor-style strip: one pinned Git review tab plus any
- * number of file previews, full-height diffs, commit views, and terminals.
+ * number of file previews, full-height diffs, commit views, web previews,
+ * and terminals.
  * The agent task list and the scheduler are singleton tabs opened on demand
  * (⌘T and the Scheduled Tasks command on desktop), and so is the session
  * plan (from the Tasks view, a plan review, or the transcript).
@@ -10,6 +11,7 @@
  * focuses the existing tab instead of stacking duplicates.
  */
 import type { GitCommit, WorkspaceFileInfo } from '@/api/types'
+import { type PreviewTarget, previewTargetKey } from '@/api/preview'
 import { type ChangedFileStatus, safeDecodeURIComponent } from './diff-helpers'
 
 export const REVIEW_TAB_ID = 'review'
@@ -25,6 +27,12 @@ export type DockTab =
   | { id: string; type: 'file'; title: string; file: WorkspaceFileInfo }
   | { id: string; type: 'diff'; title: string; path: string; status: ChangedFileStatus }
   | { id: string; type: 'commit'; title: string; commit: GitCommit }
+  /**
+   * A web preview. One tab per dev-server origin or workspace file; ``navKey``
+   * grows each time the tab is asked to show ``target`` again, so a new
+   * path for the same origin navigates the open tab.
+   */
+  | { id: string; type: 'preview'; title: string; target: PreviewTarget; navKey: number }
   | { id: string; type: 'terminal'; title: string; termId: string }
 
 export type DockTabOf<T extends DockTab['type']> = Extract<DockTab, { type: T }>
@@ -62,6 +70,14 @@ export interface DiffTabRequest {
   key: number
 }
 
+export interface PreviewTabRequest {
+  target: PreviewTarget
+  /** Monotonic; the dock handles each key once. */
+  key: number
+  /** Show the tab without sending an already open one to ``target``. */
+  focusOnly?: boolean
+}
+
 export const REVIEW_TAB: DockTabOf<'review'> = { id: REVIEW_TAB_ID, type: 'review', title: 'Git' }
 export const TASKS_TAB: DockTabOf<'tasks'> = { id: TASKS_TAB_ID, type: 'tasks', title: 'Tasks' }
 export const SCHEDULE_TAB: DockTabOf<'schedule'> = { id: SCHEDULE_TAB_ID, type: 'schedule', title: 'Schedule' }
@@ -83,6 +99,17 @@ export const fileTabId = (path: string) => `file:${path}`
 export const diffTabId = (path: string) => `diff:${path}`
 export const commitTabId = (sha: string) => `commit:${sha}`
 export const terminalTabId = (termId: string) => `terminal:${termId}`
+export const previewTabId = (target: PreviewTarget) => `preview:${previewTargetKey(target)}`
+
+/** Tab title: the dev server's host:port, or the file's name. */
+export function previewTabTitle(target: PreviewTarget): string {
+  if (target.kind === 'file') return basename(target.path)
+  try {
+    return new URL(target.url.includes('://') ? target.url : `http://${target.url}`).host
+  } catch {
+    return target.url
+  }
+}
 
 const TERMINAL_PREFIX = 'terminal:'
 
@@ -109,6 +136,8 @@ export function dockTabLabel(tab: DockTab): string {
       return 'Scheduled tasks'
     case 'plan':
       return 'Session plan'
+    case 'preview':
+      return `Preview ${tab.title}`
     default:
       return tab.title
   }
@@ -123,6 +152,8 @@ export function dockTabTooltip(tab: DockTab): string | null {
       return `${tab.path} (working tree diff)`
     case 'commit':
       return safeDecodeURIComponent(tab.commit.subject)
+    case 'preview':
+      return tab.target.kind === 'file' ? `${tab.target.path} (preview)` : `${tab.target.url} (preview)`
     default:
       return null
   }

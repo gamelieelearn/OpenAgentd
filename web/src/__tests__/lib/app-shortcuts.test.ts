@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { APP_SHORTCUTS, hotkeyOf, shortcutLabel } from '@/lib/app-shortcuts'
+import { APP_SHORTCUTS, chordOf, shortcutLabel } from '@/lib/app-shortcuts'
 
 const srcDir = fileURLToPath(new URL('../../', import.meta.url))
 /** Only the table and the low-level helpers may spell out a key. */
@@ -25,9 +25,10 @@ describe('APP_SHORTCUTS', () => {
   })
 
   it('registers every shortcut on the platform primary modifier', () => {
-    expect(hotkeyOf(APP_SHORTCUTS.maximizeDock)).toEqual({ key: 'D', mod: true, shift: true })
-    expect(hotkeyOf(APP_SHORTCUTS.newSession)).toEqual({ key: 'N', mod: true, shift: false })
-    expect(hotkeyOf(APP_SHORTCUTS.previousPrompt)).toEqual({ key: 'ArrowUp', mod: true, shift: false, alt: true })
+    expect(chordOf(APP_SHORTCUTS.maximizeDock)).toEqual({ key: 'D', mod: true, shift: true, alt: false })
+    expect(chordOf(APP_SHORTCUTS.newSession)).toEqual({ key: 'N', mod: true, shift: false, alt: false })
+    expect(chordOf(APP_SHORTCUTS.previousPrompt)).toEqual({ key: 'ArrowUp', mod: true, shift: false, alt: true })
+    expect(chordOf(APP_SHORTCUTS.terminal)).toEqual({ key: '`', code: 'Backquote', mod: true, shift: true, alt: false })
   })
 
   it('formats labels for each platform', () => {

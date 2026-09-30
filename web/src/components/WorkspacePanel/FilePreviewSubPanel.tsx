@@ -1,4 +1,4 @@
-import { Download } from 'lucide-react'
+import { Download, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FilePreviewContent, CopyButton, canCopyFileContents } from '../FileViewerPanel'
 import { FileTypeIcon } from '../FileTypeIcon'
@@ -11,13 +11,18 @@ interface FilePreviewSubPanelProps {
   workspace: string
   file: WorkspaceFileInfo
   onAddComment?: (path: string, startLine: number, endLine: number) => void
+  /** Shown for HTML files: open the file in a web preview tab. */
+  onOpenPreview?: (path: string) => void
 }
+
+const HTML_FILE = /\.html?$/i
 
 /** A file tab: one 32px toolbar (path, size, actions) over the preview. */
 export function FilePreviewSubPanel({
   workspace,
   file,
   onAddComment,
+  onOpenPreview,
 }: FilePreviewSubPanelProps) {
   const deleted = file.deleted === true
   const downloadLabel = deleted ? 'File deleted from workspace' : 'Download file'
@@ -37,6 +42,23 @@ export function FilePreviewSubPanel({
           <span className="hidden shrink-0 font-mono text-[11px] text-(--color-text-subtle) md:inline">{formatBytes(file.size)}</span>
         )}
         <div className="flex shrink-0 items-center gap-0.5">
+          {onOpenPreview && !deleted && HTML_FILE.test(file.path) && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={() => onOpenPreview(file.path)}
+                    aria-label="Open in Preview"
+                    className={DOCK_ACTION_BUTTON_CLASS}
+                  >
+                    <Globe size={13} aria-hidden="true" />
+                  </button>
+                }
+              />
+              <TooltipContent side="bottom">Open in Preview</TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger
               render={

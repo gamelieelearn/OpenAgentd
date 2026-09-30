@@ -1,5 +1,15 @@
 import { useEffect, useRef } from 'react'
 
+import { useKeyLayer } from '@/lib/keyboard/hooks'
+import { isTopLayer, type LayerKind } from '@/lib/keyboard/layers'
+
+export interface ModalLayerOptions {
+  /** ``dialog`` (default) blocks every app shortcut; ``overlay`` lets switchers through. */
+  kind?: Extract<LayerKind, 'dialog' | 'overlay'>
+  /** ``false`` keeps switchers out, e.g. Settings with unsaved changes. */
+  allowSwitch?: () => boolean
+}
+
 /**
  * Focus trap + Escape for modal surfaces.
  *
@@ -7,12 +17,16 @@ import { useEffect, useRef } from 'react'
  * the first focusable element in DOM order, which for a panel with a header is
  * the close button — technically correct, practically useless, since the user
  * then has to Tab past it to reach the content they opened the panel for.
+ *
+ * The modal is a layer on the keyboard stack (``lib/keyboard``): Escape goes
+ * to whichever layer opened last, and app shortcuts behind it are blocked.
  */
 export function useModalFocus(
   open: boolean,
   onClose?: () => void,
   initialFocus?: React.RefObject<HTMLElement | null>,
-) {
+  layer: ModalLayerOptions = {},
+): { readonly current: number | null } {
   // Keep a ref so the keydown handler always calls the latest onClose without
   // needing to be re-registered every time the parent re-renders with a new
   // callback reference. Without this, the listener briefly vanishes during
@@ -24,16 +38,22 @@ export function useModalFocus(
   const initialFocusRef = useRef(initialFocus)
   useEffect(() => { initialFocusRef.current = initialFocus })
 
+  const dialogRef = useRef<HTMLElement | null>(null)
+  const layerId = useKeyLayer(open, {
+    kind: layer.kind ?? 'dialog',
+    onClose: () => onCloseRef.current?.(),
+    allowSwitch: layer.allowSwitch,
+    element: () => dialogRef.current,
+  })
+
   useEffect(() => {
     if (!open) return
     const previousActive = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null
-    const getDialog = () => {
-      const dialogs = document.querySelectorAll<HTMLElement>('[data-modal-focus="true"]')
-      return dialogs[dialogs.length - 1] ?? null
-    }
-    const dialog = getDialog()
+    const dialogs = document.querySelectorAll<HTMLElement>('[data-modal-focus="true"]')
+    const dialog = dialogs[dialogs.length - 1] ?? null
+    dialogRef.current = dialog
     const isVisible = (el: HTMLElement) => el.getClientRects().length > 0
     const focusFirst = () => {
       const preferred = initialFocusRef.current?.current
@@ -48,15 +68,9 @@ export function useModalFocus(
     }
     const id = requestAnimationFrame(focusFirst)
 
+    // Escape is routed by the keyboard dispatcher to the top layer.
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || !dialog || getDialog() !== dialog) return
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        event.stopImmediatePropagation()
-        onCloseRef.current?.()
-        return
-      }
-      if (event.key !== 'Tab') return
+      if (event.key !== 'Tab' || event.defaultPrevented || !dialog || !isTopLayer(layerId.current)) return
       const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
       )).filter((el) => !el.hasAttribute('disabled') && isVisible(el))
@@ -76,7 +90,11 @@ export function useModalFocus(
     return () => {
       cancelAnimationFrame(id)
       document.removeEventListener('keydown', handleKeyDown)
+      if (dialogRef.current === dialog) dialogRef.current = null
       if (previousActive?.isConnected) previousActive.focus()
     }
-  }, [open]) // onClose intentionally omitted — read via ref above
+  }, [open, layerId]) // onClose intentionally omitted — read via ref above
+
+  // For shortcuts the modal owns (``useShortcut(chord, fn, { layer })``).
+  return layerId
 }

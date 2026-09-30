@@ -29,6 +29,8 @@ interface UIStore {
   quickOpenQuery: string
   /** Telemetry overlay (mounted at the app root, reachable from any route). */
   telemetryOpen: boolean
+  /** Keyboard Shortcuts sheet (app root). */
+  shortcutsHelpOpen: boolean
   /** Task the scheduler should open on next (a sidebar click); taken once. */
   scheduledTaskFocus: string | null
   focusScheduledTask: (taskId: string | null) => void
@@ -40,6 +42,8 @@ interface UIStore {
   openQuickOpen: (query: string) => void
   openTelemetry: () => void
   toggleTelemetry: () => void
+  toggleShortcutsHelp: () => void
+  closeShortcutsHelp: () => void
   closeScheduler: () => void
   closeAgentCapabilities: () => void
   closePalette: () => void
@@ -56,6 +60,7 @@ export const useUIStore = create<UIStore>()(
     quickOpenOpen: false,
     quickOpenQuery: '',
     telemetryOpen: false,
+    shortcutsHelpOpen: false,
     scheduledTaskFocus: null,
     focusScheduledTask: (taskId) => set((state) => { state.scheduledTaskFocus = taskId }),
     toggleScheduler: () => {
@@ -67,6 +72,7 @@ export const useUIStore = create<UIStore>()(
           state.paletteOpen = false
           state.quickOpenOpen = false
           state.telemetryOpen = false
+          state.shortcutsHelpOpen = false
         }
       })
       if (useUIStore.getState().schedulerOpen) _closeSettings?.()
@@ -80,6 +86,7 @@ export const useUIStore = create<UIStore>()(
           state.paletteOpen = false
           state.quickOpenOpen = false
           state.telemetryOpen = false
+          state.shortcutsHelpOpen = false
         }
       })
       if (useUIStore.getState().agentCapabilitiesOpen) _closeSettings?.()
@@ -93,6 +100,7 @@ export const useUIStore = create<UIStore>()(
           state.agentCapabilitiesOpen = false
           state.quickOpenOpen = false
           state.telemetryOpen = false
+          state.shortcutsHelpOpen = false
         }
       })
       if (useUIStore.getState().paletteOpen) _closeSettings?.()
@@ -107,6 +115,7 @@ export const useUIStore = create<UIStore>()(
           state.agentCapabilitiesOpen = false
           state.paletteOpen = false
           state.telemetryOpen = false
+          state.shortcutsHelpOpen = false
         }
       })
       if (useUIStore.getState().quickOpenOpen) _closeSettings?.()
@@ -119,6 +128,7 @@ export const useUIStore = create<UIStore>()(
         state.agentCapabilitiesOpen = false
         state.paletteOpen = false
         state.telemetryOpen = false
+        state.shortcutsHelpOpen = false
       })
       _closeSettings?.()
     },
@@ -129,6 +139,7 @@ export const useUIStore = create<UIStore>()(
         state.agentCapabilitiesOpen = false
         state.paletteOpen = false
         state.quickOpenOpen = false
+        state.shortcutsHelpOpen = false
       })
       _closeSettings?.()
     },
@@ -136,6 +147,21 @@ export const useUIStore = create<UIStore>()(
       if (get().telemetryOpen) get().closeTelemetry()
       else get().openTelemetry()
     },
+    toggleShortcutsHelp: () => {
+      set((state) => {
+        const nextOpen = !state.shortcutsHelpOpen
+        state.shortcutsHelpOpen = nextOpen
+        if (nextOpen) {
+          state.schedulerOpen = false
+          state.agentCapabilitiesOpen = false
+          state.paletteOpen = false
+          state.quickOpenOpen = false
+          state.telemetryOpen = false
+        }
+      })
+      if (useUIStore.getState().shortcutsHelpOpen) _closeSettings?.()
+    },
+    closeShortcutsHelp: () => set((state) => { state.shortcutsHelpOpen = false }),
     closeScheduler: () => set((state) => { state.schedulerOpen = false }),
     closeAgentCapabilities: () => set((state) => { state.agentCapabilitiesOpen = false }),
     closePalette: () => set((state) => { state.paletteOpen = false }),
@@ -147,6 +173,7 @@ export const useUIStore = create<UIStore>()(
       state.paletteOpen = false
       state.quickOpenOpen = false
       state.telemetryOpen = false
+      state.shortcutsHelpOpen = false
     }),
   }))
 )

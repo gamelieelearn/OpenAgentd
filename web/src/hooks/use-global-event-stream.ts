@@ -275,7 +275,7 @@ export async function handleGlobalEvent(
     // Mobile has no window focus to check, so it skips by this instead.
     const sessionOnScreen = sessionId !== undefined && useAgentStore.getState().sessionId === sessionId
     await sendDesktopNotification(
-      { kind, sessionId, title: event.title, body: event.body },
+      { kind, notificationId: id, sessionId, title: event.title, body: event.body },
       { force: kind === 'input_needed' && !sessionOnScreen, sessionOnScreen },
     )
     return true

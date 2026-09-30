@@ -10,28 +10,76 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-/// v2's `app/agent/builtin_skills`, copied to `contract/builtin_skills`.
+/// Bundled read-only skill files (`<skill>/<path>` → content), compiled in
+/// from `contract/builtin_skills` (v3 wording; v2's `app/agent/builtin_skills`
+/// is frozen). Agents read the reference files through the read-only root in
+/// `appv3_tools::denied`.
 const BUNDLED: &[(&str, &str)] = &[
-    ("self-healing", include_str!("../../../contract/builtin_skills/self-healing/SKILL.md")),
-    ("skill-installer", include_str!("../../../contract/builtin_skills/skill-installer/SKILL.md")),
+    ("self-healing/SKILL.md", include_str!("../../../contract/builtin_skills/self-healing/SKILL.md")),
+    ("self-healing/references/agents.md", include_str!("../../../contract/builtin_skills/self-healing/references/agents.md")),
+    ("self-healing/references/mcp.md", include_str!("../../../contract/builtin_skills/self-healing/references/mcp.md")),
+    ("self-healing/references/media.md", include_str!("../../../contract/builtin_skills/self-healing/references/media.md")),
+    ("self-healing/references/plugins.md", include_str!("../../../contract/builtin_skills/self-healing/references/plugins.md")),
+    ("self-healing/references/skills.md", include_str!("../../../contract/builtin_skills/self-healing/references/skills.md")),
+    ("self-healing/references/openagentd.d.ts", appv3_jsplugin::TYPES),
 ];
+
+/// Bundled files whose source is not under `contract/builtin_skills`.
+#[cfg(test)]
+const BUNDLED_EXTERNAL: &[&str] = &["self-healing/references/openagentd.d.ts"];
 
 /// Bundled read-only skills, materialised once under the cache dir.
 pub fn builtin_skills_dir() -> PathBuf {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
-        let dir = settings().cache_dir.join("v3-builtin-skills");
-        for (name, body) in BUNDLED {
-            let d = dir.join(name);
-            let f = d.join("SKILL.md");
-            if std::fs::read_to_string(&f).ok().as_deref() != Some(*body) {
-                let _ = std::fs::create_dir_all(&d);
-                let _ = std::fs::write(&f, body);
-            }
-        }
+        let dir = appv3_tools::denied::builtin_skills_root();
+        materialize(&dir, BUNDLED);
         dir
     })
     .clone()
+}
+
+/// Write every file that differs, then delete everything else under `dir`,
+/// so a skill dropped from the bundle (v3.2's `skill-installer`) stops being
+/// discovered.
+fn materialize(dir: &Path, files: &[(&str, &str)]) {
+    for (rel, body) in files {
+        let f = dir.join(rel);
+        if std::fs::read_to_string(&f).ok().as_deref() != Some(*body) {
+            if let Some(parent) = f.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Err(e) = std::fs::write(&f, body) {
+                tracing::warn!("builtin_skill_write_failed path={} error={}", f.display(), e);
+            }
+        }
+    }
+    prune_unbundled(dir, dir, files);
+}
+
+fn prune_unbundled(root: &Path, dir: &Path, files: &[(&str, &str)]) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        let path = e.path();
+        let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+        // `DirEntry::file_type` does not follow symlinks, so a link is removed, not descended.
+        let removed = if e.file_type().is_ok_and(|t| t.is_dir()) {
+            let prefix = format!("{rel}/");
+            if files.iter().any(|(f, _)| f.starts_with(&prefix)) {
+                prune_unbundled(root, &path, files);
+                continue;
+            }
+            std::fs::remove_dir_all(&path)
+        } else if files.iter().any(|(f, _)| *f == rel) {
+            continue;
+        } else {
+            std::fs::remove_file(&path)
+        };
+        match removed {
+            Ok(()) => tracing::info!("builtin_skill_stale_removed path={}", path.display()),
+            Err(e) => tracing::warn!("builtin_skill_stale_remove_failed path={} error={}", path.display(), e),
+        }
+    }
 }
 
 fn home() -> PathBuf {
@@ -491,5 +539,77 @@ pub(crate) mod tests {
         let a = appv3_providers::AssistantMessage { tool_calls: Some(vec![appv3_providers::ToolCall::new("c1", "skill", r#"{"skill_name":"foo"}"#)]), ..Default::default() };
         let msgs = vec![ChatMessage::Assistant(a), ChatMessage::tool("c1", Some("skill".into()), "BODY")];
         assert_eq!(loaded_from_messages(&msgs).get("foo").map(String::as_str), Some("BODY"));
+    }
+
+    #[test]
+    fn bundled_files_match_contract_dir() {
+        fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(root, &p, out);
+                } else {
+                    out.push(p.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contract/builtin_skills");
+        let mut on_disk = vec![];
+        walk(&root, &root, &mut on_disk);
+        on_disk.sort();
+        let mut listed: Vec<String> = BUNDLED.iter().map(|(p, _)| p.to_string()).filter(|p| !BUNDLED_EXTERNAL.contains(&p.as_str())).collect();
+        listed.sort();
+        assert_eq!(on_disk, listed, "every file under contract/builtin_skills must be listed in BUNDLED");
+    }
+
+    #[test]
+    fn bundled_skills_parse_and_index_their_references() {
+        let link = regex::Regex::new(r"\{SKILL_DIR\}/([A-Za-z0-9_./-]+[A-Za-z0-9_-])").unwrap();
+        for (rel, body) in BUNDLED.iter().filter(|(p, _)| p.ends_with("/SKILL.md")) {
+            let skill = rel.trim_end_matches("/SKILL.md");
+            match parse_frontmatter_strict(body) {
+                StrictFrontmatter::Mapping(meta, rest) => {
+                    assert_eq!(meta.get("name").and_then(Value::as_str), Some(skill), "{rel}: frontmatter name");
+                    assert!(meta.get("description").and_then(Value::as_str).is_some_and(|d| !d.trim().is_empty()), "{rel}: description");
+                    assert!(!rest.is_empty(), "{rel}: body");
+                }
+                _ => panic!("{rel}: frontmatter must be a strict YAML mapping"),
+            }
+            let prefix = format!("{skill}/");
+            let mut files: Vec<&str> = BUNDLED.iter().filter_map(|(p, _)| p.strip_prefix(prefix.as_str())).filter(|p| *p != "SKILL.md").collect();
+            files.sort();
+            let mut linked: Vec<&str> = link.captures_iter(body).map(|c| c.get(1).unwrap().as_str()).collect();
+            linked.sort();
+            linked.dedup();
+            assert_eq!(linked, files, "{rel} must link every bundled reference, and only those");
+        }
+    }
+
+    #[test]
+    fn bundled_references_have_no_render_tokens() {
+        // Only SKILL.md goes through `render_tokens`; references are opened with
+        // `read`, so path tokens would stay literal. (`{SKILL_DIR}` is allowed:
+        // the skills reference documents it for skill authors.)
+        for (rel, body) in BUNDLED.iter().filter(|(p, _)| p.ends_with(".md") && !p.ends_with("/SKILL.md")) {
+            for t in ["OPENAGENTD_CONFIG_DIR", "AGENTS_DIR", "SKILLS_DIR"] {
+                assert!(!body.contains(&format!("{{{t}}}")), "{rel}: `{{{t}}}` is not rendered in references");
+            }
+        }
+    }
+
+    #[test]
+    fn materialize_writes_bundle_and_prunes_stale_entries() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        std::fs::create_dir_all(root.join("skill-installer")).unwrap();
+        std::fs::write(root.join("skill-installer/SKILL.md"), "old").unwrap();
+        std::fs::create_dir_all(root.join("a/references")).unwrap();
+        std::fs::write(root.join("a/references/gone.md"), "old").unwrap();
+        std::fs::write(root.join("a/SKILL.md"), "stale").unwrap();
+        materialize(root, &[("a/SKILL.md", "new"), ("a/references/x.md", "x")]);
+        assert_eq!(std::fs::read_to_string(root.join("a/SKILL.md")).unwrap(), "new");
+        assert_eq!(std::fs::read_to_string(root.join("a/references/x.md")).unwrap(), "x");
+        assert!(!root.join("skill-installer").exists());
+        assert!(!root.join("a/references/gone.md").exists());
     }
 }

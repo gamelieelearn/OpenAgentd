@@ -2,9 +2,11 @@
 
 pub mod ask_user;
 pub mod plan;
+pub mod preview;
 pub mod team;
 
 use crate::broadcaster;
+use crate::notification;
 use appv3_db::DbPool;
 use appv3_tools::ToolError;
 use serde_json::json;
@@ -20,13 +22,14 @@ pub fn lax_bool(v: &serde_json::Value) -> Option<bool> {
 }
 
 /// The desktop notification for a turn that now waits on the user. `title`
-/// gets ` - <workspace>` appended; `body` receives the session title.
-pub(crate) async fn publish_input_needed(pool: &DbPool, session_id: &str, question_id: &str, title: &str, body: impl FnOnce(Option<String>) -> String) {
+/// is a short status that gets ` · <workspace>` appended; `body` receives the
+/// session title and its result is clamped to one line.
+pub(crate) async fn publish_input_needed(pool: &DbPool, session_id: &str, question_id: &str, status: &str, body: impl FnOnce(Option<String>) -> String) {
     let session = appv3_db::get_session(pool, session_id).await.ok().flatten();
     let session_title = session.as_ref().and_then(|s| s.title.clone());
     let workspace = session.as_ref().map(|s| s.workspace.clone()).filter(|w| !w.is_empty());
     let sid = appv3_db::codec::api_uuid(&appv3_db::codec::db_id(session_id));
-    let ws_name = workspace.as_deref().and_then(|w| std::path::Path::new(w).file_name()).map(|n| n.to_string_lossy().to_string());
+    let body = notification::body(&body(session_title)).unwrap_or_default();
     broadcaster::publish(
         "desktop_notification",
         json!({
@@ -34,8 +37,8 @@ pub(crate) async fn publish_input_needed(pool: &DbPool, session_id: &str, questi
             "notification_id": uuid::Uuid::new_v4().to_string(),
             "kind": "input_needed",
             "session_id": sid,
-            "title": match &ws_name { Some(n) => format!("{title} - {n}"), None => title.to_string() },
-            "body": body(session_title),
+            "title": notification::title(status, workspace.as_deref()),
+            "body": body,
             "metadata": {"session_id": sid, "question_id": question_id, "mode": "coding", "workspace": workspace},
         }),
     );

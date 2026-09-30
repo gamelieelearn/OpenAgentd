@@ -14,6 +14,7 @@ import { getPlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, dispatchAppShortcut } from '@/lib/app-shortcuts'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { listenForNotificationTaps } from '@/lib/desktop-notifications'
+import { desktopWindowId } from '@/lib/desktop-window-identity'
 
 interface NotificationClickPayload {
   sessionId?: unknown
@@ -67,7 +68,29 @@ export function openNotificationSession(payload: unknown, router: AnyRouter): vo
   void router.navigate({ to, params: { sessionId: notification.sessionId } })
 }
 
+/**
+ * The shell repeats each command a few times while a just-created window
+ * mounts this listener. Commands carry an id, so each id runs once and a
+ * real second press right after still runs. Bare string payloads (older
+ * shells) fall back to dropping repeats within 450 ms.
+ */
 let lastCommand: { command: unknown; timestamp: number } | null = null
+const seenIds: number[] = []
+
+function acceptCommand(payload: unknown): unknown {
+  if (payload && typeof payload === 'object') {
+    const { command, id } = payload as { command?: unknown; id?: unknown }
+    if (typeof command !== 'string' || typeof id !== 'number') return null
+    if (seenIds.includes(id)) return null
+    seenIds.push(id)
+    if (seenIds.length > 32) seenIds.shift()
+    return command
+  }
+  const now = Date.now()
+  if (lastCommand && lastCommand.command === payload && now - lastCommand.timestamp < 450) return null
+  lastCommand = { command: payload, timestamp: now }
+  return payload
+}
 
 export function useDesktopCommands(): void {
   // From context, not the `@/router` singleton: importing that here closes
@@ -80,15 +103,17 @@ export function useDesktopCommands(): void {
     ;(async () => {
       try {
         const { listen } = await import('@tauri-apps/api/event')
+        // Commands are sent to one window; a global listener would also
+        // receive the ones meant for the other windows.
+        const windowId = desktopWindowId()
         const unlisten = await listen<unknown>('desktop-command', (event) => {
-          const now = Date.now()
-          if (lastCommand && lastCommand.command === event.payload && now - lastCommand.timestamp < 450) return
-          lastCommand = { command: event.payload, timestamp: now }
-          runDesktopCommand(event.payload)
-        })
+          const command = acceptCommand(event.payload)
+          if (command !== null) runDesktopCommand(command)
+        }, windowId ? { target: windowId } : undefined)
+        // The shell sends a click to the one window it brings forward.
         const unlistenNotification = await listen<NotificationClickPayload>('desktop-notification-clicked', (event) => {
           openNotificationSession(event.payload, router)
-        })
+        }, windowId ? { target: windowId } : undefined)
         // The mobile shell reports taps through the notification plugin instead.
         const stopTaps = await listenForNotificationTaps((sessionId) => {
           openNotificationSession({ sessionId }, router)

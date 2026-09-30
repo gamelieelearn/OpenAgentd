@@ -2,7 +2,8 @@
  * WorkspacePanel — the review dock.
  *
  * Editor-style tab strip (Git review, file previews, full-height diffs,
- * commits, terminals, and on desktop the agent Tasks and Schedule views)
+ * commits, web previews, terminals, and on desktop the agent Tasks and
+ * Schedule views)
  * over one content area. Desktop geometry is a ratio of the shell's center
  * region (measured here from ``centerRef``) in ``side`` mode, or the whole
  * center in ``overlay`` mode (maximized, or a window too narrow for a
@@ -44,6 +45,7 @@ import {
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import type { SessionPlan, TodoItem, WorkspaceFileInfo } from '@/api/types'
+import { type PreviewTarget, closePreview, isLocalBackend, lastPreviewUrl } from '@/api/preview'
 import { EASINGS } from '@/lib/motion'
 import {
   type ChangedFileStatus,
@@ -61,9 +63,12 @@ import { DiffTabView } from './WorkspacePanel/DiffTabView'
 import { CommitTabView } from './WorkspacePanel/CommitTabView'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { PlanTabView } from './WorkspacePanel/PlanTabView'
+import { PreviewTabView } from './Preview/PreviewTabView'
+import type { DesignFeedback } from '@/lib/design-feedback'
 import { SchedulerDockView } from './SchedulerPanel/SchedulerDockView'
 import { DockTabBar } from './WorkspacePanel/DockTabBar'
 import { DockActionMenus, type CommitActionTarget } from './WorkspacePanel/DockActionMenus'
+import { CloseTerminalDialog } from './WorkspacePanel/CloseTerminalDialog'
 import { useGitActions } from './WorkspacePanel/useGitActions'
 import { useDockTabs } from './WorkspacePanel/useDockTabs'
 import {
@@ -74,8 +79,10 @@ import {
 } from './WorkspacePanel/GitViewToolbar'
 import {
   type DiffTabRequest,
+  type DockTab,
   type DockView,
   type DockViewRequest,
+  type PreviewTabRequest,
   PLAN_TAB,
   REVIEW_TAB_ID,
   basename,
@@ -85,6 +92,8 @@ import {
 export type { ChangedFileStatus, ChangedFileInfo, DiffFileSection }
 
 const EMPTY_TODOS: TodoItem[] = []
+/** Dev server a new preview tab opens when the workspace has no last URL. */
+const DEFAULT_PREVIEW_URL = 'http://localhost:5173'
 /** Stable empty ref: with no center element the width falls back to the viewport. */
 const NO_CENTER: React.RefObject<HTMLElement | null> = { current: null }
 
@@ -117,6 +126,8 @@ export function WorkspacePanel({
   handledViewRequestKeyRef: parentHandledViewRequestKeyRef,
   diffRequest = null,
   handledDiffRequestKeyRef,
+  previewRequest = null,
+  handledPreviewRequestKeyRef,
   onActiveViewChange,
   todos = EMPTY_TODOS,
   sessionId = null,
@@ -124,6 +135,7 @@ export function WorkspacePanel({
   onClearPlan,
   onFileSelect,
   onAddComment,
+  onSendPreviewComments,
   chatWorkspace = false,
 }: {
   workspace: string
@@ -148,6 +160,9 @@ export function WorkspacePanel({
   /** Shell request to open (or focus) a diff tab. */
   diffRequest?: DiffTabRequest | null
   handledDiffRequestKeyRef?: React.RefObject<number>
+  /** Shell request to open (or focus) a web preview tab. */
+  previewRequest?: PreviewTabRequest | null
+  handledPreviewRequestKeyRef?: React.RefObject<number>
   /** Reports the focused view tab (``null`` for other tabs or on unmount). */
   onActiveViewChange?: (view: DockView | null) => void
   /** Agent task list for the Tasks tab. */
@@ -158,6 +173,8 @@ export function WorkspacePanel({
   onClearPlan?: () => void
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   onAddComment?: (path: string, startLine: number, endLine: number) => void
+  /** Adds a preview's design comments to the composer as a chip. */
+  onSendPreviewComments?: (feedback: DesignFeedback) => void
   /**
    * True when ``workspace`` is the chat root (see ``useChatWorkspace``).
    * Chat workspaces are not repositories: the Git review tab is hidden and its
@@ -169,6 +186,19 @@ export function WorkspacePanel({
   const prefersReducedMotion = useReducedMotion()
   const { os } = usePlatform()
   const gitViewIdBase = useId()
+  // Preview listener behind each preview tab; file tabs of one workspace
+  // share a listener, so it closes only with the last tab using it.
+  const previewIdsRef = useRef(new Map<string, string>())
+  const handlePreviewId = useCallback((tabId: string, previewId: string) => {
+    previewIdsRef.current.set(tabId, previewId)
+  }, [])
+  const handleTabClosed = useCallback((tab: DockTab) => {
+    if (tab.type !== 'preview') return
+    const ids = previewIdsRef.current
+    const previewId = ids.get(tab.id)
+    ids.delete(tab.id)
+    if (previewId && ![...ids.values()].includes(previewId)) void closePreview(previewId).catch(() => {})
+  }, [])
   // Tab state comes first: the Git queries below are gated on the active tab.
   const {
     tabs,
@@ -181,12 +211,15 @@ export function WorkspacePanel({
     openFileTab,
     openDiffTab,
     openCommitTab,
+    openPreviewTab,
     openTerminal,
     closeTab,
+    confirmCloseTabId,
+    confirmCloseTab,
+    cancelCloseTab,
   } = useDockTabs({
     workspace,
     chatWorkspace,
-    os,
     onFileSelect,
     terminalOpenKey,
     handledTerminalOpenKeyRef: parentHandledTerminalOpenKeyRef,
@@ -195,6 +228,9 @@ export function WorkspacePanel({
     onActiveViewChange,
     diffRequest,
     handledDiffRequestKeyRef,
+    previewRequest,
+    handledPreviewRequestKeyRef,
+    onTabClosed: handleTabClosed,
   })
   const [mobileFileActions, setMobileFileActions] = useState<ChangedFileInfo | null>(null)
   const [mobileCommitActions, setMobileCommitActions] = useState<CommitActionTarget | null>(null)
@@ -354,6 +390,16 @@ export function WorkspacePanel({
     const commit = commits.find((item) => item.sha === sha)
     if (commit) openCommitTab(commit)
   }
+
+  const previewsAvailable = isLocalBackend()
+  const openNewPreview = useCallback(() => {
+    openPreviewTab({ kind: 'url', url: lastPreviewUrl(workspace) ?? DEFAULT_PREVIEW_URL })
+  }, [openPreviewTab, workspace])
+  const openFilePreview = useCallback((path: string) => {
+    openPreviewTab({ kind: 'file', path })
+  }, [openPreviewTab])
+  const openPreviewTarget = useCallback((target: PreviewTarget) => openPreviewTab(target), [openPreviewTab])
+  const previewTabs = visibleTabs.filter((tab): tab is Extract<DockTab, { type: 'preview' }> => tab.type === 'preview')
 
   const handleRefresh = useCallback(() => {
     void files.refetch()
@@ -537,11 +583,28 @@ export function WorkspacePanel({
           onActivate={setActiveTabId}
           onClose={closeTab}
           onNewTerminal={openTerminal}
+          onNewPreview={previewsAvailable ? openNewPreview : undefined}
           onRefresh={handleRefresh}
           maximized={maximizeState}
           onToggleMaximized={() => useLayoutStore.getState().toggleDockMaximized()}
         />
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          {/* Preview tabs stay mounted so the page and its comments survive tab switches. */}
+          {previewTabs.map((tab) => (
+            <div key={tab.id} className={cn('absolute inset-0', activeTab?.id !== tab.id && 'hidden')}>
+              <PreviewTabView
+                workspace={workspace}
+                tabId={tab.id}
+                target={tab.target}
+                navKey={tab.navKey}
+                onPreviewId={handlePreviewId}
+                onSendComments={onSendPreviewComments}
+                onOpenTarget={openPreviewTarget}
+                active={activeTab?.id === tab.id}
+                onRequestClose={closeTab}
+              />
+            </div>
+          ))}
           {!chatWorkspace && activeTab?.type === 'review' ? (
             reviewView
           ) : activeTab?.type === 'file' ? (
@@ -549,6 +612,7 @@ export function WorkspacePanel({
               workspace={workspace}
               file={resolveFileTabInfo(activeTab.file, filesByPath.get(activeTab.file.path), changedPaths.get(activeTab.file.path))}
               onAddComment={onAddComment}
+              onOpenPreview={previewsAvailable && !chatWorkspace ? openFilePreview : undefined}
             />
           ) : activeTab?.type === 'diff' ? (
             <DiffTabView key={activeTab.id} workspace={workspace} path={activeTab.path} onOpenFile={openChangedFile} />
@@ -562,6 +626,8 @@ export function WorkspacePanel({
             <PlanTabView plan={plan} sessionId={sessionId} onClearPlan={onClearPlan} onOpenFile={openChangedFile} />
           ) : activeTab?.type === 'schedule' ? (
             <SchedulerDockView contextWorkspace={chatWorkspace ? null : workspace} />
+          ) : activeTab?.type === 'preview' ? (
+            null
           ) : chatWorkspace ? (
             <div className="flex h-full items-center justify-center px-4">
               <p className="max-w-56 text-center text-xs text-(--color-text-subtle)">
@@ -572,6 +638,12 @@ export function WorkspacePanel({
             </div>
           ) : null}
         </div>
+        <CloseTerminalDialog
+          open={confirmCloseTabId !== null}
+          title={visibleTabs.find((tab) => tab.id === confirmCloseTabId)?.title ?? 'This terminal'}
+          onConfirm={confirmCloseTab}
+          onCancel={cancelCloseTab}
+        />
         <DockActionMenus
           mobileFileActions={mobileFileActions}
           setMobileFileActions={setMobileFileActions}

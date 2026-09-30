@@ -16,7 +16,6 @@
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
-import { useHotkeys } from '@tanstack/react-hotkeys'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { MarkdownBlock } from '@/utils/markdown'
@@ -35,8 +34,7 @@ import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppRes
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
-import { APP_SHORTCUTS, hotkeyOf } from '@/lib/app-shortcuts'
-import { getPlatform } from '@/hooks/use-platform'
+import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { ErrorCard } from './AgentView/ErrorCard'
@@ -455,10 +453,11 @@ export function AgentView({
   const findBlockIds = useMemo(() => [...findHitBlockIds], [findHitBlockIds])
   const activeFindBlockId = findMatches[clampedFindIndex]?.blockId ?? null
   const totalLen = blocks.length + liveTail.length
-  const finalizedTurnItems = useMemo(() => partitionTurns(blocks), [blocks])
+  // Reader mode folds a subagent's report into the turn it arrived in.
+  const finalizedTurnItems = useMemo(() => partitionTurns(blocks, { foldAgentReports: readerTranscript }), [blocks, readerTranscript])
   const turnItems = useMemo(
-    () => appendCurrentTurns(finalizedTurnItems, blocks.length, liveTail),
-    [blocks.length, liveTail, finalizedTurnItems],
+    () => appendCurrentTurns(finalizedTurnItems, blocks.length, liveTail, { foldAgentReports: readerTranscript }),
+    [blocks.length, liveTail, finalizedTurnItems, readerTranscript],
   )
   const promptModelById = useMemo(() => promptModels(turnItems), [turnItems])
   // Retry rewinds the latest prompt, so it is only honest when nothing but
@@ -468,7 +467,9 @@ export function AgentView({
   const latestPrompt = lastTurnItem?.kind === 'user' ? lastTurnItem
     : lastTurnItem?.kind === 'assistant' && promptBeforeLastTurn?.kind === 'user' ? promptBeforeLastTurn
     : undefined
-  const canRetry = Boolean(onRetry) && !isTurnOpen && latestPrompt !== undefined && isDirectUserBlock(latestPrompt.block)
+  // A report folded into the answer (reader mode) follows the prompt too.
+  const answerHoldsReport = lastTurnItem?.kind === 'assistant' && lastTurnItem.blocks.some((b) => b.type === 'user')
+  const canRetry = Boolean(onRetry) && !isTurnOpen && latestPrompt !== undefined && isDirectUserBlock(latestPrompt.block) && !answerHoldsReport
   // A failed turn offers its way forward on the failure itself: the card for
   // a failure the transcript does not show, else the error the turn ended on.
   const trailingBlocks = lastTurnItem?.kind === 'assistant' ? lastTurnItem.blocks : []
@@ -762,20 +763,10 @@ export function AgentView({
     return () => useTranscriptFollowStore.setState({ jumpToPrompt: null })
   }, [])
 
-  const { os } = getPlatform()
-  useHotkeys(
-    [
-      { hotkey: hotkeyOf(APP_SHORTCUTS.previousPrompt), callback: () => jumpToPrompt(-1), options: { meta: { name: 'Previous prompt' } } },
-      { hotkey: hotkeyOf(APP_SHORTCUTS.nextPrompt), callback: () => jumpToPrompt(1), options: { meta: { name: 'Next prompt' } } },
-    ],
-    {
-      target: typeof document === 'undefined' ? null : document,
-      platform: os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux',
-      preventDefault: true,
-      stopPropagation: false,
-      ignoreInputs: false,
-    },
-  )
+  useShortcuts([
+    appShortcut('previousPrompt', () => { jumpToPrompt(-1) }),
+    appShortcut('nextPrompt', () => { jumpToPrompt(1) }),
+  ])
 
   const cycleFind = useCallback((delta: number) => {
     if (findMatches.length === 0) return
@@ -934,11 +925,13 @@ export function AgentView({
              *   3. restarting after an answered question - no new user block, and
              *      currentBlocks still holds the turn being resumed, so neither
              *      of the above can see it.
+             * Not for (2) when reader mode folded a report into the running
+             * turn: its work row already reads "Working".
              * Covers the POST to first SSE event gap so the user always gets immediate feedback.
              */}
             {((!isTurnOpen && !isError && currentBlocks.some(isDirectUserBlock)) ||
               isAwaitingRestart ||
-              (isWorking && currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))) && (
+              (isWorking && !answerHoldsReport && currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))) && (
               <div className="flex items-center gap-1.5 py-1" role="status" aria-label="Agent is preparing a response">
                 <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
                 <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />

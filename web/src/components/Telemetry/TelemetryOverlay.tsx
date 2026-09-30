@@ -52,7 +52,7 @@ export function TelemetryOverlay() {
   useModalFocus(open, () => {
     if (useTelemetryStore.getState().traceId) closeTrace()
     else close()
-  })
+  }, undefined, { kind: 'overlay' })
 
   return (
     <AnimatePresence>

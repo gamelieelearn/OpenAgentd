@@ -551,6 +551,27 @@ explicitly.
   - **v2 compatibility.** v2 ignores the state file, the workspace plan
     files, the extra payload and `extra` keys; the web client treats the v2
     404 as "no plan".
+- **Runtime protocol and proactive memory** (`agent/src/hooks/basic.rs`,
+  `memory/src/lib.rs`; tested there and in `agent/tests/runtime_protocol.rs`).
+  v2 keeps its memory and git-safety rules inside the built-in `code` prompt,
+  so an agent file with its own prompt loses them, and delegated agents get
+  the memory block with no rules.
+  - **Protocol.** `RuntimeProtocolHook` appends `runtime_protocol`
+    (instruction sources, interaction mode, secrets, workspace and destructive
+    git rules) to every agent's prompt, and `MemoryContextHook` puts
+    `memory_protocol_lead` or `memory_protocol_member` just before
+    `<openagentd_memory>`. The texts are new keys in
+    `contract/builtin_prompts.json`; `coding_prompt` drops its memory,
+    interaction-mode and git-safety sections and one duplicated rule. The
+    member rules are prompt-level only: the `patch` tool does not refuse
+    memory writes from delegated agents.
+  - **Proactive saving.** The lead is told to save preferences, corrections
+    and durable facts the user states, in the same turn and without asking,
+    using its normal file tools; no extra model call is made. v2 allows
+    `preferences.md` edits only on explicit request.
+  - **Limits.** `preferences.md` is pinned up to 1,500 characters (v2: 400)
+    and the memory block up to 3,000 (v2: 1,500). The "more pages" marker now
+    counts against the budget, which v2 overshoots by its length.
 - **Transport retries** (`agent/src/retry.rs`, `agent/src/streaming.rs`):
   a dropped connection, DNS failure or timeout retries on a flat, jittered
   3–5 s interval. The turn's model call retries without limit until the
@@ -572,6 +593,18 @@ explicitly.
   `contract/tool_definitions.json` says so). v2 defaults to `finished`, so
   agents resetting the board for a new plan left the old plan's pending and
   in-progress tasks behind.
+- **Notifications** (`agent/src/notification.rs`, `agent/src/session.rs`):
+  `desktop_notification` titles are a short status and the workspace
+  directory name (`Done · openagentd`, `Failed · …`, `Needs input · …`,
+  `Plan ready · …`), and each body is one line of at most 100 characters,
+  cut with `…`. v2 sends `Session completed - …` / `Needs your input - …`
+  and the full question or session title, newlines included. The event
+  shape is unchanged. v3 also changes when a lead turn notifies: a failed
+  turn sends `Failed` (kind `assistant_done`), while v2 sends nothing. A turn
+  the user stopped or ended by dismissing a question sends nothing, where v2
+  sends `Session completed`. A turn that ends while its subagents still run
+  also sends nothing: their reports start another lead turn, and the last
+  one notifies.
 - **Active sessions filter:** `GET /api/agent/sessions?active=true` returns
   every top-level session that is running or waiting on a question, as one
   page (`next_cursor: null`, `has_more: false`), newest first. `limit` and
@@ -593,6 +626,18 @@ explicitly.
   `db/src/queries/sessions.rs`, tested in `api/tests/http_api.rs`). The
   sidebar uses it to list a repository and its worktrees as one list. v2
   ignores `workspaces`, and the web client then filters the page it gets.
+- **Bundled skills:** v3 bundles one skill, `self-healing`
+  (`contract/builtin_skills/self-healing`). Its `SKILL.md` is an index of
+  `references/*.md` files, plus the plugin typings (`jsplugin/openagentd.d.ts`).
+  They describe v3 behavior: the `patch` tool, global MCP servers, the
+  `multimodal.yaml` schema, and no skill discovery cache. v2's `skill-installer`
+  became `references/skills.md`. Materialisation deletes files that are no
+  longer bundled, so an old copy is not discovered. The files live in the
+  denied cache dir, so `DeniedPaths::read_only_roots` lets `read`/`grep`/`glob`
+  open them. Write tools and `shell` still refuse them, and the denied patterns
+  still apply. v2 kept bundled skills in the source tree, where they were
+  readable. Tests: `agent/src/skills.rs`, `tools/src/denied.rs`,
+  `agent/tests/bundled_skill_references.rs`.
 
 ## 4. Layout
 
@@ -817,3 +862,25 @@ SSE client, or after 30 minutes idle regardless; the next read restarts it.
 Not done on purpose: provider plugins still load once per process (v2
 parity; hot reload would need a JS runtime lifecycle). Instruction, agent
 and skill files are already re-validated by mtime on every turn.
+
+### Web preview (`crates/preview`)
+
+v3 only; v2 has no counterpart. `POST /api/preview` starts (or reuses) one
+listener per workspace and target on `127.0.0.1:<port>`. The listener proxies
+a loopback dev server (HTTP, SSE and `ws://` hot reload) or serves the
+workspace as static files under the file tools' denied-path rules, and adds
+`/__openagentd/inspector.js` to HTML pages for the dock's element picker and
+console capture. It refuses foreign `Host` headers, never proxies to the API
+port or another preview, removes the target's `X-Frame-Options` and
+`frame-ancestors`, and sets its own `frame-ancestors` (loopback pages and
+Tauri webviews). Listeners are capped at 8 and close after 30 minutes idle.
+The app CSP gains `frame-src 'self' http://127.0.0.1:*`. The lead's
+`preview` tool opens pages, reads the captured console, and drives the open
+page: the inspector long-polls `/__openagentd/agent` on the preview origin
+for commands (snapshot, click, fill, press, scroll, navigate, wait, inspect)
+and posts results back there, so commands fail fast when no Preview tab has
+the page open. Its definition lives in `crates/agent/src/tools/preview.rs`,
+not in the v2 tool contract. Design feedback travels inside the user message
+as a `<design-feedback>` block that the web UI renders as a card; the wire
+format is unchanged.
+Not done: `wss://` relays, LAN or mobile access, and headless capture.

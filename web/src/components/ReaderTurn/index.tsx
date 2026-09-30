@@ -30,11 +30,13 @@ import { formatToolLabel, subscribeLiveClock } from '../ToolCall'
 import { getToolDisplay } from '../ToolCall/display'
 import { ChangeCounts } from '../WorkspacePanel/ChangeCounts'
 import type { ChangedFileInfo } from '../WorkspacePanel/diff-helpers'
+import { isAgentReport } from '@/utils/turns'
 import { summarizeWork, workSummaryDetail } from './segments'
 
 /** What a running step is doing, as its tool row's tooltip names it. */
 function stepLabel(block: ContentBlock): string {
   if (block.type === 'thinking') return 'Thinking'
+  if (isAgentReport(block)) return `Report from ${String(block.extra?.from_agent)}`
   const name = block.toolName ?? ''
   const display = getToolDisplay(name, block.toolArgs)
   // A shell call without a description is known by its command.

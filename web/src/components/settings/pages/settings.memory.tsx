@@ -38,6 +38,8 @@ import {
 } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ICON_SIZE, ICON_SIZE_INLINE, TEXT } from '@/components/settings/tokens'
+import { settingsRoot } from '@/components/settings/settings-root'
+import { useShortcut } from '@/lib/keyboard/hooks'
 import { cn } from '@/lib/utils'
 
 export function MemorySettingsPage() {
@@ -111,18 +113,12 @@ export function MemorySettingsPage() {
     saveActionRef.current = { handleSave, isDirty, isSaving: saveMut.isPending, selectedPath }
   })
 
-  // Cmd/Ctrl+S keyboard shortcut to save
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (!((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's')) return
-      const current = saveActionRef.current
-      if (!current.selectedPath || !current.isDirty || current.isSaving) return
-      e.preventDefault()
-      void current.handleSave()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [])
+  // ⌘S / Ctrl+S saves the open file.
+  useShortcut({ key: 'S', mod: true }, () => {
+    const current = saveActionRef.current
+    if (!current.selectedPath || !current.isDirty || current.isSaving) return false
+    void current.handleSave()
+  }, { within: settingsRoot })
 
   const handleDelete = async () => {
     if (!selectedPath || !fileData) return

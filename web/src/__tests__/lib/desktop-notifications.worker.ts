@@ -7,8 +7,9 @@ let minimized = false
 let permissionGranted = true
 let permissionResult: 'granted' | 'denied' = 'granted'
 let os = 'macos'
+let shellResult: boolean | undefined = undefined
 const mockRequestPermission = mock(async () => permissionResult)
-const mockNotify = mock(async () => undefined)
+const mockNotify = mock(async () => shellResult)
 const mockPlay = mock(async () => undefined)
 type TapEvent = { actionId?: unknown; notification?: { id?: unknown } }
 let actionListener: ((event: TapEvent) => void) | null = null
@@ -44,7 +45,7 @@ const payload = {
   kind: 'assistant_done' as const,
   sessionId: 'session-123',
   mode: 'coding' as const,
-  title: 'Session completed - openagentd',
+  title: 'Done · openagentd',
   body: 'Fix notification wording',
 }
 
@@ -57,6 +58,7 @@ beforeEach(() => {
   permissionGranted = true
   permissionResult = 'granted'
   os = 'macos'
+  shellResult = undefined
   actionListener = null
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
   mockRequestPermission.mockClear()
@@ -74,11 +76,23 @@ describe('desktop notification worker', () => {
       payload: {
         kind: 'assistant_done',
         sessionId: 'session-123',
-        title: 'Session completed - openagentd',
+        title: 'Done · openagentd',
         body: 'Fix notification wording',
       },
     })
     expect(mockPlay).not.toHaveBeenCalled()
+  })
+
+  it('passes the notification id so the shell shows it from one window', async () => {
+    shellResult = true
+    expect((await sendDesktopNotification({ ...payload, notificationId: 'n-1' })).status).toBe('sent')
+    expect(mockNotify).toHaveBeenCalledWith('show_desktop_notification', {
+      payload: expect.objectContaining({ notificationId: 'n-1' }),
+    })
+
+    // Another window already showed it, or the user is in another app window.
+    shellResult = false
+    expect((await sendDesktopNotification({ ...payload, notificationId: 'n-1' })).status).toBe('disabled')
   })
 
   it('focused skip and forced send', async () => {
@@ -105,7 +119,7 @@ describe('desktop notification worker', () => {
     expect(mockNotify).toHaveBeenCalledWith('plugin:notification|notify', {
       options: {
         id: expect.any(Number),
-        title: 'Session completed - openagentd',
+        title: 'Done · openagentd',
         body: 'Fix notification wording',
         group: 'openagentd-assistant_done',
       },

@@ -59,13 +59,14 @@ import { useViewportAtLeast } from '@/hooks/use-viewport-width'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import { APP_EVENTS } from '@/lib/app-events'
 import type { WorkspaceFileInfo } from '@/api/types'
-import type { DiffTabRequest, DockView, DockViewRequest } from '../WorkspacePanel/dock-tabs'
+import type { DiffTabRequest, DockView, DockViewRequest, PreviewTabRequest } from '../WorkspacePanel/dock-tabs'
+import type { PreviewTarget } from '@/api/preview'
 import type { ChangedFileStatus } from '../WorkspacePanel/diff-helpers'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import { sessionTouchedPaths } from './helpers'
 import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
 
-export type { DiffTabRequest, DockView, DockViewRequest }
+export type { DiffTabRequest, DockView, DockViewRequest, PreviewTabRequest }
 
 export interface UseOverlayStateArgs {
   isMobile: boolean
@@ -91,6 +92,8 @@ export interface UseOverlayStateResult {
   handledDockViewKeyRef: React.RefObject<number>
   dockDiffRequest: DiffTabRequest | null
   handledDockDiffRequestKeyRef: React.RefObject<number>
+  dockPreviewRequest: PreviewTabRequest | null
+  handledDockPreviewRequestKeyRef: React.RefObject<number>
   /** Dock view tab currently focused in the mounted dock, else ``null``. */
   dockActiveView: DockView | null
   setDockActiveView: Dispatch<SetStateAction<DockView | null>>
@@ -117,6 +120,9 @@ export interface UseOverlayStateResult {
   handleFileRefOpen: (ref: FileRef) => Promise<void>
   /** Open a clicked file change from reader mode as a full-height diff tab in the dock. */
   handleDiffOpen: (ref: FileRef & { status?: ChangedFileStatus }) => void
+  /** Open a web preview tab in the dock (workspace only). */
+  /** ``focusOnly`` shows an open tab for ``target`` without navigating it. */
+  handleOpenPreview: (target: PreviewTarget, options?: { focusOnly?: boolean }) => void
   closeMobileActionsMenu: () => void
   handleSetShowMobileActions: Dispatch<SetStateAction<boolean>>
   handleToggleAgentCapabilities: () => void
@@ -165,6 +171,8 @@ export function useOverlayState({
   const handledDockViewKeyRef = useRef(0)
   const [dockDiffRequest, setDockDiffRequest] = useState<DiffTabRequest | null>(null)
   const handledDockDiffRequestKeyRef = useRef(0)
+  const [dockPreviewRequest, setDockPreviewRequest] = useState<PreviewTabRequest | null>(null)
+  const handledDockPreviewRequestKeyRef = useRef(0)
   const [dockActiveView, setDockActiveView] = useState<DockView | null>(null)
   const dockViewsEnabled = !isMobile && Boolean(workspace)
   const schedulerInDock = Boolean(workspace)
@@ -305,6 +313,14 @@ export function useOverlayState({
     if (!workspace || !cited) return
     showDiff(cited, ref.status)
   }, [showDiff, workspace])
+
+  const handleOpenPreview = useCallback((target: PreviewTarget, options?: { focusOnly?: boolean }) => {
+    if (!workspace) return
+    if (isMobile) setMobileSidebarOpen(false)
+    closeOtherMobileOverlays('workspace-panel')
+    setWorkspacePanel((value) => value ?? 'changed')
+    setDockPreviewRequest((prev) => ({ target, key: (prev?.key ?? 0) + 1, ...(options?.focusOnly ? { focusOnly: true } : {}) }))
+  }, [closeOtherMobileOverlays, isMobile, workspace])
 
   const handleMentionFileOpen = useCallback(async (path: string) => {
     const cleanPath = path.split('#', 1)[0]
@@ -547,6 +563,8 @@ export function useOverlayState({
     handledDockViewKeyRef,
     dockDiffRequest,
     handledDockDiffRequestKeyRef,
+    dockPreviewRequest,
+    handledDockPreviewRequestKeyRef,
     dockActiveView,
     setDockActiveView,
     dockViewsEnabled,
@@ -565,6 +583,7 @@ export function useOverlayState({
     handleMentionFileOpen,
     handleFileRefOpen,
     handleDiffOpen,
+    handleOpenPreview,
     closeMobileActionsMenu,
     handleSetShowMobileActions,
     handleToggleAgentCapabilities,

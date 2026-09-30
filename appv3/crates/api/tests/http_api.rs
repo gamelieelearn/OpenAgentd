@@ -142,6 +142,7 @@ async fn http_api_end_to_end() {
     let (st, h, body) = c.send(Request::get("/api/health/live").body(Body::empty()).unwrap()).await;
     assert_eq!(st, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
     assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
+    assert!(h.get("content-security-policy").unwrap().to_str().unwrap().contains("frame-src 'self' http://127.0.0.1:*"));
     assert!(h.get("access-control-allow-origin").is_none(), "no CORS headers without Origin");
     let (st, _) = c.json("GET", "/api/health/ready", None).await;
     assert_eq!(st, StatusCode::OK);
@@ -397,7 +398,58 @@ async fn http_api_end_to_end() {
     let (st, _, _) = lan.send(lan_get("https://evil.example", None)).await;
     assert_eq!(st, StatusCode::UNAUTHORIZED);
 
+    preview_routes(&c, root.path()).await;
+
     appv3_api::startup::shutdown().await;
+}
+
+async fn preview_routes(c: &Client, root: &std::path::Path) {
+    let ws = root.join("preview-ws");
+    std::fs::create_dir_all(ws.join("designs")).unwrap();
+    std::fs::write(ws.join("designs/landing.html"), "<html><head></head><body>x</body></html>").unwrap();
+    let ws = ws.to_string_lossy().to_string();
+    let open = |body: Value| c.json("POST", "/api/preview", Some(body));
+
+    let (st, p) = open(json!({"workspace": ws, "path": "designs/landing.html"})).await;
+    assert_eq!(st, StatusCode::OK, "{p}");
+    assert_eq!(p["kind"], "file");
+    assert_eq!(p["path"], "/designs/landing.html");
+    let url = p["url"].as_str().unwrap().to_string();
+    assert!(url.starts_with("http://127.0.0.1:"), "{url}");
+    let page = reqwest::Client::builder().no_proxy().build().unwrap().get(&url).send().await.unwrap().text().await.unwrap();
+    assert!(page.contains("/__openagentd/inspector.js"), "{page}");
+
+    let (_, again) = open(json!({"workspace": ws, "path": "designs/landing.html"})).await;
+    assert_eq!(again["id"], p["id"], "the same workspace reuses its listener");
+
+    let api_port = appv3_core::settings().api_port;
+    for (body, why) in [
+        (json!({"workspace": ws, "url": "http://example.com"}), "non-loopback"),
+        (json!({"workspace": ws, "url": format!("http://127.0.0.1:{api_port}")}), "the API itself"),
+        (json!({"workspace": ws}), "no target"),
+        (json!({"workspace": ws, "url": "http://localhost:5173", "path": "designs/landing.html"}), "two targets"),
+        (json!({"workspace": ws, "path": "../outside.html"}), "traversal"),
+        (json!({"workspace": ws, "path": "missing.html"}), "missing file"),
+        (json!({"workspace": "/definitely/not/here", "url": "http://localhost:5173"}), "bad workspace"),
+        (json!({"workspace": ws, "url": "http://localhost:5173", "extra": 1}), "unknown field"),
+    ] {
+        let (st, v) = open(body).await;
+        assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{why}: {v}");
+    }
+
+    let (st, list) = c.json("GET", &format!("/api/preview?workspace={}", urlencode(&ws)), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(list["previews"].as_array().unwrap().iter().any(|x| x["id"] == p["id"]), "{list}");
+
+    let id = p["id"].as_str().unwrap();
+    let (st, _) = c.json("DELETE", &format!("/api/preview/{id}"), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (st, _) = c.json("DELETE", &format!("/api/preview/{id}"), None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+}
+
+fn urlencode(s: &str) -> String {
+    form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }
 
 /// Open a plan review as `submit_plan` does: the call, then its pending row.

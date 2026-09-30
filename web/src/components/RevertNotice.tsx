@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp, Redo2 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { designFeedbackPlainText } from '@/lib/design-feedback'
 
 interface RevertNoticeProps {
   count: number
@@ -29,7 +30,7 @@ export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: Revert
                 key={`${message.role}-${index}`}
                 className="px-2 py-1.5 not-last:border-b not-last:border-(--color-border)"
               >
-                <div className="whitespace-pre-wrap text-(--color-text-muted)">{message.content}</div>
+                <div className="whitespace-pre-wrap text-(--color-text-muted)">{designFeedbackPlainText(message.content)}</div>
               </div>
             ))}
           </div>

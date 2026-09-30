@@ -26,6 +26,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
@@ -214,13 +215,8 @@ function PopoverContent({
     return () => document.removeEventListener('mousedown', handler)
   }, [open, setOpen, triggerRef])
 
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [open, setOpen])
+  // Escape closes it while it is the top layer (not the dialog around it).
+  useKeyLayer(open, { kind: 'transient', onClose: () => setOpen(false) })
 
   if (!mounted) return null
 

@@ -202,7 +202,9 @@ pub async fn desktop_token(policy: axum::extract::State<Policy>, mut req: Reques
 
 // ── SecurityHeaders ─────────────────────────────────────────────────────────
 
-const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'";
+// `frame-src` admits the built-in web preview, which runs on its own
+// loopback listener (`appv3-preview`).
+const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; media-src 'self' blob:; frame-src 'self' http://127.0.0.1:*; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'";
 
 const SECURITY_HEADERS: [(&str, &str); 7] = [
     ("x-content-type-options", "nosniff"),

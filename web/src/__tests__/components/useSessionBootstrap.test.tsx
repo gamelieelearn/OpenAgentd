@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createRef } from 'react'
 import type { RefObject } from 'react'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 
 // Whether the OS drops background sockets (iOS/Android) decides if a resume
@@ -14,6 +14,8 @@ mock.module('@/hooks/use-platform', () => ({
 import { useSessionBootstrap } from '@/components/AgentChatView/useSessionBootstrap'
 import type { UseSessionBootstrapArgs } from '@/components/AgentChatView/useSessionBootstrap'
 import type { InputComposerHandle } from '@/components/InputComposer'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { _resetKeyboardForTests } from '@/lib/keyboard/dispatcher'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 
@@ -24,6 +26,7 @@ function Harness({
   beginResolvedSession = mock(() => {}),
   inputRef,
   isMobile = true,
+  onResult,
 }: {
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   connectStream: () => AbortController
@@ -31,8 +34,9 @@ function Harness({
   isMobile?: boolean
   beginResolvedSession?: UseSessionBootstrapArgs['beginResolvedSession']
   inputRef?: RefObject<InputComposerHandle | null>
+  onResult?: (result: ReturnType<typeof useSessionBootstrap>) => void
 }) {
-  useSessionBootstrap({
+  const result = useSessionBootstrap({
     sessionId,
     workspace: '/repo/app',
     agentWorkspace: '/repo/app',
@@ -53,6 +57,7 @@ function Harness({
     beginResolvedSession,
     consumeResolvedSessionReady: mock(() => false),
   })
+  onResult?.(result)
   return null
 }
 
@@ -68,7 +73,51 @@ beforeEach(() => {
   })
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  _resetKeyboardForTests()
+})
+
+describe('useSessionBootstrap type-to-focus', () => {
+  function composer(insertText: (text: string) => void): RefObject<InputComposerHandle | null> {
+    const inputRef = createRef<InputComposerHandle>()
+    inputRef.current = {
+      focus: () => {},
+      setValue: () => {},
+      appendValue: () => {},
+      insertText,
+      setFiles: () => {},
+      addFiles: () => {},
+      restoreLastSubmission: () => {},
+      addDesignFeedback: () => {},
+    }
+    return inputRef
+  }
+  const type = (target: EventTarget, key: string) => {
+    act(() => { target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })) })
+  }
+
+  it('sends a letter typed outside any field to the composer', () => {
+    const insertText = mock((_text: unknown) => {})
+    render(<Harness isMobile={false} loadSession={mock(async () => {})} connectStream={() => new AbortController()} inputRef={composer(insertText)} />)
+    type(document.body, 'h')
+    expect(insertText).toHaveBeenCalledWith('h')
+  })
+
+  it('keeps letters typed in a dialog out of the composer behind it', () => {
+    const insertText = mock((_text: unknown) => {})
+    render(
+      <>
+        <Harness isMobile={false} loadSession={mock(async () => {})} connectStream={() => new AbortController()} inputRef={composer(insertText)} />
+        <Dialog open onOpenChange={() => {}}>
+          <DialogContent><DialogTitle>Delete session?</DialogTitle><button type="button">Cancel</button></DialogContent>
+        </Dialog>
+      </>,
+    )
+    type(screen.getByRole('button', { name: 'Cancel' }), 'h')
+    expect(insertText).not.toHaveBeenCalled()
+  })
+})
 
 describe('useSessionBootstrap foreground resume', () => {
   it('reconciles history and replaces a stale connected stream after pageshow on mobile', async () => {
@@ -181,6 +230,7 @@ describe('useSessionBootstrap undo draft-restore', () => {
       setFiles: setFilesMock,
       addFiles: () => {},
       restoreLastSubmission: () => {},
+      addDesignFeedback: () => {},
     }
 
     const loadSession = mock(async () => {
@@ -227,6 +277,32 @@ describe('useSessionBootstrap undo draft-restore', () => {
 })
 
 describe('useSessionBootstrap remount on screen switch', () => {
+  it('adds a file line comment to the composer as a real mention', async () => {
+    const inputRef = createRef<InputComposerHandle>()
+    const appendValue = mock((..._args: unknown[]) => {})
+    inputRef.current = {
+      focus: () => {},
+      setValue: () => {},
+      appendValue,
+      insertText: () => {},
+      setFiles: () => {},
+      addFiles: () => {},
+      restoreLastSubmission: () => {},
+      addDesignFeedback: () => {},
+    }
+    let result: ReturnType<typeof useSessionBootstrap> | null = null
+    render(
+      <Harness
+        loadSession={mock(async () => {})}
+        connectStream={mock(() => new AbortController())}
+        inputRef={inputRef}
+        onResult={(r) => { result = r }}
+      />,
+    )
+    result!.handleAddFileComment('src/a.ts', 3, 5)
+    expect(appendValue).toHaveBeenCalledWith('@src/a.ts#L3-L5 ', { mentions: ['src/a.ts#L3-L5'] })
+  })
+
   it('loads history and connects stream when mounting for an already-active session', async () => {
     useAgentStore.setState({
       sessionId: 'session-1',

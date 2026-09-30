@@ -185,7 +185,7 @@ impl Tool for SubmitPlanTool {
         let qid = appv3_db::codec::api_uuid(&row.id);
         let questions = payload["questions"].as_array().cloned().unwrap_or_default();
         store().push_event(&sid, &events::plan_review_asked(&qid, &sid, &ctx.tool_call_id, &questions, doc.revision), false);
-        publish_input_needed(&self.pool, &self.session_id, &qid, "Plan ready for review", |_| summary.clone().unwrap_or_else(|| "Review the agent's plan".into())).await;
+        publish_input_needed(&self.pool, &self.session_id, &qid, "Plan ready", |_| summary.clone().unwrap_or_else(|| "Review the agent's plan".into())).await;
         tracing::info!("plan_review_opened session_id={} question_id={} revision={}", sid, qid, doc.revision);
         Err(ToolError::Suspended(Suspension::Question { question_id: qid, session_id: sid }))
     }

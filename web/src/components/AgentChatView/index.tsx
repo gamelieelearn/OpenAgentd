@@ -14,7 +14,7 @@
  * (one primitive per ``useAgentStore`` call) to avoid the infinite loop
  * that returning a freshly-built object on every render would trigger.
  */
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -36,6 +36,12 @@ import { useMarkSessionRead } from '@/stores/useUnreadStore'
 import { useElementWidthSelect } from '@/hooks/use-element-width'
 import { useReturnFocusFromDock } from '@/hooks/use-dock-focus'
 import { dockOverlaysChat } from '@/lib/workbench-layout'
+import { isLocalBackend, lastPreviewUrl } from '@/api/preview'
+import { OPEN_PREVIEW_EVENT, isPreviewTarget } from '../Preview/preview-events'
+import type { DesignFeedback } from '@/lib/design-feedback'
+import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
+import { previewTargetForFeedback } from '../Preview/preview-comments'
+import { usePreviewToolAutoOpen } from './usePreviewToolAutoOpen'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
@@ -286,6 +292,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handledDockViewKeyRef,
     dockDiffRequest,
     handledDockDiffRequestKeyRef,
+    dockPreviewRequest,
+    handledDockPreviewRequestKeyRef,
+    handleOpenPreview,
     dockActiveView,
     setDockActiveView,
     dockViewsEnabled,
@@ -426,6 +435,37 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
+  const handleOpenNewPreview = useCallback(() => {
+    if (!workspace) return
+    handleOpenPreview({ kind: 'url', url: lastPreviewUrl(workspace) ?? 'http://localhost:5173' })
+  }, [handleOpenPreview, workspace])
+
+  const handleSendPreviewComments = useCallback((feedback: DesignFeedback) => {
+    inputRef.current?.addDesignFeedback(feedback)
+    inputRef.current?.focus()
+  }, [])
+
+  // A feedback chip's x sends its comments back to their Preview tab's list,
+  // opening that tab on desktop (it picks them up whenever it next mounts).
+  const handleDesignFeedbackRemoved = useCallback((feedback: DesignFeedback) => {
+    if (!workspace) return
+    useReturnedFeedbackStore.getState().give({ workspace, feedback })
+    const target = previewTargetForFeedback(feedback)
+    if (target && !isMobile && isLocalBackend()) handleOpenPreview(target, { focusOnly: true })
+  }, [handleOpenPreview, isMobile, workspace])
+
+  // The `preview` tool card's Open button, and the agent opening a page
+  // (desktop only: phones keep the chat on screen).
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const target = (event as CustomEvent<unknown>).detail
+      if (isPreviewTarget(target)) handleOpenPreview(target)
+    }
+    window.addEventListener(OPEN_PREVIEW_EVENT, onOpen)
+    return () => window.removeEventListener(OPEN_PREVIEW_EVENT, onOpen)
+  }, [handleOpenPreview])
+  usePreviewToolAutoOpen({ enabled: !isMobile && Boolean(workspace) && isLocalBackend(), onOpen: handleOpenPreview })
+
   const {
     slashCommands,
     snippetCommands,
@@ -473,6 +513,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleFindInTranscript,
     handleOpenPlan: plan || planAwaitingReview ? handleOpenPlan : undefined,
     planAwaitingReview,
+    handleOpenPreview: workspace && isLocalBackend() ? handleOpenNewPreview : undefined,
     setFileViewer,
     setFileOpenKey,
     setWorkspacePanel,
@@ -717,6 +758,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             snippetCommands={snippetCommands}
             historyPrompts={historyPrompts}
             onHistoryRecall={handleHistoryRecall}
+            onDesignFeedbackRemoved={handleDesignFeedbackRemoved}
             onValueChange={handleDraftValueChange}
             fileRefs={fileRefs}
             onFileRefsNeeded={() => setFileRefsEnabled(true)}
@@ -768,6 +810,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               handledViewRequestKeyRef={handledDockViewKeyRef}
               diffRequest={dockDiffRequest}
               handledDiffRequestKeyRef={handledDockDiffRequestKeyRef}
+              previewRequest={dockPreviewRequest}
+              handledPreviewRequestKeyRef={handledDockPreviewRequestKeyRef}
+              onSendPreviewComments={handleSendPreviewComments}
               onActiveViewChange={setDockActiveView}
               todos={todos}
               sessionId={sessionIdState}

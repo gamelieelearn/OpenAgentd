@@ -31,6 +31,7 @@ import { isEditableTarget } from '@/lib/is-editable-target'
 import { attachmentToFile } from './helpers'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
+import { topBlockingLayer } from '@/lib/keyboard/layers'
 import type { InputComposerHandle } from '../InputComposer'
 import type { MessageAttachment } from '@/api/types'
 
@@ -357,6 +358,8 @@ export function useSessionBootstrap({
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key.length !== 1 || e.key.trim().length === 0) return
       if (isEditableTarget(e.target)) return
+      // A dialog, overlay or lightbox is open: the letter is not for the chat.
+      if (topBlockingLayer()) return
       e.preventDefault()
       inputRef.current?.focus()
       inputRef.current?.insertText(e.key)
@@ -367,8 +370,8 @@ export function useSessionBootstrap({
   }, [isSessionLoading, isMobile, paletteOpen, workspace, inputRef])
 
   const handleAddFileComment = useCallback((path: string, startLine: number, endLine: number) => {
-    const ref = startLine === endLine ? `@${path}#L${startLine}` : `@${path}#L${startLine}-L${endLine}`
-    inputRef.current?.appendValue(`${ref} `)
+    const mention = startLine === endLine ? `${path}#L${startLine}` : `${path}#L${startLine}-L${endLine}`
+    inputRef.current?.appendValue(`@${mention} `, { mentions: [mention] })
     inputRef.current?.focus()
   }, [inputRef])
 
