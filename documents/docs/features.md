@@ -1076,6 +1076,8 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   Auto-compaction default threshold is raised to 90% of model context `[v2.7.0]`.
   instruction tool-call pairs remain active after repeated compaction while the
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
+  Changing the trigger in Settings → Automation applies from the next model
+  call, including inside a turn that is already running `[v3.3.0]`.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at

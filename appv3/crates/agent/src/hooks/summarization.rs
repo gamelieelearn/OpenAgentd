@@ -10,8 +10,9 @@ use appv3_providers::{registry::get_model_limits, usage::usage_to_dict, ChatMess
 use async_trait::async_trait;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime};
 
 use super::otel::set_usage_span_attributes;
 use appv3_core::otel::{self, Span, SpanKind};
@@ -48,10 +49,50 @@ pub fn resolve_prompt_token_threshold(model_id: Option<&str>, custom: Option<i64
     }
 }
 
+/// Source of the user's `summarization.prompt_token_threshold` override.
+pub type CustomThreshold = Arc<dyn Fn() -> Option<i64> + Send + Sync>;
+
+fn custom_threshold_from_settings() -> Option<i64> {
+    cached_custom_threshold(&appv3_core::settings::settings().runtime_settings_path())
+}
+
+/// Files modified this recently are always re-read: on filesystems with
+/// coarse mtimes a second save in the same tick keeps the same stamp.
+const RACY_WINDOW: Duration = Duration::from_secs(2);
+
+struct CachedThreshold {
+    path: PathBuf,
+    /// `(mtime, len)` of `settings.yaml`, `None` when it could not be stat'ed.
+    stamp: Option<(SystemTime, u64)>,
+    value: Option<i64>,
+}
+
+static CUSTOM_THRESHOLD_CACHE: Mutex<Option<CachedThreshold>> = Mutex::new(None);
+
+fn file_stamp(path: &Path) -> Option<(SystemTime, u64)> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.modified().ok()?, meta.len()))
+}
+
+/// `summarization.prompt_token_threshold` from `path`, re-parsed only when the
+/// file's mtime or size changes (a stat is ~1µs; a parse is ~1ms).
+fn cached_custom_threshold(path: &Path) -> Option<i64> {
+    let stamp = file_stamp(path);
+    let racy = stamp.is_some_and(|(mtime, _)| SystemTime::now().duration_since(mtime).map_or(true, |age| age < RACY_WINDOW));
+    let mut cache = CUSTOM_THRESHOLD_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(hit) = cache.as_ref().filter(|c| !racy && c.path == path && c.stamp == stamp) {
+        return hit.value;
+    }
+    let value = appv3_core::runtime_settings::load_runtime_settings_from(path).ok().and_then(|s| s.summarization.prompt_token_threshold);
+    *cache = Some(CachedThreshold { path: path.to_path_buf(), stamp, value });
+    value
+}
+
 pub struct SummarizationHook {
     provider: Arc<dyn LlmProvider>,
     model_id: Option<String>,
-    threshold: i64,
+    /// Read on every model call so a settings change applies mid-turn.
+    custom_threshold: CustomThreshold,
     keep_last: usize,
     summary_prompt: String,
     max_token_length: i64,
@@ -65,10 +106,9 @@ pub struct SummarizationHook {
 
 /// `build_summarization_hook`.
 pub fn build_summarization_hook(provider: Arc<dyn LlmProvider>, mode: &str, model_id: Option<&str>, support_interrupt: bool) -> Option<SummarizationHook> {
-    let custom = appv3_core::runtime_settings::load_runtime_settings().ok().and_then(|s| s.summarization.prompt_token_threshold);
     let limits = get_model_limits(model_id);
     let max_len = limits.max_completion_tokens.map(|m| m.min(DEFAULT_MAX_TOKEN_LENGTH)).unwrap_or(DEFAULT_MAX_TOKEN_LENGTH);
-    let threshold = resolve_prompt_token_threshold(model_id, custom);
+    let threshold = resolve_prompt_token_threshold(model_id, custom_threshold_from_settings());
     tracing::info!(
         "summarization_config model={:?} context_length={:?} max_input_tokens={:?} effective_threshold={}",
         model_id,
@@ -80,7 +120,7 @@ pub fn build_summarization_hook(provider: Arc<dyn LlmProvider>, mode: &str, mode
     Some(SummarizationHook {
         provider,
         model_id: model_id.map(String::from),
-        threshold,
+        custom_threshold: Arc::new(custom_threshold_from_settings),
         keep_last: if coding { CODING_KEEP_LAST_ASSISTANTS } else { DEFAULT_KEEP_LAST_ASSISTANTS },
         summary_prompt: prompts::s(if coding { "summary_coding" } else { "summary_chat" }).to_string(),
         max_token_length: max_len,
@@ -237,6 +277,11 @@ fn carry_plan(state: &mut AgentState, summary_at: usize, note: Option<String>) -
 }
 
 impl SummarizationHook {
+    /// Effective trigger for the next model call.
+    fn threshold(&self) -> i64 {
+        resolve_prompt_token_threshold(self.model_id.as_deref(), (self.custom_threshold)())
+    }
+
     pub fn with_plan_dir(mut self, dir: PathBuf) -> Self {
         self.plan_dir = Some(dir);
         self
@@ -388,7 +433,7 @@ impl SummarizationHook {
                 ("gen_ai.conversation.id", json!(ctx.session_id.clone().unwrap_or_default())),
                 ("run_id", json!(ctx.run_id)),
                 ("summarization.prompt_tokens", json!(state.usage.last_prompt_tokens)),
-                ("summarization.threshold", json!(self.threshold)),
+                ("summarization.threshold", json!(self.threshold())),
             ],
         );
         let (done, cancelled) = otel::scope(Some(span.ctx()), self.summarise_inner(ctx, state, system_prompt, &span)).await;
@@ -547,10 +592,11 @@ impl SummarizationHook {
 impl Hook for SummarizationHook {
     async fn before_model(&self, ctx: &RunContext, state: &mut AgentState, _req: &ModelRequest) -> Option<ModelRequest> {
         let force = state.meta_get("force_summarization") == Some(Value::Bool(true));
-        if self.threshold <= 0 && !force {
+        let threshold = self.threshold();
+        if threshold <= 0 && !force {
             return None;
         }
-        if state.usage.last_prompt_tokens < self.threshold && !force {
+        if state.usage.last_prompt_tokens < threshold && !force {
             return None;
         }
         if self.min_since_last > 0 && !force {
@@ -585,11 +631,44 @@ mod tests {
         hook_with(Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")])), keep_last)
     }
 
+    /// The per-model-call threshold read is served from memory until
+    /// `settings.yaml` changes, and picks the change up on the next call.
+    #[test]
+    fn custom_threshold_is_cached_until_settings_yaml_changes() {
+        use std::time::{Duration, SystemTime};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.yaml");
+        let write = |value: &str, mtime: SystemTime| {
+            std::fs::write(&path, format!("summarization:\n  prompt_token_threshold: {value}\n")).unwrap();
+            std::fs::File::options().write(true).open(&path).unwrap().set_modified(mtime).unwrap();
+        };
+        let saved = SystemTime::now() - Duration::from_secs(3600);
+
+        write("15000", saved);
+        assert_eq!(cached_custom_threshold(&path), Some(15_000));
+        // Same size and mtime: the file is not re-parsed.
+        write("16000", saved);
+        assert_eq!(cached_custom_threshold(&path), Some(15_000), "unchanged file was re-parsed");
+        // A save moves the mtime: the next call sees the new value.
+        write("50000", saved + Duration::from_secs(60));
+        assert_eq!(cached_custom_threshold(&path), Some(50_000));
+        // A just-written file is always re-read, so two saves inside one
+        // coarse mtime tick are not missed.
+        let now = SystemTime::now();
+        write("20000", now);
+        assert_eq!(cached_custom_threshold(&path), Some(20_000));
+        write("30000", now);
+        assert_eq!(cached_custom_threshold(&path), Some(30_000));
+        // Deleting the override falls back to the auto threshold.
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(cached_custom_threshold(&path), None);
+    }
+
     fn hook_with(provider: Arc<MockProvider>, keep_last: usize) -> SummarizationHook {
         SummarizationHook {
             provider,
             model_id: None,
-            threshold: 1,
+            custom_threshold: Arc::new(|| Some(1)),
             keep_last,
             summary_prompt: "test summary prompt".into(),
             max_token_length: 0,
