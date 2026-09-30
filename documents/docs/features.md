@@ -1429,6 +1429,11 @@ Four orthogonal ways to add capability.
     tokens `[v1.92.0]`. Skill cache invalidation now also watches project-local skill roots
     (`.openagentd/skills/`, `.agents/skills/` `[v2.12.0]`, `.opencode/skills/`), not just the global config directory, so
     edits are picked up on the next `discover_skills()` call `[v1.92.0]`.
+  - **Bundled `self-healing` skill with references** `[v3.3.0]` — one bundled skill covers the
+    agent's own setup: its `SKILL.md` is an index linking reference files for agents, MCP servers,
+    skills, plugins (with the `openagentd` plugin API typings), and image/video generation. It
+    replaces the separate `skill-installer` skill. `read`, `grep`, and `glob` may open bundled
+    skill files, while write tools and `shell` still cannot touch them.
   - **Semantic docs search skill experiment** `[v1.98.0]` *(beta)* — project workspaces can ship
     an `oad/search-doc` skill plus a turbovec-based document-search experiment for semantic lookup
     over `documents/`, giving agents a higher-level alternative to exact-string grep when docs

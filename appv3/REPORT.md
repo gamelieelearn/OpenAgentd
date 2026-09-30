@@ -593,6 +593,18 @@ explicitly.
   `db/src/queries/sessions.rs`, tested in `api/tests/http_api.rs`). The
   sidebar uses it to list a repository and its worktrees as one list. v2
   ignores `workspaces`, and the web client then filters the page it gets.
+- **Bundled skills:** v3 bundles one skill, `self-healing`
+  (`contract/builtin_skills/self-healing`). Its `SKILL.md` is an index of
+  `references/*.md` files, plus the plugin typings (`jsplugin/openagentd.d.ts`).
+  They describe v3 behavior: the `patch` tool, global MCP servers, the
+  `multimodal.yaml` schema, and no skill discovery cache. v2's `skill-installer`
+  became `references/skills.md`. Materialisation deletes files that are no
+  longer bundled, so an old copy is not discovered. The files live in the
+  denied cache dir, so `DeniedPaths::read_only_roots` lets `read`/`grep`/`glob`
+  open them. Write tools and `shell` still refuse them, and the denied patterns
+  still apply. v2 kept bundled skills in the source tree, where they were
+  readable. Tests: `agent/src/skills.rs`, `tools/src/denied.rs`,
+  `agent/tests/bundled_skill_references.rs`.
 
 ## 4. Layout
 
