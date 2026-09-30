@@ -11,6 +11,8 @@ export type DesktopNotificationStatus = 'sent' | 'disabled' | 'unsupported' | 'p
 
 export interface DesktopNotificationPayload {
   kind: DesktopNotificationKind
+  /** Backend event id; the desktop shell shows each id once across windows. */
+  notificationId?: string
   sessionId?: string
   title: string
   body: string
@@ -137,14 +139,19 @@ export async function sendDesktopNotification(
       // show_desktop_notification exists only in the desktop shell.
       await invoke('plugin:notification|notify', { options: mobileNotificationOptions(payload) })
     } else {
-      await invoke('show_desktop_notification', {
+      const shown = await invoke<boolean | null>('show_desktop_notification', {
         payload: {
           kind: payload.kind,
+          ...(payload.notificationId ? { notificationId: payload.notificationId } : {}),
           ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
           title: payload.title,
           body: payload.body,
         },
       })
+      // Every window gets the event; the shell shows it from one of them.
+      if (shown === false) {
+        return { status: 'disabled', message: 'Another app window showed or suppressed this notification.' }
+      }
     }
     return { status: 'sent', message: 'Native notification sent.' }
   } catch (err) {

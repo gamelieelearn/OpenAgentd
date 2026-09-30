@@ -24,13 +24,17 @@ let listener: ((event: { payload: unknown }) => void) | null = null
 let notificationListener: ((event: { payload: unknown }) => void) | null = null
 let unlistenCalls = 0
 let commandListenOptions: unknown = undefined
+let notificationListenOptions: unknown = undefined
 
 mock.module('@tauri-apps/api/event', () => ({
   listen: async (event: string, cb: (event: { payload: unknown }) => void, options?: unknown) => {
     if (event === 'desktop-command') {
       listener = cb
       commandListenOptions = options
-    } else notificationListener = cb
+    } else {
+      notificationListener = cb
+      notificationListenOptions = options
+    }
     return () => {
       unlistenCalls += 1
       if (event === 'desktop-command') listener = null
@@ -213,6 +217,8 @@ describe('useDesktopCommands', () => {
     try {
       await renderBridge()
       expect(commandListenOptions).toEqual({ target: 'main-2' })
+      // A notification click opens its session in one window, not all of them.
+      expect(notificationListenOptions).toEqual({ target: 'main-2' })
     } finally {
       delete win.__OAD_WINDOW_ID__
     }

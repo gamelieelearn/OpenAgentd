@@ -176,7 +176,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   and the session title, question, or plan summary shows as one line of up to
   100 characters. A failed turn now notifies too. Stopping a turn or dismissing
   a question does not, and a lead that is waiting on subagents notifies once,
-  after their reports are handled.
+  after their reports are handled. With several desktop windows open, each
+  notification shows once and is skipped while another OpenAgentd window is
+  focused, and clicking it opens the session in one window instead of all of
+  them.
 - **Quick Open and Command Palette** `[v2.3.0]` — `⌘P`/`Ctrl+P` searches and
   opens files in the active workspace; `⌘K`/`Ctrl+K` searches app actions.
   Both use the compact warm-paper search surface, keyboard navigation, and a

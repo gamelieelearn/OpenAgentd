@@ -110,9 +110,10 @@ export function useDesktopCommands(): void {
           const command = acceptCommand(event.payload)
           if (command !== null) runDesktopCommand(command)
         }, windowId ? { target: windowId } : undefined)
+        // The shell sends a click to the one window it brings forward.
         const unlistenNotification = await listen<NotificationClickPayload>('desktop-notification-clicked', (event) => {
           openNotificationSession(event.payload, router)
-        })
+        }, windowId ? { target: windowId } : undefined)
         // The mobile shell reports taps through the notification plugin instead.
         const stopTaps = await listenForNotificationTaps((sessionId) => {
           openNotificationSession({ sessionId }, router)

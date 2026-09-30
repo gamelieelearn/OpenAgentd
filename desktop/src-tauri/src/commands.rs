@@ -1,7 +1,9 @@
 use anyhow::{anyhow, Result};
 use openagentd_shell_core::{resolve_download_bytes, safe_download_filename, DownloadSource};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::sync::atomic::AtomicUsize;
+use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
@@ -70,6 +72,33 @@ fn claim_notification_slot() -> bool {
         )
         .is_ok()
 }
+
+/// Notification ids already shown, newest last.
+const MAX_SEEN_NOTIFICATIONS: usize = 64;
+static SEEN_NOTIFICATIONS: Mutex<VecDeque<String>> = Mutex::new(VecDeque::new());
+
+/// Record `id`; false when it was already shown. Every app window receives
+/// the same backend event and asks for the same notification.
+fn first_notification_request(id: &str) -> bool {
+    let mut seen = SEEN_NOTIFICATIONS.lock().unwrap_or_else(|e| e.into_inner());
+    if seen.iter().any(|s| s == id) {
+        return false;
+    }
+    if seen.len() == MAX_SEEN_NOTIFICATIONS {
+        seen.pop_front();
+    }
+    seen.push_back(id.to_string());
+    true
+}
+
+/// Whether an app window other than `caller` has focus. The user is then
+/// looking at the app, and that window decides for itself whether to notify
+/// (it knows which session is on screen).
+fn another_app_window_focused(app: &AppHandle, caller: &str) -> bool {
+    crate::window::focused_webview_window(app)
+        .is_some_and(|w| w.label() != caller && w.label() != crate::tray_popup::TRAY_POPUP_WINDOW)
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopNotificationPayload {
@@ -78,13 +107,26 @@ pub struct DesktopNotificationPayload {
     mode: Option<String>,
     title: String,
     body: String,
+    #[serde(default)]
+    notification_id: Option<String>,
 }
 
+/// Shows the notification and returns true, or returns false when another
+/// window already showed it or has the user's focus.
 #[tauri::command]
 pub fn show_desktop_notification(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     payload: DesktopNotificationPayload,
-) -> Result<(), String> {
+) -> Result<bool, String> {
+    if another_app_window_focused(&app, window.label()) {
+        return Ok(false);
+    }
+    if let Some(id) = payload.notification_id.as_deref() {
+        if !first_notification_request(id) {
+            return Ok(false);
+        }
+    }
     // Past the cap the notification is still delivered, just without the
     // "Open" action — with no actions `needs_response()` is false, so
     // `wait_for_action` sends and returns instead of parking the thread.
@@ -122,7 +164,7 @@ pub fn show_desktop_notification(
             PENDING_NOTIFICATIONS.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
         }
     });
-    Ok(())
+    Ok(true)
 }
 
 // Access keys live in the OS credential store, keyed by canonical origin;
@@ -546,7 +588,10 @@ pub async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Resu
 
 #[cfg(test)]
 mod notification_tests {
-    use super::{claim_notification_slot, MAX_PENDING_NOTIFICATIONS, PENDING_NOTIFICATIONS};
+    use super::{
+        claim_notification_slot, first_notification_request, MAX_PENDING_NOTIFICATIONS,
+        MAX_SEEN_NOTIFICATIONS, PENDING_NOTIFICATIONS,
+    };
     use std::sync::atomic::Ordering;
     #[cfg(target_os = "macos")]
     use super::notification_application_identifier;
@@ -589,5 +634,18 @@ mod notification_tests {
         assert!(!claim_notification_slot());
 
         PENDING_NOTIFICATIONS.store(0, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn each_notification_id_is_shown_once() {
+        assert!(first_notification_request("dedupe-a"));
+        assert!(!first_notification_request("dedupe-a"), "a second window asks for the same id");
+        assert!(first_notification_request("dedupe-b"));
+
+        // The oldest id is forgotten once the list is full.
+        for n in 0..MAX_SEEN_NOTIFICATIONS {
+            assert!(first_notification_request(&format!("dedupe-fill-{n}")));
+        }
+        assert!(first_notification_request("dedupe-a"));
     }
 }
